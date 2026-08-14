@@ -7,10 +7,38 @@ function coordinates(actor: MinecraftActorDetail) {
   const position = actor.runtimeSnapshot?.self.position;
   return position ? `${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)}` : "未知";
 }
+
+function provisionLabel(status: MinecraftActorDetail["provisionStatus"]) {
+  return ({
+    pending: "等待准备",
+    running: "正在准备",
+    ready: "身体已就绪",
+    needs_attention: "需要处理",
+    retry_wait: "等待重试",
+    failed: "准备失败",
+    stopped: "已停止"
+  } as const)[status];
+}
 </script>
 
 <template>
   <div class="grid gap-3 lg:grid-cols-2">
+    <section class="rounded-lg border border-border-subtle bg-surface-raised p-4 lg:col-span-2">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div class="text-caption text-text-subtle">服务器与身体</div>
+          <div class="mt-1 font-mono text-small text-text">{{ actor.serverAddress }}</div>
+        </div>
+        <div class="text-right text-small">
+          <div :class="actor.provisionStatus === 'ready' ? 'text-success' : actor.provisionStatus === 'failed' || actor.provisionStatus === 'needs_attention' ? 'text-danger' : 'text-warning'">
+            {{ provisionLabel(actor.provisionStatus) }}
+          </div>
+          <div class="mt-0.5 text-caption text-text-subtle">{{ actor.backend }} · {{ actor.provisionPhase }}</div>
+        </div>
+      </div>
+      <p v-if="actor.provisionFailureCode" class="mt-2 text-small text-danger">{{ actor.provisionFailureCode }}</p>
+    </section>
+
     <section class="rounded-lg border border-border-subtle bg-surface-raised p-4">
       <div class="text-caption text-text-subtle">当前目标</div>
       <div class="mt-1 text-base font-medium text-text">{{ actor.currentGoal || "暂无明确目标" }}</div>
@@ -25,7 +53,9 @@ function coordinates(actor: MinecraftActorDetail) {
         <div><span class="text-text-subtle">生命</span><div class="mt-0.5 text-text">{{ actor.runtimeSnapshot.self.health }}</div></div>
         <div><span class="text-text-subtle">饥饿</span><div class="mt-0.5 text-text">{{ actor.runtimeSnapshot.self.food }} / 20</div></div>
       </div>
-      <p v-else class="mt-2 text-small text-danger">{{ actor.runtimeError || "Runtime 状态不可用" }}</p>
+      <p v-else class="mt-2 text-small" :class="actor.provisionStatus === 'ready' ? 'text-danger' : 'text-text-subtle'">
+        {{ actor.runtimeError || (actor.provisionStatus === "ready" ? "Runtime 状态不可用" : "身体尚未就绪，委派会保留在队列中") }}
+      </p>
     </section>
 
     <section class="rounded-lg border border-border-subtle bg-surface-raised p-4">

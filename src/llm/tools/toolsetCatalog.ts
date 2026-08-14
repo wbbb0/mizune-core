@@ -203,7 +203,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ownerOnly: true,
     toolNames: [
       "minecraft_actor_list",
-      "minecraft_actor_create",
+      "minecraft_actor_delegate",
       "minecraft_actor_request",
       "minecraft_actor_status",
       "minecraft_actor_interrupt",

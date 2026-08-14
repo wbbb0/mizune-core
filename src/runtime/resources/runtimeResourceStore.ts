@@ -49,11 +49,17 @@ export class RuntimeResourceStore {
              ss.command, ss.cwd, ss.shell, ss.tty, ss.login,
              ma.actor_id, ma.transport_kind, ma.endpoint, ma.protocol_version,
              ma.persistent_state, ma.current_goal, ma.model_refs_json,
-             ma.allow_autonomy_policy_change, ma.allow_program_deployment, ma.last_event_sequence
+             ma.allow_autonomy_policy_change, ma.allow_program_deployment, ma.last_event_sequence,
+             mab.server_address, mab.server_host, mab.server_port, mab.server_key,
+             mab.template_id, mab.template_fingerprint, mab.identity_ref,
+             mab.backend AS minecraft_backend, mab.desired_state, mab.provision_status,
+             mab.provision_phase, mab.failure_code, mab.failure_message,
+             mab.retry_at_ms, mab.attempt_id
       FROM runtime_resources r
       LEFT JOIN runtime_browser_pages bp ON r.resource_id = bp.resource_id
       LEFT JOIN runtime_shell_sessions ss ON r.resource_id = ss.resource_id
       LEFT JOIN runtime_minecraft_actors ma ON r.resource_id = ma.resource_id
+      LEFT JOIN minecraft_actor_bindings mab ON r.resource_id = mab.resource_id
       ${kind ? "WHERE r.kind = ?" : ""}
       ORDER BY r.last_accessed_at_ms DESC
     `).all(...(kind ? [kind] : [])) as RuntimeResourceRow[];
@@ -67,6 +73,12 @@ export class RuntimeResourceStore {
 
   async upsert(record: RuntimeResourceRecord, input: { minecraftOwnerPrincipalId?: string } = {}): Promise<void> {
     const db = await this.getReadyDb();
+    const minecraftOwnerPrincipalId = record.kind === "minecraft_actor"
+      ? input.minecraftOwnerPrincipalId?.trim()
+      : undefined;
+    if (record.kind === "minecraft_actor" && !minecraftOwnerPrincipalId) {
+      throw new Error("minecraft_actor upsert requires minecraftOwnerPrincipalId");
+    }
     const upsertBase = db.prepare(`
       INSERT INTO runtime_resources (
         resource_id, kind, status, owner_session_id, title, description,
@@ -89,6 +101,7 @@ export class RuntimeResourceStore {
     const deleteBrowser = db.prepare("DELETE FROM runtime_browser_pages WHERE resource_id = ?");
     const deleteShell = db.prepare("DELETE FROM runtime_shell_sessions WHERE resource_id = ?");
     const deleteMinecraftActor = db.prepare("DELETE FROM runtime_minecraft_actors WHERE resource_id = ?");
+    const deleteMinecraftBinding = db.prepare("DELETE FROM minecraft_actor_bindings WHERE resource_id = ?");
 
     const insertBrowser = db.prepare(`
       INSERT INTO runtime_browser_pages (resource_id, requested_url, resolved_url, backend, title, profile_id)
@@ -117,6 +130,19 @@ export class RuntimeResourceStore {
       ) VALUES (@resourceId, @ownerPrincipalId, 0, 'idle', @updatedAtMs)
       ON CONFLICT(resource_id) DO NOTHING
     `);
+    const insertMinecraftBinding = db.prepare(`
+      INSERT INTO minecraft_actor_bindings (
+        resource_id, server_address, server_host, server_port, server_key,
+        template_id, template_fingerprint, identity_ref, backend,
+        desired_state, provision_status, provision_phase,
+        failure_code, failure_message, retry_at_ms, attempt_id
+      ) VALUES (
+        @resourceId, @serverAddress, @serverHost, @serverPort, @serverKey,
+        @templateId, @templateFingerprint, @identityRef, @backend,
+        @desiredState, @provisionStatus, @provisionPhase,
+        @failureCode, @failureMessage, @retryAtMs, @attemptId
+      )
+    `);
 
     const upsert = db.transaction(() => {
       upsertBase.run({
@@ -134,6 +160,7 @@ export class RuntimeResourceStore {
 
       deleteBrowser.run(record.resourceId);
       deleteShell.run(record.resourceId);
+      deleteMinecraftBinding.run(record.resourceId);
       deleteMinecraftActor.run(record.resourceId);
 
       if (record.kind === "browser_page") {
@@ -177,13 +204,10 @@ export class RuntimeResourceStore {
           allowProgramDeployment: record.minecraftActor.allowProgramDeployment ? 1 : 0,
           lastEventSequence: record.minecraftActor.lastEventSequence
         });
-        const ownerPrincipalId = input.minecraftOwnerPrincipalId?.trim();
-        if (!ownerPrincipalId) {
-          throw new Error("minecraft_actor upsert requires minecraftOwnerPrincipalId");
-        }
+        insertMinecraftBinding.run({ resourceId: record.resourceId, ...record.minecraftActor.binding });
         insertMinecraftControlState.run({
           resourceId: record.resourceId,
-          ownerPrincipalId,
+          ownerPrincipalId: minecraftOwnerPrincipalId,
           updatedAtMs: record.lastAccessedAtMs
         });
       }
@@ -261,6 +285,25 @@ export class RuntimeResourceStore {
           last_event_sequence = @lastEventSequence
       WHERE resource_id = @resourceId
     `);
+    const updateBinding = db.prepare(`
+      UPDATE minecraft_actor_bindings
+      SET server_address = @serverAddress,
+          server_host = @serverHost,
+          server_port = @serverPort,
+          server_key = @serverKey,
+          template_id = @templateId,
+          template_fingerprint = @templateFingerprint,
+          identity_ref = @identityRef,
+          backend = @backend,
+          desired_state = @desiredState,
+          provision_status = @provisionStatus,
+          provision_phase = @provisionPhase,
+          failure_code = @failureCode,
+          failure_message = @failureMessage,
+          retry_at_ms = @retryAtMs,
+          attempt_id = @attemptId
+      WHERE resource_id = @resourceId
+    `);
     const update = db.transaction(() => {
       const baseResult = updateBase.run({
         resourceId,
@@ -284,6 +327,42 @@ export class RuntimeResourceStore {
       });
       if (actorResult.changes !== 1) {
         throw new Error(`Minecraft Actor 子记录不存在：${resourceId}`);
+      }
+      const binding = minecraftActor.binding;
+      const bindingResult = updateBinding.run({
+        resourceId,
+        serverAddress: binding.serverAddress,
+        serverHost: binding.serverHost,
+        serverPort: binding.serverPort,
+        serverKey: binding.serverKey,
+        templateId: binding.templateId,
+        templateFingerprint: binding.templateFingerprint,
+        identityRef: binding.identityRef,
+        backend: binding.backend,
+        desiredState: binding.desiredState,
+        provisionStatus: binding.provisionStatus,
+        provisionPhase: binding.provisionPhase,
+        failureCode: binding.failureCode,
+        failureMessage: binding.failureMessage,
+        retryAtMs: binding.retryAtMs,
+        attemptId: binding.attemptId
+      });
+      if (bindingResult.changes !== 1) {
+        throw new Error(`Minecraft Actor binding 不存在：${resourceId}`);
+      }
+      if (binding.provisionStatus !== "ready") {
+        db.prepare(`
+          UPDATE minecraft_actor_control_state
+          SET revision = revision + 1, loop_phase = 'paused',
+              last_error = @failureMessage, updated_at_ms = @updatedAtMs
+          WHERE resource_id = @resourceId
+            AND active_wake_id IS NULL
+            AND loop_phase NOT IN ('paused', 'closed')
+        `).run({
+          resourceId,
+          failureMessage: binding.failureMessage,
+          updatedAtMs: input.updatedAtMs
+        });
       }
       return true;
     });
@@ -396,11 +475,17 @@ export class RuntimeResourceStore {
              ss.command, ss.cwd, ss.shell, ss.tty, ss.login,
              ma.actor_id, ma.transport_kind, ma.endpoint, ma.protocol_version,
              ma.persistent_state, ma.current_goal, ma.model_refs_json,
-             ma.allow_autonomy_policy_change, ma.allow_program_deployment, ma.last_event_sequence
+             ma.allow_autonomy_policy_change, ma.allow_program_deployment, ma.last_event_sequence,
+             mab.server_address, mab.server_host, mab.server_port, mab.server_key,
+             mab.template_id, mab.template_fingerprint, mab.identity_ref,
+             mab.backend AS minecraft_backend, mab.desired_state, mab.provision_status,
+             mab.provision_phase, mab.failure_code, mab.failure_message,
+             mab.retry_at_ms, mab.attempt_id
       FROM runtime_resources r
       LEFT JOIN runtime_browser_pages bp ON r.resource_id = bp.resource_id
       LEFT JOIN runtime_shell_sessions ss ON r.resource_id = ss.resource_id
       LEFT JOIN runtime_minecraft_actors ma ON r.resource_id = ma.resource_id
+      LEFT JOIN minecraft_actor_bindings mab ON r.resource_id = mab.resource_id
       WHERE r.resource_id = ?
     `).get(resourceId) as RuntimeResourceRow | undefined;
     return row ? rowToRecord(row) : null;
@@ -619,6 +704,21 @@ interface RuntimeResourceRow {
   allow_autonomy_policy_change: number | null;
   allow_program_deployment: number | null;
   last_event_sequence: number | null;
+  server_address: string | null;
+  server_host: string | null;
+  server_port: number | null;
+  server_key: string | null;
+  template_id: string | null;
+  template_fingerprint: string | null;
+  identity_ref: string | null;
+  minecraft_backend: string | null;
+  desired_state: string | null;
+  provision_status: string | null;
+  provision_phase: string | null;
+  failure_code: string | null;
+  failure_message: string | null;
+  retry_at_ms: number | null;
+  attempt_id: string | null;
 }
 
 function rowToRecord(row: RuntimeResourceRow): RuntimeResourceRecord {
@@ -652,7 +752,7 @@ function rowToRecord(row: RuntimeResourceRow): RuntimeResourceRecord {
       login: row.login === 1
     };
   }
-  if (row.kind === "minecraft_actor" && row.actor_id && row.endpoint) {
+  if (row.kind === "minecraft_actor" && row.actor_id && row.endpoint && row.server_address) {
     record.minecraftActor = {
       actorId: row.actor_id,
       transportKind: row.transport_kind as MinecraftActorRecoveryState["transportKind"],
@@ -663,7 +763,24 @@ function rowToRecord(row: RuntimeResourceRow): RuntimeResourceRecord {
       modelRefs: parseModelRefs(row.model_refs_json),
       allowAutonomyPolicyChange: row.allow_autonomy_policy_change === 1,
       allowProgramDeployment: row.allow_program_deployment === 1,
-      lastEventSequence: row.last_event_sequence ?? 0
+      lastEventSequence: row.last_event_sequence ?? 0,
+      binding: {
+        serverAddress: row.server_address,
+        serverHost: row.server_host ?? "",
+        serverPort: row.server_port ?? 25565,
+        serverKey: row.server_key ?? row.server_address,
+        templateId: row.template_id ?? "",
+        templateFingerprint: row.template_fingerprint ?? "",
+        identityRef: row.identity_ref ?? "",
+        backend: row.minecraft_backend as MinecraftActorRecoveryState["binding"]["backend"],
+        desiredState: row.desired_state as MinecraftActorRecoveryState["binding"]["desiredState"],
+        provisionStatus: row.provision_status as MinecraftActorRecoveryState["binding"]["provisionStatus"],
+        provisionPhase: row.provision_phase as MinecraftActorRecoveryState["binding"]["provisionPhase"],
+        failureCode: row.failure_code,
+        failureMessage: row.failure_message,
+        retryAtMs: row.retry_at_ms,
+        attemptId: row.attempt_id
+      }
     };
   }
   return record;

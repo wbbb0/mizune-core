@@ -30,7 +30,24 @@ export const minecraftActorRecoveryStateSchema = s.object({
   modelRefs: s.array(s.string().trim().nonempty()).title("决策模型"),
   allowAutonomyPolicyChange: s.boolean().title("允许修改自治策略"),
   allowProgramDeployment: s.boolean().title("允许部署程序"),
-  lastEventSequence: s.number().int().min(0).title("最后事件序号")
+  lastEventSequence: s.number().int().min(0).title("最后事件序号"),
+  binding: s.object({
+    serverAddress: s.string().trim().nonempty(),
+    serverHost: s.string().trim().nonempty(),
+    serverPort: s.number().int().min(1).max(65_535),
+    serverKey: s.string().trim().nonempty(),
+    templateId: s.string().trim().nonempty(),
+    templateFingerprint: s.string().trim().nonempty(),
+    identityRef: s.string().trim().nonempty(),
+    backend: s.enum(["simulation", "neoforge"] as const),
+    desiredState: s.enum(["open", "closed"] as const),
+    provisionStatus: s.enum(["pending", "running", "ready", "needs_attention", "retry_wait", "failed", "stopped"] as const),
+    provisionPhase: s.enum(["validating_target", "probing_server", "resolving_template", "allocating", "starting_daemon", "waiting_daemon", "starting_client", "waiting_bridge", "connecting_server", "ready"] as const),
+    failureCode: s.union([s.string(), s.literal(null)]),
+    failureMessage: s.union([s.string(), s.literal(null)]),
+    retryAtMs: s.union([s.number().int().min(0), s.literal(null)]),
+    attemptId: s.union([s.string(), s.literal(null)])
+  }).strict()
 }).title("Minecraft Actor")
   .describe("用于恢复 Minecraft Actor 决策循环和传输连接的必要状态。")
   .strict();

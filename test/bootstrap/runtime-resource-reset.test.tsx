@@ -12,6 +12,7 @@ import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createTestMinecraftBinding } from "../helpers/minecraft-actor-test-support.ts";
 
 test("initializeBootstrapState resets ephemeral resources but preserves Minecraft actors", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-runtime-resource-reset-"));
@@ -53,7 +54,8 @@ test("initializeBootstrapState resets ephemeral resources but preserves Minecraf
         modelRefs: ["prod_deepseek.v4_flash"],
         allowAutonomyPolicyChange: false,
         allowProgramDeployment: false,
-        lastEventSequence: 0
+        lastEventSequence: 0,
+        binding: createTestMinecraftBinding()
       }
     });
     assert.equal((await runtimeResourceRegistry.list()).length, 2);

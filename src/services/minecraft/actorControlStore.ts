@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { StateDatabase } from "#data/state/stateDatabase.ts";
 import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
+import { MinecraftActorJournal, type MinecraftActorJournalListener } from "./actorJournal.ts";
 import type { JsonValue } from "./actorTypes.ts";
 
 export type MinecraftActorLoopPhase = "idle" | "queued" | "deciding" | "paused" | "error" | "closed";
@@ -132,16 +133,14 @@ export class MinecraftActorIdempotencyConflictError extends Error {
   }
 }
 
-type JournalListener = (event: MinecraftActorJournalEvent) => void;
-
 export class MinecraftActorControlStore {
-  private readonly listeners = new Set<JournalListener>();
+  constructor(
+    private readonly stateDatabase: StateDatabase,
+    private readonly journal = new MinecraftActorJournal()
+  ) {}
 
-  constructor(private readonly stateDatabase: StateDatabase) {}
-
-  subscribe(listener: JournalListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  subscribe(listener: MinecraftActorJournalListener): () => void {
+    return this.journal.subscribe(listener);
   }
 
   async initializeActor(input: {
@@ -159,25 +158,22 @@ export class MinecraftActorControlStore {
     };
     const initialize = db.transaction(() => {
       const resource = db.prepare(`
-        SELECT owner_session_id AS ownerSessionId
+        SELECT 1
         FROM runtime_resources
         WHERE resource_id = ? AND kind = 'minecraft_actor' AND status = 'active'
-      `).get(normalized.resourceId) as { ownerSessionId: string | null } | undefined;
+      `).get(normalized.resourceId);
       if (!resource) throw new Error(`Minecraft Actor 资源不是 active：${normalized.resourceId}`);
       const existing = getControlStateSync(db, normalized.resourceId);
-      if (existing && existing.ownerPrincipalId !== normalized.ownerPrincipalId) {
-        const isLegacyPlaceholder = existing.ownerPrincipalId === resource.ownerSessionId;
-        if (!isLegacyPlaceholder) {
-          throw new Error(`Minecraft Actor 已属于其他主体：${normalized.resourceId}`);
-        }
+      if (!existing) {
+        throw new Error(`Minecraft Actor 控制状态不存在：${normalized.resourceId}`);
+      }
+      if (existing.ownerPrincipalId !== normalized.ownerPrincipalId) {
+        throw new Error(`Minecraft Actor 已属于其他主体：${normalized.resourceId}`);
       }
       db.prepare(`
-        INSERT INTO minecraft_actor_control_state (
-          resource_id, owner_principal_id, revision, loop_phase, updated_at_ms
-        ) VALUES (@resourceId, @ownerPrincipalId, 0, 'idle', @nowMs)
-        ON CONFLICT(resource_id) DO UPDATE SET
-          owner_principal_id = excluded.owner_principal_id,
-          updated_at_ms = MAX(minecraft_actor_control_state.updated_at_ms, excluded.updated_at_ms)
+        UPDATE minecraft_actor_control_state
+        SET updated_at_ms = MAX(updated_at_ms, @nowMs)
+        WHERE resource_id = @resourceId
       `).run(normalized);
       return requireControlStateSync(db, normalized.resourceId);
     });
@@ -240,6 +236,7 @@ export class MinecraftActorControlStore {
       const state = requireControlStateSync(db, normalized.resourceId);
       requireOwner(state, normalized.ownerPrincipalId);
       requireExpectedRevision(state, normalized.expectedRevision);
+      const provision = requireProvisionStatusSync(db, normalized.resourceId);
       const requestId = normalized.requestId ?? `mc_req_${randomUUID().replaceAll("-", "")}`;
       const wakeId = `request:${requestId}`;
       const decisionId = `mc_dec_${randomUUID().replaceAll("-", "")}`;
@@ -290,7 +287,7 @@ export class MinecraftActorControlStore {
       });
       updateControlStateSync(db, normalized.resourceId, {
         revision: nextRevision,
-        loopPhase: "queued",
+        loopPhase: provision === "ready" ? "queued" : "paused",
         activeWakeId: null,
         activeDecisionId: null,
         lastError: null,
@@ -430,7 +427,31 @@ export class MinecraftActorControlStore {
     const normalizedNow = requireTimestamp(nowMs, "nowMs");
     const appendedEvents: MinecraftActorJournalEvent[] = [];
     const claim = db.transaction(() => {
-      const state = requireControlStateSync(db, normalizedResourceId);
+      let state = requireControlStateSync(db, normalizedResourceId);
+      if (requireProvisionStatusSync(db, normalizedResourceId) !== "ready") {
+        if (state.loopPhase !== "paused" && state.loopPhase !== "closed") {
+          updateControlStateSync(db, normalizedResourceId, {
+            revision: state.revision + 1,
+            loopPhase: "paused",
+            activeWakeId: null,
+            activeDecisionId: null,
+            lastError: null,
+            updatedAtMs: normalizedNow
+          });
+        }
+        return null;
+      }
+      if (state.loopPhase === "paused") {
+        updateControlStateSync(db, normalizedResourceId, {
+          revision: state.revision + 1,
+          loopPhase: "queued",
+          activeWakeId: null,
+          activeDecisionId: null,
+          lastError: null,
+          updatedAtMs: normalizedNow
+        });
+        state = requireControlStateSync(db, normalizedResourceId);
+      }
       if (state.loopPhase === "paused" || state.loopPhase === "closed" || state.activeWakeId) return null;
       const wakeRow = db.prepare(`
         SELECT * FROM minecraft_actor_wake_mailbox
@@ -663,15 +684,6 @@ export class MinecraftActorControlStore {
     const normalizedNow = requireTimestamp(nowMs, "nowMs");
     const appendedEvents: MinecraftActorJournalEvent[] = [];
     const recover = db.transaction(() => {
-      db.prepare(`
-        INSERT INTO minecraft_actor_control_state (
-          resource_id, owner_principal_id, revision, loop_phase, updated_at_ms
-        )
-        SELECT resource_id, COALESCE(NULLIF(owner_session_id, ''), 'legacy-owner'), 0, 'idle', ?
-        FROM runtime_resources
-        WHERE kind = 'minecraft_actor' AND status = 'active'
-        ON CONFLICT(resource_id) DO NOTHING
-      `).run(normalizedNow);
       const running = db.prepare(`
         SELECT w.resource_id AS resourceId, w.wake_id AS wakeId,
                w.decision_id AS decisionId, d.request_id AS requestId
@@ -781,6 +793,18 @@ export class MinecraftActorControlStore {
         lastError: normalizedReason,
         updatedAtMs: normalizedNow
       });
+      db.prepare(`
+        UPDATE minecraft_actor_bindings
+        SET desired_state = 'closed', provision_status = 'stopped',
+            failure_code = NULL, failure_message = NULL,
+            retry_at_ms = NULL, attempt_id = NULL
+        WHERE resource_id = ?
+      `).run(normalizedResourceId);
+      db.prepare(`
+        UPDATE minecraft_runtime_incarnations
+        SET status = 'stopping', exit_reason = ?
+        WHERE resource_id = ? AND status IN ('starting', 'running')
+      `).run(normalizedReason, normalizedResourceId);
       const updated = db.prepare(`
         UPDATE runtime_resources
         SET status = 'closed', last_accessed_at_ms = ?
@@ -880,15 +904,7 @@ export class MinecraftActorControlStore {
   }
 
   private publish(events: MinecraftActorJournalEvent[]): void {
-    for (const event of events) {
-      for (const listener of this.listeners) {
-        try {
-          listener(event);
-        } catch {
-          // The journal commit is authoritative; projections cannot roll it back.
-        }
-      }
-    }
+    this.journal.publish(events);
   }
 }
 
@@ -1018,6 +1034,15 @@ function requireControlStateSync(db: SqliteDatabase, resourceId: string): Minecr
   const state = getControlStateSync(db, resourceId);
   if (!state) throw new Error(`Minecraft Actor 控制状态不存在：${resourceId}`);
   return state;
+}
+
+function requireProvisionStatusSync(db: SqliteDatabase, resourceId: string): string {
+  const row = db.prepare(`
+    SELECT provision_status AS provisionStatus
+    FROM minecraft_actor_bindings WHERE resource_id = ?
+  `).get(resourceId) as { provisionStatus: string } | undefined;
+  if (!row) throw new Error(`Minecraft Actor 服务器绑定不存在：${resourceId}`);
+  return row.provisionStatus;
 }
 
 function updateControlStateSync(

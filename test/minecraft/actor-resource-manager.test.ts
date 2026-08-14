@@ -39,6 +39,8 @@ import type {
 } from "../../src/services/minecraft/actorTypes.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createTestMinecraftBinding, createTestMinecraftRecoveryState } from "../helpers/minecraft-actor-test-support.ts";
+import { MinecraftRuntimeTemplateCatalog } from "../../src/services/minecraft/runtimeTemplateCatalog.ts";
 
 type Generate = LlmClient["generate"];
 
@@ -936,7 +938,13 @@ test("Actor list/status 按 owner principal 隔离读取", async () => {
         ...resourceInput().actor,
         actorId: "actor-2",
         endpoint: "simulation:actor-2",
-        persistentState: "B 的秘密状态"
+        persistentState: "B 的秘密状态",
+        binding: createTestMinecraftBinding({
+          serverAddress: "127.0.0.1:25567",
+          serverPort: 25567,
+          serverKey: "127.0.0.1:25567",
+          identityRef: "test-identity-b"
+        })
       }
     });
 
@@ -965,10 +973,14 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
   const config = createTestAppConfig({
     minecraft: {
       enabled: true,
-      endpoints: {
+      templates: {
         dev: {
-          actorId: "bound-actor",
-          socketPath: "/run/mizune/bound-runtime.sock",
+          backend: "simulation",
+          minecraftVersion: "1.21.1",
+          loader: "vanilla",
+          gameProfileId: "test",
+          identityRef: "bound-identity",
+          allowedServers: ["127.0.0.1:25566"],
           modelRefs: ["bound-model"],
           allowAutonomyPolicyChange: false,
           allowProgramDeployment: false
@@ -976,7 +988,8 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
       }
     }
   });
-  const factory = new ConfiguredMinecraftActorClientFactory(config);
+  const catalog = new MinecraftRuntimeTemplateCatalog(config);
+  const factory = new ConfiguredMinecraftActorClientFactory(config, catalog);
   const manager = new MinecraftActorResourceManager(
     registry,
     new MinecraftActorControlStore(database),
@@ -987,7 +1000,17 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
   try {
     const resource = await manager.create({
       ownerSessionId: "onebot:private:owner",
-      actor: factory.resolveEndpoint("dev").actor
+      actor: createTestMinecraftRecoveryState({
+        actorId: "bound-actor",
+        transportKind: "unix_socket",
+        endpoint: "/run/mizune/bound-runtime.sock",
+        modelRefs: ["bound-model"],
+        binding: createTestMinecraftBinding({
+          templateId: "dev",
+          templateFingerprint: catalog.list()[0]!.fingerprint,
+          identityRef: "bound-identity"
+        })
+      })
     });
     await assert.rejects(manager.setAutonomy(resource.resourceId, {
       policy: actorSnapshot().autonomyPolicy,
@@ -996,6 +1019,75 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
     }), /不允许修改自治策略/u);
 
     assert.equal((await registry.get(resource.resourceId))?.status, "active");
+  } finally {
+    await manager.shutdown();
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("不可变模板失配会持久化 needs_attention 并在领取 mailbox 前暂停", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-template-mismatch-"));
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const config = createTestAppConfig({
+    minecraft: {
+      enabled: true,
+      templates: {
+        dev: {
+          backend: "simulation",
+          minecraftVersion: "1.21.1",
+          loader: "vanilla",
+          gameProfileId: "current-profile",
+          identityRef: "bound-identity",
+          allowedServers: ["127.0.0.1:25566"],
+          modelRefs: ["bound-model"]
+        }
+      }
+    }
+  });
+  const catalog = new MinecraftRuntimeTemplateCatalog(config);
+  const control = new MinecraftActorControlStore(database);
+  const manager = new MinecraftActorResourceManager(
+    registry,
+    control,
+    new ConfiguredMinecraftActorClientFactory(config, catalog),
+    new FinishOnlyLlm("完成", "完成", null),
+    createSilentLogger(),
+    undefined,
+    () => 100
+  );
+  try {
+    const resource = await manager.create({
+      ownerSessionId: "onebot:private:owner",
+      ownerPrincipalId: "owner",
+      actor: createTestMinecraftRecoveryState({
+        actorId: "mismatched-actor",
+        transportKind: "unix_socket",
+        endpoint: "/run/mizune/mismatched.sock",
+        modelRefs: ["old-model"],
+        binding: createTestMinecraftBinding({
+          templateId: "dev",
+          templateFingerprint: "old-immutable-fingerprint",
+          identityRef: "bound-identity"
+        })
+      })
+    });
+    await manager.request(resource.resourceId, {
+      idempotencyKey: "queued-before-reconcile",
+      ownerPrincipalId: "owner",
+      ownerSessionId: "onebot:private:owner",
+      instruction: "先观察周围"
+    });
+
+    assert.equal(await manager.processMailbox(resource.resourceId), null);
+    const status = await manager.status(resource.resourceId, "owner");
+    assert.equal(status.provisionStatus, "needs_attention");
+    assert.equal(status.provisionFailureCode, "template_changed");
+    assert.equal(status.loopPhase, "paused");
+    const requests = await control.listRequests(resource.resourceId);
+    assert.equal(requests[0]?.status, "queued");
+    assert.equal((await control.listEvents(resource.resourceId)).some(event => event.eventType === "decision_started"), false);
   } finally {
     await manager.shutdown();
     database.close();
@@ -1175,18 +1267,7 @@ function resourceInput() {
   return {
     ownerSessionId: "onebot:private:owner",
     title: "Mizune MC",
-    actor: {
-      actorId: "actor-1",
-      transportKind: "in_process" as const,
-      endpoint: "simulation:actor-1",
-      protocolVersion: 1 as const,
-      persistentState: "在出生点待命",
-      currentGoal: "巡逻",
-      modelRefs: ["prod_deepseek.v4_flash"],
-      allowAutonomyPolicyChange: false,
-      allowProgramDeployment: false,
-      lastEventSequence: 0
-    }
+    actor: createTestMinecraftRecoveryState()
   };
 }
 

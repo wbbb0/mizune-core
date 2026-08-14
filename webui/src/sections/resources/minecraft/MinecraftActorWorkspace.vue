@@ -85,6 +85,9 @@ async function confirmClose() {
             {{ streamStatus === "connected" ? "SSE 已连接" : streamStatus === "error" ? "SSE 重连中" : streamStatus === "connecting" ? "SSE 连接中" : "SSE 已结束" }}
           </span>
           <span class="text-text-subtle">revision {{ activeActor.revision }}</span>
+          <span :class="activeActor.provisionStatus === 'ready' ? 'text-success' : activeActor.provisionStatus === 'failed' || activeActor.provisionStatus === 'needs_attention' ? 'text-danger' : 'text-warning'">
+            {{ activeActor.provisionStatus === "ready" ? "身体已就绪" : `准备中 · ${activeActor.provisionPhase}` }}
+          </span>
           <span v-if="activeActor.runtimeSnapshot" :class="activeActor.runtimeSnapshot.self.connected ? 'text-success' : 'text-danger'">
             {{ activeActor.runtimeSnapshot.self.connected ? "游戏已连接" : "游戏已断开" }}
           </span>

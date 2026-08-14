@@ -21,24 +21,25 @@ export const minecraftActorToolDescriptors: ToolDescriptor[] = [
     type: "function",
     function: {
       name: "minecraft_actor_list",
-      description: "列出持久 Minecraft Actor 资源及服务端允许创建的 endpoint ID。",
+      description: "列出当前 owner 持有的 Minecraft Actor 资源。",
       parameters: { type: "object", properties: {}, additionalProperties: false }
     }
   }),
   ownerTool({
     type: "function",
     function: {
-      name: "minecraft_actor_create",
-      description: "从服务端预配置的 endpoint 创建或复用独立 Minecraft Actor。socket、账号、模型和权限不能由模型提供。",
+      name: "minecraft_actor_delegate",
+      description: "让独立 Minecraft Actor 登录指定服务器并执行自然语言任务。系统会原子创建或复用资源、排队任务并在后台准备客户端；不要询问或提供模板、账号、socket、模型等技术参数。",
       parameters: {
         type: "object",
         properties: {
-          endpoint_id: { type: "string" },
+          server_address: { type: "string", description: "Minecraft 服务器地址，例如 mc.example.com 或 192.168.0.100:25566" },
+          instruction: { type: "string", minLength: 1, maxLength: 8_000 },
+          constraints: { type: ["string", "null"], maxLength: 4_000 },
+          priority: { type: "string", enum: ["normal", "high"] },
           title: { type: "string", maxLength: 200 },
-          persistent_state: { type: "string", maxLength: 20_000 },
-          current_goal: { type: ["string", "null"], maxLength: 500 }
         },
-        required: ["endpoint_id"],
+        required: ["server_address", "instruction"],
         additionalProperties: false
       }
     }
@@ -115,33 +116,44 @@ export const minecraftActorToolHandlers: Record<string, ToolHandler> = {
     const resources = await context.minecraftActorManager!.listOwned(context.lastMessage.userId);
     return json({
       ok: true,
-      endpoint_ids: context.minecraftActorProvisioning!.listEndpointIds(),
       resources: resources.map(toResourceSummary)
     });
   },
 
-  async minecraft_actor_create(_toolCall, args, context) {
+  async minecraft_actor_delegate(toolCall, args, context) {
     const denied = requireMinecraftOwner(context);
     if (denied) return denied;
     const input = record(args);
-    const endpointId = requiredString(input.endpoint_id, "endpoint_id");
-    const title = optionalBoundedString(input.title, "title", 200);
-    const persistentState = optionalBoundedString(input.persistent_state, "persistent_state", 20_000);
-    const resource = await context.minecraftActorProvisioning!.ensure({
-      endpointId,
+    const serverAddress = boundedString(input.server_address, "server_address", 255);
+    const instruction = boundedString(input.instruction, "instruction", 8_000);
+    const result = await context.minecraftActorProvisioning!.delegate({
+      serverAddress,
+      instruction,
       ownerSessionId: context.lastMessage.sessionId,
       ownerPrincipalId: context.lastMessage.userId,
-      ...(title === undefined ? {} : { title }),
-      ...(persistentState === undefined ? {} : { persistentState }),
-      ...(input.current_goal === undefined
-        ? {}
-        : {
-            currentGoal: input.current_goal === null
-              ? null
-              : boundedString(input.current_goal, "current_goal", 500)
-          })
+      idempotencyKey: toolIdempotencyKey(
+        context.lastMessage.sessionId,
+        toolCall.id,
+        serverAddress,
+        "delegate"
+      ),
+      ...(input.title === undefined ? {} : { title: boundedString(input.title, "title", 200) }),
+      ...(input.constraints === undefined ? {} : {
+        constraints: input.constraints === null ? null : boundedString(input.constraints, "constraints", 4_000)
+      }),
+      ...(input.priority === undefined ? {} : {
+        priority: enumValue(input.priority, "priority", ["normal", "high"] as const)
+      })
     });
-    return json({ ok: true, resource: toResourceSummary(resource) });
+    return json({
+      ok: true,
+      accepted: true,
+      created: result.created,
+      replayed: result.replayed,
+      resource: toResourceSummary(result.resource),
+      request_id: result.requestId,
+      revision: result.revision
+    });
   },
 
   async minecraft_actor_request(toolCall, args, context) {
@@ -242,7 +254,10 @@ function toResourceSummary(record: RuntimeResourceRecord) {
     actor_id: actor?.actorId ?? null,
     current_goal: actor?.currentGoal ?? null,
     title: record.title,
-    summary: record.summary
+    summary: record.summary,
+    server_address: actor?.binding.serverAddress ?? null,
+    provision_status: actor?.binding.provisionStatus ?? null,
+    provision_phase: actor?.binding.provisionPhase ?? null
   };
 }
 

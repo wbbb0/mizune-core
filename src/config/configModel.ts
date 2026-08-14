@@ -441,27 +441,31 @@ const browserConfigSchema = s.object({
   playwright: playwrightSearchSchema
 }).title("浏览器").describe("配置网页浏览能力与 Playwright 浏览器会话。").default(emptyObject);
 
-const minecraftEndpointConfigSchema = s.object({
-  actorId: s.string().trim().nonempty().title("Actor ID"),
-  socketPath: s.string().trim().nonempty().title("Unix Socket 路径"),
+const minecraftRuntimeTemplateConfigSchema = s.object({
+  backend: s.enum(["simulation", "neoforge"] as const).title("运行后端"),
+  minecraftVersion: s.string().trim().nonempty().title("Minecraft 版本"),
+  loader: s.enum(["vanilla", "neoforge", "fabric"] as const).title("模组加载器"),
+  gameProfileId: s.string().trim().nonempty().title("本机游戏配置 ID"),
+  identityRef: s.string().trim().nonempty().title("账号引用"),
+  allowedServers: s.array(s.string().trim().nonempty()).min(1).title("允许连接的服务器"),
   modelRefs: s.array(s.string().trim().nonempty()).title("决策模型"),
   allowAutonomyPolicyChange: s.boolean().title("允许修改自治策略").default(false),
   allowProgramDeployment: s.boolean().title("允许部署行为程序").default(false),
-  initialPersistentState: s.string().title("初始持久状态").default("尚无持久经历。"),
-  initialGoal: s.union([s.string(), s.literal(null)]).title("初始目标").default(null)
-}).title("Minecraft Actor 端点").strict();
+  initialPersistentState: s.string().title("初始持久状态").default("尚无持久经历。")
+}).title("Minecraft 运行模板").strict();
 
 const minecraftConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
+  runtimeDir: s.string().trim().nonempty().title("受管 Runtime 临时目录").default("/tmp/mizune-minecraft-runtime"),
   eventPollIntervalMs: s.number().int().min(100).max(60_000).title("事件轮询间隔毫秒").default(1_000),
   requestTimeoutMs: s.number().int().min(100).max(300_000).title("RPC 请求超时毫秒").default(10_000),
   connectTimeoutMs: s.number().int().min(100).max(60_000).title("连接超时毫秒").default(3_000),
   maxFrameBytes: s.number().int().min(1_024).max(16 * 1_024 * 1_024).title("最大协议帧字节数").default(1_048_576),
-  endpoints: s.record(
+  templates: s.record(
     s.string().trim().nonempty(),
-    minecraftEndpointConfigSchema
-  ).title("允许的 Actor 端点").default({})
-}).title("Minecraft Actor").describe("配置受控 Minecraft Runtime 端点和后台事件轮询。").default(emptyObject);
+    minecraftRuntimeTemplateConfigSchema
+  ).title("受控运行模板").default({})
+}).title("Minecraft Actor").describe("配置受控 Minecraft Runtime 模板、服务器目标和后台事件轮询。").default(emptyObject);
 
 const backupConfigSchema = s.object({
   profileRotateLimit: s.number().int().positive().title("配置轮换保留数").default(10)

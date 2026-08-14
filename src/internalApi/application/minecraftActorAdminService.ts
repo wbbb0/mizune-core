@@ -18,6 +18,11 @@ export interface MinecraftActorPublicSummary {
   description: string | null;
   summary: string;
   resourceStatus: RuntimeResourceRecord["status"];
+  serverAddress: string;
+  backend: "simulation" | "neoforge";
+  provisionStatus: "pending" | "running" | "ready" | "needs_attention" | "retry_wait" | "failed" | "stopped";
+  provisionPhase: string;
+  provisionFailureCode: string | null;
   currentGoal: string | null;
   loopPhase: MinecraftActorControlState["loopPhase"] | "unavailable";
   revision: number;
@@ -107,6 +112,7 @@ export async function getMinecraftActorDetail(
       canClose: resource.status === "active",
       canEmergencyStop: false,
       programValidationSupported: resource.status === "active"
+        && resource.minecraftActor?.binding.provisionStatus === "ready"
         && resource.minecraftActor?.allowProgramDeployment === true,
       programExecutionSupported: false
     }
@@ -251,6 +257,11 @@ function toPublicSummary(
     description: resource.description,
     summary: resource.summary,
     resourceStatus: resource.status,
+    serverAddress: resource.minecraftActor.binding.serverAddress,
+    backend: resource.minecraftActor.binding.backend,
+    provisionStatus: resource.minecraftActor.binding.provisionStatus,
+    provisionPhase: resource.minecraftActor.binding.provisionPhase,
+    provisionFailureCode: resource.minecraftActor.binding.failureCode,
     currentGoal: resource.minecraftActor.currentGoal,
     loopPhase: state?.loopPhase ?? "unavailable",
     revision: state?.revision ?? 0,
@@ -264,7 +275,10 @@ async function probeRuntime(
   resource: RuntimeResourceRecord,
   signal?: AbortSignal
 ): Promise<{ snapshot: MinecraftActorSnapshot | null; error: string | null }> {
-  if (resource.status !== "active") return { snapshot: null, error: null };
+  if (
+    resource.status !== "active"
+    || resource.minecraftActor?.binding.provisionStatus !== "ready"
+  ) return { snapshot: null, error: null };
   try {
     return { snapshot: await deps.minecraftActorManager.probe(resource.resourceId, signal), error: null };
   } catch {

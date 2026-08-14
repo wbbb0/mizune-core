@@ -61,7 +61,11 @@ export class MinecraftActorRuntimeService {
   }
 
   private async pollActiveResources(): Promise<void> {
-    const records = (await this.manager.list()).filter(record => record.status === "active");
+    const records = (await this.manager.list()).filter(record => (
+      record.status === "active"
+      && record.minecraftActor?.binding.desiredState === "open"
+      && record.minecraftActor.binding.provisionStatus === "ready"
+    ));
     const activeIds = new Set(records.map(record => record.resourceId));
     for (const resourceId of this.failures.keys()) {
       if (!activeIds.has(resourceId)) this.failures.delete(resourceId);

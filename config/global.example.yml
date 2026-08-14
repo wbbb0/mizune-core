@@ -341,12 +341,14 @@ browser:
     profileMaxCount: 24
     screenshotMaxBytes: 5242880
 minecraft:
-  # 默认关闭。模型只能选择这里预先允许的 endpoint ID，不能提供任意 socket 路径。
+  # 默认关闭。主 Bot 只提供服务器地址和自然语言任务；账号、客户端配置、
+  # socket、模型与权限只能来自这里的受控模板。
   enabled: false
+  runtimeDir: /tmp/mizune-minecraft-runtime
   eventPollIntervalMs: 1000
   requestTimeoutMs: 10000
   connectTimeoutMs: 3000
   maxFrameBytes: 1048576
-  endpoints: {}
+  templates: {}
 backup:
   profileRotateLimit: 10

@@ -102,6 +102,12 @@ export interface MinecraftActorStatusView {
   actorId: string;
   title: string | null;
   resourceStatus: RuntimeResourceRecord["status"];
+  serverAddress: string;
+  backend: MinecraftActorRecoveryState["binding"]["backend"];
+  provisionStatus: MinecraftActorRecoveryState["binding"]["provisionStatus"];
+  provisionPhase: MinecraftActorRecoveryState["binding"]["provisionPhase"];
+  needsAttention: boolean;
+  provisionFailureCode: string | null;
   summary: string;
   currentGoal: string | null;
   persistentState: string;
@@ -270,7 +276,10 @@ export class MinecraftActorResourceManager {
     const initialRecord = await this.requireResource(resourceId);
     let runtimeSnapshot: MinecraftActorSnapshot | null = null;
     let runtimeAvailable = false;
-    if (initialRecord.status === "active") {
+    if (
+      initialRecord.status === "active"
+      && initialRecord.minecraftActor?.binding.provisionStatus === "ready"
+    ) {
       try {
         runtimeSnapshot = await this.probe(resourceId, signal);
         runtimeAvailable = true;
@@ -297,6 +306,12 @@ export class MinecraftActorResourceManager {
       actorId: actor.actorId,
       title: record.title,
       resourceStatus: record.status,
+      serverAddress: actor.binding.serverAddress,
+      backend: actor.binding.backend,
+      provisionStatus: actor.binding.provisionStatus,
+      provisionPhase: actor.binding.provisionPhase,
+      needsAttention: actor.binding.provisionStatus === "needs_attention",
+      provisionFailureCode: actor.binding.failureCode,
       summary: record.summary,
       currentGoal: actor.currentGoal,
       persistentState: actor.persistentState,
@@ -370,6 +385,13 @@ export class MinecraftActorResourceManager {
   private async processMailboxOnce(normalizedResourceId: string): Promise<MinecraftActorWakeOutcome | null> {
     const loop = this.getLoop(normalizedResourceId);
     if (loop.running) return null;
+    const record = await this.requireReconciledActiveResource(normalizedResourceId);
+    if (requireActorState(record).binding.provisionStatus !== "ready") {
+      // claimNextWake 在 non-ready 状态只负责把 durable loop 收敛为 paused，不会领取任务。
+      await this.controlStore.claimNextWake(normalizedResourceId, this.now());
+      if (!loop.pending) this.loops.delete(normalizedResourceId);
+      return null;
+    }
     const claimed = await this.controlStore.claimNextWake(normalizedResourceId, this.now());
     if (!claimed) {
       if (!loop.pending) this.loops.delete(normalizedResourceId);
@@ -1287,6 +1309,11 @@ function validateRecoveryState(state: MinecraftActorRecoveryState): void {
   if (!Number.isSafeInteger(state.lastEventSequence) || state.lastEventSequence < 0) {
     throw new Error("actor.lastEventSequence 必须是非负安全整数");
   }
+  requireNonEmpty(state.binding.serverAddress, "actor.binding.serverAddress");
+  requireNonEmpty(state.binding.serverKey, "actor.binding.serverKey");
+  requireNonEmpty(state.binding.templateId, "actor.binding.templateId");
+  requireNonEmpty(state.binding.templateFingerprint, "actor.binding.templateFingerprint");
+  requireNonEmpty(state.binding.identityRef, "actor.binding.identityRef");
 }
 
 function validateWakeRequest(request: MinecraftActorWakeRequest): void {
@@ -1307,12 +1334,14 @@ function requireNonEmpty(value: string, name: string): string {
 }
 
 function cloneRecoveryState(state: MinecraftActorRecoveryState): MinecraftActorRecoveryState {
-  return { ...state, modelRefs: [...state.modelRefs] };
+  return { ...state, modelRefs: [...state.modelRefs], binding: { ...state.binding } };
 }
 
 function buildResourceSummary(state: MinecraftActorRecoveryState): string {
   return [
     `actor=${state.actorId}`,
+    `server=${state.binding.serverAddress}`,
+    `provision=${state.binding.provisionStatus}`,
     `goal=${state.currentGoal ?? "none"}`,
     `transport=${state.transportKind}`,
     `event=${state.lastEventSequence}`

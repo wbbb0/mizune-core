@@ -11,6 +11,11 @@ export interface MinecraftActorSummary {
   description: string | null;
   summary: string;
   resourceStatus: MinecraftActorResourceStatus;
+  serverAddress: string;
+  backend: "simulation" | "neoforge";
+  provisionStatus: "pending" | "running" | "ready" | "needs_attention" | "retry_wait" | "failed" | "stopped";
+  provisionPhase: string;
+  provisionFailureCode: string | null;
   currentGoal: string | null;
   loopPhase: MinecraftActorLoopPhase;
   revision: number;

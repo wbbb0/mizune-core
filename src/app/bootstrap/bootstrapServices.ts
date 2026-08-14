@@ -59,11 +59,14 @@ import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
 import type { AppBootstrapServices, AppServiceBootstrap, BootstrapRuntimeContext } from "./bootstrapTypes.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 import { ConfiguredMinecraftActorClientFactory } from "#services/minecraft/actorClientFactory.ts";
+import { MinecraftActorProvisioningStore } from "#services/minecraft/actorProvisioningStore.ts";
+import { MinecraftRuntimeTemplateCatalog } from "#services/minecraft/runtimeTemplateCatalog.ts";
 import { MinecraftActorResourceManager } from "#services/minecraft/actorResourceManager.ts";
 import { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
 import { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
 import { MinecraftActorOwnerNotificationRouter } from "#services/minecraft/ownerNotificationSink.ts";
 import { MinecraftActorControlStore } from "#services/minecraft/actorControlStore.ts";
+import { MinecraftActorJournal } from "#services/minecraft/actorJournal.ts";
 
 export function createBootstrapServices(
   context: BootstrapRuntimeContext,
@@ -138,8 +141,14 @@ export function createBootstrapServices(
   const searchService = new SearchService(config, logger);
   const runtimeResourceStore = new RuntimeResourceStore(stateDatabase);
   const sharedResourceRegistry = new RuntimeResourceRegistry(runtimeResourceStore);
-  const minecraftActorControlStore = new MinecraftActorControlStore(stateDatabase);
-  const minecraftActorClientFactory = new ConfiguredMinecraftActorClientFactory(config);
+  const minecraftActorJournal = new MinecraftActorJournal();
+  const minecraftActorControlStore = new MinecraftActorControlStore(stateDatabase, minecraftActorJournal);
+  const minecraftActorTemplateCatalog = new MinecraftRuntimeTemplateCatalog(config);
+  const minecraftActorProvisioningStore = new MinecraftActorProvisioningStore(stateDatabase, minecraftActorJournal);
+  const minecraftActorClientFactory = new ConfiguredMinecraftActorClientFactory(
+    config,
+    minecraftActorTemplateCatalog
+  );
   const minecraftActorOwnerNotifications = new MinecraftActorOwnerNotificationRouter();
   const minecraftActorManager = new MinecraftActorResourceManager(
     sharedResourceRegistry,
@@ -150,8 +159,10 @@ export function createBootstrapServices(
     minecraftActorOwnerNotifications
   );
   const minecraftActorProvisioning = new MinecraftActorProvisioningService(
-    minecraftActorClientFactory,
-    minecraftActorManager
+    minecraftActorTemplateCatalog,
+    minecraftActorProvisioningStore,
+    sharedResourceRegistry,
+    config.minecraft.runtimeDir
   );
   const minecraftActorRuntime = new MinecraftActorRuntimeService(config, minecraftActorManager, logger);
   const recentErrorStore = new RecentErrorStore(dataDir, logger, stateDatabase);

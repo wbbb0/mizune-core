@@ -8,6 +8,7 @@ import { SqliteService } from "../../src/data/sqlite/sqliteService.ts";
 import { RuntimeResourceRegistry } from "../../src/runtime/resources/runtimeResourceRegistry.ts";
 import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourceStore.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+import { createTestMinecraftBinding } from "../helpers/minecraft-actor-test-support.ts";
 
 test("Minecraft actor resource persists decision state and survives ephemeral reset", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-resource-"));
@@ -47,7 +48,8 @@ test("Minecraft actor resource persists decision state and survives ephemeral re
         modelRefs: ["prod_deepseek.v4_flash"],
         allowAutonomyPolicyChange: true,
         allowProgramDeployment: false,
-        lastEventSequence: 7
+        lastEventSequence: 7,
+        binding: createTestMinecraftBinding()
       }
     });
 
@@ -72,7 +74,8 @@ test("Minecraft actor resource persists decision state and survives ephemeral re
       modelRefs: ["prod_deepseek.v4_flash"],
       allowAutonomyPolicyChange: true,
       allowProgramDeployment: false,
-      lastEventSequence: 7
+      lastEventSequence: 7,
+      binding: createTestMinecraftBinding()
     });
 
     const updatedState = { ...restored?.minecraftActor, persistentState: "探索完成", lastEventSequence: 9 };
@@ -223,7 +226,7 @@ test("runtime resource schema migration preserves v1 browser and shell rows", as
   }
 });
 
-test("runtime resource schema migration from v2 preserves Minecraft actor state", async () => {
+test("旧版固定 endpoint Actor 不兼容迁移到动态 binding", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-resource-v2-migration-"));
   const stateDir = join(dataDir, "state");
   const dbPath = join(stateDir, "state.sqlite");
@@ -311,13 +314,11 @@ test("runtime resource schema migration from v2 preserves Minecraft actor state"
     const store = new RuntimeResourceStore(migratedDatabase);
     const restored = await store.getRow("res_minecraft_old");
 
-    assert.equal(restored?.status, "active");
-    assert.equal(restored?.minecraftActor?.persistentState, "保留的状态");
-    assert.equal(restored?.minecraftActor?.lastEventSequence, 42);
+    assert.equal(restored, null);
     assert.deepEqual(await store.listPendingMinecraftActorOutbox("res_minecraft_old"), []);
     assert.equal(
       migratedDatabase.getStatus()?.tableGroups.find(group => group.groupId === "state.runtime_resources")?.actualSchemaVersion,
-      4
+      5
     );
     migratedDatabase.close();
   } finally {

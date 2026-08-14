@@ -28,6 +28,68 @@ export interface MinecraftActorRecoveryState {
   allowAutonomyPolicyChange: boolean;
   allowProgramDeployment: boolean;
   lastEventSequence: number;
+  binding: MinecraftActorBindingState;
+}
+
+export type MinecraftActorDesiredState = "open" | "closed";
+export type MinecraftActorProvisionStatus =
+  | "pending"
+  | "running"
+  | "ready"
+  | "needs_attention"
+  | "retry_wait"
+  | "failed"
+  | "stopped";
+export type MinecraftActorProvisionPhase =
+  | "validating_target"
+  | "probing_server"
+  | "resolving_template"
+  | "allocating"
+  | "starting_daemon"
+  | "waiting_daemon"
+  | "starting_client"
+  | "waiting_bridge"
+  | "connecting_server"
+  | "ready";
+
+export interface MinecraftActorBindingState {
+  serverAddress: string;
+  serverHost: string;
+  serverPort: number;
+  serverKey: string;
+  templateId: string;
+  templateFingerprint: string;
+  identityRef: string;
+  backend: "simulation" | "neoforge";
+  desiredState: MinecraftActorDesiredState;
+  provisionStatus: MinecraftActorProvisionStatus;
+  provisionPhase: MinecraftActorProvisionPhase;
+  failureCode: string | null;
+  failureMessage: string | null;
+  retryAtMs: number | null;
+  attemptId: string | null;
+}
+
+export type MinecraftRuntimeIncarnationStatus = "starting" | "running" | "stopping" | "stopped" | "failed";
+
+export interface MinecraftRuntimeIncarnationRecord {
+  runtimeInstanceId: string;
+  resourceId: string;
+  attemptId: string;
+  status: MinecraftRuntimeIncarnationStatus;
+  daemonPid: number | null;
+  daemonStartTicks: string | null;
+  clientPid: number | null;
+  clientStartTicks: string | null;
+  processGroupId: number | null;
+  bootId: string;
+  socketPath: string;
+  gameDirectory: string;
+  tokenFile: string;
+  bridgePort: number | null;
+  startedAtMs: number;
+  stoppedAtMs: number | null;
+  exitReason: string | null;
 }
 
 export interface RuntimeResourceRecord {
@@ -88,6 +150,10 @@ export interface MinecraftActorResourceSummary {
   allow_autonomy_policy_change: boolean;
   allow_program_deployment: boolean;
   last_event_sequence: number;
+  server_address: string;
+  backend: MinecraftActorBindingState["backend"];
+  provision_status: MinecraftActorProvisionStatus;
+  provision_phase: MinecraftActorProvisionPhase;
   title: string | null;
   description: string | null;
   summary: string;

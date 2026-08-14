@@ -575,6 +575,56 @@ function createRuntimeResourcesSchema(db: SqliteDatabase): void {
       last_event_sequence INTEGER NOT NULL CHECK (last_event_sequence >= 0)
     );
 
+    CREATE TABLE IF NOT EXISTS minecraft_actor_bindings (
+      resource_id TEXT PRIMARY KEY NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      server_address TEXT NOT NULL,
+      server_host TEXT NOT NULL,
+      server_port INTEGER NOT NULL CHECK (server_port BETWEEN 1 AND 65535),
+      server_key TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      template_fingerprint TEXT NOT NULL,
+      identity_ref TEXT NOT NULL,
+      backend TEXT NOT NULL CHECK (backend IN ('simulation', 'neoforge')),
+      desired_state TEXT NOT NULL CHECK (desired_state IN ('open', 'closed')),
+      provision_status TEXT NOT NULL CHECK (provision_status IN ('pending', 'running', 'ready', 'needs_attention', 'retry_wait', 'failed', 'stopped')),
+      provision_phase TEXT NOT NULL CHECK (provision_phase IN ('validating_target', 'probing_server', 'resolving_template', 'allocating', 'starting_daemon', 'waiting_daemon', 'starting_client', 'waiting_bridge', 'connecting_server', 'ready')),
+      failure_code TEXT,
+      failure_message TEXT,
+      retry_at_ms INTEGER,
+      attempt_id TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS minecraft_runtime_incarnations (
+      runtime_instance_id TEXT PRIMARY KEY NOT NULL,
+      resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      attempt_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('starting', 'running', 'stopping', 'stopped', 'failed')),
+      daemon_pid INTEGER CHECK (daemon_pid IS NULL OR daemon_pid > 0),
+      daemon_start_ticks TEXT,
+      client_pid INTEGER CHECK (client_pid IS NULL OR client_pid > 0),
+      client_start_ticks TEXT,
+      process_group_id INTEGER CHECK (process_group_id IS NULL OR process_group_id > 0),
+      boot_id TEXT NOT NULL CHECK (boot_id = trim(boot_id) AND length(boot_id) > 0),
+      socket_path TEXT NOT NULL CHECK (socket_path = trim(socket_path) AND length(socket_path) > 0),
+      game_directory TEXT NOT NULL CHECK (game_directory = trim(game_directory) AND length(game_directory) > 0),
+      token_file TEXT NOT NULL CHECK (token_file = trim(token_file) AND length(token_file) > 0),
+      bridge_port INTEGER CHECK (bridge_port IS NULL OR bridge_port BETWEEN 1 AND 65535),
+      started_at_ms INTEGER NOT NULL CHECK (started_at_ms >= 0),
+      stopped_at_ms INTEGER CHECK (stopped_at_ms IS NULL OR stopped_at_ms >= 0),
+      exit_reason TEXT,
+      UNIQUE (resource_id, attempt_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS minecraft_actor_delegations (
+      owner_principal_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL,
+      created_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (owner_principal_id, idempotency_key)
+    );
+
     CREATE TABLE IF NOT EXISTS runtime_minecraft_actor_outbox (
       resource_id TEXT NOT NULL REFERENCES runtime_resources(resource_id) ON DELETE CASCADE,
       outbox_id TEXT NOT NULL CHECK (outbox_id = trim(outbox_id) AND length(outbox_id) > 0),
@@ -681,6 +731,14 @@ function createRuntimeResourcesSchema(db: SqliteDatabase): void {
       ON minecraft_actor_wake_mailbox(resource_id, status, next_attempt_at_ms, priority, created_at_ms);
     CREATE INDEX IF NOT EXISTS idx_minecraft_actor_events_cursor
       ON minecraft_actor_events(resource_id, event_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_minecraft_actor_identity_lease
+      ON minecraft_actor_bindings(server_key, identity_ref)
+      WHERE desired_state = 'open';
+    CREATE INDEX IF NOT EXISTS idx_minecraft_actor_provisioning
+      ON minecraft_actor_bindings(desired_state, provision_status, retry_at_ms);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_minecraft_runtime_active_incarnation
+      ON minecraft_runtime_incarnations(resource_id)
+      WHERE status IN ('starting', 'running', 'stopping');
   `);
 
   db.prepare(`
@@ -700,6 +758,13 @@ function migrateRuntimeResourcesSchema(db: SqliteDatabase): boolean {
   `).get() !== undefined;
   if (hasMinecraftActors) {
     createRuntimeResourcesSchema(db);
+    db.exec(`
+      DELETE FROM runtime_resources
+      WHERE kind = 'minecraft_actor'
+        AND NOT EXISTS (
+          SELECT 1 FROM minecraft_actor_bindings b WHERE b.resource_id = runtime_resources.resource_id
+        );
+    `);
     return true;
   }
 
@@ -778,6 +843,51 @@ function validateRuntimeResourcesSchema(db: SqliteDatabase): void {
     allow_autonomy_policy_change: "INTEGER",
     allow_program_deployment: "INTEGER",
     last_event_sequence: "INTEGER"
+  });
+  assertTableColumns(db, "minecraft_actor_bindings", {
+    resource_id: "TEXT",
+    server_address: "TEXT",
+    server_host: "TEXT",
+    server_port: "INTEGER",
+    server_key: "TEXT",
+    template_id: "TEXT",
+    template_fingerprint: "TEXT",
+    identity_ref: "TEXT",
+    backend: "TEXT",
+    desired_state: "TEXT",
+    provision_status: "TEXT",
+    provision_phase: "TEXT",
+    failure_code: "TEXT",
+    failure_message: "TEXT",
+    retry_at_ms: "INTEGER",
+    attempt_id: "TEXT"
+  });
+  assertTableColumns(db, "minecraft_runtime_incarnations", {
+    runtime_instance_id: "TEXT",
+    resource_id: "TEXT",
+    attempt_id: "TEXT",
+    status: "TEXT",
+    daemon_pid: "INTEGER",
+    daemon_start_ticks: "TEXT",
+    client_pid: "INTEGER",
+    client_start_ticks: "TEXT",
+    process_group_id: "INTEGER",
+    boot_id: "TEXT",
+    socket_path: "TEXT",
+    game_directory: "TEXT",
+    token_file: "TEXT",
+    bridge_port: "INTEGER",
+    started_at_ms: "INTEGER",
+    stopped_at_ms: "INTEGER",
+    exit_reason: "TEXT"
+  });
+  assertTableColumns(db, "minecraft_actor_delegations", {
+    owner_principal_id: "TEXT",
+    idempotency_key: "TEXT",
+    fingerprint: "TEXT",
+    resource_id: "TEXT",
+    request_id: "TEXT",
+    created_at_ms: "INTEGER"
   });
   assertTableColumns(db, "runtime_minecraft_actor_outbox", {
     resource_id: "TEXT",
@@ -994,7 +1104,7 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.runtime_resources",
-    schemaVersion: 4,
+    schemaVersion: 5,
     minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: [
@@ -1002,6 +1112,9 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
       "runtime_browser_pages",
       "runtime_shell_sessions",
       "runtime_minecraft_actors",
+      "minecraft_actor_bindings",
+      "minecraft_runtime_incarnations",
+      "minecraft_actor_delegations",
       "runtime_minecraft_actor_outbox",
       "minecraft_actor_control_state",
       "minecraft_actor_requests",
@@ -1012,7 +1125,10 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     ownedIndexes: [
       "idx_minecraft_actor_requests_status",
       "idx_minecraft_actor_wake_pending",
-      "idx_minecraft_actor_events_cursor"
+      "idx_minecraft_actor_events_cursor",
+      "idx_minecraft_actor_identity_lease",
+      "idx_minecraft_actor_provisioning",
+      "idx_minecraft_runtime_active_incarnation"
     ],
     createSchema: createRuntimeResourcesSchema,
     migrateSchema: migrateRuntimeResourcesSchema,

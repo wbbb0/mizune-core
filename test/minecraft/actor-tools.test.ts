@@ -8,10 +8,11 @@ import {
 } from "../../src/llm/tools/runtime/minecraftActorTools.ts";
 import type { LlmToolCall } from "../../src/llm/provider/providerTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createTestMinecraftRecoveryState } from "../helpers/minecraft-actor-test-support.ts";
 
 const PUBLIC_TOOL_NAMES = [
   "minecraft_actor_list",
-  "minecraft_actor_create",
+  "minecraft_actor_delegate",
   "minecraft_actor_request",
   "minecraft_actor_status",
   "minecraft_actor_interrupt",
@@ -29,8 +30,53 @@ test("Minecraft Actor 主会话只暴露六个高层 owner 工具", () => {
     ownerNames.filter(name => name.startsWith("minecraft_actor_")).sort(),
     [...PUBLIC_TOOL_NAMES].sort()
   );
-  assert.ok(!getBuiltinToolNames("known", null, enabled, { modelRef: ["main"] }).includes("minecraft_actor_create"));
-  assert.ok(!getBuiltinToolNames("owner", null, disabled, { modelRef: ["main"] }).includes("minecraft_actor_create"));
+  assert.ok(!getBuiltinToolNames("known", null, enabled, { modelRef: ["main"] }).includes("minecraft_actor_delegate"));
+  assert.ok(!getBuiltinToolNames("owner", null, disabled, { modelRef: ["main"] }).includes("minecraft_actor_delegate"));
+});
+
+test("delegate 用服务器地址和自然语言任务原子创建或复用 Actor", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const context = toolContext({}, {
+    async delegate(input: Record<string, unknown>) {
+      calls.push(input);
+      return {
+        created: true,
+        replayed: false,
+        requestId: "request-1",
+        revision: 1,
+        resource: {
+          resourceId: "res_minecraft_1",
+          kind: "minecraft_actor",
+          status: "active",
+          ownerSessionId: "web:owner",
+          title: "测试服",
+          description: null,
+          summary: "正在准备连接",
+          createdAtMs: 1,
+          lastAccessedAtMs: 1,
+          expiresAtMs: null,
+          minecraftActor: createTestMinecraftRecoveryState()
+        }
+      };
+    }
+  });
+  const result = JSON.parse(String(await minecraftActorToolHandlers.minecraft_actor_delegate!(
+    toolCall("minecraft_actor_delegate", "delegate-1"),
+    {
+      server_address: "127.0.0.1:25566",
+      instruction: "进去看看周围有什么，遇到玩家就打招呼",
+      constraints: "不要破坏方块"
+    },
+    context
+  )));
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.request_id, "request-1");
+  assert.equal(calls[0]?.serverAddress, "127.0.0.1:25566");
+  assert.equal(calls[0]?.instruction, "进去看看周围有什么，遇到玩家就打招呼");
+  assert.match(String(calls[0]?.idempotencyKey), /^tool:[0-9a-f]{64}$/u);
+  assert.equal("templateId" in calls[0]!, false);
+  assert.equal("identityRef" in calls[0]!, false);
 });
 
 test("list 工具只查询当前 owner principal 的资源", async () => {
@@ -148,10 +194,14 @@ function minecraftConfig() {
   return createTestAppConfig({
     minecraft: {
       enabled: true,
-      endpoints: {
+      templates: {
         dev: {
-          actorId: "actor-dev",
-          socketPath: "../data/dev/minecraft-runtime/runtime.sock",
+          backend: "simulation",
+          minecraftVersion: "1.21.1",
+          loader: "vanilla",
+          gameProfileId: "test",
+          identityRef: "test",
+          allowedServers: ["127.0.0.1:25566"],
           modelRefs: ["ds_deepseek_v4_flash"]
         }
       }
@@ -159,7 +209,7 @@ function minecraftConfig() {
   });
 }
 
-function toolContext(manager: object): BuiltinToolContext {
+function toolContext(manager: object, provisioning: object = {}): BuiltinToolContext {
   return {
     config: minecraftConfig(),
     relationship: "owner",
@@ -167,7 +217,7 @@ function toolContext(manager: object): BuiltinToolContext {
     lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
     currentUser: null,
     minecraftActorManager: manager,
-    minecraftActorProvisioning: { listEndpointIds: () => ["dev"] }
+    minecraftActorProvisioning: provisioning
   } as unknown as BuiltinToolContext;
 }
 

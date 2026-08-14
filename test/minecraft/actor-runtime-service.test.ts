@@ -4,6 +4,7 @@ import { MinecraftActorRuntimeService } from "../../src/services/minecraft/actor
 import type { MinecraftActorResourceManager } from "../../src/services/minecraft/actorResourceManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+import { createTestMinecraftRecoveryState } from "../helpers/minecraft-actor-test-support.ts";
 
 test("runtime service 隔离单个 Actor 轮询故障并在停止时关闭 manager", async () => {
   const ingested: string[] = [];
@@ -13,8 +14,8 @@ test("runtime service 隔离单个 Actor 轮询故障并在停止时关闭 manag
     async recoverMailbox() { return 0; },
     async list() {
       return [
-        { resourceId: "actor-failed", status: "active" },
-        { resourceId: "actor-healthy", status: "active" },
+        { resourceId: "actor-failed", status: "active", minecraftActor: createTestMinecraftRecoveryState() },
+        { resourceId: "actor-healthy", status: "active", minecraftActor: createTestMinecraftRecoveryState() },
         { resourceId: "actor-closed", status: "closed" }
       ];
     },

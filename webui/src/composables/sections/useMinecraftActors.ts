@@ -277,6 +277,29 @@ export const useMinecraftActors = createSharedSectionState(() => {
         completedAtMs: event.occurredAtMs,
         updatedAtMs: event.occurredAtMs
       });
+    } else if (event.eventType === "actor_provisioning_requested") {
+      actor.provisionStatus = "pending";
+      actor.provisionPhase = "validating_target";
+    } else if (event.eventType === "actor_provisioning_started") {
+      actor.provisionStatus = "running";
+      actor.provisionPhase = "allocating";
+    } else if (event.eventType === "actor_provisioning_progress") {
+      const phase = nullableString(asRecord(event.payload).phase);
+      if (phase) actor.provisionPhase = phase;
+    } else if (event.eventType === "actor_ready") {
+      actor.provisionStatus = "ready";
+      actor.provisionPhase = "ready";
+      actor.provisionFailureCode = null;
+      const loopPhase = nullableString(asRecord(event.payload).loopPhase);
+      if (loopPhase === "idle" || loopPhase === "queued") actor.loopPhase = loopPhase;
+    } else if (event.eventType === "actor_provisioning_failed") {
+      actor.provisionStatus = "failed";
+      actor.provisionFailureCode = nullableString(asRecord(event.payload).failureCode);
+      actor.loopPhase = "paused";
+    } else if (event.eventType === "actor_provisioning_stopped") {
+      actor.provisionStatus = "stopped";
+      actor.provisionFailureCode = null;
+      actor.loopPhase = "paused";
     } else if (event.eventType === "decision_failed" || event.eventType === "decision_dead_letter") {
       actor.loopPhase = "error";
       patchRequest(event.requestId, {
@@ -315,6 +338,11 @@ export const useMinecraftActors = createSharedSectionState(() => {
       description: actor.description,
       summary: actor.summary,
       resourceStatus: actor.resourceStatus,
+      serverAddress: actor.serverAddress,
+      backend: actor.backend,
+      provisionStatus: actor.provisionStatus,
+      provisionPhase: actor.provisionPhase,
+      provisionFailureCode: actor.provisionFailureCode,
       currentGoal: actor.currentGoal,
       loopPhase: actor.loopPhase,
       revision: actor.revision,

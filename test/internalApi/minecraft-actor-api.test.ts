@@ -15,8 +15,10 @@ import {
 import { registerMinecraftActorRoutes } from "../../src/internalApi/routes/minecraftActorRoutes.ts";
 import { replyWithSseStream, SseConnectionRegistry } from "../../src/internalApi/routes/sse.ts";
 import { MinecraftActorControlStore } from "../../src/services/minecraft/actorControlStore.ts";
+import { MinecraftActorJournal } from "../../src/services/minecraft/actorJournal.ts";
 import type { InternalApiMinecraftActorDeps } from "../../src/internalApi/types.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+import { createTestMinecraftBinding } from "../helpers/minecraft-actor-test-support.ts";
 
 test("Actor read model 不泄露 transport，SSE 支持 snapshot、resume、reset 和 live cursor", async () => {
   const fixture = await createFixture();
@@ -107,14 +109,13 @@ test("SSE 建流期间断开会取消慢 probe 并释放 journal subscription", 
         signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
       });
     };
-    const listeners = (fixture.control as unknown as { listeners: Set<unknown> }).listeners;
     const controller = new AbortController();
     const opening = openMinecraftActorStream(fixture.deps, fixture.resourceId, null, controller.signal);
     await probeStarted.promise;
-    assert.equal(listeners.size, 1);
+    assert.equal(fixture.journal.listenerCount, 1);
     controller.abort(new Error("client disconnected"));
     await assert.rejects(opening, { name: "AbortError" });
-    assert.equal(listeners.size, 0);
+    assert.equal(fixture.journal.listenerCount, 0);
   } finally {
     await fixture.dispose();
   }
@@ -315,7 +316,8 @@ async function createFixture() {
   const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-minecraft-actor-api-"));
   const database = new StateDatabase(dataDir, createSilentLogger());
   const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
-  const control = new MinecraftActorControlStore(database);
+  const journal = new MinecraftActorJournal();
+  const control = new MinecraftActorControlStore(database, journal);
   const resource = await createActorResource(registry, "actor-dev", 1);
   const manager = {
     async list() { return registry.list("minecraft_actor"); },
@@ -344,6 +346,7 @@ async function createFixture() {
     database,
     registry,
     control,
+    journal,
     resourceId: resource.resourceId,
     deps,
     async dispose() {
@@ -376,7 +379,13 @@ async function createActorResource(
       modelRefs: ["secret-model-ref"],
       allowAutonomyPolicyChange: true,
       allowProgramDeployment: true,
-      lastEventSequence: 0
+      lastEventSequence: 0,
+      binding: createTestMinecraftBinding({
+        serverAddress: `127.0.0.1:${25_565 + createdAtMs}`,
+        serverPort: 25_565 + createdAtMs,
+        serverKey: `127.0.0.1:${25_565 + createdAtMs}`,
+        identityRef: `test-${actorId}`
+      })
     }
   });
 }

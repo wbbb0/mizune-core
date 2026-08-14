@@ -12,6 +12,7 @@ import {
   MinecraftActorRevisionConflictError
 } from "../../src/services/minecraft/actorControlStore.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+import { createTestMinecraftBinding } from "../helpers/minecraft-actor-test-support.ts";
 
 test("Actor mailbox 持久保存主人请求、FIFO 领取并原子完成 cognition", async () => {
   const fixture = await createFixture();
@@ -136,7 +137,7 @@ test("父进程重启会复用相同 decisionId 恢复 running mailbox", async (
   }
 });
 
-test("Actor 资源与 control state 原子创建，启动恢复会修复历史半状态", async () => {
+test("Actor 资源与 control state 原子创建，缺失状态不会通过 owner session 占位符转移所有权", async () => {
   const fixture = await createFixture();
   try {
     fixture.database.getDb().prepare(
@@ -144,16 +145,13 @@ test("Actor 资源与 control state 原子创建，启动恢复会修复历史�
     ).run(fixture.resourceId);
     assert.equal(await fixture.control.getControlState(fixture.resourceId), null);
     assert.equal(await fixture.control.recoverInterruptedDecisions(30), 0);
-    const repaired = await fixture.control.getControlState(fixture.resourceId);
-    assert.equal(repaired?.ownerPrincipalId, "web:owner");
-
-    await fixture.control.initializeActor({
+    assert.equal(await fixture.control.getControlState(fixture.resourceId), null);
+    await assert.rejects(fixture.control.initializeActor({
       resourceId: fixture.resourceId,
-      ownerPrincipalId: "owner",
+      ownerPrincipalId: "attacker",
       ownerSessionId: "web:owner",
       nowMs: 31
-    });
-    assert.equal((await fixture.control.getControlState(fixture.resourceId))?.ownerPrincipalId, "owner");
+    }), /控制状态不存在/u);
 
     await assert.rejects(
       fixture.registry.createMinecraftActor({
@@ -173,12 +171,31 @@ test("Actor 资源与 control state 原子创建，启动恢复会修复历史�
           modelRefs: ["test"],
           allowAutonomyPolicyChange: false,
           allowProgramDeployment: false,
-          lastEventSequence: 0
+          lastEventSequence: 0,
+          binding: createTestMinecraftBinding()
         }
       }),
       /minecraftOwnerPrincipalId/u
     );
     assert.equal((await fixture.registry.list("minecraft_actor")).length, 1);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("owner principal 即使恰好等于 owner session 也不能被其他主体接管", async () => {
+  const fixture = await createFixture();
+  try {
+    fixture.database.getDb().prepare(`
+      UPDATE minecraft_actor_control_state SET owner_principal_id = ? WHERE resource_id = ?
+    `).run("web:owner", fixture.resourceId);
+    await assert.rejects(fixture.control.initializeActor({
+      resourceId: fixture.resourceId,
+      ownerPrincipalId: "other-owner",
+      ownerSessionId: "web:other-owner",
+      nowMs: 10
+    }), /已属于其他主体/u);
+    assert.equal((await fixture.control.getControlState(fixture.resourceId))?.ownerPrincipalId, "web:owner");
   } finally {
     await fixture.dispose();
   }
@@ -318,7 +335,8 @@ async function createFixture() {
       modelRefs: ["test"],
       allowAutonomyPolicyChange: true,
       allowProgramDeployment: false,
-      lastEventSequence: 0
+      lastEventSequence: 0,
+      binding: createTestMinecraftBinding()
     }
   });
   const control = new MinecraftActorControlStore(database);
