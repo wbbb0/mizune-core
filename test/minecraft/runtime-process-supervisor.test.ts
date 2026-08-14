@@ -247,7 +247,7 @@ test("父项目以同一 incarnation 托管 NeoForge 客户端与只读 Runtime"
       authTokenFile: incarnation.tokenFile
     });
     const snapshot = await transport.call("actor.get_snapshot", {
-      protocolVersion: 1,
+      protocolVersion: 2,
       actorId
     }) as {
       actorId: string;

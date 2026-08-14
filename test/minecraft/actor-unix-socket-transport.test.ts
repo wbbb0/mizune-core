@@ -14,10 +14,12 @@ interface FramedTestServer {
 
 function createSnapshot(actorId = "actor-dev") {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId,
     actorRevision: 0,
     observationRevision: 0,
+    controlStateToken: "control-state-token-actor-dev-revision-0",
+    contextRef: "context-ref-snapshot-actor-dev-revision-0",
     self: {
       position: { x: 0, y: 64, z: 0 },
       health: 20,
@@ -95,7 +97,7 @@ function replyHello(socket: Socket, message: Record<string, unknown>, connection
   reply(socket, {
     type: "hello_result",
     requestId: message.requestId,
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-dev",
     sessionId: `session-${connectionIndex}`,
     capabilities: {
@@ -196,7 +198,7 @@ test("reconnect refreshes managed runtime identity and auth token credentials", 
       reply(socket, {
         type: "hello_result",
         requestId: message.requestId,
-        protocolVersion: 1,
+        protocolVersion: 2,
         actorId: "actor-dev",
         runtimeInstanceId: `runtime-${connectionIndex}`,
         sessionId: `session-${connectionIndex}`,

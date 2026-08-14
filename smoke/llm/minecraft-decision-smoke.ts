@@ -109,10 +109,12 @@ async function main(): Promise<void> {
 function createSmokeActor(trace: ActorTrace): MinecraftActorClient {
   let actorRevision = 3;
   const snapshot = (): MinecraftActorSnapshot => ({
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "smoke-actor",
     actorRevision,
     observationRevision: 7,
+    controlStateToken: `smoke-control-token-revision-${actorRevision}`,
+    contextRef: `smoke-context-snapshot-revision-${actorRevision}`,
     self: selfState(),
     activeBehavior: null,
     actionLease: null,
@@ -129,16 +131,18 @@ function createSmokeActor(trace: ActorTrace): MinecraftActorClient {
     }
   });
   const observation = (value: MinecraftObservationEnvelope["value"]): MinecraftObservationEnvelope => ({
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "smoke-actor",
     actorRevision,
     observationRevision: 7,
+    controlStateToken: `smoke-control-token-revision-${actorRevision}`,
+    contextRef: `smoke-context-observation-revision-${actorRevision}`,
     observedAtMs: Date.now(),
     self: selfState(),
     value
   });
   const success = (idempotencyKey: string): MinecraftCommandResult => ({
-    protocolVersion: 1,
+    protocolVersion: 2,
     commandId: `command-${trace.calls.length}`,
     idempotencyKey,
     ok: true,
@@ -216,7 +220,7 @@ function createSmokeActor(trace: ActorTrace): MinecraftActorClient {
       trace.calls.push("validateProgram");
       trace.validatedPrograms.push(document);
       return {
-        protocolVersion: 1,
+        protocolVersion: 2,
         ok: true,
         draft: { draftId: "draft-smoke", validatedAtMs: Date.now(), program: document },
         diagnostics: []

@@ -50,7 +50,7 @@ test("protocol client sends versioned actor-scoped observation requests", async 
   assert.deepEqual(transport.calls, [{
     method: "observation.get",
     payload: {
-      protocolVersion: 1,
+      protocolVersion: 2,
       actorId: "actor-1",
       request: {
         scope: "entities",
@@ -64,7 +64,7 @@ test("protocol client sends versioned actor-scoped observation requests", async 
   assert.deepEqual(result.value, []);
 });
 
-test("protocol client preserves revision and idempotency fields for behavior commits", async () => {
+test("protocol client preserves guard, provenance, and idempotency fields for behavior commits", async () => {
   const transport = new RecordingTransport();
   transport.responses.push(commandResult());
   const client = new ProtocolMinecraftActorClient("actor-1", transport);
@@ -72,8 +72,7 @@ test("protocol client preserves revision and idempotency fields for behavior com
     kind: "combat",
     targetRef: "opaque-target",
     stopHealth: 8,
-    expectedActorRevision: 3,
-    expectedObservationRevision: 7,
+    ...controlEnvelope(),
     idempotencyKey: "decision-1",
     decisionReason: "保护自己"
   };
@@ -84,7 +83,7 @@ test("protocol client preserves revision and idempotency fields for behavior com
   assert.deepEqual(transport.calls[0], {
     method: "behavior.start",
     payload: {
-      protocolVersion: 1,
+      protocolVersion: 2,
       actorId: "actor-1",
       command
     }
@@ -103,7 +102,7 @@ test("protocol client rejects snapshots and events from a different actor", asyn
 
 test("protocol client rejects unsupported versions and contradictory command results", async () => {
   const transport = new RecordingTransport();
-  transport.responses.push(snapshot({ protocolVersion: 2 }));
+  transport.responses.push(snapshot({ protocolVersion: 1 }));
   transport.responses.push(commandResult({
     ok: true,
     status: "failed",
@@ -113,7 +112,7 @@ test("protocol client rejects unsupported versions and contradictory command res
 
   await assert.rejects(client.getSnapshot());
   await assert.rejects(client.cancelBehavior({
-    expectedActorRevision: 3,
+    ...controlEnvelope(),
     idempotencyKey: "cancel-1",
     reason: "停止"
   }), /contradictory/);
@@ -131,7 +130,7 @@ test("protocol client supports typed two-phase program deployment", async () => 
   const transport = new RecordingTransport();
   const document = programDocument();
   transport.responses.push({
-    protocolVersion: 1,
+    protocolVersion: 2,
     ok: true,
     draft: { draftId: "draft-1", validatedAtMs: 10_000, program: document },
     diagnostics: []
@@ -146,7 +145,7 @@ test("protocol client supports typed two-phase program deployment", async () => 
   const validated = await client.validateProgram(document);
   const activated = await client.activateProgram({
     draftId: validated.draft?.draftId ?? "missing",
-    expectedActorRevision: 3,
+    ...controlEnvelope(),
     idempotencyKey: "activate-program-1",
     decisionReason: "部署通过校验的行为程序"
   });
@@ -155,7 +154,7 @@ test("protocol client supports typed two-phase program deployment", async () => 
   assert.equal(activated.ok, true);
   assert.deepEqual(transport.calls.map(call => call.method), ["program.validate", "program.activate"]);
   assert.deepEqual(transport.calls[0]?.payload, {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-1",
     document
   });
@@ -163,7 +162,7 @@ test("protocol client supports typed two-phase program deployment", async () => 
 
 test("protocol client rejects contradictory program validation results", async () => {
   const transport = new RecordingTransport();
-  transport.responses.push({ protocolVersion: 1, ok: true, draft: null, diagnostics: [] });
+  transport.responses.push({ protocolVersion: 2, ok: true, draft: null, diagnostics: [] });
   const client = new ProtocolMinecraftActorClient("actor-1", transport);
 
   await assert.rejects(client.validateProgram(programDocument()), /contradictory/);
@@ -173,7 +172,7 @@ test("protocol client rejects mismatched command and program response correlatio
   const transport = new RecordingTransport();
   transport.responses.push(commandResult({ idempotencyKey: "wrong-key" }));
   transport.responses.push({
-    protocolVersion: 1,
+    protocolVersion: 2,
     ok: true,
     draft: {
       draftId: "draft-wrong",
@@ -188,8 +187,7 @@ test("protocol client rejects mismatched command and program response correlatio
     kind: "go_to",
     position: { x: 1, y: 64, z: 1 },
     tolerance: 1,
-    expectedActorRevision: 3,
-    expectedObservationRevision: 7,
+    ...controlEnvelope(),
     idempotencyKey: "expected-key",
     decisionReason: "测试响应关联"
   }), /idempotencyKey 不匹配/);
@@ -251,10 +249,12 @@ function autonomyPolicy() {
 
 function snapshot(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-1",
     actorRevision: 3,
     observationRevision: 7,
+    controlStateToken: "control-state-token-actor-1-revision-3",
+    contextRef: "context-ref-snapshot-actor-1-revision-3",
     self: selfState(),
     activeBehavior: null,
     actionLease: null,
@@ -267,10 +267,12 @@ function snapshot(overrides: Record<string, unknown> = {}) {
 
 function observation(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-1",
     actorRevision: 3,
     observationRevision: 7,
+    controlStateToken: "control-state-token-actor-1-revision-3",
+    contextRef: "context-ref-observation-actor-1-revision-3",
     observedAtMs: 10_000,
     self: selfState(),
     value: null,
@@ -280,7 +282,7 @@ function observation(overrides: Record<string, unknown> = {}) {
 
 function commandResult(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     commandId: "command-1",
     idempotencyKey: "decision-1",
     ok: true,
@@ -296,7 +298,7 @@ function commandResult(overrides: Record<string, unknown> = {}) {
 
 function runtimeEvent(overrides: Record<string, unknown> = {}) {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     eventId: "event-1",
     sequence: 1,
     actorId: "actor-1",
@@ -312,10 +314,10 @@ function runtimeEvent(overrides: Record<string, unknown> = {}) {
 
 function programDocument(): MinecraftProgramDocument {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     programId: "idle-item-collector",
     programVersion: 1,
-    expectedActorRevision: 3,
+    ...controlEnvelope(),
     language: "python",
     apiVersion: "mizune.mc.v1",
     entrypoint: "main",
@@ -323,5 +325,12 @@ function programDocument(): MinecraftProgramDocument {
     sourceHash: "sha256:" + "a".repeat(64),
     requiredCapabilities: [],
     metadata: { summary: "空闲时收集掉落物" }
+  };
+}
+
+function controlEnvelope() {
+  return {
+    guard: { controlStateToken: "control-state-token-actor-1-revision-3", conditionRefs: [] },
+    provenance: { contextRef: "context-ref-snapshot-actor-1-revision-3" }
   };
 }

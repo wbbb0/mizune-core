@@ -1296,7 +1296,7 @@ function requireActorState(record: RuntimeResourceRecord): MinecraftActorRecover
 function validateRecoveryState(state: MinecraftActorRecoveryState): void {
   requireNonEmpty(state.actorId, "actor.actorId");
   requireNonEmpty(state.endpoint, "actor.endpoint");
-  if (state.protocolVersion !== 1) throw new Error("仅支持 Minecraft Actor protocolVersion=1");
+  if (state.protocolVersion !== 2) throw new Error("仅支持 Minecraft Actor protocolVersion=2");
   if (state.modelRefs.length === 0 || state.modelRefs.some(model => !model.trim())) {
     throw new Error("actor.modelRefs 必须至少包含一个非空模型引用");
   }

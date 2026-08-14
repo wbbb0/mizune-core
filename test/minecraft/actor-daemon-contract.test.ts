@@ -40,10 +40,11 @@ test("父项目客户端与 Python daemon 完成真实握手、程序部署和�
       ""
     ].join("\n");
     const validation = await client.validateProgram({
-      protocolVersion: 1,
+      protocolVersion: 2,
       programId: "contract-program",
       programVersion: 1,
-      expectedActorRevision: initial.actorRevision,
+      guard: { controlStateToken: initial.controlStateToken, conditionRefs: [] },
+      provenance: { contextRef: initial.contextRef },
       language: "python",
       apiVersion: "mizune.mc.v1",
       entrypoint: "main",
@@ -57,7 +58,8 @@ test("父项目客户端与 Python daemon 完成真实握手、程序部署和�
 
     const activation = await client.activateProgram({
       draftId: validation.draft.draftId,
-      expectedActorRevision: initial.actorRevision,
+      guard: { controlStateToken: initial.controlStateToken, conditionRefs: [] },
+      provenance: { contextRef: initial.contextRef },
       idempotencyKey: "contract-activate-v1",
       decisionReason: "验证跨语言程序事务"
     });
@@ -69,8 +71,8 @@ test("父项目客户端与 Python daemon 完成真实握手、程序部署和�
       kind: "go_to",
       position: { x: 10, y: 64, z: 0 },
       tolerance: 1,
-      expectedActorRevision: beforeBehavior.actorRevision,
-      expectedObservationRevision: beforeBehavior.observationRevision,
+      guard: { controlStateToken: beforeBehavior.controlStateToken, conditionRefs: [] },
+      provenance: { contextRef: beforeBehavior.contextRef },
       idempotencyKey: "contract-go-to-v1",
       decisionReason: "验证跨语言行为命令"
     });

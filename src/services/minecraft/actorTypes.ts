@@ -1,4 +1,4 @@
-export const MINECRAFT_ACTOR_PROTOCOL_VERSION = 1 as const;
+export const MINECRAFT_ACTOR_PROTOCOL_VERSION = 2 as const;
 
 export const MINECRAFT_RUNTIME_EVENT_TYPES = [
   "program_started",
@@ -99,6 +99,8 @@ export interface MinecraftActorSnapshot {
   actorId: string;
   actorRevision: number;
   observationRevision: number;
+  controlStateToken: string;
+  contextRef: string;
   self: MinecraftSelfSnapshot;
   activeBehavior: MinecraftBehaviorRun | null;
   actionLease: {
@@ -116,6 +118,8 @@ export interface MinecraftObservationEnvelope {
   actorId: string;
   actorRevision: number;
   observationRevision: number;
+  controlStateToken: string;
+  contextRef: string;
   observedAtMs: number;
   self: MinecraftSelfSnapshot;
   value: JsonValue;
@@ -158,7 +162,8 @@ export interface MinecraftProgramDocument {
   protocolVersion: typeof MINECRAFT_ACTOR_PROTOCOL_VERSION;
   programId: string;
   programVersion: number;
-  expectedActorRevision: number;
+  guard: MinecraftControlGuard;
+  provenance: MinecraftControlProvenance;
   language: "python";
   apiVersion: "mizune.mc.v1";
   entrypoint: "main";
@@ -201,9 +206,18 @@ export type MinecraftObservationRequest =
   | { scope: "chat"; afterMessageId?: string; limit?: number }
   | { scope: "tasks"; includeCompleted?: boolean; limit?: number };
 
+export interface MinecraftControlGuard {
+  controlStateToken: string;
+  conditionRefs: string[];
+}
+
+export interface MinecraftControlProvenance {
+  contextRef: string;
+}
+
 interface MinecraftCommitBase {
-  expectedActorRevision: number;
-  expectedObservationRevision: number;
+  guard: MinecraftControlGuard;
+  provenance: MinecraftControlProvenance;
   idempotencyKey: string;
   decisionReason: string;
 }
@@ -224,7 +238,8 @@ export interface MinecraftTaskCommand extends MinecraftCommitBase {
 }
 
 export interface MinecraftCancelBehaviorCommand {
-  expectedActorRevision: number;
+  guard: MinecraftControlGuard;
+  provenance: MinecraftControlProvenance;
   idempotencyKey: string;
   reason: string;
 }
@@ -235,13 +250,15 @@ export interface MinecraftCancelTaskCommand extends MinecraftCancelBehaviorComma
 
 export interface MinecraftSetAutonomyCommand {
   policy: MinecraftAutonomyPolicy;
-  expectedActorRevision: number;
+  guard: MinecraftControlGuard;
+  provenance: MinecraftControlProvenance;
   idempotencyKey: string;
 }
 
 export interface MinecraftActivateProgramCommand {
   draftId: string;
-  expectedActorRevision: number;
+  guard: MinecraftControlGuard;
+  provenance: MinecraftControlProvenance;
   idempotencyKey: string;
   decisionReason: string;
 }

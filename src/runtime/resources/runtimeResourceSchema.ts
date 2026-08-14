@@ -24,7 +24,7 @@ export const minecraftActorRecoveryStateSchema = s.object({
   actorId: s.string().trim().nonempty().title("Actor ID"),
   transportKind: s.enum(["unix_socket", "loopback_tcp", "in_process"] as const).title("传输类型"),
   endpoint: s.string().trim().nonempty().title("端点"),
-  protocolVersion: s.literal(1).title("协议版本"),
+  protocolVersion: s.literal(2).title("协议版本"),
   persistentState: s.string().title("持久认知状态"),
   currentGoal: s.union([s.string(), s.literal(null)]).title("当前目标").default(null),
   modelRefs: s.array(s.string().trim().nonempty()).title("决策模型"),

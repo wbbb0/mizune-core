@@ -589,7 +589,7 @@ export class RuntimeResourceStore {
       actorId: string;
       transportKind: MinecraftActorRecoveryState["transportKind"];
       endpoint: string;
-      protocolVersion: 1;
+      protocolVersion: 2;
       persistentState: string;
       currentGoal: string | null;
       modelRefs: string[];
@@ -632,7 +632,7 @@ export class RuntimeResourceStore {
       actorId: string;
       transportKind: MinecraftActorRecoveryState["transportKind"];
       endpoint: string;
-      protocolVersion: 1;
+      protocolVersion: 2;
       persistentState: string;
       currentGoal: string | null;
       modelRefsJson: string;
@@ -757,7 +757,7 @@ function rowToRecord(row: RuntimeResourceRow): RuntimeResourceRecord {
       actorId: row.actor_id,
       transportKind: row.transport_kind as MinecraftActorRecoveryState["transportKind"],
       endpoint: row.endpoint,
-      protocolVersion: 1,
+      protocolVersion: 2,
       persistentState: row.persistent_state ?? "",
       currentGoal: row.current_goal,
       modelRefs: parseModelRefs(row.model_refs_json),

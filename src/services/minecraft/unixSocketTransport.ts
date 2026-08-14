@@ -6,6 +6,7 @@ import type {
   MinecraftActorTransport,
   MinecraftRuntimeCapabilities
 } from "./actorClient.ts";
+import { MINECRAFT_ACTOR_PROTOCOL_VERSION } from "./actorTypes.ts";
 
 const KNOWN_RPC_METHODS = new Set<MinecraftActorRpcMethod>([
   "actor.get_snapshot",
@@ -286,7 +287,7 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
     const hello = await this.sendAndWait({
       type: "hello",
       requestId,
-      supportedProtocolVersions: [1],
+      supportedProtocolVersions: [MINECRAFT_ACTOR_PROTOCOL_VERSION],
       actorId: this.actorId,
       clientName: this.clientName,
       clientVersion: this.clientVersion,
@@ -301,7 +302,7 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
         false
       );
     }
-    if (hello.type !== "hello_result" || hello.protocolVersion !== 1 || hello.actorId !== this.actorId) {
+    if (hello.type !== "hello_result" || hello.protocolVersion !== MINECRAFT_ACTOR_PROTOCOL_VERSION || hello.actorId !== this.actorId) {
       throw new Error("Minecraft Runtime hello 响应与请求不匹配");
     }
     if (

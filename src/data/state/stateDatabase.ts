@@ -566,7 +566,7 @@ function createRuntimeResourcesSchema(db: SqliteDatabase): void {
       actor_id TEXT NOT NULL CHECK (actor_id = trim(actor_id) AND length(actor_id) > 0),
       transport_kind TEXT NOT NULL CHECK (transport_kind IN ('unix_socket', 'loopback_tcp', 'in_process')),
       endpoint TEXT NOT NULL CHECK (endpoint = trim(endpoint) AND length(endpoint) > 0),
-      protocol_version INTEGER NOT NULL CHECK (protocol_version = 1),
+      protocol_version INTEGER NOT NULL CHECK (protocol_version = 2),
       persistent_state TEXT NOT NULL DEFAULT '',
       current_goal TEXT,
       model_refs_json TEXT NOT NULL DEFAULT '[]',
@@ -757,7 +757,67 @@ function migrateRuntimeResourcesSchema(db: SqliteDatabase): boolean {
     SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runtime_minecraft_actors'
   `).get() !== undefined;
   if (hasMinecraftActors) {
+    db.exec(`
+      ALTER TABLE runtime_minecraft_actors RENAME TO runtime_minecraft_actors_before_v6;
+    `);
     createRuntimeResourcesSchema(db);
+    db.exec(`
+      INSERT INTO runtime_minecraft_actors (
+        resource_id, actor_id, transport_kind, endpoint, protocol_version,
+        persistent_state, current_goal, model_refs_json,
+        allow_autonomy_policy_change, allow_program_deployment, last_event_sequence
+      )
+      SELECT
+        resource_id, actor_id, transport_kind, endpoint, 2,
+        persistent_state, current_goal, model_refs_json,
+        allow_autonomy_policy_change, allow_program_deployment, last_event_sequence
+      FROM runtime_minecraft_actors_before_v6;
+      DROP TABLE runtime_minecraft_actors_before_v6;
+    `);
+    db.exec(`
+      UPDATE minecraft_actor_bindings
+      SET
+        provision_status = 'needs_attention',
+        failure_code = 'runtime_protocol_upgrade_required',
+        failure_message = 'Runtime 控制协议已升级，必须先安全停止旧实例',
+        retry_at_ms = NULL
+      WHERE desired_state = 'open'
+        AND EXISTS (
+          SELECT 1
+          FROM minecraft_runtime_incarnations i
+          WHERE i.resource_id = minecraft_actor_bindings.resource_id
+            AND i.status IN ('starting', 'running', 'stopping')
+        );
+
+      UPDATE minecraft_actor_control_state
+      SET
+        loop_phase = 'paused',
+        last_error = 'Runtime 控制协议升级，等待旧实例安全停止'
+      WHERE active_wake_id IS NULL
+        AND active_decision_id IS NULL
+        AND resource_id IN (
+          SELECT resource_id
+          FROM minecraft_actor_bindings
+          WHERE provision_status = 'needs_attention'
+            AND failure_code = 'runtime_protocol_upgrade_required'
+        );
+
+      UPDATE minecraft_actor_bindings
+      SET
+        provision_status = 'stopped',
+        failure_code = NULL,
+        failure_message = NULL,
+        retry_at_ms = NULL,
+        attempt_id = NULL
+      WHERE desired_state = 'open'
+        AND provision_status IN ('running', 'ready')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM minecraft_runtime_incarnations i
+          WHERE i.resource_id = minecraft_actor_bindings.resource_id
+            AND i.status IN ('starting', 'running', 'stopping')
+        );
+    `);
     db.exec(`
       DELETE FROM runtime_resources
       WHERE kind = 'minecraft_actor'
@@ -1104,7 +1164,7 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.runtime_resources",
-    schemaVersion: 5,
+    schemaVersion: 6,
     minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: [

@@ -21,7 +21,7 @@ export interface MinecraftActorRecoveryState {
   actorId: string;
   transportKind: "unix_socket" | "loopback_tcp" | "in_process";
   endpoint: string;
-  protocolVersion: 1;
+  protocolVersion: 2;
   persistentState: string;
   currentGoal: string | null;
   modelRefs: string[];
@@ -145,7 +145,7 @@ export interface MinecraftActorResourceSummary {
   actor_id: string;
   transport_kind: MinecraftActorRecoveryState["transportKind"];
   endpoint: string;
-  protocol_version: 1;
+  protocol_version: 2;
   current_goal: string | null;
   allow_autonomy_policy_change: boolean;
   allow_program_deployment: boolean;

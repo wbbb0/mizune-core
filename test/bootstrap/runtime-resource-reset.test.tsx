@@ -48,7 +48,7 @@ test("initializeBootstrapState resets ephemeral resources but preserves Minecraf
         actorId: "actor-1",
         transportKind: "in_process",
         endpoint: "simulation:actor-1",
-        protocolVersion: 1,
+        protocolVersion: 2,
         persistentState: "在出生点待命",
         currentGoal: null,
         modelRefs: ["prod_deepseek.v4_flash"],

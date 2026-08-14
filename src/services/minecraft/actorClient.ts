@@ -130,11 +130,23 @@ const autonomyPolicySchema = z.object({
   combatStopHealth: z.number().finite().min(2).max(18)
 }).strict();
 
+const opaqueRefSchema = z.string().min(16).max(2_048);
+const controlGuardSchema = z.object({
+  controlStateToken: opaqueRefSchema,
+  conditionRefs: z.array(opaqueRefSchema).max(16).refine(
+    values => new Set(values).size === values.length,
+    "conditionRefs 不能重复"
+  )
+}).strict();
+const controlProvenanceSchema = z.object({ contextRef: opaqueRefSchema }).strict();
+
 const actorSnapshotSchema = z.object({
   protocolVersion: z.literal(MINECRAFT_ACTOR_PROTOCOL_VERSION),
   actorId: z.string().min(1),
   actorRevision: z.number().int().nonnegative(),
   observationRevision: z.number().int().nonnegative(),
+  controlStateToken: opaqueRefSchema,
+  contextRef: opaqueRefSchema,
   self: selfSnapshotSchema,
   activeBehavior: behaviorRunSchema.nullable(),
   actionLease: z.object({
@@ -152,6 +164,8 @@ const observationEnvelopeSchema = z.object({
   actorId: z.string().min(1),
   actorRevision: z.number().int().nonnegative(),
   observationRevision: z.number().int().nonnegative(),
+  controlStateToken: opaqueRefSchema,
+  contextRef: opaqueRefSchema,
   observedAtMs: z.number().int().nonnegative(),
   self: selfSnapshotSchema,
   value: jsonValueSchema
@@ -201,7 +215,8 @@ const programDocumentSchema = z.object({
   protocolVersion: z.literal(MINECRAFT_ACTOR_PROTOCOL_VERSION),
   programId: z.string().min(1).max(128),
   programVersion: z.number().int().positive(),
-  expectedActorRevision: z.number().int().nonnegative(),
+  guard: controlGuardSchema,
+  provenance: controlProvenanceSchema,
   language: z.literal("python"),
   apiVersion: z.literal("mizune.mc.v1"),
   entrypoint: z.literal("main"),

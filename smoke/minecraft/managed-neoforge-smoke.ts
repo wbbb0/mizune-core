@@ -175,8 +175,8 @@ async function main(): Promise<void> {
         kind: "chat",
         text: chatText,
         channel: "global",
-        expectedActorRevision: snapshot.actorRevision,
-        expectedObservationRevision: snapshot.observationRevision,
+        guard: { controlStateToken: snapshot.controlStateToken, conditionRefs: [] },
+        provenance: { contextRef: snapshot.contextRef },
         idempotencyKey: `managed-neoforge-chat:${randomUUID()}`,
         decisionReason: "验证受认证的真实聊天行为"
       }, controller.signal);

@@ -98,7 +98,7 @@ class ResourceActorClient implements MinecraftActorClient {
 
   async validateProgram(document: MinecraftProgramDocument): Promise<MinecraftProgramValidationResult> {
     return {
-      protocolVersion: 1,
+      protocolVersion: 2,
       ok: true,
       draft: { draftId: "draft-1", validatedAtMs: 1, program: document },
       diagnostics: []
@@ -458,8 +458,6 @@ test("decision outbox retry reuses one system-owned control idempotency key", as
         kind: "go_to",
         position: { x: 8, y: 64, z: 0 },
         tolerance: 1,
-        expectedActorRevision: 3,
-        expectedObservationRevision: 7,
         decisionReason: "离开危险区域"
       });
       if (attempt === 1) throw new Error("failed after control commit");
@@ -783,14 +781,14 @@ test("服务端资源权限阻止自治修改和程序部署", async () => {
     const resource = await harness.manager.create(resourceInput());
     await assert.rejects(harness.manager.setAutonomy(resource.resourceId, {
       policy: actorSnapshot().autonomyPolicy,
-      expectedActorRevision: 3,
+      ...controlEnvelope(),
       idempotencyKey: "autonomy-denied"
     }), /不允许修改自治策略/u);
     await assert.rejects(harness.manager.validateProgram(resource.resourceId, {
-      protocolVersion: 1,
+      protocolVersion: 2,
       programId: "denied",
       programVersion: 1,
-      expectedActorRevision: 3,
+      ...controlEnvelope(),
       language: "python",
       apiVersion: "mizune.mc.v1",
       entrypoint: "main",
@@ -878,14 +876,14 @@ test("配置撤权在首次命令授权前生效，不允许用旧持久权限�
     });
     await assert.rejects(manager.setAutonomy(resource.resourceId, {
       policy: actorSnapshot().autonomyPolicy,
-      expectedActorRevision: 3,
+      ...controlEnvelope(),
       idempotencyKey: "revoked-autonomy"
     }), /不允许修改自治策略/u);
     await assert.rejects(manager.validateProgram(resource.resourceId, {
-      protocolVersion: 1,
+      protocolVersion: 2,
       programId: "revoked",
       programVersion: 1,
-      expectedActorRevision: 3,
+      ...controlEnvelope(),
       language: "python",
       apiVersion: "mizune.mc.v1",
       entrypoint: "main",
@@ -933,7 +931,7 @@ test("恢复端点被移除时先标记资源不可恢复，再拒绝控制命�
     });
     await assert.rejects(manager.setAutonomy(resource.resourceId, {
       policy: actorSnapshot().autonomyPolicy,
-      expectedActorRevision: 3,
+      ...controlEnvelope(),
       idempotencyKey: "removed-endpoint"
     }), /恢复端点已不在服务端允许列表/u);
 
@@ -1043,7 +1041,7 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
     });
     await assert.rejects(manager.setAutonomy(resource.resourceId, {
       policy: actorSnapshot().autonomyPolicy,
-      expectedActorRevision: 3,
+      ...controlEnvelope(),
       idempotencyKey: "bound-factory"
     }), /不允许修改自治策略/u);
 
@@ -1344,10 +1342,12 @@ async function waitForAbort(signal: AbortSignal | undefined): Promise<never> {
 
 function actorSnapshot(): MinecraftActorSnapshot {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-1",
     actorRevision: 3,
     observationRevision: 7,
+    controlStateToken: "control-state-token-actor-1-revision-3",
+    contextRef: "context-ref-snapshot-actor-1-revision-3",
     self: selfState(),
     activeBehavior: null,
     actionLease: null,
@@ -1367,19 +1367,28 @@ function actorSnapshot(): MinecraftActorSnapshot {
 
 function observation(value: MinecraftObservationEnvelope["value"]): MinecraftObservationEnvelope {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-1",
     actorRevision: 3,
     observationRevision: 7,
+    controlStateToken: "control-state-token-actor-1-revision-3",
+    contextRef: "context-ref-observation-actor-1-revision-3",
     observedAtMs: 100,
     self: selfState(),
     value
   };
 }
 
+function controlEnvelope() {
+  return {
+    guard: { controlStateToken: actorSnapshot().controlStateToken, conditionRefs: [] },
+    provenance: { contextRef: actorSnapshot().contextRef }
+  };
+}
+
 function commandResult(idempotencyKey = "key-1"): MinecraftCommandResult {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     commandId: "command-1",
     idempotencyKey,
     ok: true,
@@ -1394,7 +1403,7 @@ function commandResult(idempotencyKey = "key-1"): MinecraftCommandResult {
 
 function runtimeEvent(overrides: Partial<MinecraftRuntimeEvent> = {}): MinecraftRuntimeEvent {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     eventId: "event-1",
     sequence: 1,
     actorId: "actor-1",

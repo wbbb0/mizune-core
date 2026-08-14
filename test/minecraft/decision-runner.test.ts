@@ -50,6 +50,7 @@ class ScriptedDecisionLlm {
 class FakeActorClient implements MinecraftActorClient {
   readonly calls: string[] = [];
   readonly commandIdempotencyKeys: string[] = [];
+  lastBehaviorCommand: MinecraftBehaviorCommand | null = null;
   capabilities = fullRuntimeCapabilities();
 
   async getCapabilities(): Promise<MinecraftRuntimeCapabilities> {
@@ -69,6 +70,7 @@ class FakeActorClient implements MinecraftActorClient {
   async startBehavior(command: MinecraftBehaviorCommand): Promise<MinecraftCommandResult> {
     this.calls.push("startBehavior");
     this.commandIdempotencyKeys.push(command.idempotencyKey);
+    this.lastBehaviorCommand = command;
     return commandResult();
   }
 
@@ -104,7 +106,7 @@ class FakeActorClient implements MinecraftActorClient {
   async validateProgram(document: MinecraftProgramDocument): Promise<MinecraftProgramValidationResult> {
     this.calls.push("validateProgram");
     return {
-      protocolVersion: 1,
+      protocolVersion: 2,
       ok: true,
       draft: { draftId: "draft-1", validatedAtMs: 20_000, program: document },
       diagnostics: []
@@ -164,6 +166,8 @@ test("decision runner uses exactly one stable system and two structured user mes
   assert.equal(params.messages.length, 3);
   assert.deepEqual(params.messages.map(message => message.role), ["system", "user", "user"]);
   assert.equal(params.messages[0]?.content, MINECRAFT_DECISION_SYSTEM_PROMPT);
+  const { actorRevision: _actorRevision, observationRevision: _observationRevision,
+    controlStateToken: _controlStateToken, contextRef: _contextRef, ...modelSnapshot } = actorSnapshot();
   assert.deepEqual(JSON.parse(String(params.messages[1]?.content)), {
     type: "minecraft_actor_persistent_state",
     actorId: "actor-1",
@@ -173,7 +177,8 @@ test("decision runner uses exactly one stable system and two structured user mes
       rpcMethods: fullRuntimeCapabilities().rpcMethods,
       observationScopes: fullRuntimeCapabilities().observationScopes,
       behaviorCapabilities: fullRuntimeCapabilities().behaviorCapabilities
-    }
+    },
+    initialSnapshot: modelSnapshot
   });
   assert.deepEqual(JSON.parse(String(params.messages[2]?.content)), {
     type: "minecraft_actor_wake_reason",
@@ -185,7 +190,7 @@ test("decision runner uses exactly one stable system and two structured user mes
   assert.equal(params.enableThinkingOverride, false);
   assert.equal(params.preferNativeNoThinkingChatEndpoint, true);
   assert.deepEqual(params.modelRefOverride, ["prod_deepseek.v4_flash", "prod_deepseek.v4_pro"]);
-  assert.deepEqual(actor.calls, ["getSnapshot"]);
+  assert.deepEqual(actor.calls, ["getSnapshot", "getSnapshot"]);
   assert.equal(result.completion.summary, "继续观察");
   assert.equal(result.completion.persistentState, "目标：保护 Alice；当前没有活动任务");
   assert.equal(result.completion.currentGoal, "保护 Alice");
@@ -198,6 +203,8 @@ test("decision runner uses exactly one stable system and two structured user mes
   assert.ok(parameters);
   assert.equal(parameters.properties?.idempotencyKey, undefined);
   assert.ok(!parameters.required?.includes("idempotencyKey"));
+  assert.doesNotMatch(JSON.stringify(params.messages), /Revision|controlStateToken|contextRef|idempotencyKey/u);
+  assert.doesNotMatch(JSON.stringify(resolveTools(params)), /Revision|controlStateToken|contextRef|idempotencyKey|guard|provenance/u);
 });
 
 test("live runtime capabilities narrow tools, observation scopes, and behavior kinds", async () => {
@@ -262,7 +269,7 @@ test("live runtime capabilities narrow tools, observation scopes, and behavior k
     tool: "minecraft_start_behavior",
     requestedCapability: "go_to"
   });
-  assert.deepEqual(actor.calls, []);
+  assert.deepEqual(actor.calls, ["getSnapshot"]);
 });
 
 test("mixed read and control batch is rejected before any actor side effect", async () => {
@@ -282,7 +289,7 @@ test("mixed read and control batch is rejected before any actor side effect", as
 
   await runner.run(decisionInput());
 
-  assert.deepEqual(actor.calls, []);
+  assert.deepEqual(actor.calls, ["getSnapshot"]);
   assert.equal(results.length, 2);
   for (const result of results) {
     assert.equal(JSON.parse(result).error, "invalid_tool_batch");
@@ -302,9 +309,36 @@ test("single control call executes and autonomy tool is capability scoped", asyn
 
   await runner.run(decisionInput());
 
-  assert.deepEqual(actor.calls, ["startBehavior"]);
+  assert.deepEqual(actor.calls, ["getSnapshot", "startBehavior"]);
+  assert.deepEqual(actor.lastBehaviorCommand?.guard, {
+    controlStateToken: actorSnapshot().controlStateToken,
+    conditionRefs: []
+  });
+  assert.deepEqual(actor.lastBehaviorCommand?.provenance, { contextRef: actorSnapshot().contextRef });
   const toolNames = resolveTools(llm.params).map(tool => tool.function.name);
   assert.ok(!toolNames.includes("minecraft_set_autonomy"));
+});
+
+test("model cannot forge hidden guard or revision fields", async () => {
+  const actor = new FakeActorClient();
+  const rejections: Record<string, unknown>[] = [];
+  const llm = new ScriptedDecisionLlm(async params => {
+    const [raw] = await executeToolRound(params, [toolCall("forged-control", "minecraft_start_behavior", {
+      ...behaviorArgs(),
+      expectedActorRevision: 3,
+      guard: { controlStateToken: "forged", conditionRefs: [] }
+    })]);
+    rejections.push(JSON.parse(raw ?? "null") as Record<string, unknown>);
+    await executeToolRound(params, [toolCall("finish-forged", "minecraft_finish_decision", {
+      summary: "拒绝伪造控制字段",
+      persistentState: "保持原状态"
+    })]);
+  });
+
+  await new MinecraftDecisionRunner(llm, actor, pino({ level: "silent" })).run(decisionInput());
+
+  assert.equal(rejections[0]?.error, "tool_execution_failed");
+  assert.deepEqual(actor.calls, ["getSnapshot"]);
 });
 
 test("authorized decision loop receives autonomy policy tool", async () => {
@@ -331,7 +365,6 @@ test("program deployment is capability scoped and parent computes source hash", 
     const [rawValidation] = await executeToolRound(params, [toolCall("validate-1", "minecraft_validate_program", {
       programId: "idle-program",
       programVersion: 1,
-      expectedActorRevision: 3,
       source,
       requiredCapabilities: [],
       summary: "空闲程序"
@@ -339,7 +372,6 @@ test("program deployment is capability scoped and parent computes source hash", 
     validationResults.push(JSON.parse(rawValidation ?? "null") as Record<string, unknown>);
     await executeToolRound(params, [toolCall("activate-1", "minecraft_activate_program", {
       draftId: "draft-1",
-      expectedActorRevision: 3,
       decisionReason: "启用已校验程序"
     })]);
     await executeToolRound(params, [toolCall("finish-program", "minecraft_finish_decision", {
@@ -351,7 +383,7 @@ test("program deployment is capability scoped and parent computes source hash", 
 
   await runner.run({ ...decisionInput(), allowProgramDeployment: true });
 
-  assert.deepEqual(actor.calls, ["validateProgram", "activateProgram"]);
+  assert.deepEqual(actor.calls, ["getSnapshot", "validateProgram", "activateProgram"]);
   assert.deepEqual(actor.commandIdempotencyKeys, ["decision-control-1"]);
   const draft = validationResults[0]?.draft as { program?: { sourceHash?: string } } | undefined;
   assert.match(draft?.program?.sourceHash ?? "", /^sha256:[0-9a-f]{64}$/u);
@@ -378,7 +410,7 @@ test("one wake cannot successfully commit two controls across tool rounds", asyn
 
   await runner.run(decisionInput());
 
-  assert.deepEqual(actor.calls, ["startBehavior"]);
+  assert.deepEqual(actor.calls, ["getSnapshot", "startBehavior"]);
   assert.equal(secondResults[0]?.error, "decision_control_already_committed");
 });
 
@@ -451,7 +483,7 @@ test("hard deadline returns even when provider ignores abort and blocks late too
   );
   assert.ok(Date.now() - startedAtMs < 55);
   await delay(70);
-  assert.deepEqual(actor.calls, []);
+  assert.deepEqual(actor.calls, ["getSnapshot"]);
   assert.equal(JSON.parse(lateToolResult ?? "null").error, "decision_closed");
 });
 
@@ -483,8 +515,6 @@ function behaviorArgs() {
     kind: "go_to",
     position: { x: 8, y: 64, z: 0 },
     tolerance: 1,
-    expectedActorRevision: 3,
-    expectedObservationRevision: 7,
     decisionReason: "前往安全点"
   };
 }
@@ -512,10 +542,12 @@ function decisionInput() {
 
 function actorSnapshot(): MinecraftActorSnapshot {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-1",
     actorRevision: 3,
     observationRevision: 7,
+    controlStateToken: "control-state-token-actor-1-revision-3",
+    contextRef: "context-ref-snapshot-actor-1-revision-3",
     self: selfState(),
     activeBehavior: null,
     actionLease: null,
@@ -535,10 +567,12 @@ function actorSnapshot(): MinecraftActorSnapshot {
 
 function observation(value: MinecraftObservationEnvelope["value"]): MinecraftObservationEnvelope {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     actorId: "actor-1",
     actorRevision: 3,
     observationRevision: 7,
+    controlStateToken: "control-state-token-actor-1-revision-3",
+    contextRef: "context-ref-observation-actor-1-revision-3",
     observedAtMs: 20_000,
     self: selfState(),
     value
@@ -547,7 +581,7 @@ function observation(value: MinecraftObservationEnvelope["value"]): MinecraftObs
 
 function commandResult(): MinecraftCommandResult {
   return {
-    protocolVersion: 1,
+    protocolVersion: 2,
     commandId: "command-1",
     idempotencyKey: "decision-control-1",
     ok: true,

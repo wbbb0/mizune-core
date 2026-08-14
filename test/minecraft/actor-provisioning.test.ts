@@ -47,6 +47,13 @@ test("自然语言 delegate 原子创建 binding 与首条 mailbox，并在 read
     const replay = await fixture.service.delegate(input);
 
     assert.equal(first.created, true);
+    assert.equal(first.resource.minecraftActor?.protocolVersion, 2);
+    const persistedProtocol = fixture.database.getDb().prepare(`
+        SELECT protocol_version AS protocolVersion
+        FROM runtime_minecraft_actors
+        WHERE resource_id = ?
+      `).get(first.resource.resourceId) as { protocolVersion: number } | undefined;
+    assert.equal(persistedProtocol?.protocolVersion, 2);
     assert.equal(first.resource.minecraftActor?.binding.provisionStatus, "pending");
     assert.equal(replay.resource.resourceId, first.resource.resourceId);
     assert.equal(replay.requestId, first.requestId);

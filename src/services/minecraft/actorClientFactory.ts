@@ -26,7 +26,7 @@ export class ConfiguredMinecraftActorClientFactory implements MinecraftActorClie
     if (actor.binding.desiredState !== "open" || actor.binding.provisionStatus !== "ready") {
       throw new Error(`Minecraft Actor Runtime 尚未就绪：${input.resourceId}`);
     }
-    if (actor.transportKind !== "unix_socket" || actor.protocolVersion !== 1) {
+    if (actor.transportKind !== "unix_socket" || actor.protocolVersion !== 2) {
       throw new Error(`Minecraft Actor transport 不受当前运行时支持：${actor.transportKind}`);
     }
     await this.requireActiveIncarnation(input.resourceId, actor.endpoint);

@@ -117,4 +117,6 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 真实 1.21.1 NeoForge/Create 离线镜像服已通过上述两种 opt-in smoke：父项目自然语言 delegate 能启动真实客户端，读取连接状态、坐标、环境方块、背包、玩家和实体；私有 Decision Runner 也能根据普通中文目标自行读取环境、选择当前唯一开放的聊天行为，并通过统一 behavior 状态机完成普通全局聊天。Decision Runner 在握手后按 Runtime manifest 动态裁剪 RPC、观察 scope 和行为种类，不能调用未开放的移动、交互或战斗能力；执行入口还会再次校验能力，不能靠伪造隐藏 tool call 绕过。
 
-聊天命令虽然仍携带最近读取到的 observation revision，但不会因为游戏时间、天气等无关快照刷新而失败；它只严格比较 actor revision，并继续受连接状态、controller/action lease、deadline 和幂等键约束。任何引用实体、位置或物品的后续行为仍必须严格校验 observation revision 与 opaque ref。下一阶段按同一 capability 边界逐项实现移动、交互和战斗，每增加一个行为先落状态机与契约测试，再开放给 Decision Runner 和真实 smoke。
+父项目与 Python Actor Runtime 使用独立的 v2 控制协议（不要与 Java Bridge v2 混淆）。读取结果保留数字 revision 供代码诊断，同时返回 Runtime 用持久 secret 签发的 `controlStateToken` 与审计用 `contextRef`。所有控制命令统一携带 `guard: { controlStateToken, conditionRefs }` 和 `provenance: { contextRef }`；当前 `conditionRefs` 必须为空数组，目标对象继续作为参数中的 opaque ref 传递。全局 observation revision 只表示观察水位，不再作为通用 mutation CAS，因此天气、游戏时间等无关观察刷新不会阻断聊天或坐标 `go_to`。
+
+私有 Decision Runner 会在模型调用前自动预取 snapshot，并在后续 snapshot/observe 成功后单调更新内部 read state。模型消息、工具 schema 与工具结果不会暴露 revision、guard token、context ref 或幂等键；执行器从最近 read state 自动注入 guard/provenance，并从持久决策记录注入幂等键。Runtime 先处理幂等重放，再验证 control token；token 过期、被篡改、actor 或 runtime incarnation 不匹配时返回 `stale_control_state` / `after_refresh`，且不产生副作用。

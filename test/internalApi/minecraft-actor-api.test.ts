@@ -373,7 +373,7 @@ async function createActorResource(
       actorId,
       transportKind: "unix_socket",
       endpoint: "/private/runtime.sock",
-      protocolVersion: 1,
+      protocolVersion: 2,
       persistentState: "待命",
       currentGoal: null,
       modelRefs: ["secret-model-ref"],
@@ -392,10 +392,12 @@ async function createActorResource(
 
 function snapshot() {
   return {
-    protocolVersion: 1 as const,
+    protocolVersion: 2 as const,
     actorId: "actor-dev",
     actorRevision: 1,
     observationRevision: 1,
+    controlStateToken: "control-state-token-actor-dev-revision-1",
+    contextRef: "context-ref-snapshot-actor-dev-revision-1",
     self: { position: { x: 0, y: 64, z: 0 }, health: 20, food: 20, connected: true },
     activeBehavior: null,
     actionLease: null,

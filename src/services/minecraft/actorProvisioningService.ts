@@ -57,7 +57,7 @@ export class MinecraftActorProvisioningService {
         actorId,
         transportKind: "unix_socket",
         endpoint,
-        protocolVersion: 1,
+        protocolVersion: 2,
         persistentState: template.initialPersistentState,
         currentGoal: input.instruction,
         modelRefs: [...template.modelRefs],

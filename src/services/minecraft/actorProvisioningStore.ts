@@ -759,9 +759,10 @@ function insertActor(db: SqliteDatabase, input: ReturnType<typeof normalize>): v
       resource_id, actor_id, transport_kind, endpoint, protocol_version,
       persistent_state, current_goal, model_refs_json,
       allow_autonomy_policy_change, allow_program_deployment, last_event_sequence
-    ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     input.resourceId, input.actor.actorId, input.actor.transportKind, input.actor.endpoint,
+    input.actor.protocolVersion,
     input.actor.persistentState, input.actor.currentGoal, JSON.stringify(input.actor.modelRefs),
     input.actor.allowAutonomyPolicyChange ? 1 : 0,
     input.actor.allowProgramDeployment ? 1 : 0,
