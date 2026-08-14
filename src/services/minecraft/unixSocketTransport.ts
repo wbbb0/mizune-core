@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createConnection, type Socket } from "node:net";
 import type { MinecraftActorRpcMethod, MinecraftActorTransport } from "./actorClient.ts";
 
@@ -10,6 +11,12 @@ export interface UnixSocketMinecraftActorTransportOptions {
   maxFrameBytes: number;
   clientName?: string;
   clientVersion?: string;
+  runtimeInstanceId?: string;
+  authTokenFile?: string;
+  resolveRuntimeCredentials?: () => Promise<{
+    runtimeInstanceId: string;
+    authTokenFile: string;
+  }>;
   now?: () => number;
 }
 
@@ -52,6 +59,9 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
   private readonly configuredMaxFrameBytes: number;
   private readonly clientName: string;
   private readonly clientVersion: string;
+  private readonly runtimeInstanceId: string | null;
+  private readonly authTokenFile: string | null;
+  private readonly resolveRuntimeCredentials: UnixSocketMinecraftActorTransportOptions["resolveRuntimeCredentials"];
   private readonly controllerId = randomUUID();
   private readonly now: () => number;
   private readonly pending = new Map<string, PendingResponse>();
@@ -73,6 +83,9 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
     this.configuredMaxFrameBytes = requirePositiveInteger(options.maxFrameBytes, "maxFrameBytes");
     this.clientName = options.clientName ?? "mizune-core";
     this.clientVersion = options.clientVersion ?? "1";
+    this.runtimeInstanceId = options.runtimeInstanceId?.trim() || null;
+    this.authTokenFile = options.authTokenFile?.trim() || null;
+    this.resolveRuntimeCredentials = options.resolveRuntimeCredentials;
     this.now = options.now ?? Date.now;
   }
 
@@ -146,6 +159,23 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
     }
   }
 
+  async releaseController(): Promise<void> {
+    const sessionId = this.sessionId;
+    if (!sessionId || this.closed) return;
+    const requestId = randomUUID();
+    const response = await this.sendAndWait({
+      type: "release",
+      requestId,
+      sessionId
+    }, requestId, this.now() + this.requestTimeoutMs);
+    if (response.type !== "release_ack" || response.sessionId !== sessionId) {
+      throw new Error("Minecraft Runtime release 响应无效");
+    }
+    this.sessionId = null;
+    this.capabilities = null;
+    this.stopHeartbeat();
+  }
+
   private async ensureConnected(signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     if (this.closed) throw new Error("Minecraft Unix socket transport 已关闭");
@@ -163,6 +193,7 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
 
   private async connect(): Promise<void> {
     if (this.closed) throw new Error("Minecraft Unix socket transport 已关闭");
+    const credentials = await this.getRuntimeCredentials();
     this.resetSocket(new MinecraftTransportDisconnectedError("正在重新建立 Minecraft Runtime 连接"));
     const socket = createConnection({ path: this.socketPath });
     this.socket = socket;
@@ -207,6 +238,12 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
     }
     const requestId = randomUUID();
     const deadlineAtMs = this.now() + this.connectTimeoutMs;
+    const authToken = credentials.authTokenFile === null
+      ? null
+      : (await readFile(credentials.authTokenFile, "utf8")).trim();
+    if (authToken !== null && (!authToken || authToken.length > 512)) {
+      throw new Error("Minecraft Runtime auth token 无效");
+    }
     const hello = await this.sendAndWait({
       type: "hello",
       requestId,
@@ -214,7 +251,8 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
       actorId: this.actorId,
       clientName: this.clientName,
       clientVersion: this.clientVersion,
-      controllerId: this.controllerId
+      controllerId: this.controllerId,
+      ...(authToken === null ? {} : { authToken })
     }, requestId, deadlineAtMs);
     if (hello.type === "error") {
       const error = isRecord(hello.error) ? hello.error : {};
@@ -227,11 +265,34 @@ export class UnixSocketMinecraftActorTransport implements MinecraftActorTranspor
     if (hello.type !== "hello_result" || hello.protocolVersion !== 1 || hello.actorId !== this.actorId) {
       throw new Error("Minecraft Runtime hello 响应与请求不匹配");
     }
+    if (
+      credentials.runtimeInstanceId !== null
+      && hello.runtimeInstanceId !== credentials.runtimeInstanceId
+    ) {
+      throw new Error("Minecraft Runtime instance 身份与受管进程不匹配");
+    }
     const sessionId = requireNonEmptyValue(hello.sessionId, "hello.sessionId");
     const capabilities = parseCapabilities(hello.capabilities, this.configuredMaxFrameBytes);
     this.sessionId = sessionId;
     this.capabilities = capabilities;
     this.startHeartbeat(capabilities.heartbeatIntervalMs);
+  }
+
+  private async getRuntimeCredentials(): Promise<{
+    runtimeInstanceId: string | null;
+    authTokenFile: string | null;
+  }> {
+    if (!this.resolveRuntimeCredentials) {
+      return {
+        runtimeInstanceId: this.runtimeInstanceId,
+        authTokenFile: this.authTokenFile
+      };
+    }
+    const resolved = await this.resolveRuntimeCredentials();
+    return {
+      runtimeInstanceId: requireNonEmpty(resolved.runtimeInstanceId, "runtimeInstanceId"),
+      authTokenFile: requireNonEmpty(resolved.authTokenFile, "authTokenFile")
+    };
   }
 
   private sendAndWait(

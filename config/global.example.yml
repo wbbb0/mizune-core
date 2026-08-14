@@ -349,6 +349,14 @@ minecraft:
   requestTimeoutMs: 10000
   connectTimeoutMs: 3000
   maxFrameBytes: 1048576
+  supervisor:
+    pythonExecutable: python3
+    pythonModulePath: vendor/mizune-mc-runtime/src
+    startupTimeoutMs: 10000
+    stopGraceMs: 3000
+    restartWindowMs: 300000
+    maxRestartAttempts: 5
+    maxLogLineChars: 4096
   templates: {}
 backup:
   profileRotateLimit: 10

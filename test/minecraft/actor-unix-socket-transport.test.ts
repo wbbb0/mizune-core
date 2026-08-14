@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type Server, type Socket } from "node:net";
@@ -172,6 +172,63 @@ test("response loss reconnects once and reuses the same transport request ID", a
   } finally {
     await transport.close();
     await server.close();
+  }
+});
+
+test("reconnect refreshes managed runtime identity and auth token credentials", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "mizune-actor-credentials-"));
+  const tokenFile = join(directory, "auth.token");
+  await writeFile(tokenFile, "private-token", { mode: 0o600 });
+  let credentialReads = 0;
+  let requests = 0;
+  const server = await startFramedServer((socket, message, connectionIndex) => {
+    if (message.type === "hello") {
+      assert.equal(message.authToken, "private-token");
+      reply(socket, {
+        type: "hello_result",
+        requestId: message.requestId,
+        protocolVersion: 1,
+        actorId: "actor-dev",
+        runtimeInstanceId: `runtime-${connectionIndex}`,
+        sessionId: `session-${connectionIndex}`,
+        capabilities: {
+          heartbeatIntervalMs: 1_000,
+          controllerLeaseTtlMs: 5_000,
+          maxFrameBytes: 1_048_576,
+          maxEventsPerPage: 256,
+          rpcMethods: ["actor.get_snapshot"],
+          features: ["request_deadline@1", "durable_idempotency@1", "event_cursor@1", "control_lease@1"]
+        }
+      });
+      return;
+    }
+    if (message.type !== "request") return;
+    requests += 1;
+    if (requests === 1) {
+      socket.destroy();
+      return;
+    }
+    reply(socket, { type: "response", requestId: message.requestId, ok: true, result: createSnapshot() });
+  });
+  const transport = new UnixSocketMinecraftActorTransport({
+    socketPath: server.socketPath,
+    actorId: "actor-dev",
+    requestTimeoutMs: 1_000,
+    connectTimeoutMs: 500,
+    maxFrameBytes: 1_048_576,
+    resolveRuntimeCredentials: async () => {
+      credentialReads += 1;
+      return { runtimeInstanceId: `runtime-${credentialReads}`, authTokenFile: tokenFile };
+    }
+  });
+  try {
+    const client = new ProtocolMinecraftActorClient("actor-dev", transport);
+    assert.equal((await client.getSnapshot()).actorId, "actor-dev");
+    assert.equal(credentialReads, 2);
+  } finally {
+    await transport.close();
+    await server.close();
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

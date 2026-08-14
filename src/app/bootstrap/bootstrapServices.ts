@@ -61,6 +61,7 @@ import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
 import { ConfiguredMinecraftActorClientFactory } from "#services/minecraft/actorClientFactory.ts";
 import { MinecraftActorProvisioningStore } from "#services/minecraft/actorProvisioningStore.ts";
 import { MinecraftRuntimeTemplateCatalog } from "#services/minecraft/runtimeTemplateCatalog.ts";
+import { MinecraftRuntimeProcessSupervisor } from "#services/minecraft/runtimeProcessSupervisor.ts";
 import { MinecraftActorResourceManager } from "#services/minecraft/actorResourceManager.ts";
 import { MinecraftActorRuntimeService } from "#services/minecraft/actorRuntimeService.ts";
 import { MinecraftActorProvisioningService } from "#services/minecraft/actorProvisioningService.ts";
@@ -147,7 +148,8 @@ export function createBootstrapServices(
   const minecraftActorProvisioningStore = new MinecraftActorProvisioningStore(stateDatabase, minecraftActorJournal);
   const minecraftActorClientFactory = new ConfiguredMinecraftActorClientFactory(
     config,
-    minecraftActorTemplateCatalog
+    minecraftActorTemplateCatalog,
+    minecraftActorProvisioningStore
   );
   const minecraftActorOwnerNotifications = new MinecraftActorOwnerNotificationRouter();
   const minecraftActorManager = new MinecraftActorResourceManager(
@@ -164,7 +166,19 @@ export function createBootstrapServices(
     sharedResourceRegistry,
     config.minecraft.runtimeDir
   );
-  const minecraftActorRuntime = new MinecraftActorRuntimeService(config, minecraftActorManager, logger);
+  const minecraftRuntimeSupervisor = new MinecraftRuntimeProcessSupervisor(
+    config,
+    sharedResourceRegistry,
+    minecraftActorProvisioningStore,
+    minecraftActorTemplateCatalog,
+    logger
+  );
+  const minecraftActorRuntime = new MinecraftActorRuntimeService(
+    config,
+    minecraftActorManager,
+    minecraftRuntimeSupervisor,
+    logger
+  );
   const recentErrorStore = new RecentErrorStore(dataDir, logger, stateDatabase);
   context.recentErrorCapture.bind(recentErrorStore);
   const browserService = new BrowserService(createBrowserServiceDeps({

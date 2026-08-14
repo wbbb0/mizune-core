@@ -93,7 +93,11 @@ function startDaemon(socketPath: string, databasePath: string): ChildProcess {
     "--database",
     databasePath,
     "--actor-id",
-    "actor-contract"
+    "actor-contract",
+    "--runtime-instance-id",
+    "runtime-contract",
+    "--pid-file",
+    join(dirname(socketPath), "runtime.pid.json")
   ], {
     cwd: PROJECT_ROOT,
     env: {

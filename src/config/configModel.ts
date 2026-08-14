@@ -454,6 +454,16 @@ const minecraftRuntimeTemplateConfigSchema = s.object({
   initialPersistentState: s.string().title("初始持久状态").default("尚无持久经历。")
 }).title("Minecraft 运行模板").strict();
 
+const minecraftSupervisorConfigSchema = s.object({
+  pythonExecutable: s.string().trim().nonempty().title("Python 可执行文件").default("python3"),
+  pythonModulePath: s.string().trim().nonempty().title("Runtime Python 模块目录").default("vendor/mizune-mc-runtime/src"),
+  startupTimeoutMs: s.number().int().min(500).max(120_000).title("启动就绪超时毫秒").default(10_000),
+  stopGraceMs: s.number().int().min(100).max(30_000).title("优雅停止等待毫秒").default(3_000),
+  restartWindowMs: s.number().int().min(1_000).max(86_400_000).title("重启预算窗口毫秒").default(300_000),
+  maxRestartAttempts: s.number().int().min(1).max(20).title("窗口内最大启动次数").default(5),
+  maxLogLineChars: s.number().int().min(256).max(65_536).title("单条子进程日志字符上限").default(4_096)
+}).title("Minecraft Runtime 进程托管").strict().default(emptyObject);
+
 const minecraftConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   runtimeDir: s.string().trim().nonempty().title("受管 Runtime 临时目录").default("/tmp/mizune-minecraft-runtime"),
@@ -461,6 +471,7 @@ const minecraftConfigSchema = s.object({
   requestTimeoutMs: s.number().int().min(100).max(300_000).title("RPC 请求超时毫秒").default(10_000),
   connectTimeoutMs: s.number().int().min(100).max(60_000).title("连接超时毫秒").default(3_000),
   maxFrameBytes: s.number().int().min(1_024).max(16 * 1_024 * 1_024).title("最大协议帧字节数").default(1_048_576),
+  supervisor: minecraftSupervisorConfigSchema,
   templates: s.record(
     s.string().trim().nonempty(),
     minecraftRuntimeTemplateConfigSchema

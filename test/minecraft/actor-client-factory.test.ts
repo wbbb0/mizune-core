@@ -30,7 +30,7 @@ test("template catalog 只匹配服务端允许的目标且拒绝歧义", () => 
   }), /不在受控允许列表/u);
 });
 
-test("恢复资源区分不可变运行模板与可热收敛策略", () => {
+test("恢复资源区分不可变运行模板与可热收敛策略", async () => {
   const config = createTestAppConfig({
     minecraft: {
       enabled: true,
@@ -41,7 +41,7 @@ test("恢复资源区分不可变运行模板与可热收敛策略", () => {
   });
   const catalog = new MinecraftRuntimeTemplateCatalog(config);
   const resolved = catalog.list()[0]!;
-  const factory = new ConfiguredMinecraftActorClientFactory(config, catalog);
+  const factory = new ConfiguredMinecraftActorClientFactory(config, catalog, runningIncarnation());
   const actor = createTestMinecraftRecoveryState({
     transportKind: "unix_socket",
     endpoint: "/run/mizune/runtime.sock",
@@ -57,14 +57,14 @@ test("恢复资源区分不可变运行模板与可热收敛策略", () => {
   const reconciled = factory.reconcileRecoveryState(actor);
   assert.deepEqual(reconciled.modelRefs, ["main"]);
   assert.equal(reconciled.allowProgramDeployment, false);
-  assert.doesNotThrow(() => factory.create({ resourceId: "res-1", actor: reconciled }));
+  await assert.doesNotReject(factory.create({ resourceId: "res-1", actor: reconciled }));
   const stale = factory.reconcileRecoveryState({
     ...reconciled,
     binding: { ...reconciled.binding, templateFingerprint: "stale" }
   });
   assert.equal(stale.binding.provisionStatus, "needs_attention");
   assert.equal(stale.binding.failureCode, "template_changed");
-  assert.throws(() => factory.create({
+  await assert.rejects(factory.create({
     resourceId: "res-1",
     actor: stale
   }), /尚未就绪/u);
@@ -78,7 +78,7 @@ test("恢复资源区分不可变运行模板与可热收敛策略", () => {
   const extendedCatalog = new MinecraftRuntimeTemplateCatalog(extendedAllowlistConfig);
   assert.equal(extendedCatalog.resolveById("dev").fingerprint, resolved.fingerprint);
   assert.equal(
-    new ConfiguredMinecraftActorClientFactory(extendedAllowlistConfig, extendedCatalog)
+    new ConfiguredMinecraftActorClientFactory(extendedAllowlistConfig, extendedCatalog, runningIncarnation())
       .reconcileRecoveryState(reconciled).binding.provisionStatus,
     "ready"
   );
@@ -92,7 +92,11 @@ test("恢复资源区分不可变运行模板与可热收敛策略", () => {
     }
   });
   const changedProfileCatalog = new MinecraftRuntimeTemplateCatalog(changedProfileConfig);
-  const changedProfile = new ConfiguredMinecraftActorClientFactory(changedProfileConfig, changedProfileCatalog)
+  const changedProfile = new ConfiguredMinecraftActorClientFactory(
+    changedProfileConfig,
+    changedProfileCatalog,
+    runningIncarnation()
+  )
     .reconcileRecoveryState(reconciled);
   assert.equal(changedProfile.binding.provisionStatus, "needs_attention");
   assert.equal(changedProfile.binding.failureCode, "template_changed");
@@ -109,5 +113,31 @@ function template(allowedServers: string[]) {
     modelRefs: ["main"],
     allowAutonomyPolicyChange: false,
     allowProgramDeployment: false
+  };
+}
+
+function runningIncarnation() {
+  return {
+    async getActiveIncarnation() {
+      return {
+        runtimeInstanceId: "runtime-test",
+        resourceId: "res-1",
+        attemptId: "attempt-test",
+        status: "running" as const,
+        daemonPid: 100,
+        daemonStartTicks: "10",
+        clientPid: null,
+        clientStartTicks: null,
+        processGroupId: 100,
+        bootId: "boot-test",
+        socketPath: "/run/mizune/runtime.sock",
+        gameDirectory: "/run/mizune/game",
+        tokenFile: "/run/mizune/auth.token",
+        bridgePort: null,
+        startedAtMs: 1,
+        stoppedAtMs: null,
+        exitReason: null
+      };
+    }
   };
 }

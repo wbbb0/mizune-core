@@ -117,7 +117,8 @@ export class MinecraftActorProvisioningStore {
             attempt_id = ?
         WHERE resource_id = ? AND desired_state = 'open'
           AND provision_status IN ('pending', 'retry_wait', 'failed', 'stopped')
-      `).run(attemptId, resourceId);
+          AND (provision_status <> 'retry_wait' OR retry_at_ms IS NULL OR retry_at_ms <= ?)
+      `).run(attemptId, resourceId, integer(input.nowMs, "nowMs"));
       if (updated.changes !== 1) throw new Error(`Minecraft Actor 不能开始新的 provision attempt：${input.resourceId}`);
       db.prepare(`
         INSERT INTO minecraft_runtime_incarnations (
@@ -187,6 +188,7 @@ export class MinecraftActorProvisioningStore {
     expectedClientPid?: number | null;
     expectedClientStartTicks?: string | null;
     failureCode?: string | null;
+    retryAtMs?: number | null;
     nowMs: number;
   }): Promise<MinecraftRuntimeIncarnationRecord> {
     await this.stateDatabase.init();
@@ -234,16 +236,23 @@ export class MinecraftActorProvisioningStore {
             ? "runtime_process_failed"
             : text(input.failureCode, "failureCode", 256))
         : null;
+      const retryAtMs = input.outcome === "failed" && input.retryAtMs != null
+        ? integer(input.retryAtMs, "retryAtMs")
+        : null;
+      const nextProvisionStatus = input.outcome === "failed" && retryAtMs !== null
+        ? "retry_wait"
+        : input.outcome;
       const binding = db.prepare(`
         UPDATE minecraft_actor_bindings
         SET provision_status = ?,
-            failure_code = ?, failure_message = ?, retry_at_ms = NULL,
+            failure_code = ?, failure_message = ?, retry_at_ms = ?,
             attempt_id = NULL
         WHERE resource_id = ? AND desired_state = 'open' AND attempt_id = ?
       `).run(
-        input.outcome,
+        nextProvisionStatus,
         failureCode,
         input.outcome === "failed" ? exitReason : null,
+        retryAtMs,
         resourceId,
         attemptId
       );
@@ -325,6 +334,83 @@ export class MinecraftActorProvisioningStore {
     return update.immediate();
   }
 
+  async recordRecoveredProcessIdentity(input: {
+    resourceId: string;
+    attemptId: string;
+    runtimeInstanceId: string;
+    daemonPid: number;
+    daemonStartTicks: string;
+    processGroupId: number;
+    targetStatus: "running" | "stopping";
+    nowMs: number;
+  }): Promise<MinecraftRuntimeIncarnationRecord> {
+    await this.stateDatabase.init();
+    const db = this.stateDatabase.getDb();
+    const recover = db.transaction(() => {
+      const resourceId = text(input.resourceId, "resourceId", 256);
+      const attemptId = text(input.attemptId, "attemptId", 256);
+      const runtimeInstanceId = text(input.runtimeInstanceId, "runtimeInstanceId", 256);
+      integer(input.nowMs, "nowMs");
+      const binding = db.prepare(`
+        SELECT desired_state AS desiredState, provision_status AS provisionStatus,
+               attempt_id AS attemptId
+        FROM minecraft_actor_bindings WHERE resource_id = ?
+      `).get(resourceId) as {
+        desiredState: string;
+        provisionStatus: string;
+        attemptId: string | null;
+      } | undefined;
+      if (!binding) throw new Error(`Minecraft Actor binding 不存在：${resourceId}`);
+      if (input.targetStatus === "running" && (
+        binding.desiredState !== "open"
+        || binding.provisionStatus !== "running"
+        || binding.attemptId !== attemptId
+      )) {
+        throw new Error(`Minecraft Actor provision attempt 已失效：${resourceId}`);
+      }
+      if (input.targetStatus === "stopping") {
+        const control = db.prepare(`
+          SELECT loop_phase AS loopPhase, active_wake_id AS activeWakeId,
+                 active_decision_id AS activeDecisionId
+          FROM minecraft_actor_control_state WHERE resource_id = ?
+        `).get(resourceId) as {
+          loopPhase: string;
+          activeWakeId: string | null;
+          activeDecisionId: string | null;
+        } | undefined;
+        if (
+          !control
+          || control.loopPhase === "deciding"
+          || control.activeWakeId !== null
+          || control.activeDecisionId !== null
+        ) {
+          throw new Error(`Minecraft Actor 当前决策尚未收敛，不能回收 Runtime：${resourceId}`);
+        }
+      }
+      const daemonPid = positiveInteger(input.daemonPid, "daemonPid");
+      const processGroupId = positiveInteger(input.processGroupId, "processGroupId");
+      if (daemonPid !== processGroupId) throw new Error("受管 Runtime 必须以 daemon PID 作为独立进程组 ID");
+      const updated = db.prepare(`
+        UPDATE minecraft_runtime_incarnations
+        SET status = ?, daemon_pid = ?, daemon_start_ticks = ?, process_group_id = ?
+        WHERE runtime_instance_id = ? AND resource_id = ? AND attempt_id = ?
+          AND daemon_pid IS NULL AND daemon_start_ticks IS NULL AND process_group_id IS NULL
+          AND status IN ('starting', 'stopping')
+      `).run(
+        input.targetStatus,
+        daemonPid,
+        text(input.daemonStartTicks, "daemonStartTicks", 256),
+        processGroupId,
+        runtimeInstanceId,
+        resourceId,
+        attemptId
+      );
+      if (updated.changes !== 1) throw new Error(`Minecraft Runtime 自登记身份不能恢复：${runtimeInstanceId}`);
+      return requireIncarnation(db, runtimeInstanceId);
+    });
+    return recover.immediate();
+  }
+
   async getActiveIncarnation(resourceId: string): Promise<MinecraftRuntimeIncarnationRecord | null> {
     await this.stateDatabase.init();
     const db = this.stateDatabase.getDb();
@@ -334,6 +420,80 @@ export class MinecraftActorProvisioningStore {
       ORDER BY started_at_ms DESC, runtime_instance_id DESC LIMIT 1
     `).get(text(resourceId, "resourceId", 256)) as IncarnationRow | undefined;
     return row ? mapIncarnation(row) : null;
+  }
+
+  async countFailedIncarnationsSince(resourceId: string, sinceMs: number): Promise<number> {
+    await this.stateDatabase.init();
+    const db = this.stateDatabase.getDb();
+    const row = db.prepare(`
+      SELECT COUNT(*) AS count FROM minecraft_runtime_incarnations
+      WHERE resource_id = ? AND status = 'failed' AND started_at_ms >= ?
+    `).get(
+      text(resourceId, "resourceId", 256),
+      integer(sinceMs, "sinceMs")
+    ) as { count: number };
+    return row.count;
+  }
+
+  async hasActiveDecision(resourceId: string): Promise<boolean> {
+    await this.stateDatabase.init();
+    const db = this.stateDatabase.getDb();
+    const state = db.prepare(`
+      SELECT loop_phase AS loopPhase, active_wake_id AS activeWakeId,
+             active_decision_id AS activeDecisionId
+      FROM minecraft_actor_control_state WHERE resource_id = ?
+    `).get(text(resourceId, "resourceId", 256)) as {
+      loopPhase: string;
+      activeWakeId: string | null;
+      activeDecisionId: string | null;
+    } | undefined;
+    if (!state) throw new Error(`Minecraft Actor 控制状态不存在：${resourceId}`);
+    return state.loopPhase === "deciding" || state.activeWakeId !== null || state.activeDecisionId !== null;
+  }
+
+  async markNeedsAttention(input: {
+    resourceId: string;
+    failureCode: string;
+    failureMessage: string;
+    phase: MinecraftActorRecoveryState["binding"]["provisionPhase"];
+    nowMs: number;
+  }): Promise<void> {
+    await this.stateDatabase.init();
+    const db = this.stateDatabase.getDb();
+    const appendedEvents: MinecraftActorJournalEvent[] = [];
+    const update = db.transaction(() => {
+      const resourceId = text(input.resourceId, "resourceId", 256);
+      const updated = db.prepare(`
+        UPDATE minecraft_actor_bindings
+        SET provision_status = 'needs_attention', provision_phase = ?,
+            failure_code = ?, failure_message = ?, retry_at_ms = NULL, attempt_id = NULL
+        WHERE resource_id = ? AND desired_state = 'open'
+          AND provision_status <> 'needs_attention'
+      `).run(
+        input.phase,
+        text(input.failureCode, "failureCode", 256),
+        text(input.failureMessage, "failureMessage", 2_000),
+        resourceId
+      );
+      if (updated.changes !== 1) return;
+      db.prepare(`
+        UPDATE minecraft_actor_control_state
+        SET revision = revision + 1, loop_phase = 'paused', last_error = ?, updated_at_ms = ?
+        WHERE resource_id = ? AND active_wake_id IS NULL
+          AND loop_phase NOT IN ('paused', 'closed')
+      `).run(input.failureMessage, integer(input.nowMs, "nowMs"), resourceId);
+      appendedEvents.push(appendProvisionEvent(
+        db,
+        resourceId,
+        "actor_provisioning_needs_attention",
+        input.phase,
+        input.nowMs,
+        requireRevision(db, resourceId),
+        { failureCode: input.failureCode }
+      ));
+    });
+    update.immediate();
+    this.journal.publish(appendedEvents);
   }
 
   async advanceAttempt(input: {

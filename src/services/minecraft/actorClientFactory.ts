@@ -3,6 +3,7 @@ import type { AppConfig } from "#config/config.ts";
 import type { MinecraftActorRecoveryState } from "#runtime/resources/resourceTypes.ts";
 import { ProtocolMinecraftActorClient, type MinecraftActorClient } from "./actorClient.ts";
 import type { MinecraftActorClientFactory } from "./actorResourceManager.ts";
+import type { MinecraftActorProvisioningStore } from "./actorProvisioningStore.ts";
 import type {
   MinecraftRuntimeTemplateCatalog,
   ResolvedMinecraftRuntimeTemplate
@@ -13,13 +14,14 @@ import { UnixSocketMinecraftActorTransport } from "./unixSocketTransport.ts";
 export class ConfiguredMinecraftActorClientFactory implements MinecraftActorClientFactory {
   constructor(
     private readonly config: AppConfig,
-    private readonly templates: MinecraftRuntimeTemplateCatalog
+    private readonly templates: MinecraftRuntimeTemplateCatalog,
+    private readonly provisioningStore: Pick<MinecraftActorProvisioningStore, "getActiveIncarnation">
   ) {}
 
-  create(input: {
+  async create(input: {
     resourceId: string;
     actor: MinecraftActorRecoveryState;
-  }): MinecraftActorClient {
+  }): Promise<MinecraftActorClient> {
     const actor = this.reconcileRecoveryState(input.actor);
     if (actor.binding.desiredState !== "open" || actor.binding.provisionStatus !== "ready") {
       throw new Error(`Minecraft Actor Runtime 尚未就绪：${input.resourceId}`);
@@ -27,14 +29,34 @@ export class ConfiguredMinecraftActorClientFactory implements MinecraftActorClie
     if (actor.transportKind !== "unix_socket" || actor.protocolVersion !== 1) {
       throw new Error(`Minecraft Actor transport 不受当前运行时支持：${actor.transportKind}`);
     }
+    await this.requireActiveIncarnation(input.resourceId, actor.endpoint);
     const transport = new UnixSocketMinecraftActorTransport({
       socketPath: actor.endpoint,
       actorId: actor.actorId,
       requestTimeoutMs: this.config.minecraft.requestTimeoutMs,
       connectTimeoutMs: this.config.minecraft.connectTimeoutMs,
-      maxFrameBytes: this.config.minecraft.maxFrameBytes
+      maxFrameBytes: this.config.minecraft.maxFrameBytes,
+      resolveRuntimeCredentials: async () => {
+        const current = await this.requireActiveIncarnation(input.resourceId, actor.endpoint);
+        return {
+          runtimeInstanceId: current.runtimeInstanceId,
+          authTokenFile: current.tokenFile
+        };
+      }
     });
     return new ProtocolMinecraftActorClient(actor.actorId, transport);
+  }
+
+  private async requireActiveIncarnation(resourceId: string, socketPath: string) {
+    const incarnation = await this.provisioningStore.getActiveIncarnation(resourceId);
+    if (
+      !incarnation
+      || incarnation.status !== "running"
+      || incarnation.socketPath !== socketPath
+    ) {
+      throw new Error(`Minecraft Actor Runtime 实例身份尚未就绪：${resourceId}`);
+    }
+    return incarnation;
   }
 
   reconcileRecoveryState(actor: MinecraftActorRecoveryState): MinecraftActorRecoveryState {

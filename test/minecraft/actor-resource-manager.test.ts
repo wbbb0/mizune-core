@@ -989,7 +989,9 @@ test("真实配置工厂通过 manager 恢复时保留实例方法绑定", async
     }
   });
   const catalog = new MinecraftRuntimeTemplateCatalog(config);
-  const factory = new ConfiguredMinecraftActorClientFactory(config, catalog);
+  const factory = new ConfiguredMinecraftActorClientFactory(config, catalog, {
+    async getActiveIncarnation() { return null; }
+  });
   const manager = new MinecraftActorResourceManager(
     registry,
     new MinecraftActorControlStore(database),
@@ -1051,7 +1053,9 @@ test("不可变模板失配会持久化 needs_attention 并在领取 mailbox 前
   const manager = new MinecraftActorResourceManager(
     registry,
     control,
-    new ConfiguredMinecraftActorClientFactory(config, catalog),
+    new ConfiguredMinecraftActorClientFactory(config, catalog, {
+      async getActiveIncarnation() { return null; }
+    }),
     new FinishOnlyLlm("完成", "完成", null),
     createSilentLogger(),
     undefined,

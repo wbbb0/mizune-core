@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { MinecraftActorRuntimeService } from "../../src/services/minecraft/actorRuntimeService.ts";
+import type { MinecraftRuntimeSupervisor } from "../../src/services/minecraft/actorRuntimeService.ts";
 import type { MinecraftActorResourceManager } from "../../src/services/minecraft/actorResourceManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
@@ -30,7 +31,8 @@ test("runtime service 隔离单个 Actor 轮询故障并在停止时关闭 manag
   const config = createTestAppConfig({
     minecraft: { enabled: true, eventPollIntervalMs: 100 }
   });
-  const service = new MinecraftActorRuntimeService(config, manager, createSilentLogger(), () => 1_000);
+  const supervisor = createSupervisor();
+  const service = new MinecraftActorRuntimeService(config, manager, supervisor, createSilentLogger(), () => 1_000);
 
   await service.start();
   await service.stop();
@@ -38,6 +40,9 @@ test("runtime service 隔离单个 Actor 轮询故障并在停止时关闭 manag
   assert.deepEqual(ingested.sort(), ["actor-failed", "actor-healthy"]);
   assert.deepEqual(processed, ["actor-healthy"]);
   assert.equal(shutdownCalls, 1);
+  assert.equal(supervisor.startCalls, 1);
+  assert.ok(supervisor.reconcileCalls >= 1);
+  assert.equal(supervisor.stopCalls, 1);
 });
 
 test("禁用 runtime 时 start 不轮询，但 stop 仍释放 manager", async () => {
@@ -47,11 +52,29 @@ test("禁用 runtime 时 start 不轮询，但 stop 仍释放 manager", async ()
     async list() { listCalls += 1; return []; },
     async shutdown() { shutdownCalls += 1; }
   } as unknown as MinecraftActorResourceManager;
-  const service = new MinecraftActorRuntimeService(createTestAppConfig(), manager, createSilentLogger());
+  const supervisor = createSupervisor();
+  const service = new MinecraftActorRuntimeService(createTestAppConfig(), manager, supervisor, createSilentLogger());
 
   await service.start();
   await service.stop();
 
   assert.equal(listCalls, 0);
   assert.equal(shutdownCalls, 1);
+  assert.equal(supervisor.startCalls, 0);
+  assert.equal(supervisor.stopCalls, 1);
 });
+
+function createSupervisor(): MinecraftRuntimeSupervisor & {
+  startCalls: number;
+  reconcileCalls: number;
+  stopCalls: number;
+} {
+  return {
+    startCalls: 0,
+    reconcileCalls: 0,
+    stopCalls: 0,
+    async start() { this.startCalls += 1; },
+    async reconcile() { this.reconcileCalls += 1; },
+    async stop() { this.stopCalls += 1; }
+  };
+}

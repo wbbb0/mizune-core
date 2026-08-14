@@ -7,16 +7,24 @@ interface ActorPollFailure {
   nextAttemptAtMs: number;
 }
 
+export interface MinecraftRuntimeSupervisor {
+  start(): Promise<void>;
+  reconcile(): Promise<void>;
+  stop(): Promise<void>;
+}
+
 export class MinecraftActorRuntimeService {
   private readonly failures = new Map<string, ActorPollFailure>();
   private timer: NodeJS.Timeout | null = null;
   private pollOperation: Promise<void> | null = null;
+  private stopOperation: Promise<void> | null = null;
   private started = false;
   private stopping = false;
 
   constructor(
     private readonly config: AppConfig,
     private readonly manager: MinecraftActorResourceManager,
+    private readonly supervisor: MinecraftRuntimeSupervisor,
     private readonly logger: Logger,
     private readonly now: () => number = Date.now
   ) {}
@@ -29,6 +37,7 @@ export class MinecraftActorRuntimeService {
     if (recoveredDecisions > 0) {
       this.logger.warn({ recoveredDecisions }, "minecraft_actor_decisions_recovered");
     }
+    await this.supervisor.start();
     await this.pollNow();
     if (this.stopping) return;
     this.timer = setInterval(() => {
@@ -49,18 +58,36 @@ export class MinecraftActorRuntimeService {
     return operation;
   }
 
-  async stop(): Promise<void> {
-    if (this.stopping) return;
+  stop(): Promise<void> {
+    this.stopOperation ??= this.performStop();
+    return this.stopOperation;
+  }
+
+  private async performStop(): Promise<void> {
     this.stopping = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     await this.pollOperation?.catch(() => undefined);
-    await this.manager.shutdown();
+    const failures: unknown[] = [];
+    try {
+      await this.manager.shutdown();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await this.supervisor.stop();
+    } catch (error) {
+      failures.push(error);
+    }
     this.started = false;
+    if (failures.length > 0) {
+      throw new AggregateError(failures, "Minecraft Actor runtime 未能安全收敛");
+    }
     this.logger.info("minecraft_actor_runtime_stopped");
   }
 
   private async pollActiveResources(): Promise<void> {
+    await this.supervisor.reconcile();
     const records = (await this.manager.list()).filter(record => (
       record.status === "active"
       && record.minecraftActor?.binding.desiredState === "open"

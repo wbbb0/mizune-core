@@ -2,11 +2,11 @@
 
 Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会话、模型决策、持久经历、显著事件唤起和权限；`vendor/mizune-mc-runtime` daemon 负责结构化状态、确定性行为、任务队列、自治策略和 Python Program 生命周期。
 
-当前 daemon 使用模拟世界验证控制协议与生命周期。动态服务器 binding 和自然语言 delegate 已进入父项目；由父项目自动拉起 daemon/NeoForge 客户端的 supervisor 是下一实现切片，尚未连接真实 NeoForge 客户端。父项目与未来真实 Bridge 之间保持同一套版本化 Actor RPC，避免在接入游戏时重写上层会话资源。
+当前 daemon 使用模拟世界验证控制协议与生命周期。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 simulation daemon，并持久记录 PID、Linux start ticks、boot ID 和每次启动的 Runtime instance ID。NeoForge 模板目前会明确进入 `needs_attention`，尚未拉起真实客户端。父项目与未来真实 Bridge 之间保持同一套版本化 Actor RPC，避免在接入游戏时重写上层会话资源。
 
 ## dev 启动
 
-当前 worktree 的 `config/instances/dev.yml` 已配置本地 NeoForge 1.21.1 运行模板，允许目标为 `127.0.0.1:25566`，使用 `ds_deepseek_v4_flash`。实际配置和 `data/dev` 都是本地文件，不进入 Git。
+当前 worktree 的 `config/instances/dev.yml` 可配置本地 simulation 运行模板，允许委派目标为 `127.0.0.1:25566`，使用 `ds_deepseek_v4_flash`。它会验证服务器解析、独立循环、行为与持久化，但在 NeoForge Bridge 落地前不会真正登录该服务器。实际配置和 `data/dev` 都是本地文件，不进入 Git。
 
 新 worktree 需要在本地实例配置中加入以下片段；路径相对 `config/` 解析：
 
@@ -16,12 +16,12 @@ minecraft:
   eventPollIntervalMs: 500
   runtimeDir: /tmp/mizune-mc-dev
   templates:
-    local-neoforge-1.21.1:
-      backend: neoforge
+    local-simulation-1.21.1:
+      backend: simulation
       minecraftVersion: 1.21.1
-      loader: neoforge
-      gameProfileId: create-server-mirror
-      identityRef: mizune-offline-dev
+      loader: vanilla
+      gameProfileId: simulation
+      identityRef: simulation-dev
       allowedServers:
         - 127.0.0.1:25566
       modelRefs:
@@ -31,19 +31,21 @@ minecraft:
       initialPersistentState: 尚无持久经历。
 ```
 
-在受管 supervisor 完成前，协议调试仍可显式手动启动模拟 Runtime：
-
-```bash
-npm run dev:minecraft-runtime
-```
-
-再在另一个终端启动父项目：
+启动父项目即可由 supervisor 自动拉起每个 Actor 的 Runtime：
 
 ```bash
 CONFIG_INSTANCE=dev npm run dev
 ```
 
-Runtime 的 Unix socket 位于 `/tmp/mizune-mc-dev/runtime.sock`，SQLite 位于 `data/dev/minecraft-runtime/runtime.sqlite`。socket 使用短路径是为了避开 Linux AF_UNIX 约 108 字节的路径上限；daemon 会把其父目录权限收敛为 `0700`。停止父项目只关闭本地 transport，不会隐式关闭远端 Actor；控制连接租约到期后，daemon 会取消活动行为和排队任务、关闭自治并进入安全状态。
+仅在单独调试 framing/RPC 协议时，才手动运行一个不由资源 binding 使用的 daemon：
+
+```bash
+npm run dev:minecraft-runtime
+```
+
+受管 Runtime 的 socket、SQLite、PID 自登记和认证 token 位于 `<runtimeDir>/<resourceId>/`；运行目录收敛为 `0700`，token 为 `0600`。token 内容不写入命令行、数据库或日志。正常 Actor 连接每次重连都会从持久 incarnation 重新解析 instance ID 和 token，防止连到旧 daemon。
+
+父项目停机时会先中止独立决策循环，再对所有受管 Runtime 执行 TERM/KILL 收敛。每次发信号前都会重新校验 PID + start ticks + boot ID，且必须确认进程真正退出才写入终态。如无法识别或停止进程，supervisor 会保留 `stopping`/`needs_attention` 状态并让停机失败，不会伪装回收成功。
 
 父项目停机时会先给正在进行的 owner notification 最多 5 秒收敛时间；超时则中止会话侧投递并保留 outbox 为 pending，避免单次模型生成阻塞整个应用退出。下次启动会按原 notification ID 重试。
 
