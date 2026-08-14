@@ -2,9 +2,9 @@
 
 Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会话、模型决策、持久经历、显著事件唤起和权限；`vendor/mizune-mc-runtime` daemon 负责结构化状态、确定性行为、任务队列、自治策略和 Python Program 生命周期。
 
-当前 daemon 使用模拟世界验证控制协议与生命周期。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 simulation daemon，并持久记录 PID、Linux start ticks、boot ID 和每次启动的 Runtime instance ID。
+当前 daemon 同时支持 simulation 与 `neoforge_readonly` 后端。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 simulation daemon，并持久记录 PID、Linux start ticks、boot ID 和每次启动的 Runtime instance ID；真实客户端的父级编排仍未启用。
 
-NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照和游戏聊天事件。它目前只公布 `snapshot.get` 与 `events.list` 两个只读 RPC。Python Bridge adapter 已能安全读取 descriptor/token、校验实例与 capability、维持心跳并以稳定 controller 身份恢复连接；只读 live runtime 也已把真实数据投影为现有 Actor observation/event/checkpoint，并通过 capability manifest 隐藏所有未实现的写接口。父项目 supervisor 尚未把真实 Java 客户端、adapter 和 live runtime 编排成 Actor incarnation，因此 NeoForge 模板仍会明确进入 `needs_attention`。
+NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照和游戏聊天事件。它目前只公布 `snapshot.get` 与 `events.list` 两个只读 RPC。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件；事件 cursor 过期会持久记录高优先级缺口后从最早保留位置恢复。断线、错服或协议漂移会关闭 Actor 控制面，且 live capability manifest 不会公布任何写接口。父项目 supervisor 尚未把真实 Java 客户端与这个 live daemon 编排成同一 Actor incarnation，因此 NeoForge 模板仍会明确进入 `needs_attention`。
 
 ## dev 启动
 
@@ -72,6 +72,6 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 ## 验证边界
 
-默认父项目测试包含一个真实跨语言契约测试：它启动 Python daemon，并验证握手、程序草稿事务、行为命令和事件读取。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额和事件 cursor。
+默认父项目测试包含一个真实跨语言契约测试：它启动 Python daemon，并验证握手、程序草稿事务、行为命令和事件读取。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain 和 live daemon 断线关闭。
 
-真实客户端的下一阶段是让 Actor daemon 驱动 Bridge adapter 的刷新循环，并让 supervisor 将 Java 客户端、Bridge 和 Actor daemon 作为同一 incarnation 编排；只有完成实例身份、目标服务器和首个快照校验后才能标记 ready。随后再按 capability 逐项开放移动、交互、聊天发送和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。
+真实客户端的下一阶段是让父项目 supervisor 启动隔离的 Java 客户端，并把客户端、Bridge descriptor/token 与 `neoforge_readonly` daemon 作为同一 incarnation 编排。只有 daemon 已完成实例身份、目标服务器和首个快照校验后，父项目才能标记 ready；关闭默认 inhibit 自动重连，只有 supervisor 已开始收敛同一 Java client 时才能显式使用 preserve handoff。随后再按 capability 逐项开放移动、交互、聊天发送和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。
