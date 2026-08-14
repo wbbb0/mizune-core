@@ -459,10 +459,8 @@ test("decision outbox retry reuses one system-owned control idempotency key", as
   const llm: Pick<LlmClient, "generate"> = {
     generate: async params => {
       attempt += 1;
-      await executeDecisionTool(params, "minecraft_start_behavior", {
-        kind: "go_to",
-        position: { x: 8, y: 64, z: 0 },
-        tolerance: 1,
+      await executeDecisionTool(params, "minecraft_go_to", {
+        targetBlock: { x: 8, y: 64, z: 0 },
         decisionReason: "离开危险区域"
       });
       if (attempt === 1) throw new Error("failed after control commit");

@@ -53,6 +53,12 @@ export interface MinecraftVec3 {
   z: number;
 }
 
+export interface MinecraftBlockPos {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface MinecraftSelfSnapshot {
   position: MinecraftVec3;
   health: number;
@@ -296,7 +302,7 @@ interface MinecraftCommitBase {
 }
 
 export type MinecraftBehaviorCommand = MinecraftCommitBase & (
-  | { kind: "go_to"; position: MinecraftVec3; tolerance: number }
+  | { kind: "go_to"; targetBlock: MinecraftBlockPos }
   | { kind: "follow_and_assist"; targetRef: string; followDistance: number; lostTargetWaitSeconds: number }
   | { kind: "interact_entity"; targetRef: string; interaction: "use" | "mount" | "feed" }
   | { kind: "collect_item"; targetRef: string }

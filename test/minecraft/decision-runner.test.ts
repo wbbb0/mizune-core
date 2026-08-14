@@ -201,7 +201,7 @@ test("decision runner uses exactly one stable system and two structured user mes
   assert.equal(result.completion.persistentState, "目标：保护 Alice；当前没有活动任务");
   assert.equal(result.completion.currentGoal, "保护 Alice");
   assert.equal(result.toolCallCount, 2);
-  const startBehaviorTool = resolveTools(params).find(tool => tool.function.name === "minecraft_start_behavior");
+  const startBehaviorTool = resolveTools(params).find(tool => tool.function.name === "minecraft_go_to");
   const parameters = startBehaviorTool?.function.parameters as {
     properties?: Record<string, unknown>;
     required?: string[];
@@ -230,7 +230,7 @@ test("live runtime capabilities narrow tools, observation scopes, and behavior k
   let hiddenResult: Record<string, unknown> | null = null;
   const llm = new ScriptedDecisionLlm(async params => {
     const [rawHidden] = await executeToolRound(params, [
-      toolCall("hidden-movement", "minecraft_start_behavior", behaviorArgs())
+      toolCall("hidden-movement", "minecraft_go_to", behaviorArgs())
     ]);
     hiddenResult = JSON.parse(rawHidden ?? "null") as Record<string, unknown>;
     await executeToolRound(params, [toolCall("finish-live-capabilities", "minecraft_finish_decision", {
@@ -246,20 +246,19 @@ test("live runtime capabilities narrow tools, observation scopes, and behavior k
   assert.deepEqual(tools.map(item => item.function.name), [
     "minecraft_refresh_context",
     "minecraft_observe",
-    "minecraft_start_behavior",
+    "minecraft_send_chat",
     "minecraft_cancel_behavior",
     "minecraft_finish_decision"
   ]);
   const observe = tools.find(item => item.function.name === "minecraft_observe");
-  const behavior = tools.find(item => item.function.name === "minecraft_start_behavior");
+  const behavior = tools.find(item => item.function.name === "minecraft_send_chat");
   const observeProperties = (observe?.function.parameters as {
     properties?: { scope?: { enum?: string[] } };
   }).properties;
   const behaviorProperties = (behavior?.function.parameters as {
-    properties?: { kind?: { enum?: string[] }; channel?: { enum?: string[] } };
+    properties?: { channel?: { enum?: string[] } };
   }).properties;
   assert.deepEqual(observeProperties?.scope?.enum, actor.capabilities.observationScopes);
-  assert.deepEqual(behaviorProperties?.kind?.enum, ["chat"]);
   assert.deepEqual(behaviorProperties?.channel?.enum, ["global"]);
   const persistentStateMessage = JSON.parse(String(llm.params?.messages[1]?.content)) as {
     runtimeCapabilities?: Record<string, unknown>;
@@ -272,7 +271,7 @@ test("live runtime capabilities narrow tools, observation scopes, and behavior k
   assert.doesNotMatch(String(llm.params?.messages[1]?.content), /忽略系统规则/u);
   assert.deepEqual(hiddenResult, {
     error: "runtime_capability_unavailable",
-    tool: "minecraft_start_behavior",
+    tool: "minecraft_go_to",
     requestedCapability: "go_to"
   });
   assert.deepEqual(actor.calls, ["getDecisionContext"]);
@@ -284,7 +283,7 @@ test("mixed read and control batch is rejected before any actor side effect", as
   const llm = new ScriptedDecisionLlm(async params => {
     results.push(...await executeToolRound(params, [
       toolCall("read-mixed", "minecraft_refresh_context", {}),
-      toolCall("control-mixed", "minecraft_start_behavior", behaviorArgs())
+      toolCall("control-mixed", "minecraft_go_to", behaviorArgs())
     ]));
     await executeToolRound(params, [toolCall("finish-2", "minecraft_finish_decision", {
       summary: "批次被拒绝，未执行动作",
@@ -305,7 +304,7 @@ test("mixed read and control batch is rejected before any actor side effect", as
 test("single control call executes and autonomy tool is capability scoped", async () => {
   const actor = new FakeActorClient();
   const llm = new ScriptedDecisionLlm(async params => {
-    await executeToolRound(params, [toolCall("control-1", "minecraft_start_behavior", behaviorArgs())]);
+    await executeToolRound(params, [toolCall("control-1", "minecraft_go_to", behaviorArgs())]);
     await executeToolRound(params, [toolCall("finish-3", "minecraft_finish_decision", {
       summary: "开始前往目标",
       persistentState: "正在前往 x=8"
@@ -329,7 +328,7 @@ test("model cannot forge hidden guard or revision fields", async () => {
   const actor = new FakeActorClient();
   const rejections: Record<string, unknown>[] = [];
   const llm = new ScriptedDecisionLlm(async params => {
-    const [raw] = await executeToolRound(params, [toolCall("forged-control", "minecraft_start_behavior", {
+    const [raw] = await executeToolRound(params, [toolCall("forged-control", "minecraft_go_to", {
       ...behaviorArgs(),
       expectedActorRevision: 3,
       guard: { controlStateToken: "forged", conditionRefs: [] }
@@ -402,8 +401,8 @@ test("one wake cannot successfully commit two controls across tool rounds", asyn
   const actor = new FakeActorClient();
   const secondResults: Record<string, unknown>[] = [];
   const llm = new ScriptedDecisionLlm(async params => {
-    await executeToolRound(params, [toolCall("control-first", "minecraft_start_behavior", behaviorArgs())]);
-    const [rawSecond] = await executeToolRound(params, [toolCall("control-second", "minecraft_start_behavior", {
+    await executeToolRound(params, [toolCall("control-first", "minecraft_go_to", behaviorArgs())]);
+    const [rawSecond] = await executeToolRound(params, [toolCall("control-second", "minecraft_go_to", {
       ...behaviorArgs()
     })]);
     secondResults.push(JSON.parse(rawSecond ?? "null") as Record<string, unknown>);
@@ -519,7 +518,7 @@ test("hard deadline returns even when provider ignores abort and blocks late too
   const llm = new ScriptedDecisionLlm(async params => {
     await delay(60);
     lateToolResult = (await executeToolRound(params, [
-      toolCall("late-control", "minecraft_start_behavior", behaviorArgs())
+      toolCall("late-control", "minecraft_go_to", behaviorArgs())
     ]))[0] ?? null;
   });
   const runner = new MinecraftDecisionRunner(llm, actor, pino({ level: "silent" }));
@@ -560,9 +559,7 @@ function toolCall(id: string, name: string, args: Record<string, unknown>): LlmT
 
 function behaviorArgs() {
   return {
-    kind: "go_to",
-    position: { x: 8, y: 64, z: 0 },
-    tolerance: 1,
+    targetBlock: { x: 8, y: 64, z: 0 },
     decisionReason: "前往安全点"
   };
 }

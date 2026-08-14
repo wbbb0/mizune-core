@@ -4,7 +4,7 @@ Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会�
 
 当前 daemon 同时支持 simulation 与 `neoforge` 后端。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 daemon；NeoForge 后端再由 daemon 从受控启动档案拉起真实客户端。两者属于同一个 Runtime incarnation，并分别拥有可核验的独立进程组；父项目持久记录 daemon/client 各自的 PID、Linux start ticks、boot ID 与实例 ID。
 
-NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照、游戏聊天事件和普通全局聊天发送。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件；事件 cursor 过期会持久记录高优先级缺口后从最早保留位置恢复。真实聊天使用现有 `behavior.start(kind=chat)`、action lease、幂等命令和 `behavior_completed` 事件，未开放的移动/交互/战斗能力不会出现在 manifest。
+NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照、游戏聊天事件和普通全局聊天发送。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件。聊天与 opt-in 的 Baritone `go_to` 都映射为统一 behavior/action lease；移动仅在 Bridge 同时广告 action 三个 RPC 与 `minecraft.movement.go_to@1` 时可见，目标使用严格整数 `targetBlock`，不接受 position/tolerance。
 
 ## dev 启动
 
@@ -115,8 +115,8 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 默认父项目测试包含两个真实跨进程契约：一个验证 simulation daemon 的握手、行为与持久化；另一个让 supervisor 启动 Python daemon 和假 NeoForge 客户端，验证 Bridge 首快照门禁、daemon/client 双进程指纹、动态 capability 与成组停止。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain、聊天 mutation 和 live daemon 断线关闭。
 
-真实 1.21.1 NeoForge/Create 离线镜像服已通过上述两种 opt-in smoke：父项目自然语言 delegate 能启动真实客户端，读取连接状态、坐标、环境方块、背包、玩家和实体；私有 Decision Runner 也能根据普通中文目标自行读取环境、选择当前唯一开放的聊天行为，并通过统一 behavior 状态机完成普通全局聊天。Decision Runner 在握手后按 Runtime manifest 动态裁剪 RPC、观察 scope 和行为种类，不能调用未开放的移动、交互或战斗能力；执行入口还会再次校验能力，不能靠伪造隐藏 tool call 绕过。
+真实 1.21.1 NeoForge/Create 离线镜像服已通过聊天路径的两种 opt-in smoke；本切片没有启动真实客户端验证移动。Decision Runner 在握手后按 Runtime manifest 动态生成 `minecraft_send_chat` 与 `minecraft_go_to` 等窄工具，未广告的行为不会出现；执行入口仍会再次校验能力。模型只提供业务参数与 `decisionReason`，看不到 guard、provenance、revision、Bridge deadline 或幂等键。
 
-父项目与 Python Actor Runtime 使用独立的 v2 控制协议（不要与 Java Bridge v2 混淆）。读取结果保留数字 revision 供代码诊断，同时返回 Runtime 用持久 secret 签发的 `controlStateToken` 与审计用 `contextRef`。所有控制命令统一携带 `guard: { controlStateToken, conditionRefs }` 和 `provenance: { contextRef }`；当前 `conditionRefs` 必须为空数组，目标对象继续作为参数中的 opaque ref 传递。全局 observation revision 只表示观察水位，不再作为通用 mutation CAS，因此天气、游戏时间等无关观察刷新不会阻断聊天或坐标 `go_to`。
+父项目与 Python Actor Runtime 使用独立的 v2 控制协议（不要与 Java Bridge v2 混淆）。读取结果保留数字 revision 供代码诊断，同时返回 Runtime 用持久 secret 签发的 `controlStateToken` 与审计用 `contextRef`。所有控制命令统一携带 `guard: { controlStateToken, conditionRefs }` 和 `provenance: { contextRef }`；当前 `conditionRefs` 必须为空数组，目标对象继续作为参数中的 opaque ref 传递。全局 observation revision 只表示观察水位，不再作为通用 mutation CAS，因此天气、游戏时间等无关观察刷新不会阻断聊天或方块目标 `go_to`。
 
 私有 Decision Runner 会在模型调用前通过 `decision.context.get` 预取 Runtime 在 mutation lock 内原子生成的有界 `reactive_v1` 上下文；live Runtime 从已应用的 Bridge snapshot 与聊天缓存生成环境、背包、附近对象和最近聊天摘要，不发起额外 Bridge 请求。模型先直接使用首个 user 消息中的 `initialContext`，仅在 freshness、availability、chat gap 或任务细节需要时调用 `minecraft_refresh_context` / `minecraft_observe`。成功刷新后内部 read state 单调更新；若 Runtime 未广告原子 context 能力，独立决策直接失败而不回退到父端拼装。模型消息、工具 schema 与工具结果不会暴露 revision、guard token、context ref 或幂等键；执行器从最近 read state 自动注入 guard/provenance，并从持久决策记录注入幂等键。Runtime 先处理幂等重放，再验证 control token；token 过期、被篡改、actor 或 runtime incarnation 不匹配时返回 `stale_control_state` / `after_refresh`，且不产生副作用。

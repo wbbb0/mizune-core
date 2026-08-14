@@ -185,8 +185,7 @@ test("protocol client rejects mismatched command and program response correlatio
 
   await assert.rejects(client.startBehavior({
     kind: "go_to",
-    position: { x: 1, y: 64, z: 1 },
-    tolerance: 1,
+    targetBlock: { x: 1, y: 64, z: 1 },
     ...controlEnvelope(),
     idempotencyKey: "expected-key",
     decisionReason: "测试响应关联"

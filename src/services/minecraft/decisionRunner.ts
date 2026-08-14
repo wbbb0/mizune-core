@@ -46,7 +46,12 @@ const READ_TOOL_NAMES = new Set([
   "minecraft_get_active_program"
 ]);
 const CONTROL_TOOL_NAMES = new Set([
-  "minecraft_start_behavior",
+  "minecraft_go_to",
+  "minecraft_send_chat",
+  "minecraft_follow_and_assist",
+  "minecraft_interact_entity",
+  "minecraft_collect_item",
+  "minecraft_engage_combat",
   "minecraft_submit_task",
   "minecraft_cancel_behavior",
   "minecraft_cancel_task",
@@ -114,40 +119,11 @@ const vec3Schema = z.object({
   z: z.number().finite()
 }).strict();
 
-const behaviorCommandSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("go_to"),
-    position: vec3Schema,
-    tolerance: z.number().finite().min(0.25).max(8),
-    ...controlFields
-  }).strict(),
-  z.object({
-    kind: z.literal("follow_and_assist"),
-    targetRef: z.string().min(1),
-    followDistance: z.number().finite().min(2).max(6),
-    lostTargetWaitSeconds: z.number().int().min(3).max(30),
-    ...controlFields
-  }).strict(),
-  z.object({
-    kind: z.literal("interact_entity"),
-    targetRef: z.string().min(1),
-    interaction: z.enum(["use", "mount", "feed"]),
-    ...controlFields
-  }).strict(),
-  z.object({ kind: z.literal("collect_item"), targetRef: z.string().min(1), ...controlFields }).strict(),
-  z.object({
-    kind: z.literal("chat"),
-    text: z.string().min(1).max(256),
-    channel: z.literal("global"),
-    ...controlFields
-  }).strict(),
-  z.object({
-    kind: z.literal("combat"),
-    targetRef: z.string().min(1),
-    stopHealth: z.number().finite().min(2).max(18),
-    ...controlFields
-  }).strict()
-]);
+const blockPosSchema = z.object({
+  x: z.number().int().min(-2_147_483_648).max(2_147_483_647),
+  y: z.number().int().min(-2_147_483_648).max(2_147_483_647),
+  z: z.number().int().min(-2_147_483_648).max(2_147_483_647)
+}).strict();
 
 const taskCommandSchema = z.object({
   kind: z.enum(["go_to", "collect_item", "interact_entity", "chat", "combat"]),
@@ -426,18 +402,71 @@ export class MinecraftDecisionRunner {
           updateReadState(readState, observation);
           return { result: decisionModelResult(observation) };
         }
-      case "minecraft_start_behavior": {
+      case "minecraft_go_to": {
         if (!hasRpc(capabilityPolicy, "behavior.start")) return capabilityUnavailable(name);
-        const parsed = behaviorCommandSchema.parse(rawArgs);
-        if (!capabilityPolicy.behaviorKinds.includes(parsed.kind)) {
-          return capabilityUnavailable(name, parsed.kind);
-        }
+        if (!capabilityPolicy.behaviorKinds.includes("go_to")) return capabilityUnavailable(name, "go_to");
+        const parsed = z.object({ targetBlock: blockPosSchema, ...controlFields }).strict().parse(rawArgs);
         const command = {
-          ...parsed,
+          kind: "go_to" as const, ...parsed,
           ...controlEnvelope(readState),
           idempotencyKey: controlIdempotencyKey
         } as MinecraftBehaviorCommand;
         return commandExecutionResult(await this.actor.startBehavior(command, signal));
+      }
+      case "minecraft_send_chat": {
+        if (!hasRpc(capabilityPolicy, "behavior.start")) return capabilityUnavailable(name);
+        if (!capabilityPolicy.behaviorKinds.includes("chat")) return capabilityUnavailable(name, "chat");
+        const parsed = z.object({
+          text: z.string().min(1).max(256), channel: z.literal("global"), ...controlFields
+        }).strict().parse(rawArgs);
+        const command = {
+          kind: "chat" as const, ...parsed,
+          ...controlEnvelope(readState), idempotencyKey: controlIdempotencyKey
+        } as MinecraftBehaviorCommand;
+        return commandExecutionResult(await this.actor.startBehavior(command, signal));
+      }
+      case "minecraft_follow_and_assist": {
+        if (!hasRpc(capabilityPolicy, "behavior.start") || !capabilityPolicy.behaviorKinds.includes("follow_and_assist")) {
+          return capabilityUnavailable(name, "follow_and_assist");
+        }
+        const parsed = z.object({
+          targetRef: z.string().min(1), followDistance: z.number().finite().min(2).max(6),
+          lostTargetWaitSeconds: z.number().int().min(3).max(30), ...controlFields
+        }).strict().parse(rawArgs);
+        return commandExecutionResult(await this.actor.startBehavior({
+          kind: "follow_and_assist", ...parsed, ...controlEnvelope(readState), idempotencyKey: controlIdempotencyKey
+        }, signal));
+      }
+      case "minecraft_interact_entity": {
+        if (!hasRpc(capabilityPolicy, "behavior.start") || !capabilityPolicy.behaviorKinds.includes("interact_entity")) {
+          return capabilityUnavailable(name, "interact_entity");
+        }
+        const parsed = z.object({
+          targetRef: z.string().min(1), interaction: z.enum(["use", "mount", "feed"]), ...controlFields
+        }).strict().parse(rawArgs);
+        return commandExecutionResult(await this.actor.startBehavior({
+          kind: "interact_entity", ...parsed, ...controlEnvelope(readState), idempotencyKey: controlIdempotencyKey
+        }, signal));
+      }
+      case "minecraft_collect_item": {
+        if (!hasRpc(capabilityPolicy, "behavior.start") || !capabilityPolicy.behaviorKinds.includes("collect_item")) {
+          return capabilityUnavailable(name, "collect_item");
+        }
+        const parsed = z.object({ targetRef: z.string().min(1), ...controlFields }).strict().parse(rawArgs);
+        return commandExecutionResult(await this.actor.startBehavior({
+          kind: "collect_item", ...parsed, ...controlEnvelope(readState), idempotencyKey: controlIdempotencyKey
+        }, signal));
+      }
+      case "minecraft_engage_combat": {
+        if (!hasRpc(capabilityPolicy, "behavior.start") || !capabilityPolicy.behaviorKinds.includes("combat")) {
+          return capabilityUnavailable(name, "combat");
+        }
+        const parsed = z.object({
+          targetRef: z.string().min(1), stopHealth: z.number().finite().min(2).max(18), ...controlFields
+        }).strict().parse(rawArgs);
+        return commandExecutionResult(await this.actor.startBehavior({
+          kind: "combat", ...parsed, ...controlEnvelope(readState), idempotencyKey: controlIdempotencyKey
+        }, signal));
       }
       case "minecraft_submit_task": {
         if (!hasRpc(capabilityPolicy, "task.submit")) return capabilityUnavailable(name);
@@ -649,20 +678,42 @@ function buildDecisionTools(options: {
       includeCompleted: { type: "boolean" }
     }, ["scope"]));
   }
-  if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.length > 0) {
-    tools.push(tool("minecraft_start_behavior", "立即提交一个当前 Runtime 已实现的高层实时行为。控制工具必须独占一轮。", {
-      kind: { type: "string", enum: options.policy.behaviorKinds },
-      position: vec3JsonSchema(),
-      tolerance: { type: "number" },
-      targetRef: { type: "string" },
-      followDistance: { type: "number" },
-      lostTargetWaitSeconds: { type: "integer" },
-      interaction: { type: "string", enum: ["use", "mount", "feed"] },
+  if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.includes("go_to")) {
+    tools.push(tool("minecraft_go_to", "移动到指定方块；targetBlock 必须是精确整数方块坐标。", {
+      targetBlock: blockPosJsonSchema(),
+      decisionReason: { type: "string", minLength: 1, maxLength: 300 }
+    }, ["targetBlock", "decisionReason"]));
+  }
+  if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.includes("chat")) {
+    tools.push(tool("minecraft_send_chat", "向全局游戏聊天发送一条消息。", {
       text: { type: "string", minLength: 1, maxLength: 256 },
       channel: { type: "string", enum: ["global"] },
-      stopHealth: { type: "number" },
-      decisionReason: { type: "string" }
-    }, ["kind", "decisionReason"]));
+      decisionReason: { type: "string", minLength: 1, maxLength: 300 }
+    }, ["text", "channel", "decisionReason"]));
+  }
+  if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.includes("follow_and_assist")) {
+    tools.push(tool("minecraft_follow_and_assist", "持续跟随并协助指定对象。", {
+      targetRef: { type: "string", minLength: 1 }, followDistance: { type: "number", minimum: 2, maximum: 6 },
+      lostTargetWaitSeconds: { type: "integer", minimum: 3, maximum: 30 },
+      decisionReason: { type: "string", minLength: 1, maxLength: 300 }
+    }, ["targetRef", "followDistance", "lostTargetWaitSeconds", "decisionReason"]));
+  }
+  if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.includes("interact_entity")) {
+    tools.push(tool("minecraft_interact_entity", "对指定对象执行一次受限交互。", {
+      targetRef: { type: "string", minLength: 1 }, interaction: { type: "string", enum: ["use", "mount", "feed"] },
+      decisionReason: { type: "string", minLength: 1, maxLength: 300 }
+    }, ["targetRef", "interaction", "decisionReason"]));
+  }
+  if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.includes("collect_item")) {
+    tools.push(tool("minecraft_collect_item", "拾取指定物品实体。", {
+      targetRef: { type: "string", minLength: 1 }, decisionReason: { type: "string", minLength: 1, maxLength: 300 }
+    }, ["targetRef", "decisionReason"]));
+  }
+  if (hasRpc(options.policy, "behavior.start") && options.policy.behaviorKinds.includes("combat")) {
+    tools.push(tool("minecraft_engage_combat", "与指定敌对对象交战，并在生命值阈值时停止。", {
+      targetRef: { type: "string", minLength: 1 }, stopHealth: { type: "number", minimum: 2, maximum: 18 },
+      decisionReason: { type: "string", minLength: 1, maxLength: 300 }
+    }, ["targetRef", "stopHealth", "decisionReason"]));
   }
   if (hasRpc(options.policy, "task.submit") && options.policy.taskKinds.length > 0) {
     tools.push(tool("minecraft_submit_task", "提交可排队、可追踪且当前 Runtime 已实现的高层任务；适合非即时工作。控制工具必须独占一轮。", {
@@ -756,14 +807,14 @@ function tool(
   };
 }
 
-function vec3JsonSchema(): Record<string, unknown> {
+function blockPosJsonSchema(): Record<string, unknown> {
   return {
     type: "object",
     additionalProperties: false,
     properties: {
-      x: { type: "number" },
-      y: { type: "number" },
-      z: { type: "number" }
+      x: { type: "integer", minimum: -2147483648, maximum: 2147483647 },
+      y: { type: "integer", minimum: -2147483648, maximum: 2147483647 },
+      z: { type: "integer", minimum: -2147483648, maximum: 2147483647 }
     },
     required: ["x", "y", "z"]
   };

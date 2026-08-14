@@ -38,7 +38,7 @@ test("父项目客户端与 Python daemon 完成真实握手、程序部署和�
       "async def main(ctx):",
       "    target = ctx.entities.nearest(type=\"minecraft:item\", radius=16)",
       "    if target is not None:",
-      "        await ctx.movement.go_to(target.position, tolerance=1)",
+      "        await ctx.movement.go_to(target.block_pos)",
       ""
     ].join("\n");
     const validation = await client.validateProgram({
@@ -71,8 +71,7 @@ test("父项目客户端与 Python daemon 完成真实握手、程序部署和�
     const beforeBehavior = await client.getDecisionContext();
     const behavior = await client.startBehavior({
       kind: "go_to",
-      position: { x: 10, y: 64, z: 0 },
-      tolerance: 1,
+      targetBlock: { x: 10, y: 64, z: 0 },
       guard: { controlStateToken: beforeBehavior.controlStateToken, conditionRefs: [] },
       provenance: { contextRef: beforeBehavior.contextRef },
       idempotencyKey: "contract-go-to-v1",
