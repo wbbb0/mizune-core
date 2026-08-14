@@ -2,11 +2,13 @@
 
 Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会话、模型决策、持久经历、显著事件唤起和权限；`vendor/mizune-mc-runtime` daemon 负责结构化状态、确定性行为、任务队列、自治策略和 Python Program 生命周期。
 
-当前 daemon 使用模拟世界验证控制协议与生命周期。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 simulation daemon，并持久记录 PID、Linux start ticks、boot ID 和每次启动的 Runtime instance ID。NeoForge 模板目前会明确进入 `needs_attention`，尚未拉起真实客户端。父项目与未来真实 Bridge 之间保持同一套版本化 Actor RPC，避免在接入游戏时重写上层会话资源。
+当前 daemon 使用模拟世界验证控制协议与生命周期。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 simulation daemon，并持久记录 PID、Linux start ticks、boot ID 和每次启动的 Runtime instance ID。
+
+NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照和游戏聊天事件。它目前只公布 `snapshot.get` 与 `events.list` 两个只读 RPC；父项目 supervisor 尚未编排真实 Java 客户端和 Bridge adapter，因此 NeoForge 模板仍会明确进入 `needs_attention`。父项目与 Bridge 保持同一套版本化 Actor RPC，后续接入不会重写上层会话资源。
 
 ## dev 启动
 
-当前 worktree 的 `config/instances/dev.yml` 可配置本地 simulation 运行模板，允许委派目标为 `127.0.0.1:25566`，使用 `ds_deepseek_v4_flash`。它会验证服务器解析、独立循环、行为与持久化，但在 NeoForge Bridge 落地前不会真正登录该服务器。实际配置和 `data/dev` 都是本地文件，不进入 Git。
+当前 worktree 的 `config/instances/dev.yml` 可配置本地 simulation 运行模板，允许委派目标为 `127.0.0.1:25566`，使用 `ds_deepseek_v4_flash`。它会验证服务器解析、独立循环、行为与持久化，但在 supervisor 接入真实客户端前不会真正登录该服务器。实际配置和 `data/dev` 都是本地文件，不进入 Git。
 
 新 worktree 需要在本地实例配置中加入以下片段；路径相对 `config/` 解析：
 
@@ -70,6 +72,6 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 ## 验证边界
 
-默认父项目测试包含一个真实跨语言契约测试：它启动 Python daemon，并验证握手、程序草稿事务、行为命令和事件读取。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat 和控制租约安全停机。
+默认父项目测试包含一个真实跨语言契约测试：它启动 Python daemon，并验证握手、程序草稿事务、行为命令和事件读取。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额和事件 cursor。
 
-下一阶段接入真实客户端时，应先实现只读 Bridge（self、玩家、实体、背包、附近环境），再逐项替换模拟器底层；不要改变已经由契约测试保护的父项目 RPC 和工具语义。
+真实客户端的下一阶段是实现 Python Bridge adapter，并让 supervisor 将 Java 客户端、Bridge 和 Actor daemon 作为同一 incarnation 编排；只有完成实例身份、目标服务器和首个快照校验后才能标记 ready。随后再按 capability 逐项开放移动、交互、聊天发送和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。
