@@ -13,6 +13,10 @@ import type { RuntimeResourceRegistry } from "#runtime/resources/runtimeResource
 import { ProtocolMinecraftActorClient } from "./actorClient.ts";
 import type { MinecraftActorProvisioningStore } from "./actorProvisioningStore.ts";
 import {
+  acquireMinecraftClientProfileLock,
+  type MinecraftClientProfileLock
+} from "./clientProfileLock.ts";
+import {
   readCurrentBootId,
   readLinuxProcessIdentity,
   readSpawnedProcessIdentity
@@ -34,6 +38,7 @@ interface ManagedRuntimeProcess {
   bootId: string;
   socketPath: string;
   tokenFile: string;
+  profileLock: MinecraftClientProfileLock | null;
   child: ChildProcess | null;
   termination: Promise<ChildTermination> | null;
   stopping: boolean;
@@ -259,22 +264,29 @@ export class MinecraftRuntimeProcessSupervisor {
       resource.minecraftActor?.binding.backend === "neoforge"
     );
     if (!registration || registration.bootId !== incarnation.bootId) return null;
-    if (!(await registrationBelongsToProcessGroup(registration))) return createManagedHandle({
-      resourceId: resource.resourceId,
-      actorId: resource.minecraftActor?.actorId ?? "unknown",
-      attemptId: incarnation.attemptId,
-      runtimeInstanceId: incarnation.runtimeInstanceId,
-      pid: registration.pid,
-      processGroupId: registration.pid,
-      startTicks: registration.startTicks,
-      clientPid: registration.clientPid,
-      clientStartTicks: registration.clientStartTicks,
-      bootId: registration.bootId,
-      socketPath: incarnation.socketPath,
-      tokenFile: incarnation.tokenFile,
-      child: null,
-      termination: null
-    });
+    if (!(await registrationBelongsToProcessGroup(registration))) {
+      return createManagedHandle({
+        resourceId: resource.resourceId,
+        actorId: resource.minecraftActor?.actorId ?? "unknown",
+        attemptId: incarnation.attemptId,
+        runtimeInstanceId: incarnation.runtimeInstanceId,
+        pid: registration.pid,
+        processGroupId: registration.pid,
+        startTicks: registration.startTicks,
+        clientPid: registration.clientPid,
+        clientStartTicks: registration.clientStartTicks,
+        bootId: registration.bootId,
+        socketPath: incarnation.socketPath,
+        tokenFile: incarnation.tokenFile,
+        profileLock: await this.acquireProfileLock(
+          resource,
+          incarnation.runtimeInstanceId,
+          incarnation.gameDirectory
+        ),
+        child: null,
+        termination: null
+      });
+    }
     const recovered = await this.provisioningStore.recordRecoveredProcessIdentity({
       resourceId: resource.resourceId,
       attemptId: incarnation.attemptId,
@@ -301,25 +313,33 @@ export class MinecraftRuntimeProcessSupervisor {
     const attemptId = `attempt_${randomUUID()}`;
     const runtimeInstanceId = `runtime_${randomUUID()}`;
     const nowMs = this.now();
-    await this.provisioningStore.beginAttempt({
-      resourceId: resource.resourceId,
-      attemptId,
-      runtimeInstanceId,
-      socketPath: paths.socketPath,
-      gameDirectory: template.clientProfile?.gameDirectory ?? paths.gameDirectory,
-      tokenFile: paths.tokenFile,
-      bootId: await readCurrentBootId(),
-      nowMs
-    });
-    await this.provisioningStore.advanceAttempt({
-      resourceId: resource.resourceId,
-      attemptId,
-      phase: "starting_daemon",
-      nowMs: this.now()
-    });
-
     let handle: ManagedRuntimeProcess | null = null;
+    let profileLock: MinecraftClientProfileLock | null = null;
+    let attemptBegan = false;
     try {
+      await this.provisioningStore.beginAttempt({
+        resourceId: resource.resourceId,
+        attemptId,
+        runtimeInstanceId,
+        socketPath: paths.socketPath,
+        gameDirectory: template.clientProfile?.gameDirectory ?? paths.gameDirectory,
+        tokenFile: paths.tokenFile,
+        bootId: await readCurrentBootId(),
+        nowMs
+      });
+      attemptBegan = true;
+      if (template.clientProfile) {
+        profileLock = await acquireMinecraftClientProfileLock(
+          template.clientProfile.gameDirectory,
+          runtimeInstanceId
+        );
+      }
+      await this.provisioningStore.advanceAttempt({
+        resourceId: resource.resourceId,
+        attemptId,
+        phase: "starting_daemon",
+        nowMs: this.now()
+      });
       const observed = this.spawnRuntimeDaemon({
         template,
         actorId: actor.actorId,
@@ -349,9 +369,11 @@ export class MinecraftRuntimeProcessSupervisor {
         bootId: identity.bootId,
         socketPath: paths.socketPath,
         tokenFile: paths.tokenFile,
+        profileLock,
         child: observed.child,
         termination: observed.termination
       });
+      profileLock = null;
       this.processes.set(resource.resourceId, handle);
       if (template.backend === "neoforge") {
         await this.provisioningStore.advanceAttempt({
@@ -413,28 +435,44 @@ export class MinecraftRuntimeProcessSupervisor {
       this.logger.info({ resourceId: resource.resourceId, pid: identity.pid }, "minecraft_runtime_ready");
     } catch (error) {
       const stoppedForShutdown = this.stopping || isAbortError(error);
+      const cleanupFailures: unknown[] = [];
       if (handle) {
         await this.stopHandle(
           handle,
           stoppedForShutdown ? "parent_shutdown_during_start" : "runtime_start_failed",
           stoppedForShutdown ? "stopped" : "failed"
         ).catch(stopError => {
+          cleanupFailures.push(stopError);
           this.logger.error({ err: stopError, resourceId: resource.resourceId }, "minecraft_runtime_start_cleanup_failed");
         });
-      } else {
+      } else if (attemptBegan) {
         const incarnation = await this.provisioningStore.getActiveIncarnation(resource.resourceId);
         if (incarnation?.runtimeInstanceId === runtimeInstanceId) {
-          await this.provisioningStore.markIncarnationTerminated({
-            resourceId: resource.resourceId,
-            attemptId,
-            runtimeInstanceId,
-            outcome: stoppedForShutdown ? "stopped" : "failed",
-            exitReason: errorMessage(error),
-            failureCode: stoppedForShutdown ? null : "runtime_spawn_failed",
-            retryAtMs: stoppedForShutdown ? null : await this.nextRetryAt(resource.resourceId),
-            nowMs: this.now()
-          });
+          try {
+            await this.provisioningStore.markIncarnationTerminated({
+              resourceId: resource.resourceId,
+              attemptId,
+              runtimeInstanceId,
+              outcome: stoppedForShutdown ? "stopped" : "failed",
+              exitReason: errorMessage(error),
+              failureCode: stoppedForShutdown ? null : "runtime_spawn_failed",
+              retryAtMs: stoppedForShutdown ? null : await this.nextRetryAt(resource.resourceId),
+              nowMs: this.now()
+            });
+          } catch (cleanupError) {
+            cleanupFailures.push(cleanupError);
+          }
         }
+      }
+      if (profileLock) {
+        try {
+          await profileLock.release();
+        } catch (cleanupError) {
+          cleanupFailures.push(cleanupError);
+        }
+      }
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError([error, ...cleanupFailures], "Minecraft Runtime 启动与安全清理均失败");
       }
       throw error;
     }
@@ -693,15 +731,19 @@ export class MinecraftRuntimeProcessSupervisor {
         retryAtMs,
         nowMs: this.now()
       });
+      if (handle.profileLock) {
+        await handle.profileLock.release();
+        handle.profileLock = null;
+      }
     } finally {
       if (this.processes.get(handle.resourceId) === handle) this.processes.delete(handle.resourceId);
     }
   }
 
-  private adoptHandle(
+  private async adoptHandle(
     resource: RuntimeResourceRecord,
     incarnation: MinecraftRuntimeIncarnationRecord
-  ): ManagedRuntimeProcess {
+  ): Promise<ManagedRuntimeProcess> {
     if (!incarnation.daemonPid || !incarnation.daemonStartTicks || !incarnation.processGroupId) {
       throw new Error(`Minecraft Runtime 进程指纹不完整：${incarnation.runtimeInstanceId}`);
     }
@@ -721,9 +763,24 @@ export class MinecraftRuntimeProcessSupervisor {
       bootId: incarnation.bootId,
       socketPath: incarnation.socketPath,
       tokenFile: incarnation.tokenFile,
+      profileLock: await this.acquireProfileLock(
+        resource,
+        incarnation.runtimeInstanceId,
+        incarnation.gameDirectory
+      ),
       child: null,
       termination: null
     });
+  }
+
+  private async acquireProfileLock(
+    resource: RuntimeResourceRecord,
+    runtimeInstanceId: string,
+    gameDirectory: string
+  ): Promise<MinecraftClientProfileLock | null> {
+    const actor = resource.minecraftActor;
+    if (!actor || actor.binding.backend !== "neoforge") return null;
+    return acquireMinecraftClientProfileLock(gameDirectory, runtimeInstanceId);
   }
 
   private async finalizeMissingIncarnation(

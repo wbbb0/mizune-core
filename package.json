@@ -51,6 +51,7 @@
     "test:interactive-tools": "tsx scripts/interactive-tools-cli.ts",
     "smoke:llm:memory": "tsx smoke/llm/context-memory-smoke.ts --preset local_qwen --instance web --timeout-ms 180000",
     "smoke:llm:minecraft": "tsx smoke/llm/minecraft-decision-smoke.ts",
+    "smoke:minecraft:managed-neoforge": "tsx smoke/minecraft/managed-neoforge-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck:all": "npm run typecheck && npm run typecheck:test"

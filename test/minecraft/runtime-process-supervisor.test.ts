@@ -8,12 +8,17 @@ import { StateDatabase } from "../../src/data/state/stateDatabase.ts";
 import { RuntimeResourceRegistry } from "../../src/runtime/resources/runtimeResourceRegistry.ts";
 import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourceStore.ts";
 import { MinecraftActorJournal } from "../../src/services/minecraft/actorJournal.ts";
+import {
+  acquireMinecraftClientProfileLock,
+  type MinecraftClientProfileLock
+} from "../../src/services/minecraft/clientProfileLock.ts";
 import { MinecraftActorProvisioningService } from "../../src/services/minecraft/actorProvisioningService.ts";
 import { MinecraftActorProvisioningStore } from "../../src/services/minecraft/actorProvisioningStore.ts";
 import {
   matchesLinuxProcessIdentity,
   readCurrentBootId,
-  readLinuxProcessIdentity
+  readLinuxProcessIdentity,
+  readSpawnedProcessIdentity
 } from "../../src/services/minecraft/processIdentity.ts";
 import { MinecraftRuntimeTemplateCatalog } from "../../src/services/minecraft/runtimeTemplateCatalog.ts";
 import { MinecraftRuntimeProcessSupervisor } from "../../src/services/minecraft/runtimeProcessSupervisor.ts";
@@ -138,7 +143,7 @@ test("父项目以同一 incarnation 托管 NeoForge 客户端与只读 Runtime"
   const dataDir = await mkdtemp(join(tmpdir(), "minecraft-runtime-neoforge-"));
   const runtimeDir = join(dataDir, "run");
   const gameDirectory = join(dataDir, "game");
-  await mkdir(gameDirectory, { recursive: true });
+  await mkdir(gameDirectory, { recursive: true, mode: 0o700 });
   const database = new StateDatabase(dataDir, createSilentLogger());
   const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
   const provisioningStore = new MinecraftActorProvisioningStore(database, new MinecraftActorJournal());
@@ -193,9 +198,18 @@ test("父项目以同一 incarnation 托管 NeoForge 客户端与只读 Runtime"
   );
   let daemonIdentity: { pid: number; startTicks: string; bootId: string } | null = null;
   let clientIdentity: { pid: number; startTicks: string; bootId: string } | null = null;
+  let externalProfileLock: MinecraftClientProfileLock | null = await acquireMinecraftClientProfileLock(
+    gameDirectory,
+    "external-smoke"
+  );
   try {
     await supervisor.start();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(await provisioningStore.getActiveIncarnation(resourceId), null);
+    await externalProfileLock.release();
+    externalProfileLock = null;
     await waitUntil(async () => (
+      await supervisor.reconcile(),
       (await registry.get(resourceId))?.minecraftActor?.binding.provisionStatus === "ready"
     ), 7_000);
     const incarnation = await provisioningStore.getActiveIncarnation(resourceId);
@@ -252,6 +266,7 @@ test("父项目以同一 incarnation 托管 NeoForge 客户端与只读 Runtime"
       "stopped"
     );
   } finally {
+    await externalProfileLock?.release().catch(() => undefined);
     await supervisor.stop().catch(() => undefined);
     for (const identity of [daemonIdentity, clientIdentity]) {
       if (identity && await matchesLinuxProcessIdentity(identity)) {
@@ -270,9 +285,8 @@ test("父进程恢复时会收敛 daemon 已死但 client 仍活的 incarnation"
   assert.ok(daemon.pid && client.pid);
   daemon.unref();
   client.unref();
-  const daemonIdentity = await readLinuxProcessIdentity(daemon.pid);
-  const clientIdentity = await readLinuxProcessIdentity(client.pid);
-  assert.ok(daemonIdentity && clientIdentity);
+  const daemonIdentity = await readSpawnedProcessIdentity(daemon.pid);
+  const clientIdentity = await readSpawnedProcessIdentity(client.pid);
   const attemptId = "attempt-client-only";
   const runtimeInstanceId = "runtime-client-only";
   try {

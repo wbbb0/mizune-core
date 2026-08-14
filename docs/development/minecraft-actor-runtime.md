@@ -10,7 +10,7 @@ NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完�
 
 当前 worktree 的 `config/instances/dev.yml` 可配置 simulation 或 NeoForge 模板，允许主 Bot 直接接收“登录某服务器并完成某事”的自然语言委派。实际账号、可执行文件和游戏目录只存在本地配置，不进入 Git。
 
-新 worktree 需要在本地实例配置中加入以下片段；客户端程序和目录必须写绝对路径：
+新 worktree 需要在本地实例配置中加入以下片段；客户端程序和目录必须写绝对路径。`gameDirectory` 必须是该受管身份专用的可写目录，不能直接复用日常客户端的游戏目录。大型只读安装资产可由受控 launcher 从独立 installation directory 读取，但 launcher 必须实际使用父进程注入的 `MIZUNE_MC_GAME_DIRECTORY` 作为游戏目录：
 
 ```yaml
 minecraft:
@@ -58,6 +58,24 @@ npm run dev:minecraft-runtime
 
 受管 Runtime 的 socket、SQLite、PID 自登记、Bridge descriptor、客户端启动档案和认证 token 位于 `<runtimeDir>/<resourceId>/`；运行目录收敛为 `0700`，token 与启动档案为 `0600`。启动不经过 shell，模型不能提供可执行文件、参数或环境变量；这些值只能来自 `minecraft.clientProfiles`。token 内容不写入命令行、数据库或日志。正常 Actor 连接每次重连都会从持久 incarnation 重新解析 instance ID 和 token，防止连到旧 daemon。
 
+## 真实客户端 smoke
+
+以下 opt-in smoke 使用临时父项目数据库，实际启动已配置的 NeoForge 客户端，走完整的自然语言 delegate、supervisor、Python daemon、Bridge 首快照和只读观察链路：
+
+```bash
+CONFIG_INSTANCE=dev npm run smoke:minecraft:managed-neoforge
+```
+
+smoke 与普通父项目 supervisor 共用 `0700` game directory 内的原子 profile 锁；不同 Runtime、不同父实例和并发 smoke 都不能同时启动同一客户端身份。锁以 `runtimeInstanceId` 持久标识 owner，因此父进程重启可接管同一 incarnation，但不能把别的 incarnation 当作陈旧锁自动删除。smoke 还会扫描对应目录与受控 launcher，作为人工启动客户端的第二道防线。结束时只有在 supervisor 确认安全收敛后才删除临时 Runtime 状态；失败或停止不完整时会保留临时目录供 PID/SQLite 对账。
+
+Bridge 安全停机会在专用 game directory 留下持久重连锁。再次运行 smoke 代表 owner 明确恢复时，需显式确认：
+
+```bash
+CONFIG_INSTANCE=dev MIZUNE_MC_SMOKE_RESUME=1 npm run smoke:minecraft:managed-neoforge
+```
+
+该命令会删除这一个专用 profile 的重连锁，不应由普通模型循环自动设置。smoke 的默认 JSON 仅输出机器人状态与坐标、环境方块类型、有限背包摘要以及玩家/实体计数；仍只用于本地受控调试，不应接入普通聊天或集中日志。
+
 父项目停机时会先中止独立决策循环，再对所有受管 Runtime 执行 TERM/KILL 收敛。每次发信号前都会重新校验 PID + start ticks + boot ID，且必须确认进程真正退出才写入终态。如无法识别或停止进程，supervisor 会保留 `stopping`/`needs_attention` 状态并让停机失败，不会伪装回收成功。
 
 父项目停机时会先给正在进行的 owner notification 最多 5 秒收敛时间；超时则中止会话侧投递并保留 outbox 为 pending，避免单次模型生成阻塞整个应用退出。下次启动会按原 notification ID 重试。
@@ -85,4 +103,4 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 默认父项目测试包含两个真实跨进程契约：一个验证 simulation daemon 的握手、行为与持久化；另一个让 supervisor 启动 Python daemon 和假 NeoForge 客户端，验证 Bridge 首快照门禁、daemon/client 双进程指纹、只读 capability 与成组停止。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain 和 live daemon 断线关闭。
 
-下一阶段是在受控 dev 配置中用真实 1.21.1 NeoForge 客户端替换契约假客户端，完成父项目自然语言 delegate 的端到端联调。读链稳定后，再按 capability 逐项开放聊天发送、移动、交互和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。
+真实 1.21.1 NeoForge/Create 离线镜像服已通过上述 opt-in smoke：父项目自然语言 delegate 能启动真实客户端并读取连接状态、坐标、环境方块、背包、玩家和实体，且写行为仍被 capability 边界拒绝。下一阶段按 capability 逐项开放聊天发送、移动、交互和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。

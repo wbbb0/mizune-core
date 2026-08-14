@@ -1,6 +1,6 @@
 # Minecraft Actor 资源与独立决策循环
 
-状态：父项目的持久 Actor 控制面、独立模型循环、动态服务器绑定、模拟 Runtime 契约与 WebUI 工作台已实现；受管进程 supervisor、真实 NeoForge Bridge 和隔离 Python Worker 尚未接入。
+状态：父项目的持久 Actor 控制面、独立模型循环、动态服务器绑定、受管进程 supervisor、真实只读 NeoForge Bridge、模拟 Runtime 契约与 WebUI 工作台已实现；真实写行为和隔离 Python Worker 尚未接入。
 
 ## 系统边界
 
@@ -10,7 +10,7 @@ Minecraft Actor 是跨会话可见的持久系统资源，不是聊天 session�
 - `MinecraftActorControlStore` 保存 owner principal、revision、FIFO mailbox、请求、决策与事件日志。
 - `MinecraftDecisionRunner` 在私有工具上下文中使用只读观察、确定性行为、任务、自治和程序校验接口。主 Bot 无法直接调用这些接口。
 - `MinecraftActorResourceManager` 负责 mailbox 调度、模型打断、Runtime client、显著事件摄取和 owner 通知。
-- `MinecraftActorClient` 是父项目与模拟 Runtime、未来 NeoForge Bridge 共用的版本化 RPC 边界。
+- `MinecraftActorClient` 是父项目与模拟 Runtime、真实 NeoForge Runtime 共用的版本化 RPC 边界。
 - WebUI 只消费 Actor read model 和持久 SSE 事件，不读取 socket、模型引用或 daemon 内部对象。
 
 一次 owner 委派先以幂等键原子写入逻辑资源、服务器 binding 与持久 FIFO mailbox，立即返回 resource/request ID；后台 provisioner 准备身体。Runtime ready 前 mailbox 保持 paused，不调用模型也不累计重试；ready 后独立循环领取执行。应用正常停机导致的模型中断会把 wake 重新入队，手动 interrupt 和永久 close 才会形成终态。
@@ -85,10 +85,10 @@ SSE 使用 SQLite event ID：
 
 ## 接下来
 
-1. 实现后台 provisioner 与受管进程 supervisor，由主项目启动、监督和恢复 Python daemon/NeoForge 客户端。
-2. 让 NeoForge Bridge 提供 capability descriptor 和真实只读 self、玩家、实体、背包、聊天与附近环境。
-3. 将模拟行为逐项替换为真实聊天、移动、交互、物品处理和战斗，并用离线镜像服做 canary。
-4. 增加独立 emergency-stop RPC 和 WebUI 按钮。
+1. 先开放真实聊天发送，并把聊天与移动等行为统一纳入 task/behavior、租约、幂等和事件契约。
+2. 接入 Baritone/确定性控制层的移动、跟随和采集，再扩展实体/物品交互与战斗。
+3. 增加独立 emergency-stop RPC 和 WebUI 按钮，并对真实客户端验证断联、卡住和危险中断。
+4. 将已验证行为交给私有 Decision Runner，使用低成本无思考模型测试十秒级唤起和无任务自治。
 5. 最后实现隔离 Python Worker；在此之前继续使用经过测试的确定性内建行为完成基础游玩。
 
 真实模型 smoke 与延迟结论见 `docs/development/minecraft-decision-smoke.md`，本地 daemon 和父项目启动方式见 `docs/development/minecraft-actor-runtime.md`。

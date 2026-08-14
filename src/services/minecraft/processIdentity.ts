@@ -51,12 +51,19 @@ export async function matchesLinuxProcessIdentity(input: {
 
 async function waitForIdentity(pid: number, timeoutMs: number): Promise<LinuxProcessIdentity> {
   const deadline = Date.now() + timeoutMs;
+  let lastError: unknown = null;
   while (Date.now() <= deadline) {
-    const identity = await readLinuxProcessIdentity(pid);
-    if (identity) return identity;
+    try {
+      const identity = await readLinuxProcessIdentity(pid);
+      if (identity) return identity;
+    } catch (error) {
+      lastError = error;
+    }
     await new Promise(resolve => setTimeout(resolve, 10));
   }
-  throw new Error(`无法确认新进程身份：${pid}`);
+  throw new Error(
+    `无法确认新进程身份：${pid}${lastError == null ? "" : `：${errorMessage(lastError)}`}`
+  );
 }
 
 export async function readSpawnedProcessIdentity(pid: number): Promise<LinuxProcessIdentity> {
@@ -68,4 +75,8 @@ function isMissingProcess(error: unknown): boolean {
     && "code" in error
     && ((error as NodeJS.ErrnoException).code === "ENOENT"
       || (error as NodeJS.ErrnoException).code === "ESRCH");
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
