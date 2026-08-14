@@ -464,6 +464,15 @@ const minecraftSupervisorConfigSchema = s.object({
   maxLogLineChars: s.number().int().min(256).max(65_536).title("单条子进程日志字符上限").default(4_096)
 }).title("Minecraft Runtime 进程托管").strict().default(emptyObject);
 
+const minecraftClientProfileConfigSchema = s.object({
+  identityRef: s.string().trim().nonempty().title("账号引用"),
+  executable: s.string().trim().nonempty().title("客户端启动程序"),
+  arguments: s.array(s.string()).title("客户端启动参数").default([]),
+  workingDirectory: s.string().trim().nonempty().title("客户端工作目录"),
+  gameDirectory: s.string().trim().nonempty().title("Minecraft 游戏目录"),
+  environment: s.record(s.string(), s.string()).title("客户端环境变量").default({})
+}).title("Minecraft 客户端启动档案").strict();
+
 const minecraftConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   runtimeDir: s.string().trim().nonempty().title("受管 Runtime 临时目录").default("/tmp/mizune-minecraft-runtime"),
@@ -472,6 +481,10 @@ const minecraftConfigSchema = s.object({
   connectTimeoutMs: s.number().int().min(100).max(60_000).title("连接超时毫秒").default(3_000),
   maxFrameBytes: s.number().int().min(1_024).max(16 * 1_024 * 1_024).title("最大协议帧字节数").default(1_048_576),
   supervisor: minecraftSupervisorConfigSchema,
+  clientProfiles: s.record(
+    s.string().trim().nonempty(),
+    minecraftClientProfileConfigSchema
+  ).title("受控客户端启动档案").default({}),
   templates: s.record(
     s.string().trim().nonempty(),
     minecraftRuntimeTemplateConfigSchema

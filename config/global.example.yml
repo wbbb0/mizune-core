@@ -357,6 +357,9 @@ minecraft:
     restartWindowMs: 300000
     maxRestartAttempts: 5
     maxLogLineChars: 4096
+  # NeoForge 模板通过 gameProfileId 引用这里的受控启动档案。
+  # executable 和目录必须为绝对路径；arguments 不经过 shell。
+  clientProfiles: {}
   templates: {}
 backup:
   profileRotateLimit: 10

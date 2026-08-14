@@ -2,28 +2,39 @@
 
 Minecraft Actor 是一个 owner-only 的持久系统资源。父项目负责会话、模型决策、持久经历、显著事件唤起和权限；`vendor/mizune-mc-runtime` daemon 负责结构化状态、确定性行为、任务队列、自治策略和 Python Program 生命周期。
 
-当前 daemon 同时支持 simulation 与 `neoforge_readonly` 后端。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 simulation daemon，并持久记录 PID、Linux start ticks、boot ID 和每次启动的 Runtime instance ID；真实客户端的父级编排仍未启用。
+当前 daemon 同时支持 simulation 与 `neoforge_readonly` 后端。动态服务器 binding、自然语言 delegate 和父进程 supervisor 已进入父项目：主 Bot 创建资源后，父进程会在每资源隔离的运行目录中拉起 daemon；NeoForge 后端再由 daemon 从受控启动档案拉起真实客户端。两者属于同一个 Runtime incarnation，并分别拥有可核验的独立进程组；父项目持久记录 daemon/client 各自的 PID、Linux start ticks、boot ID 与实例 ID。
 
-NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照和游戏聊天事件。它目前只公布 `snapshot.get` 与 `events.list` 两个只读 RPC。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件；事件 cursor 过期会持久记录高优先级缺口后从最早保留位置恢复。断线、错服或协议漂移会关闭 Actor 控制面，且 live capability manifest 不会公布任何写接口。父项目 supervisor 尚未把真实 Java 客户端与这个 live daemon 编排成同一 Actor incarnation，因此 NeoForge 模板仍会明确进入 `needs_attention`。
+NeoForge 1.21.1 Bridge 已实现受认证的 Unix socket v2 协议，并在完整 NeoForge/Create 镜像服上验证了真实客户端登录、玩家/实体/背包/环境快照和游戏聊天事件。它目前只公布 `snapshot.get` 与 `events.list` 两个只读 RPC。Python daemon 会在开放父进程 socket 前验证 Bridge instance、目标服务器和首个完整快照，之后原子刷新快照并连续抽取多页事件；事件 cursor 过期会持久记录高优先级缺口后从最早保留位置恢复。断线、错服、客户端退出或协议漂移会关闭 Actor 控制面，且 live capability manifest 不会公布任何写接口。
 
 ## dev 启动
 
-当前 worktree 的 `config/instances/dev.yml` 可配置本地 simulation 运行模板，允许委派目标为 `127.0.0.1:25566`，使用 `ds_deepseek_v4_flash`。它会验证服务器解析、独立循环、行为与持久化，但在 supervisor 接入真实客户端前不会真正登录该服务器。实际配置和 `data/dev` 都是本地文件，不进入 Git。
+当前 worktree 的 `config/instances/dev.yml` 可配置 simulation 或 NeoForge 模板，允许主 Bot 直接接收“登录某服务器并完成某事”的自然语言委派。实际账号、可执行文件和游戏目录只存在本地配置，不进入 Git。
 
-新 worktree 需要在本地实例配置中加入以下片段；路径相对 `config/` 解析：
+新 worktree 需要在本地实例配置中加入以下片段；客户端程序和目录必须写绝对路径：
 
 ```yaml
 minecraft:
   enabled: true
   eventPollIntervalMs: 500
   runtimeDir: /tmp/mizune-mc-dev
+  clientProfiles:
+    local-neoforge:
+      identityRef: offline-dev
+      executable: /absolute/path/to/xvfb-run
+      arguments:
+        - -a
+        - /absolute/path/to/approved-launcher
+      workingDirectory: /absolute/path/to/client-profile
+      gameDirectory: /absolute/path/to/isolated-game-directory
+      environment:
+        LIBGL_ALWAYS_SOFTWARE: "1"
   templates:
-    local-simulation-1.21.1:
-      backend: simulation
+    local-neoforge-1.21.1:
+      backend: neoforge
       minecraftVersion: 1.21.1
-      loader: vanilla
-      gameProfileId: simulation
-      identityRef: simulation-dev
+      loader: neoforge
+      gameProfileId: local-neoforge
+      identityRef: offline-dev
       allowedServers:
         - 127.0.0.1:25566
       modelRefs:
@@ -45,7 +56,7 @@ CONFIG_INSTANCE=dev npm run dev
 npm run dev:minecraft-runtime
 ```
 
-受管 Runtime 的 socket、SQLite、PID 自登记和认证 token 位于 `<runtimeDir>/<resourceId>/`；运行目录收敛为 `0700`，token 为 `0600`。token 内容不写入命令行、数据库或日志。正常 Actor 连接每次重连都会从持久 incarnation 重新解析 instance ID 和 token，防止连到旧 daemon。
+受管 Runtime 的 socket、SQLite、PID 自登记、Bridge descriptor、客户端启动档案和认证 token 位于 `<runtimeDir>/<resourceId>/`；运行目录收敛为 `0700`，token 与启动档案为 `0600`。启动不经过 shell，模型不能提供可执行文件、参数或环境变量；这些值只能来自 `minecraft.clientProfiles`。token 内容不写入命令行、数据库或日志。正常 Actor 连接每次重连都会从持久 incarnation 重新解析 instance ID 和 token，防止连到旧 daemon。
 
 父项目停机时会先中止独立决策循环，再对所有受管 Runtime 执行 TERM/KILL 收敛。每次发信号前都会重新校验 PID + start ticks + boot ID，且必须确认进程真正退出才写入终态。如无法识别或停止进程，supervisor 会保留 `stopping`/`needs_attention` 状态并让停机失败，不会伪装回收成功。
 
@@ -72,6 +83,6 @@ WebUI 的「运行时资源 → Minecraft Actor」提供概览、SSE 动态、�
 
 ## 验证边界
 
-默认父项目测试包含一个真实跨语言契约测试：它启动 Python daemon，并验证握手、程序草稿事务、行为命令和事件读取。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain 和 live daemon 断线关闭。
+默认父项目测试包含两个真实跨进程契约：一个验证 simulation daemon 的握手、行为与持久化；另一个让 supervisor 启动 Python daemon 和假 NeoForge 客户端，验证 Bridge 首快照门禁、daemon/client 双进程指纹、只读 capability 与成组停止。子模块自身测试覆盖 SQLite checkpoint、跨重启幂等、事件游标、deadline、cancel、heartbeat、控制租约安全停机，以及 NeoForge Bridge 的 framing、认证、单控制器租约、快照限额、显式事件缺口、多页 drain 和 live daemon 断线关闭。
 
-真实客户端的下一阶段是让父项目 supervisor 启动隔离的 Java 客户端，并把客户端、Bridge descriptor/token 与 `neoforge_readonly` daemon 作为同一 incarnation 编排。只有 daemon 已完成实例身份、目标服务器和首个快照校验后，父项目才能标记 ready；关闭默认 inhibit 自动重连，只有 supervisor 已开始收敛同一 Java client 时才能显式使用 preserve handoff。随后再按 capability 逐项开放移动、交互、聊天发送和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。
+下一阶段是在受控 dev 配置中用真实 1.21.1 NeoForge 客户端替换契约假客户端，完成父项目自然语言 delegate 的端到端联调。读链稳定后，再按 capability 逐项开放聊天发送、移动、交互和战斗，不改变已经由契约测试保护的父项目 RPC 和工具语义。

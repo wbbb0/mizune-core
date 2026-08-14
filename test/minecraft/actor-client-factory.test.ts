@@ -30,6 +30,68 @@ test("template catalog 只匹配服务端允许的目标且拒绝歧义", () => 
   }), /不在受控允许列表/u);
 });
 
+test("NeoForge 模板必须引用受控客户端档案且启动契约参与不可变指纹", () => {
+  const missingProfile = createTestAppConfig({
+    minecraft: {
+      enabled: true,
+      templates: {
+        live: {
+          ...template(["127.0.0.1:25566"]),
+          backend: "neoforge",
+          loader: "neoforge",
+          gameProfileId: "missing"
+        }
+      }
+    }
+  });
+  assert.throws(
+    () => new MinecraftRuntimeTemplateCatalog(missingProfile).list(),
+    /不存在的客户端档案/u
+  );
+
+  const configured = createTestAppConfig({
+    minecraft: {
+      enabled: true,
+      clientProfiles: {
+        live: {
+          identityRef: "test-identity",
+          executable: "/usr/bin/java",
+          arguments: ["-jar", "/srv/minecraft/launcher.jar"],
+          workingDirectory: "/srv/minecraft",
+          gameDirectory: "/srv/minecraft/game",
+          environment: { LIBGL_ALWAYS_SOFTWARE: "1" }
+        }
+      },
+      templates: {
+        live: {
+          ...template(["127.0.0.1:25566"]),
+          backend: "neoforge",
+          loader: "neoforge",
+          gameProfileId: "live"
+        }
+      }
+    }
+  });
+  const resolved = new MinecraftRuntimeTemplateCatalog(configured).resolveById("live");
+  assert.equal(resolved.clientProfile?.executable, "/usr/bin/java");
+
+  const changed = createTestAppConfig({
+    minecraft: {
+      ...configured.minecraft,
+      clientProfiles: {
+        live: {
+          ...configured.minecraft.clientProfiles.live!,
+          arguments: ["-Xmx4G", "-jar", "/srv/minecraft/launcher.jar"]
+        }
+      }
+    }
+  });
+  assert.notEqual(
+    new MinecraftRuntimeTemplateCatalog(changed).resolveById("live").fingerprint,
+    resolved.fingerprint
+  );
+});
+
 test("恢复资源区分不可变运行模板与可热收敛策略", async () => {
   const config = createTestAppConfig({
     minecraft: {

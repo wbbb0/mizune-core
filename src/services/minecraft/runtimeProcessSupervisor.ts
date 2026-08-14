@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { chmod, lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import type { Logger } from "pino";
@@ -13,11 +13,12 @@ import type { RuntimeResourceRegistry } from "#runtime/resources/runtimeResource
 import { ProtocolMinecraftActorClient } from "./actorClient.ts";
 import type { MinecraftActorProvisioningStore } from "./actorProvisioningStore.ts";
 import {
-  matchesLinuxProcessIdentity,
   readCurrentBootId,
+  readLinuxProcessIdentity,
   readSpawnedProcessIdentity
 } from "./processIdentity.ts";
 import type { MinecraftRuntimeTemplateCatalog } from "./runtimeTemplateCatalog.ts";
+import type { ResolvedMinecraftRuntimeTemplate } from "./runtimeTemplateCatalog.ts";
 import { UnixSocketMinecraftActorTransport } from "./unixSocketTransport.ts";
 
 interface ManagedRuntimeProcess {
@@ -28,6 +29,8 @@ interface ManagedRuntimeProcess {
   pid: number;
   processGroupId: number;
   startTicks: string;
+  clientPid: number | null;
+  clientStartTicks: string | null;
   bootId: string;
   socketPath: string;
   tokenFile: string;
@@ -46,6 +49,14 @@ type ChildTermination =
 interface ObservedChild {
   child: ChildProcess;
   termination: Promise<ChildTermination>;
+}
+
+interface RuntimeProcessRegistration {
+  pid: number;
+  startTicks: string;
+  bootId: string;
+  clientPid: number | null;
+  clientStartTicks: string | null;
 }
 
 export class MinecraftRuntimeProcessSupervisor {
@@ -129,20 +140,6 @@ export class MinecraftRuntimeProcessSupervisor {
       return;
     }
 
-    if (binding.backend !== "simulation") {
-      await this.provisioningStore.markNeedsAttention({
-        resourceId: current.resourceId,
-        failureCode: "backend_not_implemented",
-        failureMessage: "当前切片尚未启用 NeoForge 客户端 supervisor",
-        phase: "resolving_template",
-        nowMs: this.now()
-      });
-      if (incarnation && !(await this.provisioningStore.hasActiveDecision(current.resourceId))) {
-        await this.stopIncarnation(current, incarnation, "runtime_backend_revoked");
-      }
-      return;
-    }
-
     if (incarnation) {
       if (binding.provisionStatus === "needs_attention" || binding.provisionStatus === "failed") {
         if (!(await this.provisioningStore.hasActiveDecision(current.resourceId))) {
@@ -159,7 +156,7 @@ export class MinecraftRuntimeProcessSupervisor {
       || binding.provisionStatus === "failed"
     ) return;
     if (binding.provisionStatus === "retry_wait" && binding.retryAtMs !== null && binding.retryAtMs > this.now()) return;
-    await this.startSimulationRuntime(current);
+    await this.startRuntime(current);
   }
 
   private async reconcileExistingIncarnation(
@@ -187,8 +184,9 @@ export class MinecraftRuntimeProcessSupervisor {
     incarnation: MinecraftRuntimeIncarnationRecord
   ): Promise<ManagedRuntimeProcess | null> {
     const existing = this.processes.get(resource.resourceId);
-    if (existing?.runtimeInstanceId === incarnation.runtimeInstanceId) return existing;
-    const recovered = await this.recoverProcessIdentity(resource, incarnation, "running");
+    const recovered = existing?.runtimeInstanceId === incarnation.runtimeInstanceId
+      ? existing
+      : await this.recoverProcessIdentity(resource, incarnation, "running");
     if (!recovered) {
       await this.provisioningStore.markNeedsAttention({
         resourceId: resource.resourceId,
@@ -197,6 +195,24 @@ export class MinecraftRuntimeProcessSupervisor {
         phase: "waiting_daemon",
         nowMs: this.now()
       });
+      return null;
+    }
+    const daemon = await readMatchingProcessIdentity(
+      recovered.pid,
+      recovered.startTicks,
+      recovered.bootId
+    );
+    if (!daemon || daemon.processGroupId !== recovered.processGroupId) {
+      this.processes.set(resource.resourceId, recovered);
+      if (await isHandleAlive(recovered)) {
+        await this.stopHandle(recovered, "runtime_daemon_missing", "failed");
+      } else {
+        await this.finalizeMissingIncarnation(
+          recovered,
+          "failed",
+          "受管 Runtime 进程已不存在或 PID 身份不匹配"
+        );
+      }
       return null;
     }
     if (!(await isHandleAlive(recovered))) {
@@ -239,10 +255,11 @@ export class MinecraftRuntimeProcessSupervisor {
       resolve(dirname(incarnation.socketPath), "runtime.pid.json"),
       incarnation.runtimeInstanceId,
       this.config.minecraft.supervisor.startupTimeoutMs,
-      targetStatus === "running" ? this.shutdownController.signal : undefined
+      targetStatus === "running" ? this.shutdownController.signal : undefined,
+      resource.minecraftActor?.binding.backend === "neoforge"
     );
     if (!registration || registration.bootId !== incarnation.bootId) return null;
-    if (!(await matchesLinuxProcessIdentity(registration))) return createManagedHandle({
+    if (!(await registrationBelongsToProcessGroup(registration))) return createManagedHandle({
       resourceId: resource.resourceId,
       actorId: resource.minecraftActor?.actorId ?? "unknown",
       attemptId: incarnation.attemptId,
@@ -250,6 +267,8 @@ export class MinecraftRuntimeProcessSupervisor {
       pid: registration.pid,
       processGroupId: registration.pid,
       startTicks: registration.startTicks,
+      clientPid: registration.clientPid,
+      clientStartTicks: registration.clientStartTicks,
       bootId: registration.bootId,
       socketPath: incarnation.socketPath,
       tokenFile: incarnation.tokenFile,
@@ -263,18 +282,22 @@ export class MinecraftRuntimeProcessSupervisor {
       daemonPid: registration.pid,
       daemonStartTicks: registration.startTicks,
       processGroupId: registration.pid,
+      clientPid: registration.clientPid,
+      clientStartTicks: registration.clientStartTicks,
       targetStatus,
       nowMs: this.now()
     });
     return this.adoptHandle(resource, recovered);
   }
 
-  private async startSimulationRuntime(resource: RuntimeResourceRecord): Promise<void> {
+  private async startRuntime(resource: RuntimeResourceRecord): Promise<void> {
     const actor = resource.minecraftActor;
     if (!actor) return;
     const template = this.templates.resolveById(actor.binding.templateId);
-    if (template.backend !== "simulation") return;
     const paths = await this.prepareRuntimeDirectory(resource.resourceId);
+    if (template.backend === "neoforge") {
+      await this.writeClientLaunchSpec(paths.clientLaunchSpecFile, template);
+    }
     const attemptId = `attempt_${randomUUID()}`;
     const runtimeInstanceId = `runtime_${randomUUID()}`;
     const nowMs = this.now();
@@ -283,7 +306,7 @@ export class MinecraftRuntimeProcessSupervisor {
       attemptId,
       runtimeInstanceId,
       socketPath: paths.socketPath,
-      gameDirectory: paths.gameDirectory,
+      gameDirectory: template.clientProfile?.gameDirectory ?? paths.gameDirectory,
       tokenFile: paths.tokenFile,
       bootId: await readCurrentBootId(),
       nowMs
@@ -297,15 +320,22 @@ export class MinecraftRuntimeProcessSupervisor {
 
     let handle: ManagedRuntimeProcess | null = null;
     try {
-      const observed = this.spawnSimulationDaemon({
+      const observed = this.spawnRuntimeDaemon({
+        template,
         actorId: actor.actorId,
         runtimeInstanceId,
         socketPath: paths.socketPath,
         databasePath: paths.databasePath,
         pidFile: paths.pidFile,
-        tokenFile: paths.tokenFile
+        tokenFile: paths.tokenFile,
+        bridgeDescriptorFile: paths.bridgeDescriptorFile,
+        clientLaunchSpecFile: paths.clientLaunchSpecFile,
+        expectedServerAddress: actor.binding.serverAddress
       });
       const identity = await readObservedChildIdentity(observed);
+      if (identity.processGroupId !== identity.pid) {
+        throw new Error("Minecraft Runtime daemon 未成为独立进程组 leader");
+      }
       handle = createManagedHandle({
         resourceId: resource.resourceId,
         actorId: actor.actorId,
@@ -314,6 +344,8 @@ export class MinecraftRuntimeProcessSupervisor {
         pid: identity.pid,
         processGroupId: identity.pid,
         startTicks: identity.startTicks,
+        clientPid: null,
+        clientStartTicks: null,
         bootId: identity.bootId,
         socketPath: paths.socketPath,
         tokenFile: paths.tokenFile,
@@ -321,6 +353,39 @@ export class MinecraftRuntimeProcessSupervisor {
         termination: observed.termination
       });
       this.processes.set(resource.resourceId, handle);
+      if (template.backend === "neoforge") {
+        await this.provisioningStore.advanceAttempt({
+          resourceId: resource.resourceId,
+          attemptId,
+          phase: "starting_client",
+          nowMs: this.now()
+        });
+      }
+      const registration = await Promise.race([
+        waitForPidRegistration(
+          paths.pidFile,
+          runtimeInstanceId,
+          this.config.minecraft.supervisor.startupTimeoutMs,
+          this.shutdownController.signal,
+          template.backend === "neoforge"
+        ),
+        observed.termination.then(termination => {
+          throw childTerminationError(termination);
+        })
+      ]);
+      if (!registration) throw new Error("Minecraft Runtime 未在时限内登记完整进程身份");
+      if (
+        registration.pid !== identity.pid
+        || registration.startTicks !== identity.startTicks
+        || registration.bootId !== identity.bootId
+      ) {
+        throw new Error("Minecraft Runtime 自登记身份与父进程观察不一致");
+      }
+      if (!(await registrationBelongsToProcessGroup(registration))) {
+        throw new Error("Minecraft Runtime 自登记进程不属于受管进程组");
+      }
+      handle.clientPid = registration.clientPid;
+      handle.clientStartTicks = registration.clientStartTicks;
       await this.provisioningStore.markIncarnationRunning({
         resourceId: resource.resourceId,
         attemptId,
@@ -328,13 +393,15 @@ export class MinecraftRuntimeProcessSupervisor {
         daemonPid: identity.pid,
         daemonStartTicks: identity.startTicks,
         processGroupId: identity.pid,
+        clientPid: registration.clientPid,
+        clientStartTicks: registration.clientStartTicks,
         nowMs: this.now()
       });
       this.attachChild(handle);
       await this.provisioningStore.advanceAttempt({
         resourceId: resource.resourceId,
         attemptId,
-        phase: "waiting_daemon",
+        phase: template.backend === "neoforge" ? "waiting_bridge" : "waiting_daemon",
         nowMs: this.now()
       });
       await this.waitUntilReady(resource, paths.socketPath, runtimeInstanceId);
@@ -373,17 +440,21 @@ export class MinecraftRuntimeProcessSupervisor {
     }
   }
 
-  private spawnSimulationDaemon(input: {
+  private spawnRuntimeDaemon(input: {
+    template: ResolvedMinecraftRuntimeTemplate;
     actorId: string;
     runtimeInstanceId: string;
     socketPath: string;
     databasePath: string;
     pidFile: string;
     tokenFile: string;
+    bridgeDescriptorFile: string;
+    clientLaunchSpecFile: string;
+    expectedServerAddress: string;
   }): ObservedChild {
     const supervisor = this.config.minecraft.supervisor;
     const modulePath = resolveTrustedPath(supervisor.pythonModulePath);
-    const child = spawn(supervisor.pythonExecutable, [
+    const daemonArguments = [
       "-m",
       "mizune_mc_runtime.daemon",
       "--socket",
@@ -398,7 +469,19 @@ export class MinecraftRuntimeProcessSupervisor {
       input.pidFile,
       "--auth-token-file",
       input.tokenFile
-    ], {
+    ];
+    if (input.template.backend === "neoforge") {
+      daemonArguments.push(
+        "--backend", "neoforge_readonly",
+        "--bridge-descriptor-file", input.bridgeDescriptorFile,
+        "--bridge-auth-token-file", input.tokenFile,
+        "--expected-server-address", input.expectedServerAddress,
+        "--bridge-poll-interval-ms", String(this.config.minecraft.eventPollIntervalMs),
+        "--bridge-ready-timeout-ms", String(supervisor.startupTimeoutMs),
+        "--client-launch-spec-file", input.clientLaunchSpecFile
+      );
+    }
+    const child = spawn(supervisor.pythonExecutable, daemonArguments, {
       cwd: process.cwd(),
       detached: true,
       shell: false,
@@ -452,6 +535,8 @@ export class MinecraftRuntimeProcessSupervisor {
     gameDirectory: string;
     tokenFile: string;
     pidFile: string;
+    bridgeDescriptorFile: string;
+    clientLaunchSpecFile: string;
   }> {
     if (!/^res_minecraft_[a-zA-Z0-9_-]+$/u.test(resourceId)) {
       throw new Error(`Minecraft resource ID 不能用于运行目录：${resourceId}`);
@@ -472,13 +557,33 @@ export class MinecraftRuntimeProcessSupervisor {
     const tokenFile = resolve(resourceRoot, "auth.token");
     await writePrivateFile(tokenFile, randomBytes(32).toString("base64url"));
     await rejectSymlink(resolve(resourceRoot, "runtime.sqlite"));
+    const bridgeDescriptorFile = resolve(resourceRoot, "bridge.json");
+    await removePrivateRegularFileIfPresent(bridgeDescriptorFile);
     return {
       socketPath,
       databasePath: resolve(resourceRoot, "runtime.sqlite"),
       gameDirectory,
       tokenFile,
-      pidFile: resolve(resourceRoot, "runtime.pid.json")
+      pidFile: resolve(resourceRoot, "runtime.pid.json"),
+      bridgeDescriptorFile,
+      clientLaunchSpecFile: resolve(resourceRoot, "client-launch.json")
     };
+  }
+
+  private async writeClientLaunchSpec(
+    path: string,
+    template: ResolvedMinecraftRuntimeTemplate
+  ): Promise<void> {
+    const profile = template.clientProfile;
+    if (!profile) throw new Error(`NeoForge 运行模板缺少客户端启动档案：${template.templateId}`);
+    await writePrivateFile(path, JSON.stringify({
+      version: 1,
+      executable: profile.executable,
+      arguments: profile.arguments,
+      workingDirectory: profile.workingDirectory,
+      gameDirectory: profile.gameDirectory,
+      environment: profile.environment
+    }));
   }
 
   private attachChild(handle: ManagedRuntimeProcess): void {
@@ -488,7 +593,7 @@ export class MinecraftRuntimeProcessSupervisor {
       const reason = termination.kind === "error"
         ? `Runtime 进程错误：${termination.error.message}`
         : `Runtime 进程退出：code=${String(termination.code)}, signal=${String(termination.signal)}`;
-      return this.finalizeHandleOnce(handle, outcome, reason);
+      return this.stopHandle(handle, reason, outcome);
     }).catch(error => {
         this.logger.error({ err: error, resourceId: handle.resourceId }, "minecraft_runtime_exit_finalize_failed");
     });
@@ -526,13 +631,18 @@ export class MinecraftRuntimeProcessSupervisor {
         nowMs: this.now()
       });
     }
-    if (!(await signalOwnedProcessGroup(handle, "SIGTERM"))) {
+    const daemonSignaled = await signalOwnedDaemon(handle, "SIGTERM");
+    if (!daemonSignaled && !(await signalOwnedClientGroup(handle, "SIGTERM"))) {
       await this.finalizeHandleOnce(handle, outcome, reason);
       return;
     }
     let exited = await waitForProcessExit(handle, this.config.minecraft.supervisor.stopGraceMs);
     if (!exited) {
-      if (!(await signalOwnedProcessGroup(handle, "SIGKILL"))) {
+      const [daemonGroupSignaled, clientGroupSignaled] = await Promise.all([
+        signalOwnedDaemonGroup(handle, "SIGKILL"),
+        signalOwnedClientGroup(handle, "SIGKILL")
+      ]);
+      if (!daemonGroupSignaled && !clientGroupSignaled) {
         await this.finalizeHandleOnce(handle, outcome, reason);
         return;
       }
@@ -563,7 +673,9 @@ export class MinecraftRuntimeProcessSupervisor {
       const incarnation = await this.provisioningStore.getActiveIncarnation(handle.resourceId);
       const identityWasPersisted = incarnation?.runtimeInstanceId === handle.runtimeInstanceId
         && incarnation.daemonPid === handle.pid
-        && incarnation.daemonStartTicks === handle.startTicks;
+        && incarnation.daemonStartTicks === handle.startTicks
+        && incarnation.clientPid === handle.clientPid
+        && incarnation.clientStartTicks === handle.clientStartTicks;
       await this.provisioningStore.markIncarnationTerminated({
         resourceId: handle.resourceId,
         attemptId: handle.attemptId,
@@ -573,7 +685,9 @@ export class MinecraftRuntimeProcessSupervisor {
         ...(identityWasPersisted
           ? {
               expectedDaemonPid: handle.pid,
-              expectedDaemonStartTicks: handle.startTicks
+              expectedDaemonStartTicks: handle.startTicks,
+              expectedClientPid: handle.clientPid,
+              expectedClientStartTicks: handle.clientStartTicks
             }
           : {}),
         retryAtMs,
@@ -602,6 +716,8 @@ export class MinecraftRuntimeProcessSupervisor {
       pid: incarnation.daemonPid,
       processGroupId: incarnation.processGroupId,
       startTicks: incarnation.daemonStartTicks,
+      clientPid: incarnation.clientPid,
+      clientStartTicks: incarnation.clientStartTicks,
       bootId: incarnation.bootId,
       socketPath: incarnation.socketPath,
       tokenFile: incarnation.tokenFile,
@@ -645,14 +761,6 @@ function createManagedHandle(input: Omit<
 
 async function waitForProcessExit(handle: ManagedRuntimeProcess, timeoutMs: number): Promise<boolean> {
   if (!(await isHandleAlive(handle))) return true;
-  if (handle.termination) {
-    const observed = await Promise.race([
-      handle.termination.then(() => true),
-      delay(timeoutMs).then(() => false)
-    ]);
-    if (observed) return true;
-    return !(await isHandleAlive(handle));
-  }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!(await isHandleAlive(handle))) return true;
@@ -661,14 +769,18 @@ async function waitForProcessExit(handle: ManagedRuntimeProcess, timeoutMs: numb
   return !(await isHandleAlive(handle));
 }
 
-async function signalOwnedProcessGroup(
+async function signalOwnedDaemonGroup(
   handle: ManagedRuntimeProcess,
   signal: NodeJS.Signals
 ): Promise<boolean> {
   if (handle.processGroupId !== handle.pid) {
     throw new Error(`拒绝向非 daemon leader 进程组发送信号：${handle.runtimeInstanceId}`);
   }
-  if (!(await isHandleAlive(handle))) return false;
+  const daemon = await readMatchingProcessIdentity(handle.pid, handle.startTicks, handle.bootId);
+  if (!daemon) return false;
+  if (daemon.processGroupId !== handle.processGroupId) {
+    throw new Error(`拒绝向身份不属于受管进程组的 Runtime 发送信号：${handle.runtimeInstanceId}`);
+  }
   try {
     process.kill(-handle.processGroupId, signal);
     return true;
@@ -678,12 +790,65 @@ async function signalOwnedProcessGroup(
   }
 }
 
-function isHandleAlive(handle: ManagedRuntimeProcess): Promise<boolean> {
-  return matchesLinuxProcessIdentity({
-    pid: handle.pid,
-    startTicks: handle.startTicks,
-    bootId: handle.bootId
-  });
+async function signalOwnedClientGroup(
+  handle: ManagedRuntimeProcess,
+  signal: NodeJS.Signals
+): Promise<boolean> {
+  if (handle.clientPid === null || handle.clientStartTicks === null) return false;
+  const client = await readMatchingProcessIdentity(
+    handle.clientPid,
+    handle.clientStartTicks,
+    handle.bootId
+  );
+  if (!client) return false;
+  if (client.processGroupId !== handle.clientPid) {
+    throw new Error(`拒绝向身份不属于独立客户端进程组的进程发送信号：${handle.runtimeInstanceId}`);
+  }
+  try {
+    process.kill(-handle.clientPid, signal);
+    return true;
+  } catch (error) {
+    if (isErrno(error, "ESRCH")) return false;
+    throw error;
+  }
+}
+
+async function signalOwnedDaemon(
+  handle: ManagedRuntimeProcess,
+  signal: NodeJS.Signals
+): Promise<boolean> {
+  const daemon = await readMatchingProcessIdentity(handle.pid, handle.startTicks, handle.bootId);
+  if (!daemon) return false;
+  if (daemon.processGroupId !== handle.processGroupId || handle.processGroupId !== handle.pid) {
+    throw new Error(`拒绝向身份不属于受管进程组的 daemon 发送信号：${handle.runtimeInstanceId}`);
+  }
+  try {
+    process.kill(handle.pid, signal);
+    return true;
+  } catch (error) {
+    if (isErrno(error, "ESRCH")) return false;
+    throw error;
+  }
+}
+
+async function isHandleAlive(handle: ManagedRuntimeProcess): Promise<boolean> {
+  const owned = await readOwnedProcessIdentities(handle);
+  return owned.daemon !== null || owned.client !== null;
+}
+
+async function readOwnedProcessIdentities(handle: ManagedRuntimeProcess) {
+  const [daemon, client] = await Promise.all([
+    readMatchingProcessIdentity(handle.pid, handle.startTicks, handle.bootId),
+    handle.clientPid !== null && handle.clientStartTicks !== null
+      ? readMatchingProcessIdentity(handle.clientPid, handle.clientStartTicks, handle.bootId)
+      : Promise.resolve(null)
+  ]);
+  return { daemon, client };
+}
+
+async function readMatchingProcessIdentity(pid: number, startTicks: string, bootId: string) {
+  const current = await readLinuxProcessIdentity(pid);
+  return current?.startTicks === startTicks && current.bootId === bootId ? current : null;
 }
 
 function observeChild(child: ChildProcess): ObservedChild {
@@ -786,8 +951,9 @@ async function waitForPidRegistration(
   pidFile: string,
   expectedRuntimeInstanceId: string,
   timeoutMs: number,
-  signal?: AbortSignal
-): Promise<{ pid: number; startTicks: string; bootId: string } | null> {
+  signal?: AbortSignal,
+  requireClientIdentity = false
+): Promise<RuntimeProcessRegistration | null> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (signal) throwIfAborted(signal);
@@ -802,11 +968,22 @@ async function waitForPidRegistration(
         && /^\d+$/u.test(parsed.startTicks)
         && typeof parsed.bootId === "string"
         && parsed.bootId.length > 0
+        && (
+          (!requireClientIdentity && parsed.clientPid == null && parsed.clientStartTicks == null)
+          || (
+            Number.isSafeInteger(parsed.clientPid)
+            && (parsed.clientPid as number) > 0
+            && typeof parsed.clientStartTicks === "string"
+            && /^\d+$/u.test(parsed.clientStartTicks)
+          )
+        )
       ) {
         return {
           pid: parsed.pid as number,
           startTicks: parsed.startTicks,
-          bootId: parsed.bootId
+          bootId: parsed.bootId,
+          clientPid: parsed.clientPid == null ? null : parsed.clientPid as number,
+          clientStartTicks: parsed.clientStartTicks == null ? null : parsed.clientStartTicks
         };
       }
     } catch (error) {
@@ -815,6 +992,24 @@ async function waitForPidRegistration(
     await delay(25);
   }
   return null;
+}
+
+async function registrationBelongsToProcessGroup(
+  registration: RuntimeProcessRegistration
+): Promise<boolean> {
+  const daemon = await readMatchingProcessIdentity(
+    registration.pid,
+    registration.startTicks,
+    registration.bootId
+  );
+  if (!daemon || daemon.processGroupId !== registration.pid) return false;
+  if (registration.clientPid === null || registration.clientStartTicks === null) return true;
+  const client = await readMatchingProcessIdentity(
+    registration.clientPid,
+    registration.clientStartTicks,
+    registration.bootId
+  );
+  return client?.processGroupId === registration.clientPid;
 }
 
 async function ensurePrivateDirectory(path: string): Promise<void> {
@@ -851,6 +1046,19 @@ async function rejectSymlink(path: string): Promise<void> {
   try {
     const metadata = await lstat(path);
     if (metadata.isSymbolicLink()) throw new Error(`Minecraft Runtime 文件不能是符号链接：${path}`);
+  } catch (error) {
+    if (isMissingFile(error)) return;
+    throw error;
+  }
+}
+
+async function removePrivateRegularFileIfPresent(path: string): Promise<void> {
+  try {
+    const metadata = await lstat(path);
+    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.uid !== process.getuid?.()) {
+      throw new Error(`Minecraft Runtime 临时文件无效：${path}`);
+    }
+    await unlink(path);
   } catch (error) {
     if (isMissingFile(error)) return;
     throw error;

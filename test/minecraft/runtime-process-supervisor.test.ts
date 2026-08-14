@@ -10,9 +10,14 @@ import { RuntimeResourceStore } from "../../src/runtime/resources/runtimeResourc
 import { MinecraftActorJournal } from "../../src/services/minecraft/actorJournal.ts";
 import { MinecraftActorProvisioningService } from "../../src/services/minecraft/actorProvisioningService.ts";
 import { MinecraftActorProvisioningStore } from "../../src/services/minecraft/actorProvisioningStore.ts";
-import { matchesLinuxProcessIdentity, readCurrentBootId } from "../../src/services/minecraft/processIdentity.ts";
+import {
+  matchesLinuxProcessIdentity,
+  readCurrentBootId,
+  readLinuxProcessIdentity
+} from "../../src/services/minecraft/processIdentity.ts";
 import { MinecraftRuntimeTemplateCatalog } from "../../src/services/minecraft/runtimeTemplateCatalog.ts";
 import { MinecraftRuntimeProcessSupervisor } from "../../src/services/minecraft/runtimeProcessSupervisor.ts";
+import { UnixSocketMinecraftActorTransport } from "../../src/services/minecraft/unixSocketTransport.ts";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
@@ -126,6 +131,196 @@ test("父项目按自然委派启动 simulation daemon，并以进程指纹安�
     }
     database.close();
     await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("父项目以同一 incarnation 托管 NeoForge 客户端与只读 Runtime", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "minecraft-runtime-neoforge-"));
+  const runtimeDir = join(dataDir, "run");
+  const gameDirectory = join(dataDir, "game");
+  await mkdir(gameDirectory, { recursive: true });
+  const database = new StateDatabase(dataDir, createSilentLogger());
+  const registry = new RuntimeResourceRegistry(new RuntimeResourceStore(database));
+  const provisioningStore = new MinecraftActorProvisioningStore(database, new MinecraftActorJournal());
+  const config = createTestAppConfig({
+    minecraft: {
+      enabled: true,
+      runtimeDir,
+      eventPollIntervalMs: 100,
+      supervisor: {
+        pythonExecutable: "python3",
+        pythonModulePath: join(PROJECT_ROOT, "vendor/mizune-mc-runtime/src"),
+        startupTimeoutMs: 5_000,
+        stopGraceMs: 1_000
+      },
+      clientProfiles: {
+        fake: {
+          identityRef: "offline-test",
+          executable: "/usr/bin/python3",
+          arguments: [join(PROJECT_ROOT, "test/fixtures/fake-neoforge-client.py")],
+          workingDirectory: dataDir,
+          gameDirectory,
+          environment: {}
+        }
+      },
+      templates: {
+        neoforge: {
+          backend: "neoforge",
+          minecraftVersion: "1.21.1",
+          loader: "neoforge",
+          gameProfileId: "fake",
+          identityRef: "offline-test",
+          allowedServers: ["127.0.0.1:25566"],
+          modelRefs: ["test-model"]
+        }
+      }
+    }
+  });
+  const templates = new MinecraftRuntimeTemplateCatalog(config);
+  const delegated = await new MinecraftActorProvisioningService(
+    templates, provisioningStore, registry, runtimeDir
+  ).delegate({
+    serverAddress: "127.0.0.1:25566",
+    instruction: "登录服务器看看出生点周围",
+    ownerSessionId: "web:owner",
+    ownerPrincipalId: "owner",
+    idempotencyKey: "neoforge-managed-runtime"
+  });
+  const resourceId = delegated.resource.resourceId;
+  const actorId = delegated.resource.minecraftActor!.actorId;
+  const supervisor = new MinecraftRuntimeProcessSupervisor(
+    config, registry, provisioningStore, templates, createSilentLogger()
+  );
+  let daemonIdentity: { pid: number; startTicks: string; bootId: string } | null = null;
+  let clientIdentity: { pid: number; startTicks: string; bootId: string } | null = null;
+  try {
+    await supervisor.start();
+    await waitUntil(async () => (
+      (await registry.get(resourceId))?.minecraftActor?.binding.provisionStatus === "ready"
+    ), 7_000);
+    const incarnation = await provisioningStore.getActiveIncarnation(resourceId);
+    assert.ok(
+      incarnation?.daemonPid && incarnation.daemonStartTicks
+      && incarnation.clientPid && incarnation.clientStartTicks
+    );
+    daemonIdentity = {
+      pid: incarnation.daemonPid,
+      startTicks: incarnation.daemonStartTicks,
+      bootId: incarnation.bootId
+    };
+    clientIdentity = {
+      pid: incarnation.clientPid,
+      startTicks: incarnation.clientStartTicks,
+      bootId: incarnation.bootId
+    };
+    assert.equal(await matchesLinuxProcessIdentity(daemonIdentity), true);
+    assert.equal(await matchesLinuxProcessIdentity(clientIdentity), true);
+    const launchSpecFile = join(runtimeDir, resourceId, "client-launch.json");
+    assert.equal((await stat(launchSpecFile)).mode & 0o777, 0o600);
+    const token = await readFile(incarnation.tokenFile, "utf8");
+    const daemonCommandLine = await readFile(`/proc/${daemonIdentity.pid}/cmdline`, "utf8");
+    const clientCommandLine = await readFile(`/proc/${clientIdentity.pid}/cmdline`, "utf8");
+    assert.doesNotMatch(daemonCommandLine, new RegExp(escapeRegExp(token), "u"));
+    assert.doesNotMatch(clientCommandLine, new RegExp(escapeRegExp(token), "u"));
+    assert.doesNotMatch(await readFile(launchSpecFile, "utf8"), new RegExp(escapeRegExp(token), "u"));
+    const transport = new UnixSocketMinecraftActorTransport({
+      socketPath: incarnation.socketPath,
+      actorId,
+      requestTimeoutMs: 1_000,
+      connectTimeoutMs: 1_000,
+      maxFrameBytes: 1_048_576,
+      runtimeInstanceId: incarnation.runtimeInstanceId,
+      authTokenFile: incarnation.tokenFile
+    });
+    const snapshot = await transport.call("actor.get_snapshot", {
+      protocolVersion: 1,
+      actorId
+    }) as {
+      actorId: string;
+      self: { connected: boolean };
+    };
+    assert.equal(snapshot.actorId, actorId);
+    assert.equal(snapshot.self.connected, true);
+    await assert.rejects(transport.call("behavior.start", {}), /不支持 RPC 方法/u);
+    await transport.close();
+
+    await supervisor.stop();
+    assert.equal(await matchesLinuxProcessIdentity(daemonIdentity), false);
+    assert.equal(await matchesLinuxProcessIdentity(clientIdentity), false);
+    assert.equal(
+      (await registry.get(resourceId))?.minecraftActor?.binding.provisionStatus,
+      "stopped"
+    );
+  } finally {
+    await supervisor.stop().catch(() => undefined);
+    for (const identity of [daemonIdentity, clientIdentity]) {
+      if (identity && await matchesLinuxProcessIdentity(identity)) {
+        try { process.kill(identity.pid, "SIGKILL"); } catch { /* test cleanup */ }
+      }
+    }
+    database.close();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("父进程恢复时会收敛 daemon 已死但 client 仍活的 incarnation", async () => {
+  const harness = await createSupervisorHarness("client-only-recovery", "python3");
+  const daemon = spawn("/usr/bin/sleep", ["60"], { detached: true, stdio: "ignore" });
+  const client = spawn("/usr/bin/sleep", ["60"], { detached: true, stdio: "ignore" });
+  assert.ok(daemon.pid && client.pid);
+  daemon.unref();
+  client.unref();
+  const daemonIdentity = await readLinuxProcessIdentity(daemon.pid);
+  const clientIdentity = await readLinuxProcessIdentity(client.pid);
+  assert.ok(daemonIdentity && clientIdentity);
+  const attemptId = "attempt-client-only";
+  const runtimeInstanceId = "runtime-client-only";
+  try {
+    await harness.provisioningStore.beginAttempt({
+      resourceId: harness.resourceId,
+      attemptId,
+      runtimeInstanceId,
+      socketPath: join(harness.dataDir, "missing.sock"),
+      gameDirectory: join(harness.dataDir, "game"),
+      tokenFile: join(harness.dataDir, "token"),
+      bootId: daemonIdentity.bootId,
+      nowMs: Date.now()
+    });
+    await harness.provisioningStore.markIncarnationRunning({
+      resourceId: harness.resourceId,
+      attemptId,
+      runtimeInstanceId,
+      daemonPid: daemonIdentity.pid,
+      daemonStartTicks: daemonIdentity.startTicks,
+      processGroupId: daemonIdentity.pid,
+      clientPid: clientIdentity.pid,
+      clientStartTicks: clientIdentity.startTicks,
+      nowMs: Date.now()
+    });
+    await harness.provisioningStore.markReady({
+      resourceId: harness.resourceId,
+      attemptId,
+      nowMs: Date.now()
+    });
+    process.kill(-daemonIdentity.pid, "SIGKILL");
+    await waitUntil(async () => !(await matchesLinuxProcessIdentity(daemonIdentity)), 2_000);
+
+    await harness.supervisor.start();
+    await waitUntil(async () => (
+      !(await matchesLinuxProcessIdentity(clientIdentity))
+      && (await harness.provisioningStore.getActiveIncarnation(harness.resourceId)) === null
+    ), 3_000);
+    assert.match(
+      (await harness.registry.get(harness.resourceId))?.minecraftActor?.binding.provisionStatus ?? "",
+      /^(retry_wait|failed)$/u
+    );
+  } finally {
+    for (const identity of [daemonIdentity, clientIdentity]) {
+      if (await matchesLinuxProcessIdentity(identity)) {
+        try { process.kill(-identity.pid, "SIGKILL"); } catch { /* test cleanup */ }
+      }
+    }
+    await harness.close();
   }
 });
 

@@ -4,6 +4,7 @@ export interface LinuxProcessIdentity {
   pid: number;
   startTicks: string;
   bootId: string;
+  processGroupId: number;
 }
 
 export async function readCurrentBootId(): Promise<string> {
@@ -22,11 +23,15 @@ export async function readLinuxProcessIdentity(pid: number): Promise<LinuxProces
     const closing = stat.lastIndexOf(")");
     if (closing < 0) throw new Error(`进程 stat 格式无效：${pid}`);
     const fieldsAfterCommand = stat.slice(closing + 1).trim().split(/\s+/u);
+    const processGroupId = Number(fieldsAfterCommand[2]);
     const startTicks = fieldsAfterCommand[19];
+    if (!Number.isSafeInteger(processGroupId) || processGroupId <= 0) {
+      throw new Error(`进程组格式无效：${pid}`);
+    }
     if (!startTicks || !/^\d+$/u.test(startTicks)) {
       throw new Error(`进程启动时间格式无效：${pid}`);
     }
-    return { pid, startTicks, bootId };
+    return { pid, startTicks, bootId, processGroupId };
   } catch (error) {
     if (isMissingProcess(error)) return null;
     throw error;

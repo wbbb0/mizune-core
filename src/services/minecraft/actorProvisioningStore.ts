@@ -341,6 +341,8 @@ export class MinecraftActorProvisioningStore {
     daemonPid: number;
     daemonStartTicks: string;
     processGroupId: number;
+    clientPid?: number | null;
+    clientStartTicks?: string | null;
     targetStatus: "running" | "stopping";
     nowMs: number;
   }): Promise<MinecraftRuntimeIncarnationRecord> {
@@ -390,16 +392,25 @@ export class MinecraftActorProvisioningStore {
       const daemonPid = positiveInteger(input.daemonPid, "daemonPid");
       const processGroupId = positiveInteger(input.processGroupId, "processGroupId");
       if (daemonPid !== processGroupId) throw new Error("受管 Runtime 必须以 daemon PID 作为独立进程组 ID");
+      const hasClientPid = input.clientPid != null;
+      const hasClientStartTicks = input.clientStartTicks != null;
+      if (hasClientPid !== hasClientStartTicks) {
+        throw new Error("clientPid 与 clientStartTicks 必须同时提供");
+      }
       const updated = db.prepare(`
         UPDATE minecraft_runtime_incarnations
-        SET status = ?, daemon_pid = ?, daemon_start_ticks = ?, process_group_id = ?
+        SET status = ?, daemon_pid = ?, daemon_start_ticks = ?,
+            client_pid = ?, client_start_ticks = ?, process_group_id = ?
         WHERE runtime_instance_id = ? AND resource_id = ? AND attempt_id = ?
-          AND daemon_pid IS NULL AND daemon_start_ticks IS NULL AND process_group_id IS NULL
+          AND daemon_pid IS NULL AND daemon_start_ticks IS NULL
+          AND client_pid IS NULL AND client_start_ticks IS NULL AND process_group_id IS NULL
           AND status IN ('starting', 'stopping')
       `).run(
         input.targetStatus,
         daemonPid,
         text(input.daemonStartTicks, "daemonStartTicks", 256),
+        input.clientPid == null ? null : positiveInteger(input.clientPid, "clientPid"),
+        input.clientStartTicks == null ? null : text(input.clientStartTicks, "clientStartTicks", 256),
         processGroupId,
         runtimeInstanceId,
         resourceId,
