@@ -161,6 +161,18 @@ export function createGenerationSegmentCoordinator(input: {
 
     flushBufferedChunk,
 
+    async appendStandalone(text: string): Promise<boolean | void> {
+      await flushBufferedChunk();
+      const committed = await commitChunk(text, {
+        joinWithDoubleNewline: Boolean(committedText.trim())
+      });
+      if (committed !== false) {
+        await input.draftOverlaySink?.markCommitted();
+        await input.draftStateSink?.clearDraftText();
+      }
+      return committed;
+    },
+
     async flushSummary(summary: string, streamResponse: boolean | undefined): Promise<void> {
       if (streamResponse !== false && committedText.trim()) {
         await flushSummaryTail(summary);

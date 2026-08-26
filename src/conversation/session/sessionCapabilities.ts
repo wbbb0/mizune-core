@@ -203,6 +203,11 @@ export interface SessionTaskTrackerAccess {
     sessionId: string,
     updater: (current: SessionTaskTracker) => SessionTaskTracker
   ): SessionTaskTracker;
+  updateTaskTrackerIfEpochMatches(
+    sessionId: string,
+    expectedEpoch: number,
+    updater: (current: SessionTaskTracker) => SessionTaskTracker
+  ): SessionTaskTracker | null;
   setTaskTracker(sessionId: string, tracker: SessionTaskTracker): SessionTaskTracker;
 }
 
@@ -658,6 +663,11 @@ export interface SessionGenerationExecutionAccess extends SessionSetupAccess {
     sessionId: string,
     updater: (current: SessionTaskTracker) => SessionTaskTracker
   ): SessionTaskTracker;
+  updateTaskTrackerIfEpochMatches(
+    sessionId: string,
+    expectedEpoch: number,
+    updater: (current: SessionTaskTracker) => SessionTaskTracker
+  ): SessionTaskTracker | null;
   setTaskTracker(sessionId: string, tracker: SessionTaskTracker): SessionTaskTracker;
 }
 

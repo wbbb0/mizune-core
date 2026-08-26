@@ -106,9 +106,14 @@ export interface LlmGenerateResult {
   text: string;
   reasoningContent: string;
   usage: LlmUsage;
+  finishReason: LlmGenerateFinishReason;
   providerCallUsages?: LlmProviderCallUsage[];
   assistantMetadata?: Record<string, unknown>;
 }
+
+export type LlmGenerateFinishReason =
+  | { kind: "completed" }
+  | { kind: "tool_call_limit"; maxIterations: number };
 
 export interface LlmEmbeddingParams {
   texts: string[];
@@ -123,7 +128,7 @@ export interface LlmEmbeddingResult {
 
 export interface LlmProviderCallUsage {
   iteration: number;
-  phase: "tool_call" | "final_response" | "terminal_response" | "fallback_response";
+  phase: "tool_call" | "final_response" | "terminal_response" | "invalid_response";
   usage: LlmUsage;
   text: string;
   reasoningContent: string;
@@ -131,7 +136,7 @@ export interface LlmProviderCallUsage {
 
 export interface LlmProviderResponseCompleteEvent {
   iteration: number;
-  phase: "tool_call" | "final_response" | "fallback_response";
+  phase: "tool_call" | "final_response";
   text: string;
   toolCalls: LlmToolCall[];
   usage: LlmUsage;

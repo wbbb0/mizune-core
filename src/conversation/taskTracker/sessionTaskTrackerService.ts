@@ -8,6 +8,7 @@ import {
 } from "./taskTrackerTypes.ts";
 import type { TaskPlannerIntent } from "./taskTrackerPlannerContext.ts";
 import type { ToolObservation } from "#conversation/session/toolObservation.ts";
+import { classifyToolResultOutcome, parseToolResultObject } from "./toolResultOutcome.ts";
 
 export interface TaskTrackerUserMessage {
   text: string;
@@ -36,6 +37,13 @@ export interface ObserveToolResultInput {
 export interface ObserveAssistantFinalResponseInput {
   tracker: SessionTaskTracker;
   text: string;
+  nowMs?: number | undefined;
+}
+
+export interface ObserveToolLimitCheckpointInput {
+  sessionId: string;
+  tracker: SessionTaskTracker;
+  originalRequest?: string | undefined;
   nowMs?: number | undefined;
 }
 
@@ -96,6 +104,7 @@ const WAITING_TOOL_PATTERNS = [
 ];
 
 const WAITING_TERMINAL_NEXT = "等待后台终端完成或继续读取输出。";
+const TOOL_LIMIT_CONFIRMATION_NEXT = "等待用户确认是继续当前任务、调整方案还是停止。";
 
 const TASK_TOOL_PREFIXES = [
   "terminal_",
@@ -167,11 +176,12 @@ export class SessionTaskTrackerService {
     }
     const nowMs = input.nowMs ?? Date.now();
 
-      if (matchesAny(text, CONTINUE_PATTERNS) && ["waiting_user", "suspended", "cancel_confirming", "ready_to_close"].includes(primary.status)) {
-        return withPrimary(tracker, {
-          ...primary,
-          status: "active",
+    if (matchesAny(text, CONTINUE_PATTERNS) && ["waiting_user", "suspended", "cancel_confirming", "ready_to_close"].includes(primary.status)) {
+      return withPrimary(tracker, {
+        ...primary,
+        status: "active",
         blockers: primary.blockers.filter((item) => !item.includes("取消") && !item.includes("暂停")),
+        next: primary.next.filter((item) => item !== TOOL_LIMIT_CONFIRMATION_NEXT),
         updatedAtMs: nowMs
       });
     }
@@ -231,16 +241,17 @@ export class SessionTaskTrackerService {
     if (intent.kind === "restore_parked") {
       return restoreParkedTaskById(tracker, intent.targetTaskId, nowMs) ?? tracker;
     }
-      const primary = tracker.primary;
-      if (!primary) {
-        return tracker;
-      }
-      if (intent.kind === "continue_current" || intent.kind === "modify_current") {
-        if (["waiting_user", "suspended", "cancel_confirming", "ready_to_close"].includes(primary.status)) {
-          return withPrimary(tracker, {
-            ...primary,
-            status: "active",
+    const primary = tracker.primary;
+    if (!primary) {
+      return tracker;
+    }
+    if (intent.kind === "continue_current" || intent.kind === "modify_current") {
+      if (["waiting_user", "suspended", "cancel_confirming", "ready_to_close"].includes(primary.status)) {
+        return withPrimary(tracker, {
+          ...primary,
+          status: "active",
           blockers: primary.blockers.filter((item) => !item.includes("取消") && !item.includes("暂停")),
+          next: primary.next.filter((item) => item !== TOOL_LIMIT_CONFIRMATION_NEXT),
           updatedAtMs: nowMs
         });
       }
@@ -288,7 +299,7 @@ export class SessionTaskTrackerService {
   observeToolResult(input: ObserveToolResultInput): SessionTaskTracker {
     const tracker = normalizeTaskTracker(input.tracker);
     const nowMs = input.nowMs ?? Date.now();
-    const parsed = parseJsonObject(input.canonicalContent ?? input.content);
+    const parsed = parseToolResultObject(input.canonicalContent ?? input.content);
     const restoredFromParked = restoreParkedTaskForToolResult(tracker, input, parsed, nowMs);
     if (restoredFromParked) {
       const nextPrimary = applyToolObservation(restoredFromParked.primary, {
@@ -331,6 +342,25 @@ export class SessionTaskTrackerService {
       ...tracker,
       primary: nextPrimary,
       parked
+    });
+  }
+
+  observeToolLimitCheckpoint(input: ObserveToolLimitCheckpointInput): SessionTaskTracker {
+    const tracker = normalizeTaskTracker(input.tracker);
+    const nowMs = input.nowMs ?? Date.now();
+    const existingPrimary = tracker.primary;
+    const primary = !existingPrimary || ["completed", "canceled", "failed"].includes(existingPrimary.status)
+      ? createCheckpointTask({
+          sessionId: input.sessionId,
+          originalRequest: input.originalRequest,
+          nowMs
+        })
+      : existingPrimary;
+    return withPrimary(tracker, {
+      ...primary,
+      status: "waiting_user",
+      next: appendUnique(primary.next, TOOL_LIMIT_CONFIRMATION_NEXT),
+      updatedAtMs: nowMs
     });
   }
 
@@ -403,7 +433,7 @@ function applyToolObservation(
   };
 
   if (input.toolName.startsWith("terminal_")) {
-    if (isRunningResult(input.parsed)) {
+    if (classifyToolResultOutcome(input.parsed) === "in_progress") {
       return {
         ...base,
         status: "waiting_tool",
@@ -411,7 +441,7 @@ function applyToolObservation(
         next: appendUnique(base.next, WAITING_TERMINAL_NEXT)
       };
     }
-    if (hasToolFailure(input.parsed)) {
+    if (classifyToolResultOutcome(input.parsed) === "failed") {
       return {
         ...base,
         status: "active",
@@ -427,7 +457,7 @@ function applyToolObservation(
   }
 
   if (BROWSER_TOOL_NAMES.has(input.toolName)) {
-    if (hasToolFailure(input.parsed)) {
+    if (classifyToolResultOutcome(input.parsed) === "failed") {
       return {
         ...base,
         status: "active",
@@ -448,7 +478,7 @@ function applyToolObservation(
   }
 
   if (MUTATION_TOOL_NAMES.has(input.toolName) || input.toolName.startsWith("filesystem_")) {
-    if (hasToolFailure(input.parsed)) {
+    if (classifyToolResultOutcome(input.parsed) === "failed") {
       return {
         ...base,
         status: "active",
@@ -461,7 +491,7 @@ function applyToolObservation(
     };
   }
 
-  if (hasToolFailure(input.parsed)) {
+  if (classifyToolResultOutcome(input.parsed) === "failed") {
     return {
       ...base,
       status: "active",
@@ -485,6 +515,26 @@ function createPrimaryTask(input: {
     taskId: `${input.sessionId}:${input.nowMs}`,
     status: "active",
     objective: request || `继续处理 ${input.toolName} 发起的工具型任务`,
+    ...(request ? { originalRequest: request } : {}),
+    done: [],
+    next: [],
+    blockers: [],
+    importantToolRefs: [],
+    createdAtMs: input.nowMs,
+    updatedAtMs: input.nowMs
+  };
+}
+
+function createCheckpointTask(input: {
+  sessionId: string;
+  originalRequest?: string | undefined;
+  nowMs: number;
+}): SessionTaskState {
+  const request = String(input.originalRequest ?? "").trim();
+  return {
+    taskId: `${input.sessionId}:${input.nowMs}`,
+    status: "waiting_user",
+    objective: request || "继续当前工具型任务",
     ...(request ? { originalRequest: request } : {}),
     done: [],
     next: [],
@@ -720,28 +770,6 @@ function addParkedTask(existing: SessionTaskTracker["parked"], task: ReturnType<
   return next.filter((_, itemIndex) => itemIndex !== index);
 }
 
-function isRunningResult(parsed: Record<string, unknown> | null): boolean {
-  const nestedSession = parsed?.session;
-  const nestedStatus = nestedSession && typeof nestedSession === "object" && !Array.isArray(nestedSession)
-    ? (nestedSession as Record<string, unknown>).status
-    : null;
-  return parsed?.status === "running"
-    || nestedStatus === "running"
-    || nestedStatus === "active"
-    || parsed?.running === true;
-}
-
-function hasToolFailure(parsed: Record<string, unknown> | null): boolean {
-  if (!parsed) {
-    return false;
-  }
-  if (parsed.error || parsed.ok === false || parsed.status === "failed" || parsed.status === "error") {
-    return true;
-  }
-  const exitCode = parsed.exitCode ?? parsed.exit_code;
-  return typeof exitCode === "number" && exitCode !== 0;
-}
-
 function summarizeFailure(toolName: string, parsed: Record<string, unknown> | null, observation?: ToolObservation | undefined): string {
   const exitCode = parsed?.exitCode ?? parsed?.exit_code;
   const error = parsed?.error ?? parsed?.message;
@@ -782,17 +810,6 @@ function resolveResultCount(parsed: Record<string, unknown> | null): number | nu
   }
   const count = parsed.count ?? parsed.total;
   return typeof count === "number" ? count : null;
-}
-
-function parseJsonObject(content: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(content);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function appendUnique(items: string[], item: string): string[] {

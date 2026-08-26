@@ -452,6 +452,7 @@ import {
           return {
             text: "reason: ok",
             reasoningContent: "",
+            finishReason: { kind: "completed" },
             usage: {
               inputTokens: null,
               outputTokens: null,

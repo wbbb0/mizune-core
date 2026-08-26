@@ -624,6 +624,21 @@ export class SessionManager {
     return structuredClone(session.taskTracker);
   }
 
+  updateTaskTrackerIfEpochMatches(
+    sessionId: string,
+    expectedEpoch: number,
+    updater: (current: SessionTaskTracker) => SessionTaskTracker
+  ): SessionTaskTracker | null {
+    const session = this.requireSession(sessionId);
+    if (session.mutationEpoch !== expectedEpoch) {
+      return null;
+    }
+    session.taskTracker = normalizeTaskTracker(updater(structuredClone(session.taskTracker)));
+    session.lastActiveAt = Date.now();
+    this.notifySessionChanged(sessionId);
+    return structuredClone(session.taskTracker);
+  }
+
   setTaskTracker(sessionId: string, tracker: SessionTaskTracker): SessionTaskTracker {
     const session = this.requireSession(sessionId);
     session.taskTracker = normalizeTaskTracker(tracker);

@@ -452,7 +452,7 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
-  test("provider preflight projection also covers max-iteration fallback messages", async () => {
+  test("max-iteration stops without a hidden provider call or consuming later steer", async () => {
     const config = createLlmTestConfig();
     config.llm.toolCallMaxIterations = 1;
     const client = new LlmClient(config, pino({ level: "silent" }));
@@ -478,22 +478,6 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
             }
           }]
         }]
-      },
-      {
-        assertRequest(body: any) {
-          assert.equal(body.messages[2].role, "tool");
-          assert.equal(body.messages[2].content, "TOOL SAFE");
-          assert.equal(body.messages[3].role, "user");
-          assert.equal(body.messages[3].content, "STEER SAFE");
-          assert.equal(body.messages[4].role, "system");
-        },
-        payloads: [{
-          choices: [{
-            delta: {
-              content: "fallback done"
-            }
-          }]
-        }]
       }
     ], async () => {
       const result = await client.generate({
@@ -502,7 +486,7 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
         toolExecutor: async () => "TOOL RAW",
         consumeSteerMessages: () => {
           consumeCount += 1;
-          return consumeCount === 2 ? [{ role: "user", content: "STEER RAW" }] : [];
+          return consumeCount > 1 ? [{ role: "user", content: "STEER RAW" }] : [];
         },
         projectMessagesBeforeProvider: (messages) => messages.map((message) => {
           if (message.content === "TOOL RAW") {
@@ -515,7 +499,56 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
         })
       });
 
-      assert.equal(result.text, "fallback done");
+      assert.equal(result.text, "");
+      assert.deepEqual(result.finishReason, { kind: "tool_call_limit", maxIterations: 1 });
+      assert.equal(consumeCount, 1);
+      assert.deepEqual(result.providerCallUsages?.map((event) => event.phase), ["tool_call"]);
+    });
+  });
+
+  test("provider tool calls must be among the tools advertised for that request", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    let executeCount = 0;
+    const usagePhases: string[] = [];
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.ok(!body.tools || body.tools.length === 0);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "tool-call-not-advertised",
+                type: "function",
+                function: {
+                  name: "delete",
+                  arguments: "{\"path\":\"unexpected.txt\"}"
+                }
+              }]
+            }
+          }]
+        }]
+      }
+    ], async () => {
+      await assert.rejects(
+        client.generate({
+          messages: [{ role: "user", content: "只总结，不要调用工具" }],
+          tools: [],
+          onProviderCallUsage(event) {
+            usagePhases.push(event.phase);
+          },
+          toolExecutor: async () => {
+            executeCount += 1;
+            return "{}";
+          }
+        }),
+        /unadvertised tool calls: delete/
+      );
+      assert.equal(executeCount, 0);
+      assert.deepEqual(usagePhases, ["invalid_response"]);
     });
   });
 

@@ -46,6 +46,7 @@ async function createHarness(generateText: string | (() => string)) {
         return {
           text: typeof generateText === "function" ? generateText() : generateText,
           reasoningContent: "",
+          finishReason: { kind: "completed" },
           usage: {
             inputTokens: null,
             outputTokens: null,

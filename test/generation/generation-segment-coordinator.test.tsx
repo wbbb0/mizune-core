@@ -253,3 +253,32 @@ test("segment coordinator does not trim final summary against previous tool-call
 
   assert.deepEqual(committedChunks, ["好的。", "好的。结果如下。"]);
 });
+
+test("segment coordinator appends a standalone checkpoint after streamed tool-call text", async () => {
+  const committedChunks: Array<{ text: string; doubleNewline: boolean }> = [];
+  const coordinator = createGenerationSegmentCoordinator({
+    disableStreamingSplit: false,
+    committedSink: {
+      async enqueueChunk(chunk, options) {
+        committedChunks.push({ text: chunk, doubleNewline: options?.joinWithDoubleNewline === true });
+        return true;
+      },
+      async flushBufferedOutput(_summary, streamBuffer) {
+        return streamBuffer;
+      }
+    }
+  });
+
+  await coordinator.onTextDelta("我先检查配置。\n\n还有一段未发送说明");
+  await coordinator.appendStandalone("已完成配置检查。请确认是否继续。");
+
+  assert.deepEqual(committedChunks, [
+    { text: "我先检查配置。", doubleNewline: true },
+    { text: "还有一段未发送说明", doubleNewline: false },
+    { text: "已完成配置检查。请确认是否继续。", doubleNewline: true }
+  ]);
+  assert.equal(
+    coordinator.getCommittedText(),
+    "我先检查配置。还有一段未发送说明\n\n已完成配置检查。请确认是否继续。"
+  );
+});

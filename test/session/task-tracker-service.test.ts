@@ -226,6 +226,63 @@ test("planner continue intent resumes waiting_user task", () => {
   assert.equal(tracker.primary?.status, "active");
 });
 
+test("tool limit checkpoint pauses an active task for explicit confirmation", () => {
+  const tracker = service.observeToolLimitCheckpoint({
+    sessionId: "s1",
+    tracker: trackerWithPrimary({ status: "active", next: ["继续检查剩余文件"] }),
+    originalRequest: "检查项目",
+    nowMs: 4
+  });
+
+  assert.equal(tracker.primary?.status, "waiting_user");
+  assert.deepEqual(tracker.primary?.next, [
+    "继续检查剩余文件",
+    "等待用户确认是继续当前任务、调整方案还是停止。"
+  ]);
+});
+
+test("tool limit checkpoint creates a task when no tracked task exists", () => {
+  const tracker = service.observeToolLimitCheckpoint({
+    sessionId: "s1",
+    tracker: createEmptySessionTaskTracker(),
+    originalRequest: "检查项目",
+    nowMs: 5
+  });
+
+  assert.equal(tracker.primary?.taskId, "s1:5");
+  assert.equal(tracker.primary?.objective, "检查项目");
+  assert.equal(tracker.primary?.status, "waiting_user");
+});
+
+test("continue clears the fixed tool limit confirmation without dropping real next steps", () => {
+  const tracker = service.observeUserBatch({
+    tracker: trackerWithPrimary({
+      status: "waiting_user",
+      next: [
+        "继续检查剩余文件",
+        "等待用户确认是继续当前任务、调整方案还是停止。"
+      ]
+    }),
+    messages: [{ text: "继续处理" }],
+    nowMs: 6
+  });
+
+  assert.equal(tracker.primary?.status, "active");
+  assert.deepEqual(tracker.primary?.next, ["继续检查剩余文件"]);
+});
+
+test("tool limit checkpoint replaces a terminal task instead of reviving it", () => {
+  const tracker = service.observeToolLimitCheckpoint({
+    sessionId: "s1",
+    tracker: trackerWithPrimary({ status: "completed" }),
+    originalRequest: "检查项目",
+    nowMs: 7
+  });
+
+  assert.equal(tracker.primary?.taskId, "s1:7");
+  assert.equal(tracker.primary?.status, "waiting_user");
+});
+
 test("planner restore parked intent requires exact target task id", () => {
   const tracker = service.observePlannerTaskIntent({
     tracker: {

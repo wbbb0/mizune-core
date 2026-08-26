@@ -6,25 +6,26 @@ import { SessionManager } from "../../src/conversation/session/sessionManager.ts
 import type { OneBotMessageSegment } from "../../src/services/onebot/types.ts";
 import type { SessionPacingPreferences } from "../../src/conversation/session/sessionPacing.ts";
 import type { ToolsetView } from "../../src/llm/tools/toolsetCatalog.ts";
+import type { SessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 function createUsage() {
   return {
-    modelRef: "main",
-    model: "fake",
-    provider: "test",
     inputTokens: 1,
     outputTokens: 1,
+    totalTokens: 2,
+    cachedTokens: null,
     reasoningTokens: 0,
-    cachedInputTokens: null,
     providerReported: false,
-    requestCount: 1
+    requestCount: 1,
+    modelRef: "main",
+    model: "fake"
   };
 }
 
 type ProviderCallUsageEvent = {
   iteration: number;
-  phase: "tool_call" | "final_response" | "terminal_response" | "fallback_response";
+  phase: "tool_call" | "final_response" | "terminal_response" | "invalid_response";
   usage: {
     inputTokens: number | null;
     outputTokens: number | null;
@@ -99,11 +100,13 @@ function createExecutorHarness(options?: {
   contextExtractionQueue?: { enqueueTurn: (turn: unknown) => void };
   pacingPreferences?: SessionPacingPreferences;
   availableToolsets?: ToolsetView[];
+  initialTaskTracker?: SessionTaskTracker;
   customGenerate?: (input: {
+    messages?: Array<{ role: string; content: unknown }>;
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
     onProviderResponseComplete?: (event: {
-      phase: "tool_call" | "final_response" | "fallback_response";
+      phase: "tool_call" | "final_response";
       text: string;
       toolCalls: Array<{
         id: string;
@@ -138,6 +141,8 @@ function createExecutorHarness(options?: {
     text: string;
     reasoningContent?: string;
     usage: ReturnType<typeof createUsage>;
+    finishReason?: { kind: "completed" } | { kind: "tool_call_limit"; maxIterations: number };
+    providerCallUsages?: ProviderCallUsageEvent[];
     assistantMetadata?: Record<string, unknown>;
   }>;
 }) {
@@ -166,6 +171,9 @@ function createExecutorHarness(options?: {
       pacingPreferences: options.pacingPreferences,
       toolsetPreferences: sessionManager.getToolsetPreferences(sessionId)
     });
+  }
+  if (options?.initialTaskTracker) {
+    sessionManager.setTaskTracker(sessionId, options.initialTaskTracker);
   }
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];
@@ -201,7 +209,7 @@ function createExecutorHarness(options?: {
         onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
         tools?: Array<{ function: { name: string } }> | (() => Array<{ function: { name: string } }>);
         onProviderResponseComplete?: (event: {
-          phase: "tool_call" | "final_response" | "fallback_response";
+          phase: "tool_call" | "final_response";
           text: string;
           toolCalls: Array<{
             id: string;
@@ -222,11 +230,12 @@ function createExecutorHarness(options?: {
         }
         await input.onTextDelta?.("你好");
         return {
-            text: "你好",
-            reasoningContent: "",
-            usage: createUsage()
-          };
-        }
+          text: "你好",
+          reasoningContent: "",
+          finishReason: { kind: "completed" as const },
+          usage: createUsage()
+        };
+      }
       } as never,
       turnPlanner: {} as never,
       debounceManager: {} as never,
@@ -303,6 +312,11 @@ function createExecutorHarness(options?: {
       shellRuntime: {} as never,
       searchService: {} as never,
       browserService: {} as never,
+      downloadRuntime: {
+        read() {
+          return null;
+        }
+      } as never,
       localFileService: {} as never,
       chatFileStore: {} as never,
       comfyClient: {} as never,
@@ -353,7 +367,7 @@ function createExecutorHarness(options?: {
     internalTranscript: [],
     debugMarkers: [],
     currentUser: (options?.currentUser ?? null) as never,
-    persona: null as never,
+    persona: { name: "测试助手", temperament: "冷静", voiceStyle: "简洁" },
     batchMessages: [createBatchMessage()],
     sendTarget: {
       delivery,
@@ -1443,4 +1457,139 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     assert.equal(toolResult?.observation?.resource?.kind, "filesystem");
     assert.equal(toolResult?.observation?.resource?.id, "src/app/generation/providerTranscriptProjector.ts");
     assert.match(toolResult?.observation?.replayContent ?? "", /"compacted":true/);
+  });
+
+  test("final-only tool-call limit emits one checkpoint and leaves the task waiting for user confirmation", async () => {
+    let generateCalls = 0;
+    const reportUsage: ProviderCallUsageEvent = {
+      iteration: 0,
+      phase: "final_response",
+      usage: createUsage(),
+      text: "我已经检查了配置文件。",
+      reasoningContent: ""
+    };
+    const harness = createExecutorHarness({
+      streamResponse: false,
+      configOverrides: {
+        llm: {
+          summarizer: {
+            enabled: true
+          }
+        }
+      },
+      customGenerate: async (input) => {
+        generateCalls += 1;
+        if (generateCalls === 1) {
+          await input.onToolResultMessage?.({
+            role: "tool",
+            tool_call_id: "call-read-config",
+            content: JSON.stringify({
+              path: "config/global.yml",
+              content: "llm: enabled",
+              startLine: 1,
+              endLine: 1
+            })
+          }, "filesystem_read");
+          return {
+            text: "",
+            reasoningContent: "",
+            usage: createUsage(),
+            finishReason: { kind: "tool_call_limit", maxIterations: 1 }
+          };
+        }
+
+        const tools = typeof input.tools === "function" ? input.tools() : input.tools;
+        assert.deepEqual(tools, []);
+        assert.equal(input.messages?.length, 2);
+        await input.onProviderCallUsage?.(reportUsage);
+        return {
+          text: reportUsage.text,
+          reasoningContent: "摘要模型的内部推理不应挂到回复上",
+          usage: createUsage(),
+          finishReason: { kind: "completed" },
+          providerCallUsages: [reportUsage],
+          assistantMetadata: { shouldNotAttach: true }
+        };
+      }
+    });
+
+    await waitForCondition(() => harness.sendTextCalls.length === 1, "checkpoint was not sent");
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.equal(generateCalls, 2);
+    assert.equal(harness.sendTextCalls.length, 1);
+    assert.match(harness.sendTextCalls[0]?.text ?? "", /我已经检查了配置文件/);
+    assert.match(harness.sendTextCalls[0]?.text ?? "", /你希望我继续处理剩余步骤，还是调整方案或停止/);
+    const session = harness.sessionManager.getSession(harness.sessionId);
+    assert.equal(session.taskTracker.primary?.status, "waiting_user");
+    assert.match(session.taskTracker.primary?.next.join("\n") ?? "", /继续当前任务、调整方案还是停止/);
+    const assistant = [...session.internalTranscript].reverse().find((item) => item.kind === "assistant_message");
+    assert.equal(assistant?.kind === "assistant_message" ? assistant.reasoningContent : undefined, undefined);
+    assert.equal(assistant?.kind === "assistant_message" ? assistant.providerMetadata : undefined, undefined);
+    assert.equal(session.lastLlmUsage?.requestCount, 2);
+  });
+
+  test("checkpoint report replaces stale terminal task context for non-task tools", async () => {
+    let generateCalls = 0;
+    const harness = createExecutorHarness({
+      streamResponse: false,
+      initialTaskTracker: {
+        version: 1,
+        primary: {
+          taskId: "old-completed-task",
+          status: "completed",
+          objective: "绝不能进入当前摘要的旧任务",
+          done: ["旧任务已经完成"],
+          next: [],
+          blockers: [],
+          importantToolRefs: [],
+          createdAtMs: 1,
+          updatedAtMs: 2
+        },
+        parked: []
+      },
+      configOverrides: {
+        llm: {
+          summarizer: {
+            enabled: true
+          }
+        }
+      },
+      customGenerate: async (input) => {
+        generateCalls += 1;
+        if (generateCalls === 1) {
+          await input.onToolResultMessage?.({
+            role: "tool",
+            tool_call_id: "call-roll",
+            content: JSON.stringify({ result: 7 })
+          }, "roll_dice");
+          return {
+            text: "",
+            reasoningContent: "",
+            usage: createUsage(),
+            finishReason: { kind: "tool_call_limit", maxIterations: 1 }
+          };
+        }
+        const prompt = JSON.stringify(input.messages);
+        assert.doesNotMatch(prompt, /绝不能进入当前摘要的旧任务|旧任务已经完成/);
+        assert.match(prompt, /objective=你好/);
+        return {
+          text: "我已经完成了这轮骰子测试。",
+          reasoningContent: "",
+          usage: createUsage(),
+          finishReason: { kind: "completed" }
+        };
+      }
+    });
+
+    await waitForCondition(() => harness.sendTextCalls.length === 1, "checkpoint was not sent");
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    const primary = harness.sessionManager.getSession(harness.sessionId).taskTracker.primary;
+    assert.equal(generateCalls, 2);
+    assert.notEqual(primary?.taskId, "old-completed-task");
+    assert.equal(primary?.objective, "你好");
+    assert.equal(primary?.status, "waiting_user");
   });

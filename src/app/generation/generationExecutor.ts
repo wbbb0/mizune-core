@@ -2,13 +2,13 @@ import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
 import { createEmptyUsage, mergeUsage, type LlmUsage } from "#llm/provider/providerTypes.ts";
 import { getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
-import { parseToolArguments } from "#llm/shared/toolArgs.ts";
+import { extractToolError, parseToolArguments } from "#llm/shared/toolArgs.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import {
   createUserTranscriptMessageItem,
   projectTranscriptMessageItemToHistoryMessage
 } from "#conversation/session/historyContext.ts";
-import { buildToolObservation } from "#conversation/session/toolObservation.ts";
+import { buildToolObservation, type ToolObservation } from "#conversation/session/toolObservation.ts";
 import {
   createContextExtractionEvent,
   createGenerationFailureFallbackEvent,
@@ -55,6 +55,16 @@ import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 import { projectProviderWorkingMessagesForBudget } from "./providerWorkingMessageBudget.ts";
 import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import {
+  composeToolLoopCheckpointMessage,
+  generateToolLoopCheckpointReport
+} from "./toolLoopCheckpointReporter.ts";
+import { collectToolLoopCheckpointResourceLines } from "./toolLoopCheckpointResources.ts";
+import type { ToolLoopCheckpointObservation } from "#llm/prompts/tool-loop-checkpoint.prompt.ts";
+import {
+  classifyToolResultOutcome,
+  parseToolResultObject
+} from "#conversation/taskTracker/toolResultOutcome.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -218,6 +228,7 @@ export function createGenerationExecutor(
     let lastResultAssistantMetadata: Record<string, unknown> | undefined;
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
     let lastProviderRequestUsage: LlmUsage | null = null;
+    const checkpointObservations: ToolLoopCheckpointObservation[] = [];
     const runningProviderUsage = createEmptyUsage(resolvedModelRef[0] ?? null, null);
     const recordProviderCallUsage = (event: LlmProviderCallUsage): void => {
       lastProviderRequestUsage = { ...event.usage };
@@ -244,6 +255,27 @@ export function createGenerationExecutor(
       }
       sessionManager.setTaskTracker(sessionId, next);
       persistSession(sessionId, persistReason);
+    };
+    const recordModelFallback = async (event: {
+      summary: string;
+      details: string;
+      fromModelRef: string;
+      toModelRef: string;
+      fromProvider: string;
+      toProvider: string;
+    }): Promise<void> => {
+      const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, createModelFallbackEvent({
+        timestampMs: Date.now(),
+        summary: event.summary,
+        details: event.details,
+        fromModelRef: event.fromModelRef,
+        toModelRef: event.toModelRef,
+        fromProvider: event.fromProvider,
+        toProvider: event.toProvider
+      }));
+      if (applied) {
+        persistSession(sessionId, "internal_transcript_updated");
+      }
     };
     // 消费 steer 消息，注入到当前 tool iteration 的 prompt 上下文中。
     // 如果仅注入用户消息效果不够明显（模型没有及时收尾），
@@ -691,6 +723,7 @@ export function createGenerationExecutor(
                 toolCallId
               });
               const toolDescriptor = getBuiltinToolDescriptorByName(toolName, config);
+              const observedAtMs = Date.now();
               const observation = buildToolObservation({
                 toolName,
                 toolCallId,
@@ -703,7 +736,7 @@ export function createGenerationExecutor(
               const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, {
                 kind: "tool_result",
                 llmVisible: true,
-                timestampMs: Date.now(),
+                timestampMs: observedAtMs,
                 toolCallId,
                 toolName,
                 content,
@@ -711,6 +744,13 @@ export function createGenerationExecutor(
                 observation
               });
               if (applied) {
+                checkpointObservations.push(buildCheckpointObservation({
+                  toolName,
+                  toolCallId,
+                  content: observationContent,
+                  observation,
+                  timestampMs: observedAtMs
+                }));
                 updateTaskTracker((tracker) => sessionTaskTrackerService.observeToolResult({
                   sessionId,
                   tracker,
@@ -723,25 +763,12 @@ export function createGenerationExecutor(
                     ? toolArgs as Record<string, unknown>
                     : {},
                   originalRequest: renderBatchOriginalRequest(batchMessages),
-                  nowMs: Date.now()
+                  nowMs: observedAtMs
                 }), "task_tracker_tool_result_observed");
                 persistSession(sessionId, "internal_transcript_updated");
               }
             },
-            onFallbackEvent: async (event) => {
-              const applied = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, createModelFallbackEvent({
-                timestampMs: Date.now(),
-                summary: event.summary,
-                details: event.details,
-                fromModelRef: event.fromModelRef,
-                toModelRef: event.toModelRef,
-                fromProvider: event.fromProvider,
-                toProvider: event.toProvider
-              }));
-              if (applied) {
-                persistSession(sessionId, "internal_transcript_updated");
-              }
-            },
+            onFallbackEvent: recordModelFallback,
             ...(streamResponse === false
               ? {}
                 : {
@@ -755,14 +782,86 @@ export function createGenerationExecutor(
                   }
                 })
           });
-          summary = result.text;
-          lastResultReasoningContent = result.reasoningContent ?? "";
-          lastResultAssistantMetadata = result.assistantMetadata;
-          finalProviderCallUsage = [...(result.providerCallUsages ?? [])].reverse()
-            .find((event) => event.phase === "final_response" || event.phase === "fallback_response" || event.phase === "terminal_response")
-            ?? null;
+          let completedUsage = result.usage;
+          if (result.finishReason?.kind === "tool_call_limit") {
+            assertGenerationCurrent();
+            sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
+            const originalRequest = renderBatchOriginalRequest(batchMessages);
+            const checkpointAtMs = Date.now();
+            const checkpointTracker = sessionTaskTrackerService.observeToolLimitCheckpoint({
+              sessionId,
+              tracker: sessionManager.getTaskTracker(sessionId),
+              originalRequest,
+              nowMs: checkpointAtMs
+            });
+            const checkpointReport = await generateToolLoopCheckpointReport({
+              config,
+              llmClient,
+              logger,
+              sessionId,
+              modeId: input.modeId,
+              originalRequest,
+              taskTracker: checkpointTracker,
+              observations: checkpointObservations,
+              persona: input.persona,
+              sessionBotProfile: sessionManager.getSession(sessionId).botProfile,
+              abortSignal: abortController.signal,
+              assertCurrent: assertGenerationCurrent,
+              onProviderCallUsage: recordProviderCallUsage,
+              onFallbackEvent: recordModelFallback
+            });
+            assertGenerationCurrent();
+            const liveResourceLines = await collectToolLoopCheckpointResourceLines({
+              observations: checkpointObservations,
+              shellRuntime,
+              browserService,
+              downloadRuntime,
+              logger,
+              sessionId,
+              assertCurrent: assertGenerationCurrent
+            });
+            assertGenerationCurrent();
+            const checkpointText = composeToolLoopCheckpointMessage({
+              body: checkpointReport.body,
+              liveResourceLines
+            });
+            const committed = await segmentCoordinator.appendStandalone(checkpointText);
+            assertGenerationCurrent();
+            if (committed === false) {
+              throw new Error("任务检查点未能提交到当前回复。");
+            }
+            const nextTracker = sessionManager.updateTaskTrackerIfEpochMatches(
+              sessionId,
+              expectedEpoch,
+              (current) => sessionTaskTrackerService.observeToolLimitCheckpoint({
+                sessionId,
+                tracker: current,
+                originalRequest,
+                nowMs: checkpointAtMs
+              })
+            );
+            if (!nextTracker) {
+              assertGenerationCurrent();
+              throw new Error("任务检查点状态未能写入当前会话。");
+            }
+            persistSession(sessionId, "task_tracker_tool_limit_checkpoint");
+            summary = "";
+            lastResultReasoningContent = "";
+            lastResultAssistantMetadata = undefined;
+            finalProviderCallUsage = checkpointReport.modelGenerated
+              ? checkpointReport.finalProviderCallUsage
+              : null;
+            completedUsage = mergeGenerationUsages(result.usage, checkpointReport.usage);
+          } else {
+            summary = result.text;
+            lastResultReasoningContent = result.reasoningContent ?? "";
+            lastResultAssistantMetadata = result.assistantMetadata;
+            finalProviderCallUsage = [...(result.providerCallUsages ?? [])].reverse()
+              .find((event) => event.phase === "final_response" || event.phase === "terminal_response")
+              ?? null;
+          }
           const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
-            ...result.usage,
+            ...completedUsage,
             capturedAt: Date.now(),
             lastRequestUsage: lastProviderRequestUsage
           });
@@ -1011,6 +1110,47 @@ function renderBatchOriginalRequest(messages: GenerationRuntimeBatchMessage[]): 
     .filter(Boolean)
     .join("\n")
     .slice(0, 1200);
+}
+
+function buildCheckpointObservation(input: {
+  toolName: string;
+  toolCallId: string;
+  content: string;
+  observation: ToolObservation;
+  timestampMs: number;
+}): ToolLoopCheckpointObservation {
+  const parsed = parseToolResultObject(input.content);
+  const explicitError = extractToolError(input.content);
+  const outcome = classifyToolResultOutcome(parsed);
+  const resource = input.observation.resource ?? extractDownloadResource(parsed);
+  return {
+    toolName: input.toolName,
+    toolCallId: input.toolCallId,
+    outcome,
+    summary: explicitError
+      ? `${input.observation.summary}；错误：${explicitError}`
+      : input.observation.summary,
+    timestampMs: input.timestampMs,
+    contentHash: input.observation.contentHash,
+    ...(resource ? { resource } : {})
+  };
+}
+
+function extractDownloadResource(parsed: Record<string, unknown> | null): ToolObservation["resource"] | undefined {
+  const rawId = parsed?.resource_id ?? parsed?.resourceId;
+  const resourceId = typeof rawId === "string" ? rawId.trim() : "";
+  return resourceId.startsWith("res_download_")
+    ? { kind: "external", id: resourceId }
+    : undefined;
+}
+
+function mergeGenerationUsages(primary: LlmUsage, secondary: LlmUsage | null): LlmUsage {
+  const merged = createEmptyUsage(primary.modelRef, primary.model);
+  mergeUsage(merged, primary);
+  if (secondary) {
+    mergeUsage(merged, secondary);
+  }
+  return merged;
 }
 
 function appendContextExtractionTranscriptEvent(input: {

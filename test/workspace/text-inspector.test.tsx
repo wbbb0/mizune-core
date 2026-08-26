@@ -95,6 +95,7 @@ test("document summary service caps model output lengths", async () => {
             limitations: Array.from({ length: 20 }, () => longText)
           }),
           reasoningContent: "",
+          finishReason: { kind: "completed" },
           usage: createEmptyUsage("main", "fake-summarizer"),
           providerCallUsages: []
         };
@@ -155,6 +156,7 @@ test("text inspector sends compact structured prompt and parses result", async (
             confidenceNotes: ["来自片段"]
           }),
           reasoningContent: "",
+          finishReason: { kind: "completed" },
           usage: createEmptyUsage("textInspector", "fake-text-inspector"),
           providerCallUsages: []
         };

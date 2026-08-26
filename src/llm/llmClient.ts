@@ -15,6 +15,7 @@ import {
   type LlmProviderCallUsage,
   type LlmProviderRequestContext,
   type LlmToolCall,
+  type LlmToolDefinition,
   type LlmToolExecutionResult,
   type LlmUsage
 } from "./provider/providerTypes.ts";
@@ -25,6 +26,7 @@ export type {
   LlmEmbeddingParams,
   LlmEmbeddingResult,
   LlmFallbackEvent,
+  LlmGenerateFinishReason,
   LlmGenerateParams,
   LlmGenerateResult,
   LlmMessage,
@@ -34,6 +36,17 @@ export type {
   LlmToolExecutionResult,
   LlmUsage
 } from "./provider/providerTypes.ts";
+
+export class LlmUnadvertisedToolCallError extends Error {
+  constructor(
+    readonly toolNames: string[],
+    readonly usage: LlmUsage,
+    readonly providerCallUsages: LlmProviderCallUsage[]
+  ) {
+    super(`Provider returned unadvertised tool calls: ${toolNames.join(", ")}`);
+    this.name = "LlmUnadvertisedToolCallError";
+  }
+}
 
 interface ExecutedToolCall {
   toolCall: LlmToolCall;
@@ -236,9 +249,22 @@ export class LlmClient {
           text: streamed.text,
           reasoningContent: lastReasoningContent,
           usage: aggregatedUsage,
+          finishReason: { kind: "completed" },
           providerCallUsages,
           ...(streamed.assistantMetadata ? { assistantMetadata: streamed.assistantMetadata } : {})
         };
+      }
+
+      const unadvertisedToolNames = findUnadvertisedToolNames(streamed.toolCalls, tools);
+      if (unadvertisedToolNames.length > 0) {
+        const invalidUsage = buildProviderCallUsage(iteration, "invalid_response", streamed);
+        providerCallUsages.push(invalidUsage);
+        await params.onProviderCallUsage?.(invalidUsage);
+        throw new LlmUnadvertisedToolCallError(
+          unadvertisedToolNames,
+          { ...aggregatedUsage },
+          [...providerCallUsages]
+        );
       }
 
       const toolCallUsage = buildProviderCallUsage(iteration, "tool_call", streamed);
@@ -360,6 +386,7 @@ export class LlmClient {
             text: executed.terminalResponse.text,
             reasoningContent: lastReasoningContent,
             usage: aggregatedUsage,
+            finishReason: { kind: "completed" },
             providerCallUsages
           };
         }
@@ -391,48 +418,12 @@ export class LlmClient {
       "tool_call_iteration_limit_reached"
     );
 
-    const fallbackMessages = await projectMessagesBeforeProvider([
-        ...workingMessages,
-        ...(await consumeClonedSteerMessages()),
-        {
-          role: "system",
-          content: `你已达到工具调用轮次上限（${maxIterations}）。不要再调用任何工具。请基于现有工具结果直接回复用户；如果任务仍未完成，请简要说明已完成内容、未完成部分和下一步建议。`
-        }
-      ]);
-    throwIfAbortSignalAborted(params.abortSignal);
-    const fallback = await this.streamChatCompletion({
-      messages: fallbackMessages,
-      ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
-      ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
-      ...(params.onReasoningDelta ? { onReasoningDelta: params.onReasoningDelta } : {}),
-      ...(params.onFallbackEvent ? { onFallbackEvent: params.onFallbackEvent } : {}),
-      ...(params.modelOverride ? { modelOverride: params.modelOverride } : {}),
-      modelRefOverride: activeModelRefs,
-      ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
-      ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
-      ...(params.preferNativeNoThinkingChatEndpoint != null
-        ? { preferNativeNoThinkingChatEndpoint: params.preferNativeNoThinkingChatEndpoint }
-        : {}),
-      tools: []
-    });
-    mergeUsage(aggregatedUsage, fallback.usage);
-    const fallbackUsage = buildProviderCallUsage(maxIterations, "fallback_response", fallback);
-    providerCallUsages.push(fallbackUsage);
-    await params.onProviderCallUsage?.(fallbackUsage);
-    await params.onProviderResponseComplete?.({
-      iteration: maxIterations,
-      phase: "fallback_response",
-      text: fallback.text,
-      toolCalls: fallback.toolCalls,
-      usage: fallback.usage,
-      reasoningContent: fallback.reasoningContent
-    });
     return {
-      text: fallback.text || `工具调用轮次已达到上限（${maxIterations}），请基于现有结果继续处理或缩小任务范围。`,
-      reasoningContent: fallback.reasoningContent,
+      text: "",
+      reasoningContent: "",
       usage: aggregatedUsage,
-      providerCallUsages,
-      ...(fallback.assistantMetadata ? { assistantMetadata: fallback.assistantMetadata } : {})
+      finishReason: { kind: "tool_call_limit", maxIterations },
+      providerCallUsages
     };
   }
 
@@ -1044,6 +1035,21 @@ function cloneToolCall(toolCall: LlmToolCall): LlmToolCall {
     },
     ...(toolCall.providerMetadata ? { providerMetadata: structuredClone(toolCall.providerMetadata) } : {})
   };
+}
+
+function findUnadvertisedToolNames(
+  toolCalls: LlmToolCall[],
+  advertisedTools: LlmToolDefinition[]
+): string[] {
+  if (toolCalls.length === 0) {
+    return [];
+  }
+  const advertisedNames = new Set(advertisedTools.map((tool) => tool.function.name));
+  return Array.from(new Set(
+    toolCalls
+      .map((toolCall) => toolCall.function.name)
+      .filter((name) => !advertisedNames.has(name))
+  ));
 }
 
 function buildProviderCallUsage(
