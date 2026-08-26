@@ -940,6 +940,7 @@ export class SessionManager {
     modeId: string;
     participantUserId: string;
     participantLabel: string | null;
+    botProfile: SessionState["botProfile"];
     pacingPreferences: SessionState["pacingPreferences"];
     debugControl: SessionDebugControlState;
     historySummary: string | null;

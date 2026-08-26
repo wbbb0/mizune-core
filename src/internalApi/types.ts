@@ -45,6 +45,7 @@ import type {
 } from "#conversation/session/sessionCapabilities.ts";
 import type { SessionParticipantRef, SessionTitleSource } from "#conversation/session/sessionTypes.ts";
 import type { SessionPacingPreferences } from "#conversation/session/sessionPacing.ts";
+import type { SessionBotProfile } from "#conversation/session/sessionBotProfile.ts";
 import {
   createEditorService,
   type EditorService
@@ -105,6 +106,7 @@ export interface InternalApiSessionDetail {
     source: "onebot" | "web";
     modeId: string;
     participantRef: SessionParticipantRef;
+    botProfile: SessionBotProfile | null;
     title: string | null;
     titleSource: SessionTitleSource | null;
     titleGenerationAvailable: boolean;

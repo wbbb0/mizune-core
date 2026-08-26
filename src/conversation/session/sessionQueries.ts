@@ -90,6 +90,7 @@ export function getSessionViewSnapshot(session: SessionState): {
   modeId: string;
   participantUserId: string;
   participantLabel: string | null;
+  botProfile: SessionState["botProfile"];
   debugControl: SessionDebugControlState;
   pacingPreferences: SessionState["pacingPreferences"];
   historySummary: string | null;
@@ -112,6 +113,7 @@ export function getSessionViewSnapshot(session: SessionState): {
     modeId: session.modeId,
     participantUserId: session.participantRef.id,
     participantLabel,
+    botProfile: cloneSessionBotProfile(session.botProfile),
     pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     debugControl: { ...session.debugControl },
     historySummary: session.historySummary,

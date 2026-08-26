@@ -214,6 +214,7 @@ export interface SessionViewSnapshot {
   modeId: string;
   participantUserId: string;
   participantLabel: string | null;
+  botProfile: SessionBotProfile | null;
   pacingPreferences: SessionState["pacingPreferences"];
   debugControl: SessionDebugControlState;
   historySummary: string | null;

@@ -753,6 +753,11 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         kind: "user",
         id: "10001"
       });
+      assert.deepEqual(response.json().session.botProfile, {
+        name: "小岚",
+        identity: "Alice 当前聊天中的旅行搭档",
+        voiceStyle: "自然、简洁"
+      });
       assert.ok(!("participantLabel" in response.json().session));
       assert.equal(response.json().session.historyRevision, 0);
       assert.equal(response.json().modeState, null);

@@ -26,6 +26,29 @@ const sessionTitle = computed(() => detail.value?.session.title ?? props.session
 const participantKindLabel = computed(() => props.session.participantRef.kind === "group" ? "群聊" : "用户");
 const participantIdLabel = computed(() => props.session.participantRef.id || "未设置");
 
+const botProfile = computed(() => detail.value?.session.botProfile ?? null);
+const botProfileRows = computed<Array<[string, string]>>(() => {
+  const profile = botProfile.value;
+  if (!profile) {
+    return [];
+  }
+  return [
+    ["名字", profile.name],
+    ["身份定位", profile.identity],
+    ["背景", profile.background],
+    ["性格表现", profile.temperament],
+    ["语气风格", profile.voiceStyle]
+  ].flatMap(([label, value]) => value ? [[label, value] as [string, string]] : []);
+});
+const botProfileSummary = computed(() => {
+  if (!botProfile.value) {
+    return "未设置";
+  }
+  return botProfile.value.name
+    ?? botProfile.value.identity
+    ?? `${botProfileRows.value.length} 项覆盖`;
+});
+
 const commonFields = computed(() => [
   ["Session ID", props.session.id],
   ["来源", props.session.source],
@@ -339,6 +362,30 @@ async function loadDetail() {
             <div v-for="[label, value] in commonFields" :key="label" class="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border-subtle py-1.5">
               <div class="text-small text-text-subtle">{{ label }}</div>
               <div class="break-all text-small text-text-secondary">{{ value }}</div>
+            </div>
+          </div>
+        </WorkbenchDisclosure>
+
+        <WorkbenchDisclosure
+          :expanded="isDisclosureExpanded('bot-profile')"
+          collapsed-title="当前 Bot 身份"
+          expanded-title="当前 Bot 身份"
+          :summary="botProfileSummary"
+          @toggle="toggleDisclosure('bot-profile')"
+        >
+          <WorkbenchEmptyState
+            v-if="botProfileRows.length === 0"
+            :centered="false"
+            class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle"
+            message="当前聊天未设置 Bot 身份覆盖，将使用全局 persona 和当前模式资料。"
+          />
+          <div v-else class="flex min-w-0 flex-col gap-3">
+            <div class="text-small text-text-subtle">仅在当前聊天中生效；修改入口为聊天内的会话身份工具。</div>
+            <div class="grid gap-x-5 gap-y-2 md:grid-cols-2">
+              <div v-for="[label, value] in botProfileRows" :key="label" class="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-3 border-b border-border-subtle py-1.5">
+                <div class="text-small text-text-subtle">{{ label }}</div>
+                <div class="whitespace-pre-wrap wrap-break-word text-small text-text-secondary">{{ value }}</div>
+              </div>
             </div>
           </div>
         </WorkbenchDisclosure>

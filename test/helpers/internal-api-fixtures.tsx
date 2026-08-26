@@ -27,6 +27,7 @@ import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
 import { createInitialScenarioHostSessionState, type ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
 import type { DownloadRuntimeSnapshot } from "../../src/services/workspace/downloadRuntime.ts";
+import type { SessionBotProfile } from "../../src/conversation/session/sessionBotProfile.ts";
 
 export interface InternalApiFixtureState {
   sentMessages: Array<{ userId?: string; groupId?: string; text: string }>;
@@ -43,6 +44,7 @@ export interface InternalApiFixtureState {
     };
     participantUserId: string;
     participantLabel: string | null;
+    botProfile?: SessionBotProfile | null;
     title: string | null;
     titleSource: "default" | "auto" | "manual" | null;
     pacingPreferences?: SessionPacingPreferences;
@@ -126,6 +128,11 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       participantRef: { kind: "user", id: "10001" },
       participantUserId: "10001",
       participantLabel: "Alice",
+      botProfile: {
+        name: "小岚",
+        identity: "Alice 当前聊天中的旅行搭档",
+        voiceStyle: "自然、简洁"
+      },
       title: "Alice",
       titleSource: "manual",
       pacingPreferences: createDefaultSessionPacingPreferences("onebot"),
@@ -422,6 +429,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           participantRef: session.participantRef,
           participantUserId: session.participantUserId,
           participantLabel: session.participantLabel,
+          botProfile: session.botProfile ?? null,
           title: session.title,
           titleSource: session.titleSource,
           pacingPreferences: session.pacingPreferences

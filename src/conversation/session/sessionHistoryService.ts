@@ -431,6 +431,7 @@ export class SessionHistoryService {
     modeId: string;
     participantUserId: string;
     participantLabel: string | null;
+    botProfile: SessionState["botProfile"];
     pacingPreferences: SessionState["pacingPreferences"];
     debugControl: SessionState["debugControl"];
     historySummary: string | null;
