@@ -155,12 +155,23 @@ export class LlmClient {
 
   private async runWithTools(params: LlmGenerateParams): Promise<LlmGenerateResult> {
     const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getModelRefsForRole(this.config, "main_small"));
+    let desiredModelRefs = [...requestedModelRefs];
     let activeModelRefs = [...requestedModelRefs];
-    const resolvedModelProfile = getPrimaryModelProfile(this.config, requestedModelRefs);
-    const preserveThinking = resolvedModelProfile?.preserveThinking ?? false;
+    const syncDesiredModelRefs = (): boolean => {
+      const resolved = normalizeModelRefs(params.resolveModelRefOverride?.() ?? desiredModelRefs);
+      if (resolved.length === 0 || sameModelRefRoute(resolved, desiredModelRefs)) {
+        return false;
+      }
+      desiredModelRefs = resolved;
+      activeModelRefs = [...resolved];
+      return true;
+    };
+    const shouldPreserveThinking = (): boolean => (
+      getPrimaryModelProfile(this.config, activeModelRefs)?.preserveThinking ?? false
+    );
     const workingMessages = cloneMessagesForRequest(
       params.messages,
-      preserveThinking
+      shouldPreserveThinking()
     );
     const maxIterations = this.config.llm.toolCallMaxIterations;
     const maxProtocolRecoveries = this.config.llm.toolCallProtocolRecoveryMaxAttempts;
@@ -170,12 +181,13 @@ export class LlmClient {
     let toolIterations = 0;
     let protocolRecoveries = 0;
     let providerCallIndex = 0;
+    let routeContinuationPending = false;
     const consumeClonedSteerMessages = async (): Promise<LlmMessage[]> => {
       const steerMessages = await params.consumeSteerMessages?.() ?? [];
       return steerMessages.length > 0
         ? cloneMessagesForRequest(
             steerMessages,
-            preserveThinking
+            shouldPreserveThinking()
           )
         : [];
     };
@@ -184,7 +196,7 @@ export class LlmClient {
       return inlineMessages.length > 0
         ? cloneMessagesForRequest(
             inlineMessages,
-            preserveThinking
+            shouldPreserveThinking()
           )
         : [];
     };
@@ -192,13 +204,20 @@ export class LlmClient {
       if (!params.projectMessagesBeforeProvider) {
         return messages;
       }
+      const preserveThinking = shouldPreserveThinking();
       const projected = await params.projectMessagesBeforeProvider(cloneMessagesForRequest(messages, preserveThinking));
       return cloneMessagesForRequest(projected, preserveThinking);
     };
 
-    while (toolIterations < maxIterations && protocolRecoveries < maxProtocolRecoveries) {
+    while (
+      (toolIterations < maxIterations || routeContinuationPending)
+      && protocolRecoveries < maxProtocolRecoveries
+    ) {
+      const isRouteContinuation = toolIterations >= maxIterations;
+      routeContinuationPending = false;
       const iteration = providerCallIndex;
       providerCallIndex += 1;
+      syncDesiredModelRefs();
       throwIfAbortSignalAborted(params.abortSignal);
       const steerMessages = await consumeClonedSteerMessages();
       throwIfAbortSignalAborted(params.abortSignal);
@@ -213,9 +232,11 @@ export class LlmClient {
       workingMessages.splice(0, workingMessages.length, ...await projectMessagesBeforeProvider(workingMessages));
       throwIfAbortSignalAborted(params.abortSignal);
 
-      const tools = typeof params.tools === "function"
-        ? params.tools()
-        : (params.tools ?? []);
+      const tools = isRouteContinuation
+        ? []
+        : typeof params.tools === "function"
+          ? params.tools()
+          : (params.tools ?? []);
       const pendingDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
       let streamed: LlmProviderGenerateResult & { modelRef: string | null };
       try {
@@ -512,6 +533,9 @@ export class LlmClient {
       )) {
         workingMessages.push(message);
       }
+      if (syncDesiredModelRefs() && toolIterations >= maxIterations) {
+        routeContinuationPending = true;
+      }
       if (terminalResponseText !== null) {
         return {
           text: terminalResponseText,
@@ -742,6 +766,10 @@ export class LlmClient {
         });
     }
   }
+}
+
+function sameModelRefRoute(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 async function executeToolCallBatch(input: {

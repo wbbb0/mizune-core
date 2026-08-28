@@ -3,6 +3,7 @@ import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
 import type { SessionPacingPreferences } from "./sessionPacing.ts";
 import type { SessionToolsetPreferences } from "./sessionToolsetPreferences.ts";
+import type { SessionModelRoutingPreferences } from "./sessionModelRoutingPreferences.ts";
 import type { SessionBotProfile } from "./sessionBotProfile.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import type {
@@ -131,6 +132,7 @@ export type TranscriptStatusMessageItem = Extract<InternalTranscriptItem, { kind
 export type TranscriptGateDecisionItem = Extract<InternalTranscriptItem, { kind: "gate_decision" }>;
 export type InternalSystemMarkerItem = Extract<InternalTranscriptItem, { kind: "system_marker" }>;
 export type InternalFallbackEventItem = Extract<InternalTranscriptItem, { kind: "fallback_event" }>;
+export type InternalModelRouteEventItem = Extract<InternalTranscriptItem, { kind: "model_route_event" }>;
 export type InternalTriggerEventItem = Extract<InternalTranscriptItem, { kind: "internal_trigger_event" }>;
 export type TranscriptTitleGenerationItem = Extract<InternalTranscriptItem, { kind: "title_generation_event" }>;
 export type TranscriptContextExtractionEventItem = Extract<InternalTranscriptItem, { kind: "context_extraction_event" }>;
@@ -395,6 +397,7 @@ export interface SessionState {
   replyDelivery: SessionDelivery;
   pacingPreferences: SessionPacingPreferences;
   toolsetPreferences: SessionToolsetPreferences;
+  modelRoutingPreferences: SessionModelRoutingPreferences;
   botProfile: SessionBotProfile | null;
   debugControl: SessionDebugControlState;
   pendingMessages: SessionMessage[];
@@ -441,6 +444,7 @@ export interface PersistedSessionState {
   replyDelivery?: SessionDelivery;
   pacingPreferences?: SessionPacingPreferences;
   toolsetPreferences?: SessionToolsetPreferences;
+  modelRoutingPreferences?: SessionModelRoutingPreferences;
   botProfile?: SessionBotProfile | null;
   debugControl?: {
     enabled?: boolean;

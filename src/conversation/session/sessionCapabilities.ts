@@ -255,8 +255,8 @@ export interface SessionAdminMutationAccess {
   setTitle(sessionId: string, title: string, titleSource: "default" | "auto" | "manual"): SessionState;
   setSettings(
     sessionId: string,
-    settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences">
-  ): Pick<SessionState, "pacingPreferences" | "toolsetPreferences">;
+    settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences" | "modelRoutingPreferences">
+  ): Pick<SessionState, "pacingPreferences" | "toolsetPreferences" | "modelRoutingPreferences">;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;
   setModeId(sessionId: string, modeId: string, options?: { appendSwitchMarker?: boolean }): boolean;
   getPersistedSession(sessionId: string): PersistedSessionState;

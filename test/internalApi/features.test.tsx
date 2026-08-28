@@ -1839,6 +1839,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         toolLoopOutput: "progressive"
       });
       assert.deepEqual(initialSettings.json().settings.toolsetPreferences, { overrides: {} });
+      assert.deepEqual(initialSettings.json().settings.modelRoutingPreferences, { selfUpgradeEnabled: true });
       assert.equal(
         initialSettings.json().toolsetOptions.find((item: { id: string }) => item.id === "web_research")?.effectiveEnabled,
         true
@@ -1855,6 +1856,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           },
           toolsetPreferences: {
             overrides: { web_research: "disabled" }
+          },
+          modelRoutingPreferences: {
+            selfUpgradeEnabled: false
           }
         }
       });
@@ -1870,6 +1874,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.deepEqual(runtimeSession.toolsetPreferences, {
         overrides: { web_research: "disabled" }
       });
+      assert.deepEqual(response.json().settings.modelRoutingPreferences, { selfUpgradeEnabled: false });
+      assert.deepEqual(runtimeSession.modelRoutingPreferences, { selfUpgradeEnabled: false });
       assert.equal(
         response.json().toolsetOptions.find((item: { id: string }) => item.id === "web_research")?.effectiveEnabled,
         false
@@ -1889,7 +1895,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
             inputDebounce: { mode: "fixed", delayMs: 120_001 },
             oneBotOutbound: "immediate"
           },
-          toolsetPreferences: { overrides: {} }
+          toolsetPreferences: { overrides: {} },
+          modelRoutingPreferences: { selfUpgradeEnabled: true }
         }
       });
       assert.equal(invalid.statusCode, 400);
@@ -1902,7 +1909,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
             inputDebounce: { mode: "immediate" },
             oneBotOutbound: "immediate"
           },
-          toolsetPreferences: { overrides: { missing_toolset: "disabled" } }
+          toolsetPreferences: { overrides: { missing_toolset: "disabled" } },
+          modelRoutingPreferences: { selfUpgradeEnabled: true }
         }
       });
       assert.equal(unknownToolset.statusCode, 400);

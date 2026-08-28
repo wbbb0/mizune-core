@@ -19,6 +19,7 @@ import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNorma
 import { sessionPacingPreferencesSchema } from "./sessionPacing.ts";
 import { sessionToolsetPreferencesSchema } from "./sessionToolsetPreferences.ts";
 import { sessionBotProfileSchema } from "./sessionBotProfile.ts";
+import { sessionModelRoutingPreferencesSchema } from "./sessionModelRoutingPreferences.ts";
 
 const personaDraftSchema = z.object({
   name: z.string(),
@@ -124,6 +125,7 @@ export const persistedSessionStateSchema = z.object({
   replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
   pacingPreferences: sessionPacingPreferencesSchema.optional(),
   toolsetPreferences: sessionToolsetPreferencesSchema.optional(),
+  modelRoutingPreferences: sessionModelRoutingPreferencesSchema.optional(),
   botProfile: sessionBotProfileSchema.nullable().optional(),
   pendingMessages: z.array(persistedSessionMessageSchema),
   queuedGroupReplyTargets: z.array(z.object({
@@ -227,6 +229,7 @@ export class SessionPersistence {
         reply_delivery,
         pacing_preferences_json,
         toolset_preferences_json,
+        model_routing_preferences_json,
         bot_profile_json,
         pending_messages_json,
         queued_group_reply_targets_json,
@@ -288,6 +291,7 @@ export class SessionPersistence {
             reply_delivery,
             pacing_preferences_json,
             toolset_preferences_json,
+            model_routing_preferences_json,
             bot_profile_json,
             pending_messages_json,
             queued_group_reply_targets_json,
@@ -319,6 +323,7 @@ export class SessionPersistence {
             @replyDelivery,
             @pacingPreferencesJson,
             @toolsetPreferencesJson,
+            @modelRoutingPreferencesJson,
             @botProfileJson,
             @pendingMessagesJson,
             @queuedGroupReplyTargetsJson,
@@ -350,6 +355,7 @@ export class SessionPersistence {
             reply_delivery = excluded.reply_delivery,
             pacing_preferences_json = excluded.pacing_preferences_json,
             toolset_preferences_json = excluded.toolset_preferences_json,
+            model_routing_preferences_json = excluded.model_routing_preferences_json,
             bot_profile_json = excluded.bot_profile_json,
             pending_messages_json = excluded.pending_messages_json,
             queued_group_reply_targets_json = excluded.queued_group_reply_targets_json,
@@ -482,6 +488,7 @@ type PersistedSessionRow = {
   reply_delivery: "onebot" | "web" | null;
   pacing_preferences_json: string | null;
   toolset_preferences_json: string | null;
+  model_routing_preferences_json: string | null;
   bot_profile_json: string | null;
   pending_messages_json: string;
   queued_group_reply_targets_json: string;
@@ -550,6 +557,9 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     toolsetPreferencesJson: session.toolsetPreferences == null
       ? null
       : JSON.stringify(session.toolsetPreferences),
+    modelRoutingPreferencesJson: session.modelRoutingPreferences == null
+      ? null
+      : JSON.stringify(session.modelRoutingPreferences),
     botProfileJson: session.botProfile == null
       ? null
       : JSON.stringify(session.botProfile),
@@ -703,6 +713,9 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
       : {}),
     ...(row.toolset_preferences_json
       ? { toolsetPreferences: JSON.parse(row.toolset_preferences_json) }
+      : {}),
+    ...(row.model_routing_preferences_json
+      ? { modelRoutingPreferences: JSON.parse(row.model_routing_preferences_json) }
       : {}),
     ...(row.bot_profile_json
       ? { botProfile: JSON.parse(row.bot_profile_json) }

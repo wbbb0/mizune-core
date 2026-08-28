@@ -84,6 +84,7 @@ export interface LlmGenerateParams {
   onFallbackEvent?: (event: LlmFallbackEvent) => Promise<void> | void;
   modelOverride?: string;
   modelRefOverride?: string | string[];
+  resolveModelRefOverride?: () => string | string[];
   timeoutMsOverride?: number;
   enableThinkingOverride?: boolean;
   preferNativeNoThinkingChatEndpoint?: boolean;

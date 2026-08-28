@@ -49,6 +49,7 @@ import {
 } from "#llm/tools/toolsets.ts";
 import { cloneSessionPacingPreferences } from "#conversation/session/sessionPacing.ts";
 import { cloneSessionToolsetPreferences } from "#conversation/session/sessionToolsetPreferences.ts";
+import { cloneSessionModelRoutingPreferences } from "#conversation/session/sessionModelRoutingPreferences.ts";
 
 function toScenarioHostSession(session: SessionState): Pick<SessionState, "id" | "participantRef"> {
   return {
@@ -776,10 +777,12 @@ export function getSessionSettings(
   const toolsetPreferences = normalizeSessionToolsetPreferences(
     cloneSessionToolsetPreferences(session.toolsetPreferences)
   );
+  const modelRoutingPreferences = cloneSessionModelRoutingPreferences(session.modelRoutingPreferences);
   return {
     settings: {
       pacingPreferences,
-      toolsetPreferences
+      toolsetPreferences,
+      modelRoutingPreferences
     },
     toolsetOptions: listConfigurableSessionToolsets(session.modeId, toolsetPreferences)
   };

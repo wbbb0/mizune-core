@@ -7,7 +7,9 @@ import type { OneBotMessageSegment } from "../../src/services/onebot/types.ts";
 import type { SessionPacingPreferences } from "../../src/conversation/session/sessionPacing.ts";
 import type { ToolsetView } from "../../src/llm/tools/toolsetCatalog.ts";
 import type { SessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
+import type { LlmMessage } from "../../src/llm/provider/providerTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { resolveModelSelfUpgradePlan } from "../../src/llm/shared/modelSelfUpgrade.ts";
 
 function createUsage() {
   return {
@@ -101,6 +103,8 @@ function createExecutorHarness(options?: {
   pacingPreferences?: SessionPacingPreferences;
   availableToolsets?: ToolsetView[];
   initialTaskTracker?: SessionTaskTracker;
+  availableToolNames?: string[];
+  modelSelfUpgradePlan?: NonNullable<import("../../src/app/generation/generationExecutor.ts").RunGenerationInput["modelSelfUpgradePlan"]>;
   customGenerate?: (input: {
     messages?: Array<{ role: string; content: unknown }>;
     onReasoningDelta?: (delta: string) => void;
@@ -119,6 +123,14 @@ function createExecutorHarness(options?: {
     }) => Promise<void>;
     onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
     tools?: Array<{ function: { name: string } }> | (() => Array<{ function: { name: string } }>);
+    modelRefOverride?: string | string[];
+    resolveModelRefOverride?: () => string | string[];
+    projectMessagesBeforeProvider?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+    toolExecutor?: (toolCall: {
+      id: string;
+      type: "function";
+      function: { name: string; arguments: string };
+    }) => Promise<string | { content: string }>;
     abortSignal?: AbortSignal;
     onAssistantToolCalls?: (message: {
       role: "assistant";
@@ -136,7 +148,11 @@ function createExecutorHarness(options?: {
       role: "tool";
       tool_call_id: string;
       content: string;
-    }, toolName: string) => Promise<void>;
+    }, toolCall: string | {
+      id: string;
+      type: "function";
+      function: { name: string; arguments: string };
+    }) => Promise<void>;
   }) => Promise<{
     text: string;
     reasoningContent?: string;
@@ -169,7 +185,8 @@ function createExecutorHarness(options?: {
   if (options?.pacingPreferences) {
     sessionManager.setSettings(sessionId, {
       pacingPreferences: options.pacingPreferences,
-      toolsetPreferences: sessionManager.getToolsetPreferences(sessionId)
+      toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
+      modelRoutingPreferences: sessionManager.getSession(sessionId).modelRoutingPreferences
     });
   }
   if (options?.initialTaskTracker) {
@@ -208,6 +225,14 @@ function createExecutorHarness(options?: {
         onTextDelta?: (delta: string) => Promise<void>;
         onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
         tools?: Array<{ function: { name: string } }> | (() => Array<{ function: { name: string } }>);
+        modelRefOverride?: string | string[];
+        resolveModelRefOverride?: () => string | string[];
+        projectMessagesBeforeProvider?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
+        toolExecutor?: (toolCall: {
+          id: string;
+          type: "function";
+          function: { name: string; arguments: string };
+        }) => Promise<string | { content: string }>;
         onProviderResponseComplete?: (event: {
           phase: "tool_call" | "final_response";
           text: string;
@@ -381,6 +406,7 @@ function createExecutorHarness(options?: {
       content: "你好"
     }],
     resolvedModelRef: ["main"],
+    ...(options?.modelSelfUpgradePlan ? { modelSelfUpgradePlan: options.modelSelfUpgradePlan } : {}),
     debugSnapshot: {
       sessionId,
       systemMessages: [],
@@ -400,7 +426,7 @@ function createExecutorHarness(options?: {
       imageCaptions: [],
       lastLlmUsage: null
     },
-    availableToolNames: [],
+    availableToolNames: options?.availableToolNames ?? [],
     ...(options?.availableToolsets !== undefined
       ? {
           availableToolsets: options.availableToolsets,
@@ -439,6 +465,7 @@ function createExecutorHarness(options?: {
   });
 
   return {
+    config,
     sessionId,
     started,
     sessionManager,
@@ -791,6 +818,147 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
       transcript.find((item) => item.kind === "assistant_message")?.text,
       "已完成检查。"
     );
+  });
+
+  test("model upgrade control switches only the provider route and records a hidden route event", async () => {
+    const modelSelfUpgradePlan = {
+      fromRole: "main_small" as const,
+      toRole: "main_large" as const,
+      smallModelRefs: ["main"],
+      largeModelRefs: ["large"],
+      provider: "test"
+    };
+    const harness = createExecutorHarness({
+      sessionSource: "web",
+      streamResponse: false,
+      availableToolNames: ["get_current_time", "request_model_upgrade"],
+      modelSelfUpgradePlan,
+      configOverrides: {
+        llm: {
+          enabled: true,
+          routingPreset: "test",
+          models: {
+            main: {
+              provider: "test",
+              model: "small-model",
+              modelType: "chat",
+              supportsTools: true
+            },
+            large: {
+              provider: "test",
+              model: "large-model",
+              modelType: "chat",
+              supportsTools: true
+            }
+          },
+          routingPresets: {
+            test: {
+              mainSmall: ["main"],
+              mainLarge: ["large"]
+            }
+          }
+        }
+      },
+      customGenerate: async (input) => {
+        const initialTools = typeof input.tools === "function" ? input.tools() : (input.tools ?? []);
+        assert.deepEqual(
+          initialTools.map((tool) => tool.function.name).sort(),
+          ["get_current_time", "request_model_upgrade"]
+        );
+        assert.deepEqual(input.resolveModelRefOverride?.(), ["main"]);
+
+        const upgradeCall = {
+          id: "call_model_upgrade",
+          type: "function" as const,
+          function: {
+            name: "request_model_upgrade",
+            arguments: "{\"reason\":\"需要跨多个约束做严格推理\"}"
+          }
+        };
+        await input.onAssistantToolCalls?.({
+          role: "assistant",
+          content: "",
+          tool_calls: [upgradeCall]
+        });
+        const result = await input.toolExecutor?.(upgradeCall);
+        const content = typeof result === "string" ? result : (result?.content ?? "");
+        assert.deepEqual(JSON.parse(content), {
+          ok: true,
+          upgraded: true,
+          reason: "需要跨多个约束做严格推理",
+          message: "后续请求已切换到完整模型路由。请重新审视当前任务和已有工具结果，再完成回复；不要向用户提及内部模型路由。"
+        });
+        await input.onToolResultMessage?.({
+          role: "tool",
+          tool_call_id: upgradeCall.id,
+          content
+        }, upgradeCall);
+
+        assert.deepEqual(input.resolveModelRefOverride?.(), ["large"]);
+        const upgradedTools = typeof input.tools === "function" ? input.tools() : (input.tools ?? []);
+        assert.deepEqual(upgradedTools.map((tool) => tool.function.name), ["get_current_time"]);
+        await input.projectMessagesBeforeProvider?.([{
+          role: "user",
+          content: "x".repeat(20_000)
+        }]);
+        const budgetedTools = typeof input.tools === "function" ? input.tools() : (input.tools ?? []);
+        assert.deepEqual(budgetedTools, []);
+        const rejectedBusinessResult = await input.toolExecutor?.({
+          id: "call_business_after_budget",
+          type: "function",
+          function: {
+            name: "get_current_time",
+            arguments: "{}"
+          }
+        });
+        const rejectedBusinessContent = typeof rejectedBusinessResult === "string"
+          ? rejectedBusinessResult
+          : (rejectedBusinessResult?.content ?? "");
+        assert.match(rejectedBusinessContent, /Tool is not available in the current model toolset/);
+        const repeatedResult = await input.toolExecutor?.({
+          ...upgradeCall,
+          id: "call_model_upgrade_repeated"
+        });
+        const repeatedContent = typeof repeatedResult === "string"
+          ? repeatedResult
+          : (repeatedResult?.content ?? "");
+        assert.deepEqual(JSON.parse(repeatedContent), {
+          ok: true,
+          upgraded: false,
+          reason: "需要跨多个约束做严格推理",
+          message: "本轮后续请求已经使用完整模型路由，请直接继续完成任务。"
+        });
+        return {
+          text: "完整模型已完成任务。",
+          reasoningContent: "",
+          usage: createUsage()
+        };
+      }
+    });
+
+    assert.deepEqual(resolveModelSelfUpgradePlan({
+      config: harness.config,
+      currentModelRefs: ["main"],
+      enabled: true
+    }), modelSelfUpgradePlan);
+
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    const transcript = harness.sessionManager.getSession(harness.sessionId).internalTranscript;
+    const routeEvent = transcript.find((item) => item.kind === "model_route_event");
+    const generationFailure = transcript.find((item) => item.kind === "fallback_event");
+    assert.ok(routeEvent, JSON.stringify({
+      kinds: transcript.map((item) => item.kind),
+      failure: generationFailure?.kind === "fallback_event" ? generationFailure.details : null
+    }));
+    assert.equal(routeEvent.kind, "model_route_event");
+    assert.equal(routeEvent?.llmVisible, false);
+    assert.equal(routeEvent?.summary, "后续请求已切换到完整模型路由");
+    assert.deepEqual(routeEvent?.fromModelRefs, ["main"]);
+    assert.deepEqual(routeEvent?.toModelRefs, ["large"]);
+    assert.ok(transcript.findIndex((item) => item.kind === "assistant_tool_call") < transcript.indexOf(routeEvent!));
+    assert.ok(transcript.indexOf(routeEvent!) < transcript.findIndex((item) => item.kind === "tool_result"));
   });
 
   test("final-only sends only the final reply through OneBot", async () => {

@@ -7,6 +7,7 @@ import type { SessionSettings, SessionSettingsResult } from "@/api/types";
 import type { ActiveSession } from "@/stores/sessions";
 import { WorkbenchAreaHeader } from "@workbench-kit/vue";
 import SessionPacingControl from "./SessionPacingControl.vue";
+import SessionModelRoutingControl from "./SessionModelRoutingControl.vue";
 import SessionToolsetBoundaryControl from "./SessionToolsetBoundaryControl.vue";
 
 const props = defineProps<{
@@ -98,6 +99,9 @@ function cloneSessionSettings(settings: SessionSettings): SessionSettings {
     },
     toolsetPreferences: {
       overrides: { ...settings.toolsetPreferences.overrides }
+    },
+    modelRoutingPreferences: {
+      selfUpgradeEnabled: settings.modelRoutingPreferences.selfUpgradeEnabled
     }
   };
 }
@@ -138,6 +142,10 @@ function cloneSessionSettings(settings: SessionSettings): SessionSettings {
           <SessionToolsetBoundaryControl
             v-model="draft.toolsetPreferences"
             :options="loaded.toolsetOptions"
+            :disabled="saving"
+          />
+          <SessionModelRoutingControl
+            v-model="draft.modelRoutingPreferences"
             :disabled="saving"
           />
           <SessionPacingControl

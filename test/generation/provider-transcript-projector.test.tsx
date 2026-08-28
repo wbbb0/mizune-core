@@ -183,11 +183,18 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           }]
         },
         {
-          kind: "system_marker",
+          kind: "model_route_event",
           llmVisible: false,
-          markerType: "debug_enabled",
-          content: "internal marker",
-          timestampMs: 2
+          timestampMs: 2,
+          routeType: "self_upgrade",
+          fromRole: "main_small",
+          toRole: "main_large",
+          title: "模型路由 · 自助升级",
+          summary: "后续请求已切换到完整模型路由",
+          reason: "任务复杂",
+          fromModelRefs: ["small"],
+          toModelRefs: ["large"],
+          provider: "test"
         },
         {
           kind: "tool_result",
@@ -943,6 +950,20 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
         content: "",
         toolCalls
       } as any,
+      {
+        kind: "model_route_event",
+        llmVisible: false,
+        timestampMs: 2,
+        routeType: "self_upgrade",
+        fromRole: "main_small",
+        toRole: "main_large",
+        title: "模型路由 · 自助升级",
+        summary: "后续请求已切换到完整模型路由",
+        reason: "任务复杂",
+        fromModelRefs: ["small"],
+        toModelRefs: ["large"],
+        provider: "google"
+      },
       ...toolCalls.map((toolCall, index) => ({
         kind: "tool_result" as const,
         llmVisible: true as const,

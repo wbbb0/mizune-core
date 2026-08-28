@@ -122,6 +122,9 @@ const itemTitle = computed(() => {
     case "fallback_event":
       title = props.item.title;
       break;
+    case "model_route_event":
+      title = props.item.title;
+      break;
     case "internal_trigger_event":
       title = props.item.title;
       break;
@@ -162,6 +165,8 @@ const itemTone = computed(() => {
       return "marker";
     case "fallback_event":
       return props.item.fallbackType === "generation_failure_reply" ? "gate-skip" : "gate";
+    case "model_route_event":
+      return "gate";
     case "internal_trigger_event":
       return "status";
     case "context_extraction_event":
@@ -196,6 +201,8 @@ const itemGlyph = computed<SessionGlyphModel>(() => {
       return { kind: "text", value: "M" };
     case "fallback_event":
       return { kind: "text", value: "F" };
+    case "model_route_event":
+      return { kind: "icon", component: GitBranch, size: 13, strokeWidth: 2 };
     case "internal_trigger_event":
       return { kind: "text", value: "I" };
     case "context_extraction_event":
@@ -310,6 +317,13 @@ const metaChips = computed(() => {
         props.item.fromProvider && props.item.toProvider ? `${props.item.fromProvider} -> ${props.item.toProvider}` : null,
         props.item.failureMessage ? "已发送兜底回复" : null
       ].filter(Boolean) as string[];
+      break;
+    case "model_route_event":
+      chips = [
+        "自助升级",
+        `${props.item.fromRole} -> ${props.item.toRole}`,
+        props.item.provider
+      ];
       break;
     case "internal_trigger_event":
       chips = [
@@ -929,6 +943,44 @@ function openActions(): void {
           </WorkbenchCard>
           <WorkbenchCard v-if="item.failureMessage" title="发送给用户的兜底回复">
             <TranscriptTextBlock :text="item.failureMessage" />
+          </WorkbenchCard>
+        </WorkbenchDisclosure>
+      </div>
+
+      <div v-else-if="item.kind === 'model_route_event'" class="flex flex-col gap-2">
+        <p class="m-0 whitespace-pre-wrap wrap-break-word text-text-muted">{{ item.summary }}</p>
+        <WorkbenchDisclosure
+          :expanded="expanded"
+          collapsed-title="展开路由信息"
+          expanded-title="收起路由信息"
+          :summary="item.reason"
+          @toggle="toggleExpanded"
+        >
+          <WorkbenchCard title="模型路由">
+            <div class="grid gap-1.5">
+              <WorkbenchCard compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">route</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.fromRole }} -&gt; {{ item.toRole }}</span>
+                </div>
+              </WorkbenchCard>
+              <WorkbenchCard compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">modelRefs</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.fromModelRefs.join(', ') }} -&gt; {{ item.toModelRefs.join(', ') }}</span>
+                </div>
+              </WorkbenchCard>
+              <WorkbenchCard compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">provider</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.provider }}</span>
+                </div>
+              </WorkbenchCard>
+              <WorkbenchCard compact>
+                <div class="mb-1 font-mono text-small text-text-subtle">reason</div>
+                <TranscriptTextBlock :text="item.reason" />
+              </WorkbenchCard>
+            </div>
           </WorkbenchCard>
         </WorkbenchDisclosure>
       </div>

@@ -42,6 +42,10 @@ import type { SessionModeDefinition, SessionModeSetupOperation } from "#modes/ty
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
 import { buildTurnPlannerTaskContext } from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
+import {
+  MODEL_SELF_UPGRADE_TOOL_NAME,
+  resolveModelSelfUpgradePlan
+} from "#llm/shared/modelSelfUpgrade.ts";
 
 type ActiveDraftOperation = {
   kind: "persona_setup" | "mode_setup";
@@ -548,6 +552,7 @@ export function createGenerationSessionOrchestrator(
       responseEpoch
     } = sessionManager.beginGeneration(sessionId);
     const streamResponse = generationSession.pacingPreferences.toolLoopOutput !== "final_only";
+    const modelSelfUpgradeEnabled = generationSession.modelRoutingPreferences.selfUpgradeEnabled;
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     if (messages.length === 0) {
       if (sessionManager.finishGeneration(sessionId, abortController)) {
@@ -795,14 +800,28 @@ export function createGenerationSessionOrchestrator(
             userId: message.userId,
             senderName: message.senderName
           })));
+      const modelSelfUpgradePlan = setupMode
+        ? null
+        : resolveModelSelfUpgradePlan({
+            config,
+            currentModelRefs: resolvedModelRef,
+            enabled: modelSelfUpgradeEnabled
+          });
       const providerName = resolveProviderTranscriptProjectorName(config, resolvedModelRef);
       const toolNamesFromPlanner = resolveToolNamesFromToolsets(plannerToolsets, plannedToolsetIds);
       const activeChatToolsets = plannerToolsets.filter((toolset) => plannedToolsetIds.includes(toolset.id));
       const chatVisibleToolNames = getBuiltinToolNames(relationship, user, config, {
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
-        visibilityContext: toolVisibilityContext,
-        availableToolNames: [...toolNamesFromPlanner, ...TURN_PLANNER_ALWAYS_TOOL_NAMES]
+        visibilityContext: {
+          ...toolVisibilityContext,
+          modelSelfUpgradeAvailable: modelSelfUpgradePlan != null
+        },
+        availableToolNames: [
+          ...toolNamesFromPlanner,
+          ...TURN_PLANNER_ALWAYS_TOOL_NAMES,
+          ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
+        ]
       });
       const debugMarkers = refreshedSession.debugMarkers;
       const replayTranscriptItems = refreshedSession.activeTranscriptGroupId == null
@@ -918,6 +937,7 @@ export function createGenerationSessionOrchestrator(
         participantProfiles,
         promptMessages: promptBuildResult.promptMessages,
         resolvedModelRef,
+        ...(modelSelfUpgradePlan ? { modelSelfUpgradePlan } : {}),
         debugSnapshot: promptBuildResult.debugSnapshot,
         ...(setupMode
           ? {
@@ -970,7 +990,13 @@ export function createGenerationSessionOrchestrator(
       return Promise.resolve();
     }
 
-    const { abortController, responseAbortController, responseEpoch } = sessionManager.beginSyntheticGeneration(sessionId);
+    const {
+      session: generationSession,
+      abortController,
+      responseAbortController,
+      responseEpoch
+    } = sessionManager.beginSyntheticGeneration(sessionId);
+    const modelSelfUpgradeEnabled = generationSession.modelRoutingPreferences.selfUpgradeEnabled;
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
       trigger,
@@ -998,6 +1024,11 @@ export function createGenerationSessionOrchestrator(
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
       const scheduledModelRef = getModelRefsForRole(config, "main_small");
       const session = sessionManager.getSession(sessionId);
+      const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
+        config,
+        currentModelRefs: scheduledModelRef,
+        enabled: modelSelfUpgradeEnabled
+      });
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = await personaStore.get();
@@ -1027,12 +1058,16 @@ export function createGenerationSessionOrchestrator(
         includeDebugTools: interactionMode === "debug",
         visibilityContext: {
           sessionId,
-          replyDelivery: scheduledReplyDelivery
+          replyDelivery: scheduledReplyDelivery,
+          modelSelfUpgradeAvailable: modelSelfUpgradePlan != null
         },
-        availableToolNames: resolveToolNamesFromToolsets(
-          scheduledAvailableToolsets,
-          activeScheduledToolsets.map((toolset) => toolset.id)
-        )
+        availableToolNames: [
+          ...resolveToolNamesFromToolsets(
+            scheduledAvailableToolsets,
+            activeScheduledToolsets.map((toolset) => toolset.id)
+          ),
+          ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
+        ]
       });
       await historyCompressor.maybeCompress(sessionId, { triggerReason: "scheduled_pre_generation" });
       const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
@@ -1120,6 +1155,7 @@ export function createGenerationSessionOrchestrator(
         persona,
         batchMessages: [],
         resolvedModelRef: scheduledModelRef,
+        ...(modelSelfUpgradePlan ? { modelSelfUpgradePlan } : {}),
         sendTarget: {
           delivery: scheduledReplyDelivery satisfies SessionDelivery,
           chatType: trigger.targetType,
@@ -1156,7 +1192,13 @@ export function createGenerationSessionOrchestrator(
       return Promise.resolve();
     }
 
-    const { abortController, responseAbortController, responseEpoch } = sessionManager.beginSyntheticGeneration(sessionId);
+    const {
+      session: generationSession,
+      abortController,
+      responseAbortController,
+      responseEpoch
+    } = sessionManager.beginSyntheticGeneration(sessionId);
+    const modelSelfUpgradeEnabled = generationSession.modelRoutingPreferences.selfUpgradeEnabled;
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     for (const trigger of triggers) {
       sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
@@ -1186,6 +1228,11 @@ export function createGenerationSessionOrchestrator(
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
       const scheduledModelRef = getModelRefsForRole(config, "main_small");
       const session = sessionManager.getSession(sessionId);
+      const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
+        config,
+        currentModelRefs: scheduledModelRef,
+        enabled: modelSelfUpgradeEnabled
+      });
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = await personaStore.get();
@@ -1215,12 +1262,16 @@ export function createGenerationSessionOrchestrator(
         includeDebugTools: interactionMode === "debug",
         visibilityContext: {
           sessionId,
-          replyDelivery: scheduledReplyDelivery
+          replyDelivery: scheduledReplyDelivery,
+          modelSelfUpgradeAvailable: modelSelfUpgradePlan != null
         },
-        availableToolNames: resolveToolNamesFromToolsets(
-          scheduledAvailableToolsets,
-          activeScheduledToolsets.map((toolset) => toolset.id)
-        )
+        availableToolNames: [
+          ...resolveToolNamesFromToolsets(
+            scheduledAvailableToolsets,
+            activeScheduledToolsets.map((toolset) => toolset.id)
+          ),
+          ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
+        ]
       });
       await historyCompressor.maybeCompress(sessionId, { triggerReason: "inline_batch_pre_generation" });
       const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
@@ -1310,6 +1361,7 @@ export function createGenerationSessionOrchestrator(
         persona,
         batchMessages: [],
         resolvedModelRef: scheduledModelRef,
+        ...(modelSelfUpgradePlan ? { modelSelfUpgradePlan } : {}),
         sendTarget: {
           delivery: scheduledReplyDelivery satisfies SessionDelivery,
           chatType: primaryTrigger.targetType,

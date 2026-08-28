@@ -321,6 +321,8 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
       return "系统标记";
     case "fallback_event":
       return "兜底事件";
+    case "model_route_event":
+      return "模型路由事件";
     case "internal_trigger_event":
       return "内部触发事件";
     case "context_extraction_event":

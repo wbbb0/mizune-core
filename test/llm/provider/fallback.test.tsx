@@ -173,6 +173,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
     ], async () => {
       const result = await client.generate({
         messages: [{ role: "user", content: "do the thing" }],
+        resolveModelRefOverride: () => ["main", "candidate_2"],
         tools: [createToolDefinition("lookup")],
         toolExecutor: async () => "{\"ok\":true}"
       });

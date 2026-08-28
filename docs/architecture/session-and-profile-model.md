@@ -110,6 +110,29 @@
 - `test/generation/generation-session-orchestrator.test.tsx`
 - `test/generation/generation-typing-lifecycle.test.tsx`
 
+## 会话模型路由偏好
+
+会话通过 `modelRoutingPreferences.selfUpgradeEnabled` 控制轻量模型是否可以在当前任务明显超出自身能力时，请求把本轮后续生成切换到完整模型。默认值为 `true`，WebUI 会话“设置”页可关闭；每轮生成开始时快照该值，进行中的生成不受后续设置修改影响。
+
+该能力保持以下边界：
+
+- 仅当当前路由严格等于 `mainSmall`，且 `mainSmall`、`mainLarge` 的全部候选模型都存在、支持工具并引用同一个 provider 配置键时开放。
+- `mainSmall` 与 `mainLarge` 的首选实际模型名必须不同；Planner 已经选择 `mainLarge` 时不开放。
+- `request_model_upgrade` 是独立的系统控制工具，不属于 toolset，也不进入 Turn Planner 的常驻工具清单。
+- 调用只更新同一个 `runWithTools` 中下一次 provider 请求的期望模型路由；原 working messages、provider replay 元数据、tool call ID 与业务工具选择快照继续沿用。
+- provider fallback 已经淘汰的候选不会因普通工具续轮被重新加入；只有期望路由从 `mainSmall` 真正变化到 `mainLarge` 时才重置候选。
+- 路由请求写入 `model_route_event`，该事件对 LLM 隐藏，只表示“后续请求已切换到完整模型路由”，不表示完整模型已经成功响应。
+
+相关实现入口：
+
+- `src/conversation/session/sessionModelRoutingPreferences.ts`
+- `src/llm/shared/modelSelfUpgrade.ts`
+- `src/llm/tools/runtime/modelRoutingTools.ts`
+- `src/app/generation/generationSessionOrchestrator.ts`
+- `src/app/generation/generationExecutor.ts`
+- `src/llm/llmClient.ts`
+- `webui/src/components/sessions/SessionModelRoutingControl.vue`
+
 ## 资料分层
 
 当前仓库已经把长期资料拆成全局资料与会话级资料，而不是继续把所有信息塞进单层 `persona`：

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   estimateLlmMessagesTokens,
+  estimateLlmToolsTokens,
   projectProviderWorkingMessagesForBudget
 } from "../../src/app/generation/providerWorkingMessageBudget.ts";
 import type { InternalTranscriptItem } from "../../src/conversation/session/sessionTypes.ts";
@@ -202,6 +203,43 @@ test("provider working message budget keeps afterTokens aligned after tools were
 
   assert.equal(second.toolsDisabled, true);
   assert.equal(second.afterTokens, estimateLlmMessagesTokens(second.messages, config));
+});
+
+test("provider working message budget retains a system control tool and includes its schema cost", () => {
+  const config = createTestAppConfig();
+  const retainedTool = {
+    type: "function" as const,
+    function: {
+      name: "request_model_upgrade",
+      description: "upgrade control",
+      parameters: { type: "object", properties: {} }
+    }
+  };
+  const projection = projectProviderWorkingMessagesForBudget({
+    messages: [{ role: "user" as const, content: "x".repeat(1000) }],
+    transcript: [],
+    tools: [
+      retainedTool,
+      {
+        type: "function",
+        function: {
+          name: "large_business_tool",
+          description: "y".repeat(1000),
+          parameters: { type: "object", properties: {} }
+        }
+      }
+    ],
+    retainedToolsWhenDisabled: [retainedTool],
+    config,
+    triggerTokens: 50
+  });
+
+  assert.equal(projection.toolsDisabled, true);
+  assert.match(String(projection.messages.at(-1)?.content), /业务工具已停用/);
+  assert.equal(
+    projection.afterTokens,
+    estimateLlmMessagesTokens(projection.messages, config) + estimateLlmToolsTokens([retainedTool], config)
+  );
 });
 
 function createObservedToolResult(

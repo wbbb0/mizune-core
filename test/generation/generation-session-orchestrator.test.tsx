@@ -92,7 +92,8 @@ test("persona setup uses the current draft and snapshots output mode before asyn
               ...sessionManager.getPacingPreferences(sessionId),
               toolLoopOutput: "final_only"
             },
-            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId)
+            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
+            modelRoutingPreferences: sessionManager.getSession(sessionId).modelRoutingPreferences
           });
           return false;
         }
@@ -187,6 +188,11 @@ test("persona setup uses the current draft and snapshots output mode before asyn
 
 test("rp_assistant normal prompt receives the saved rp profile", async () => {
   const config = createTestAppConfig({ llm: { enabled: true } });
+  config.llm.models.large = {
+    ...config.llm.models.main!,
+    model: "fake-large"
+  };
+  config.llm.routingPresets.test!.mainLarge = ["large"];
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
   const sessionId = "qqbot:p:2254600711";
@@ -201,7 +207,8 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
       ...sessionManager.getPacingPreferences(sessionId),
       toolLoopOutput: "final_only"
     },
-    toolsetPreferences: sessionManager.getToolsetPreferences(sessionId)
+    toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
+    modelRoutingPreferences: sessionManager.getSession(sessionId).modelRoutingPreferences
   });
   sessionManager.appendPendingMessage(sessionId, {
     channelId: "qqbot",
@@ -239,6 +246,7 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
 
   let capturedModeProfile: unknown = null;
   let capturedStreamResponse: boolean | undefined;
+  let capturedModelSelfUpgradePlan: unknown = null;
   let resolveRunGeneration!: () => void;
   const runGenerationDone = new Promise<void>((resolve) => {
     resolveRunGeneration = resolve;
@@ -250,6 +258,11 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
       logger,
       historyCompressor: {
         async maybeCompress() {
+          sessionManager.setSettings(sessionId, {
+            pacingPreferences: sessionManager.getPacingPreferences(sessionId),
+            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
+            modelRoutingPreferences: { selfUpgradeEnabled: false }
+          });
           return false;
         }
       },
@@ -331,8 +344,12 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
         };
       }
     } as any,
-    async runGeneration(input: { streamResponse?: boolean | undefined }) {
+    async runGeneration(input: {
+      streamResponse?: boolean | undefined;
+      modelSelfUpgradePlan?: unknown;
+    }) {
       capturedStreamResponse = input.streamResponse;
+      capturedModelSelfUpgradePlan = input.modelSelfUpgradePlan;
       resolveRunGeneration();
     },
     processNextSessionWork() {}
@@ -346,6 +363,14 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
     profile: savedRpProfile
   });
   assert.equal(capturedStreamResponse, false);
+  assert.deepEqual(capturedModelSelfUpgradePlan, {
+    fromRole: "main_small",
+    toRole: "main_large",
+    smallModelRefs: ["main"],
+    largeModelRefs: ["large"],
+    provider: "test"
+  });
+  assert.equal(sessionManager.getSession(sessionId).modelRoutingPreferences.selfUpgradeEnabled, false);
 });
 
 test("scenario_host normal prompt receives the saved scenario profile", async () => {

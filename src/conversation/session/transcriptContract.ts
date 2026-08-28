@@ -368,6 +368,22 @@ export const transcriptFallbackEventItemSchema = z.object({
   failureMessage: z.string().optional()
 });
 
+export const transcriptModelRouteEventItemSchema = z.object({
+  ...transcriptItemMetaSchema.shape,
+  kind: z.literal("model_route_event"),
+  llmVisible: z.literal(false),
+  timestampMs: z.number().int().nonnegative(),
+  routeType: z.literal("self_upgrade"),
+  fromRole: z.literal("main_small"),
+  toRole: z.literal("main_large"),
+  title: z.string(),
+  summary: z.string(),
+  reason: z.string(),
+  fromModelRefs: z.array(z.string().min(1)).min(1),
+  toModelRefs: z.array(z.string().min(1)).min(1),
+  provider: z.string().min(1)
+});
+
 export const transcriptInternalTriggerEventItemSchema = z.object({
   ...transcriptItemMetaSchema.shape,
   kind: z.literal("internal_trigger_event"),
@@ -445,6 +461,7 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptGateDecisionItemSchema,
   transcriptSystemMarkerItemSchema,
   transcriptFallbackEventItemSchema,
+  transcriptModelRouteEventItemSchema,
   transcriptInternalTriggerEventItemSchema,
   transcriptTitleGenerationItemSchema,
   transcriptContextExtractionEventItemSchema

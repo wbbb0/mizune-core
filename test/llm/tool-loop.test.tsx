@@ -1065,6 +1065,122 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
+  test("tool loop switches the next provider request to a dynamically requested model route", async () => {
+    const config = createLlmTestConfig();
+    config.llm.models.large = {
+      ...config.llm.models.main!,
+      model: "large-model"
+    };
+    config.llm.routingPresets.test!.mainLarge = ["large"];
+    const client = new LlmClient(config, pino({ level: "silent" }));
+    let upgraded = false;
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.model, "fake-model");
+          assert.deepEqual(body.tools.map((tool: any) => tool.function.name), ["business_tool", "request_model_upgrade"]);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "upgrade-call",
+                type: "function",
+                function: {
+                  name: "request_model_upgrade",
+                  arguments: "{\"reason\":\"complex\"}"
+                }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.model, "large-model");
+          assert.equal(body.messages[1].tool_calls[0].id, "upgrade-call");
+          assert.equal(body.messages[2].tool_call_id, "upgrade-call");
+          assert.deepEqual(body.tools.map((tool: any) => tool.function.name), ["business_tool"]);
+        },
+        payloads: [{ choices: [{ delta: { content: "large done" } }] }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "solve a complex task" }],
+        modelRefOverride: ["main"],
+        resolveModelRefOverride: () => upgraded ? ["large"] : ["main"],
+        tools: () => upgraded
+          ? [createToolDefinition("business_tool")]
+          : [createToolDefinition("business_tool"), createToolDefinition("request_model_upgrade")],
+        toolExecutor: async (toolCall) => {
+          assert.equal(toolCall.function.name, "request_model_upgrade");
+          upgraded = true;
+          return "{\"ok\":true}";
+        }
+      });
+
+      assert.equal(result.text, "large done");
+    });
+  });
+
+  test("a model route requested at the iteration limit receives one no-tools continuation", async () => {
+    const config = createLlmTestConfig();
+    config.llm.toolCallMaxIterations = 1;
+    config.llm.models.large = {
+      ...config.llm.models.main!,
+      model: "large-model"
+    };
+    const client = new LlmClient(config, pino({ level: "silent" }));
+    let upgraded = false;
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.model, "fake-model");
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "upgrade-at-limit",
+                type: "function",
+                function: {
+                  name: "request_model_upgrade",
+                  arguments: "{\"reason\":\"complex\"}"
+                }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.model, "large-model");
+          assert.equal(body.tools, undefined);
+          assert.equal(body.messages.at(-1).role, "tool");
+          assert.equal(body.messages.at(-1).tool_call_id, "upgrade-at-limit");
+        },
+        payloads: [{ choices: [{ delta: { content: "large continuation done" } }] }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "solve it" }],
+        modelRefOverride: ["main"],
+        resolveModelRefOverride: () => upgraded ? ["large"] : ["main"],
+        tools: [createToolDefinition("request_model_upgrade")],
+        toolExecutor: async () => {
+          upgraded = true;
+          return "{\"ok\":true}";
+        }
+      });
+
+      assert.equal(result.text, "large continuation done");
+    });
+  });
+
   test("aborted tool loops stop before issuing the next provider request", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
     const abortController = new AbortController();

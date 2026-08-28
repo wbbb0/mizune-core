@@ -83,6 +83,10 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先 list_available_toolsets，再用 request_toolset 申请补充，避免盲猜工具名。");
   }
 
+  if (visibleToolNames.has("request_model_upgrade")) {
+    lines.push("收到任务后、展开详细推理前先快速判断一次；仅当关键工具结果暴露此前未知的复杂约束或风险时，在继续详细推理前再判断。若明显需要复杂推理、多约束权衡、形式化验证或高风险分析，立即调用 request_model_upgrade，无需先尝试完整解题或证明自己做不到。机械步骤多、回答较长、普通不确定、缺少工具、权限或外部事实都不是升级理由；应改用相应工具或如实说明。升级属于内部路由，不向用户提及。");
+  }
+
   if (hasAnyTool(visibleToolNames, ["asset_list", "asset_media_view", "asset_send_to_chat"])) {
     lines.push("查已登记图片、视频、音频或文件时先 asset_list；发送用 asset_send_to_chat(asset_ref=...)。");
     if (hasAnyTool(visibleToolNames, ["asset_local_path", "asset_export_to_filesystem"])) {
