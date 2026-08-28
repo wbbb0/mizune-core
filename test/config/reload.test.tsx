@@ -108,19 +108,98 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
     });
   });
 
+  test("config manager defers reload until a write transaction completes", async () => {
+    await withConfigDir("llm-bot-config-write-transaction", async (configDir) => {
+      await mkdir(join(configDir, "instances"), { recursive: true });
+      await writeLlmCatalog(configDir);
+      await writeYaml(join(configDir, "global.yml"), { appName: "before" });
+      await writeYaml(join(configDir, "instances", "acc1.yml"), {});
+
+      const env = {
+        CONFIG_DIR: configDir,
+        CONFIG_INSTANCE: "acc1"
+      };
+      const config = loadConfig(env);
+      const manager = new ConfigManager(config, pino({ level: "silent" }), env);
+      await manager.start();
+
+      let listenerCalls = 0;
+      manager.subscribe(() => {
+        listenerCalls += 1;
+      });
+
+      let reloadDuringTransaction = true;
+      await manager.runWriteTransaction(async () => {
+        await writeYaml(join(configDir, "global.yml"), { appName: "after" });
+        reloadDuringTransaction = await manager.checkForUpdates();
+      });
+      manager.stop();
+
+      assert.equal(reloadDuringTransaction, false);
+      assert.equal(config.appName, "after");
+      assert.equal(listenerCalls, 1);
+    });
+  });
+
+  test("config manager serializes concurrent write transactions", async () => {
+    await withConfigDir("llm-bot-config-write-transaction-order", async (configDir) => {
+      await mkdir(join(configDir, "instances"), { recursive: true });
+      await writeLlmCatalog(configDir);
+      await writeYaml(join(configDir, "global.yml"), {});
+      await writeYaml(join(configDir, "instances", "acc1.yml"), {});
+
+      const env = {
+        CONFIG_DIR: configDir,
+        CONFIG_INSTANCE: "acc1"
+      };
+      const manager = new ConfigManager(
+        loadConfig(env),
+        pino({ level: "silent" }),
+        env
+      );
+      const events: string[] = [];
+      let markFirstStarted!: () => void;
+      const firstStarted = new Promise<void>((resolve) => {
+        markFirstStarted = resolve;
+      });
+      let releaseFirst!: () => void;
+      const firstGate = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+
+      const first = manager.runWriteTransaction(async () => {
+        events.push("first:start");
+        markFirstStarted();
+        await firstGate;
+        events.push("first:end");
+      });
+      await firstStarted;
+      const second = manager.runWriteTransaction(() => {
+        events.push("second");
+      });
+
+      await Promise.resolve();
+      assert.deepEqual(events, ["first:start"]);
+      releaseFirst();
+      await Promise.all([first, second]);
+      assert.deepEqual(events, ["first:start", "first:end", "second"]);
+    });
+  });
+
   test("config manager reloads changed LLM routing preset catalog", async () => {
     await withConfigDir("llm-bot-config-reload-routing-presets", async (configDir) => {
       await mkdir(join(configDir, "instances"), { recursive: true });
+      const createTarget = (model: string) => ({ provider: "test", model });
       const createPreset = (modelRef: string) => ({
-        mainSmall: [modelRef],
-        mainLarge: [modelRef],
-        summarizer: [modelRef],
-        textInspector: [modelRef],
-        sessionCaptioner: [modelRef],
-        imageCaptioner: [modelRef],
-        imageInspector: [modelRef],
-        audioTranscription: ["transcription"],
-        turnPlanner: [modelRef]
+        mainSmall: [createTarget(modelRef)],
+        mainLarge: [createTarget(modelRef)],
+        summarizer: [createTarget(modelRef)],
+        textInspector: [createTarget(modelRef)],
+        sessionCaptioner: [createTarget(modelRef)],
+        imageCaptioner: [createTarget(modelRef)],
+        imageInspector: [createTarget(modelRef)],
+        audioTranscription: [createTarget("transcription")],
+        turnPlanner: [createTarget(modelRef)]
       });
       const createPresetWithLimits = (modelRef: string, maxRecentMessages: number, retainTokens: number) => ({
         ...createPreset(modelRef),
@@ -179,7 +258,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
       const manager = new ConfigManager(config, pino({ level: "silent" }), env);
       await manager.start();
 
-      assert.deepEqual(getModelRefsForRole(config, "main_small"), ["main"]);
+      assert.deepEqual(getModelRefsForRole(config, "main_small"), ["test/main"]);
       assert.deepEqual(getRoutingPresetHistoryWindow(config), {
         maxRecentMessages: 80,
         maxImageReferences: 5
@@ -198,7 +277,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
       manager.stop();
 
       assert.equal(changed, true);
-      assert.deepEqual(getModelRefsForRole(config, "main_small"), ["alternate"]);
+      assert.deepEqual(getModelRefsForRole(config, "main_small"), ["test/alternate"]);
       assert.deepEqual(getRoutingPresetHistoryWindow(config), {
         maxRecentMessages: 32,
         maxImageReferences: 5

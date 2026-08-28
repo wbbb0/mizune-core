@@ -443,14 +443,187 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     try {
       const response = await app.inject({
         method: "POST",
-        url: "/api/editors/llm_provider_catalog/normalize",
+        url: "/api/editors/llm_catalog/normalize",
         payload: {
           value: {}
         }
       });
 
       assert.equal(response.statusCode, 400);
-      assert.equal(response.json().error, "Editor resource cannot be normalized: llm_provider_catalog");
+      assert.equal(response.json().error, "Editor resource cannot be normalized: llm_catalog");
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("internal api groups model targets and cascades explicit provider mutations", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    const catalogPath = deps.config.configRuntime.llmCatalogPath;
+    const routingPath = deps.config.configRuntime.llmRoutingPresetCatalogPath;
+    const providerValue = {
+      type: "openai",
+      models: {
+        shared: {
+          upstreamModel: "vendor-shared-model"
+        }
+      }
+    };
+
+    try {
+      await writeFile(catalogPath, [
+        "alpha:",
+        "  type: openai",
+        "  models:",
+        "    shared:",
+        "      upstreamModel: vendor-shared-model",
+        "beta:",
+        "  type: deepseek",
+        "  models:",
+        "    shared:",
+        "      upstreamModel: deepseek-shared-model"
+      ].join("\n"), "utf8");
+      await writeFile(routingPath, [
+        "default:",
+        "  mainSmall:",
+        "    - provider: alpha",
+        "      model: shared",
+        "    - provider: beta",
+        "      model: shared",
+        "  summarizer:",
+        "    - provider: alpha",
+        "      model: shared"
+      ].join("\n"), "utf8");
+
+      const catalogBeforeMutation = await app.inject({
+        method: "GET",
+        url: "/api/editors/llm_catalog"
+      });
+      const staleRoutingEditor = await app.inject({
+        method: "GET",
+        url: "/api/editors/llm_routing_preset_catalog"
+      });
+      const initialRevision = catalogBeforeMutation.json().editor.revision;
+      assert.match(initialRevision, /^[a-f0-9]{64}$/);
+      assert.equal(staleRoutingEditor.json().editor.revision, initialRevision);
+
+      const optionsResponse = await app.inject({
+        method: "GET",
+        url: "/api/editor-options/llm_model_targets"
+      });
+      assert.equal(optionsResponse.statusCode, 200);
+      assert.deepEqual(optionsResponse.json().groups.map((group: { key: string }) => group.key), ["alpha", "beta"]);
+      assert.deepEqual(optionsResponse.json().groups[0].options[0], {
+        key: "shared",
+        label: "shared · vendor-shared-model",
+        value: { provider: "alpha", model: "shared" },
+        description: "vendor-shared-model"
+      });
+
+      const impactResponse = await app.inject({
+        method: "POST",
+        url: "/api/editors/llm_catalog/provider-impact",
+        payload: { provider: "alpha" }
+      });
+      assert.equal(impactResponse.statusCode, 200);
+      assert.equal(impactResponse.json().modelCount, 1);
+      assert.equal(impactResponse.json().referenceCount, 2);
+      assert.deepEqual(impactResponse.json().emptiedRoles, [{ preset: "default", role: "summarizer" }]);
+
+      const implicitRenameResponse = await app.inject({
+        method: "POST",
+        url: "/api/editors/llm_catalog/save",
+        payload: {
+          value: {
+            renamed: providerValue,
+            beta: {
+              type: "deepseek",
+              models: {
+                shared: { upstreamModel: "deepseek-shared-model" }
+              }
+            }
+          },
+          revision: initialRevision
+        }
+      });
+      assert.equal(implicitRenameResponse.statusCode, 400);
+      assert.equal(implicitRenameResponse.json().error, "Provider alpha was removed without an explicit mutation");
+
+      const renameResponse = await app.inject({
+        method: "POST",
+        url: "/api/editors/llm_catalog/save",
+        payload: {
+          value: {
+            renamed: providerValue,
+            beta: {
+              type: "deepseek",
+              models: {
+                shared: { upstreamModel: "deepseek-shared-model" }
+              }
+            }
+          },
+          mutations: [{ kind: "rename_provider", provider: "alpha", nextProvider: "renamed" }],
+          revision: initialRevision
+        }
+      });
+      assert.equal(renameResponse.statusCode, 200);
+      assert.equal(deps.__state.configCheckForUpdatesCount, 1);
+
+      const routingAfterRename = await app.inject({
+        method: "GET",
+        url: "/api/editors/llm_routing_preset_catalog"
+      });
+      assert.deepEqual(routingAfterRename.json().editor.currentValue.default.mainSmall, [
+        { provider: "renamed", model: "shared" },
+        { provider: "beta", model: "shared" }
+      ]);
+      assert.deepEqual(routingAfterRename.json().editor.currentValue.default.summarizer, [
+        { provider: "renamed", model: "shared" }
+      ]);
+
+      const staleRoutingSave = await app.inject({
+        method: "POST",
+        url: "/api/editors/llm_routing_preset_catalog/save",
+        payload: {
+          value: staleRoutingEditor.json().editor.currentValue,
+          revision: initialRevision
+        }
+      });
+      assert.equal(staleRoutingSave.statusCode, 409);
+      assert.match(staleRoutingSave.json().error, /重新读取/);
+
+      const catalogAfterRename = await app.inject({
+        method: "GET",
+        url: "/api/editors/llm_catalog"
+      });
+
+      const deleteResponse = await app.inject({
+        method: "POST",
+        url: "/api/editors/llm_catalog/save",
+        payload: {
+          value: {
+            beta: {
+              type: "deepseek",
+              models: {
+                shared: { upstreamModel: "deepseek-shared-model" }
+              }
+            }
+          },
+          mutations: [{ kind: "delete_provider", provider: "renamed" }],
+          revision: catalogAfterRename.json().editor.revision
+        }
+      });
+      assert.equal(deleteResponse.statusCode, 200);
+      assert.equal(deps.__state.configCheckForUpdatesCount, 2);
+
+      const routingAfterDelete = await app.inject({
+        method: "GET",
+        url: "/api/editors/llm_routing_preset_catalog"
+      });
+      assert.deepEqual(routingAfterDelete.json().editor.currentValue.default.mainSmall, [
+        { provider: "beta", model: "shared" }
+      ]);
+      assert.deepEqual(routingAfterDelete.json().editor.currentValue.default.summarizer, []);
     } finally {
       await app.close();
     }
@@ -524,7 +697,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       await writeFile(catalogPath, [
         "dev:",
         "  mainSmall:",
-        "    - main"
+        "    - provider: test",
+        "      model: main"
       ].join("\n"), "utf8");
 
       const editorResponse = await app.inject({
@@ -577,7 +751,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         }
       });
       assert.deepEqual(editorResponse.json().editor.currentValue.dev, {
-        mainSmall: ["main"]
+        mainSmall: [{ provider: "test", model: "main" }]
       });
       assert.deepEqual(editorResponse.json().editor.referenceValue.dev, {
         mainSmall: [],
@@ -600,7 +774,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         }
       });
       assert.deepEqual(editorResponse.json().editor.effectiveValue.dev, {
-        mainSmall: ["main"],
+        mainSmall: [{ provider: "test", model: "main" }],
         mainLarge: [],
         summarizer: [],
         textInspector: [],
@@ -626,13 +800,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         payload: {
           value: {
             dev: {
-              mainSmall: ["main"],
+              mainSmall: [{ provider: "test", model: "main" }],
               summarizer: []
             }
-          }
+          },
+          revision: editorResponse.json().editor.revision
         }
       });
       assert.equal(saveResponse.statusCode, 200);
+      assert.equal(deps.__state.configWriteTransactionCount, 1);
       assert.deepEqual(saveResponse.json().parsed.default, {
         mainSmall: [],
         mainLarge: [],
@@ -673,12 +849,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       await writeFile(catalogPath, [
         "default:",
         "  mainSmall:",
-        "    - fallback-main",
+        "    - provider: fallback",
+        "      model: main",
         "  summarizer:",
-        "    - fallback-summary",
+        "    - provider: fallback",
+        "      model: summary",
         "dev:",
         "  mainSmall:",
-        "    - dev-main"
+        "    - provider: dev",
+        "      model: main"
       ].join("\n"), "utf8");
 
       const response = await app.inject({
@@ -687,9 +866,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       });
 
       assert.equal(response.statusCode, 200);
-      assert.deepEqual(response.json().editor.referenceValue.dev.summarizer, ["fallback-summary"]);
-      assert.deepEqual(response.json().editor.effectiveValue.dev.summarizer, ["fallback-summary"]);
-      assert.deepEqual(response.json().editor.effectiveValue.dev.mainSmall, ["dev-main"]);
+      assert.deepEqual(response.json().editor.referenceValue.dev.summarizer, [{ provider: "fallback", model: "summary" }]);
+      assert.deepEqual(response.json().editor.effectiveValue.dev.summarizer, [{ provider: "fallback", model: "summary" }]);
+      assert.deepEqual(response.json().editor.effectiveValue.dev.mainSmall, [{ provider: "dev", model: "main" }]);
     } finally {
       await app.close();
     }

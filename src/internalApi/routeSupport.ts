@@ -136,9 +136,27 @@ const configValidateBodySchema = z.object({
   value: z.unknown()
 });
 
+const llmCatalogProviderMutationSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("rename_provider"),
+    provider: z.string().trim().min(1),
+    nextProvider: z.string().trim().min(1)
+  }).strict(),
+  z.object({
+    kind: z.literal("delete_provider"),
+    provider: z.string().trim().min(1)
+  }).strict()
+]);
+
 const configSaveBodySchema = z.object({
-  value: z.unknown()
+  value: z.unknown(),
+  mutations: z.array(llmCatalogProviderMutationSchema).optional(),
+  revision: z.string().regex(/^[a-f0-9]{64}$/).optional()
 });
+
+const llmProviderImpactBodySchema = z.object({
+  provider: z.string().trim().min(1)
+}).strict();
 
 const dataResourceRowPatchBodySchema = z.object({
   patch: z.record(z.string(), z.unknown()),
@@ -240,6 +258,7 @@ export type ParsedCopySessionBody = z.infer<typeof copySessionBodySchema>;
 export type ParsedUploadAssetsBody = z.infer<typeof uploadWorkspaceFilesBodySchema>;
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
+export type ParsedLlmProviderImpactBody = z.infer<typeof llmProviderImpactBodySchema>;
 export type ParsedDataResourceRowPatchBody = z.infer<typeof dataResourceRowPatchBodySchema>;
 export type ParsedEditorResourceParams = z.infer<typeof editorResourceParamsSchema>;
 export type ParsedResourceItemParams = z.infer<typeof resourceItemParamsSchema>;
@@ -384,6 +403,10 @@ export function parseConfigValidateBody(body: unknown): ParsedConfigValidateBody
 
 export function parseConfigSaveBody(body: unknown): ParsedConfigSaveBody | { error: string } {
   return parseWithSchema(configSaveBodySchema, body);
+}
+
+export function parseLlmProviderImpactBody(body: unknown): ParsedLlmProviderImpactBody | { error: string } {
+  return parseWithSchema(llmProviderImpactBodySchema, body);
 }
 
 export function parseDataResourceRowPatchBody(body: unknown): ParsedDataResourceRowPatchBody | { error: string } {

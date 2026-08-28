@@ -19,6 +19,9 @@ export class ConfigManager {
   private timer: NodeJS.Timeout | null = null;
   private lastFileStates = new Map<string, FileState>();
   private reloading = false;
+  private reloadCompletion: Promise<void> | null = null;
+  private writeTransactionActive = false;
+  private writeTransactionTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly config: AppConfig,
@@ -55,19 +58,48 @@ export class ConfigManager {
     };
   }
 
-  async checkForUpdates(): Promise<boolean> {
-    if (this.reloading) {
-      return false;
-    }
+  async runWriteTransaction<T>(fn: () => Promise<T> | T): Promise<T> {
+    const previousTransaction = this.writeTransactionTail;
+    let releaseTransaction!: () => void;
+    this.writeTransactionTail = new Promise<void>((resolveTransaction) => {
+      releaseTransaction = resolveTransaction;
+    });
 
-    const nextStates = await this.collectFileStates();
-    const changedPaths = getChangedPaths(this.lastFileStates, nextStates);
-    if (changedPaths.length === 0) {
+    await previousTransaction;
+    try {
+      while (this.reloadCompletion != null) {
+        await this.reloadCompletion;
+      }
+
+      this.writeTransactionActive = true;
+      const result = await fn();
+      this.writeTransactionActive = false;
+      await this.checkForUpdates();
+      return result;
+    } finally {
+      this.writeTransactionActive = false;
+      releaseTransaction();
+    }
+  }
+
+  async checkForUpdates(): Promise<boolean> {
+    if (this.reloading || this.writeTransactionActive) {
       return false;
     }
 
     this.reloading = true;
+    let resolveReloadCompletion!: () => void;
+    this.reloadCompletion = new Promise<void>((resolveCompletion) => {
+      resolveReloadCompletion = resolveCompletion;
+    });
+    let changedPaths: string[] = [];
     try {
+      const nextStates = await this.collectFileStates();
+      changedPaths = getChangedPaths(this.lastFileStates, nextStates);
+      if (changedPaths.length === 0) {
+        return false;
+      }
+
       const previousConfig = structuredClone(this.config);
       const reloadedConfig = loadConfig(this.env);
       syncPlainObject(this.config as unknown as Record<string, unknown>, reloadedConfig as unknown as Record<string, unknown>);
@@ -99,6 +131,8 @@ export class ConfigManager {
       return false;
     } finally {
       this.reloading = false;
+      this.reloadCompletion = null;
+      resolveReloadCompletion();
     }
   }
 
@@ -133,8 +167,7 @@ function getWatchedConfigRootPaths(config: AppConfig): string[] {
   return dedupePaths([
     ...config.configRuntime.loadedConfigPaths,
     config.configRuntime.globalConfigPath,
-    config.configRuntime.llmProviderCatalogPath,
-    config.configRuntime.llmModelCatalogPath,
+    config.configRuntime.llmCatalogPath,
     config.configRuntime.llmRoutingPresetCatalogPath,
     config.configRuntime.instanceConfigPath,
     getComfyTemplateRootPath(config)

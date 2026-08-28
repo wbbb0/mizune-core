@@ -12,9 +12,12 @@ const modelApiParametersSchema = s.object({
   extra: s.object({}).passthrough().title("额外 API 参数").describe("按 provider 目标位置原样透传；缺省不传。").optional()
 }).title("API 模型参数").describe("为该模型请求附加 provider API 参数；缺省字段不会发送。").default(emptyObject);
 
-const modelProfileSchema = s.object({
-  provider: s.string().trim().nonempty().dynamicRef("llm_provider_names").title("Provider"),
-  model: s.string().trim().nonempty().title("模型名"),
+const createCatalogAliasSchema = () => s.string()
+  .trim()
+  .nonempty()
+  .refine((value) => !value.includes("/"), "must not contain '/'");
+
+const modelProfileCapabilitySchemaShape = {
   modelType: s.enum(["chat", "transcription", "image_generation", "embedding"] as const).title("模型类型").default("chat"),
   supportsThinking: s.boolean().title("支持思考").default(false),
   thinkingControllable: s.boolean().title("可控制思考").default(true),
@@ -24,9 +27,30 @@ const modelProfileSchema = s.object({
   supportsTools: s.boolean().title("支持工具").default(true),
   preserveThinking: s.boolean().title("保留历史思考").default(false),
   apiParameters: modelApiParametersSchema
+};
+
+const modelProfileSchema = s.object({
+  provider: s.string().trim().nonempty().dynamicRef("llm_provider_names").title("Provider"),
+  model: s.string().trim().nonempty().title("模型名"),
+  ...modelProfileCapabilitySchemaShape
 }).title("模型配置").describe("定义一个模型别名对应的 provider 能力与特性。").default(emptyObject);
 
+const catalogModelProfileSchema = s.object({
+  upstreamModel: s.string().trim().nonempty().title("上游模型名"),
+  ...modelProfileCapabilitySchemaShape
+}).title("模型配置").describe("定义 provider 内局部唯一的模型别名及其上游模型名与能力。").default(emptyObject);
+
+export const modelTargetRefSchema = s.object({
+  provider: createCatalogAliasSchema().title("Provider"),
+  model: createCatalogAliasSchema().title("模型")
+})
+  .title("模型目标")
+  .describe("以 provider 与其局部模型别名共同定位模型。")
+  .strict()
+  .dynamicRef("llm_model_targets");
+
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).optional();
+const createModelTargetListSchema = () => s.oneOrMany(modelTargetRefSchema).optional();
 
 const routingPresetHistoryWindowSchema = s.object({
   maxRecentMessages: s.number().int().positive().title("最大近期消息数").optional(),
@@ -52,6 +76,21 @@ const llmRoutingPresetSchema = s.object({
   historyWindow: routingPresetHistoryWindowSchema.optional(),
   tokenLimits: routingPresetTokenLimitsSchema.optional()
 }).title("模型路由预设").describe("为各个模型角色提供统一的模型引用列表。");
+
+const llmRoutingPresetFileSchema = s.object({
+  mainSmall: createModelTargetListSchema().title("主路由轻量模型"),
+  mainLarge: createModelTargetListSchema().title("主路由完整模型"),
+  summarizer: createModelTargetListSchema().title("总结器"),
+  textInspector: createModelTargetListSchema().title("文本精读"),
+  sessionCaptioner: createModelTargetListSchema().title("会话标题生成"),
+  imageCaptioner: createModelTargetListSchema().title("图片描述"),
+  imageInspector: createModelTargetListSchema().title("图片精读"),
+  audioTranscription: createModelTargetListSchema().title("音频转写"),
+  turnPlanner: createModelTargetListSchema().title("轮次规划"),
+  embedding: createModelTargetListSchema().title("向量模型"),
+  historyWindow: routingPresetHistoryWindowSchema.optional(),
+  tokenLimits: routingPresetTokenLimitsSchema.optional()
+}).title("模型路由预设").describe("以 provider 与局部模型别名为各模型角色配置候选目标。");
 
 const onebotTypingConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
@@ -158,7 +197,7 @@ const llmProviderFeaturesSchema = s.object({
   search: createLlmProviderFeatureSchema().title("搜索").optional()
 }).title("能力映射").default(emptyObject);
 
-const llmProviderSchema = s.object({
+const llmProviderSchemaShape = {
   type: s.enum([
     "openai",
     "openai_responses",
@@ -181,7 +220,12 @@ const llmProviderSchema = s.object({
     "HARM_BLOCK_THRESHOLD_UNSPECIFIED"
   ] as const).title("内容拦截阈值").default("BLOCK_NONE"),
   features: llmProviderFeaturesSchema
-}).title("Provider 配置").describe("定义一个 LLM provider 的连接信息与能力开关。").default(emptyObject);
+};
+
+const llmProviderSchema = s.object(llmProviderSchemaShape)
+  .title("Provider 配置")
+  .describe("定义一个 LLM provider 的连接信息与能力开关。")
+  .default(emptyObject);
 
 const conversationConfigSchema = s.object({
   setup: s.object({
@@ -578,19 +622,35 @@ const llmRuntimeConfigSchema = s.object({
 }).title("LLM").describe("配置主模型调用链路与各类辅助模型。").default(emptyObject);
 
 export const llmProviderCatalogSchema = s.record(
-  s.string().trim().nonempty(),
+  createCatalogAliasSchema(),
   llmProviderSchema
 ).title("Provider 目录").describe("维护可引用的 provider 别名列表。").default({});
 
 export const llmModelCatalogSchema = s.record(
   s.string().trim().nonempty(),
   modelProfileSchema
-).title("模型目录").describe("维护可引用的模型别名列表。").default({});
+).title("运行时模型目录").describe("使用内部 canonical key 维护模型索引。").default({});
 
 export const llmRoutingPresetCatalogSchema = s.record(
   s.string().trim().nonempty(),
   llmRoutingPresetSchema
 ).title("模型路由预设目录").describe("维护可引用的模型路由预设。").default({});
+
+export const llmCatalogFileSchema = s.record(
+  createCatalogAliasSchema(),
+  s.object({
+    ...llmProviderSchemaShape,
+    models: s.record(
+      createCatalogAliasSchema(),
+      catalogModelProfileSchema
+    ).title("模型清单").default({})
+  }).title("Provider 与模型").default(emptyObject)
+).title("LLM 目录").describe("以 provider 为一级目录，同时维护连接配置及其局部模型清单。").default({});
+
+export const llmRoutingPresetCatalogFileSchema = s.record(
+  s.string().trim().nonempty(),
+  llmRoutingPresetFileSchema
+).title("模型路由预设目录").describe("持久化 provider 与模型组成的联合引用。").default({});
 
 export const llmCatalogSchema = s.object({
   providers: llmProviderCatalogSchema,
@@ -628,8 +688,7 @@ export const configRuntimeSchema = s.object({
   configDir: s.string().trim().nonempty(),
   globalExampleConfigPath: s.string().trim().nonempty(),
   globalConfigPath: s.string().trim().nonempty(),
-  llmProviderCatalogPath: s.string().trim().nonempty(),
-  llmModelCatalogPath: s.string().trim().nonempty(),
+  llmCatalogPath: s.string().trim().nonempty(),
   llmRoutingPresetCatalogPath: s.string().trim().nonempty(),
   instanceName: s.string().trim().nonempty(),
   instanceConfigPath: s.string().trim().nonempty(),
@@ -647,9 +706,14 @@ export function createEmptyLlmCatalogConfig(): LlmCatalogConfig {
 export type FileConfig = Infer<typeof fileConfigSchema>;
 export type LlmRuntimeConfig = Infer<typeof llmRuntimeConfigSchema>;
 export type LlmCatalogConfig = Infer<typeof llmCatalogSchema>;
+export type LlmCatalogFile = Infer<typeof llmCatalogFileSchema>;
 export type ConfigRuntime = Infer<typeof configRuntimeSchema>;
 export type ModelProfile = Infer<typeof modelProfileSchema>;
+export type CatalogModelProfile = Infer<typeof catalogModelProfileSchema>;
+export type ModelTargetRef = Infer<typeof modelTargetRefSchema>;
 export type LlmRoutingPreset = Infer<typeof llmRoutingPresetSchema>;
+export type LlmRoutingPresetFile = Infer<typeof llmRoutingPresetFileSchema>;
+export type LlmRoutingPresetCatalogFile = Infer<typeof llmRoutingPresetCatalogFileSchema>;
 export type ProxyConfig = Infer<typeof proxyConfigSchema>;
 export type LlmProviderConfig = Infer<typeof llmProviderSchema>;
 export type OnebotConfig = Infer<typeof onebotConfigSchema>;

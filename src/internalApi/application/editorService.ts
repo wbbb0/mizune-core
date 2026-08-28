@@ -1,13 +1,21 @@
 import { readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import {
   fileConfigSchema,
-  llmModelCatalogSchema,
-  llmProviderCatalogSchema,
-  llmRoutingPresetCatalogSchema
+  llmCatalogFileSchema,
+  llmRoutingPresetCatalogFileSchema
 } from "#config/configModel.ts";
 import type { ConfigRuntime } from "#config/configModel.ts";
+import {
+  applyLlmCatalogProviderMutations,
+  summarizeLlmProviderMutationImpact,
+  validateLlmCatalogProviderMutations,
+  type LlmCatalogProviderMutation,
+  type LlmProviderMutationImpact
+} from "#config/llmCatalogMutations.ts";
 import { s } from "#data/schema/index.ts";
 import { createSchemaTemplate, exportSchemaMeta } from "#data/schema/composites.ts";
 import {
@@ -63,6 +71,13 @@ type EditorResource<TSchema extends BaseSchema<any>> =
   | SingleFileEditorResource<TSchema>
   | LayeredEditorResource<TSchema>;
 
+export class EditorRevisionConflictError extends Error {
+  public constructor(message = "LLM 配置已被其他保存更新，请重新读取后再保存") {
+    super(message);
+    this.name = "EditorRevisionConflictError";
+  }
+}
+
 export interface EditorService {
   listResources(): Promise<{
     resources: Array<{
@@ -83,11 +98,12 @@ export interface EditorService {
     referenceValue: unknown;
     effective: unknown;
   }>;
-  saveDraft(resourceKey: string, value: unknown): Promise<{
+  saveDraft(resourceKey: string, value: unknown, mutations?: LlmCatalogProviderMutation[], revision?: string): Promise<{
     ok: true;
     path: string;
     parsed: unknown;
   }>;
+  getLlmProviderImpact(provider: string): Promise<LlmProviderMutationImpact>;
   normalizeDraft(resourceKey: string, value: unknown): Promise<{
     ok: true;
     path: string;
@@ -95,12 +111,24 @@ export interface EditorService {
   }>;
   getOptions(optionKey: string): Promise<{
     options: string[];
+  } | {
+    groups: Array<{
+      key: string;
+      label: string;
+      options: Array<{
+        key: string;
+        label: string;
+        value: unknown;
+        description?: string;
+        disabled?: boolean;
+      }>;
+    }>;
   }>;
 }
 
 export function createEditorService(input: {
   config: Pick<AppConfig, "configRuntime" | "dataDir">;
-  configManager: Pick<ConfigManager, "checkForUpdates">;
+  configManager: Pick<ConfigManager, "checkForUpdates" | "runWriteTransaction">;
   whitelistStore: Pick<WhitelistStore, "reloadFromDisk">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
 }): EditorService {
@@ -137,7 +165,10 @@ export function createEditorService(input: {
       const editorFeatures = resolveEditorFeatures(resource);
 
       if (resource.kind === "single") {
-        const current = await readSingleResource(resource);
+        const revisioned = isLinkedLlmResource(resourceKey)
+          ? await readRevisionedLlmResource(resource, input.config.configRuntime)
+          : { current: await readSingleResource(resource), revision: undefined };
+        const current = revisioned.current;
         const valueState = resolveEditorValueState(resource, current);
         return {
           editor: {
@@ -153,6 +184,7 @@ export function createEditorService(input: {
             referenceValue: valueState.referenceValue,
             effectiveValue: valueState.effectiveValue,
             editorFeatures,
+            ...(revisioned.revision ? { revision: revisioned.revision } : {}),
             file: {
               path: resource.filePath
             }
@@ -236,7 +268,7 @@ export function createEditorService(input: {
       };
     },
 
-    async saveDraft(resourceKey, value) {
+    async saveDraft(resourceKey, value, mutations = [], revision) {
       const resources = buildEditorResourceMap(input);
       const resource = getRequiredResource(resources, resourceKey);
       if (!resource.editable) {
@@ -248,6 +280,31 @@ export function createEditorService(input: {
           resource,
           parseConfig(resource.schema, value, { cloneInput: true })
         );
+        if (resourceKey === "llm_catalog") {
+          await saveLlmCatalogDraft({
+            configRuntime: input.config.configRuntime,
+            configManager: input.configManager,
+            value: valueState.currentValue,
+            mutations,
+            revision
+          });
+          return {
+            ok: true as const,
+            path: resource.filePath,
+            parsed: valueState.currentValue
+          };
+        }
+        if (resourceKey === "llm_routing_preset_catalog") {
+          await input.configManager.runWriteTransaction(async () => {
+            await assertLlmRevision(input.config.configRuntime, revision);
+            await writeConfigFile(resource.filePath, valueState.currentValue);
+          });
+          return {
+            ok: true as const,
+            path: resource.filePath,
+            parsed: valueState.currentValue
+          };
+        }
         await writeConfigFile(resource.filePath, valueState.currentValue);
         await resource.afterSave?.();
         return {
@@ -281,6 +338,16 @@ export function createEditorService(input: {
       };
     },
 
+    async getLlmProviderImpact(provider) {
+      const [catalogRaw, routingRaw] = await Promise.all([
+        readConfigFileRaw(input.config.configRuntime.llmCatalogPath).catch(() => ({})),
+        readConfigFileRaw(input.config.configRuntime.llmRoutingPresetCatalogPath).catch(() => ({}))
+      ]);
+      const catalog = parseConfig(llmCatalogFileSchema, catalogRaw, { cloneInput: true });
+      const routingPresets = parseConfig(llmRoutingPresetCatalogFileSchema, routingRaw, { cloneInput: true });
+      return summarizeLlmProviderMutationImpact(catalog, routingPresets, provider);
+    },
+
     async normalizeDraft(resourceKey, value) {
       const resources = buildEditorResourceMap(input);
       const resource = getRequiredResource(resources, resourceKey);
@@ -308,6 +375,27 @@ export function createEditorService(input: {
     },
 
     async getOptions(optionKey) {
+      if (optionKey === "llm_model_targets") {
+        const raw = await readConfigFileRaw(input.config.configRuntime.llmCatalogPath).catch(() => ({}));
+        const catalog = parseConfig(llmCatalogFileSchema, raw, { cloneInput: true });
+        return {
+          groups: Object.entries(catalog)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([provider, providerConfig]) => ({
+              key: provider,
+              label: provider,
+              options: Object.entries(providerConfig.models)
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([model, profile]) => ({
+                  key: model,
+                  label: `${model} · ${profile.upstreamModel}`,
+                  value: { provider, model },
+                  description: profile.upstreamModel
+                }))
+            }))
+        };
+      }
+
       const catalogPath = resolveDynamicRefCatalogPath(input.config.configRuntime, optionKey);
       if (!catalogPath) {
         throw new Error(`Unknown editor option key: ${optionKey}`);
@@ -368,29 +456,13 @@ function buildEditorResourceMap(input: {
       }
     },
     {
-      key: "llm_provider_catalog",
-      title: "LLM 提供方目录",
+      key: "llm_catalog",
+      title: "LLM Provider 与模型目录",
       domain: "config",
       kind: "single",
       editable: true,
-      schema: llmProviderCatalogSchema,
-      filePath: input.config.configRuntime.llmProviderCatalogPath,
-      editorFeatures: createEditorFeatures({
-        unsetMode: "optional",
-        draftEffectiveMode: "draft_only"
-      }),
-      afterSave: async () => {
-        await input.configManager.checkForUpdates();
-      }
-    },
-    {
-      key: "llm_model_catalog",
-      title: "LLM 模型目录",
-      domain: "config",
-      kind: "single",
-      editable: true,
-      schema: llmModelCatalogSchema,
-      filePath: input.config.configRuntime.llmModelCatalogPath,
+      schema: llmCatalogFileSchema,
+      filePath: input.config.configRuntime.llmCatalogPath,
       editorFeatures: createEditorFeatures({
         unsetMode: "optional",
         draftEffectiveMode: "draft_only"
@@ -405,7 +477,7 @@ function buildEditorResourceMap(input: {
       domain: "config",
       kind: "single",
       editable: true,
-      schema: llmRoutingPresetCatalogSchema,
+      schema: llmRoutingPresetCatalogFileSchema,
       filePath: input.config.configRuntime.llmRoutingPresetCatalogPath,
       editorFeatures: createEditorFeatures({
         unsetMode: "reference",
@@ -468,6 +540,51 @@ async function readSingleResource<TSchema extends BaseSchema<any>>(
   }
 }
 
+function isLinkedLlmResource(resourceKey: string): boolean {
+  return resourceKey === "llm_catalog" || resourceKey === "llm_routing_preset_catalog";
+}
+
+async function readRevisionedLlmResource<TSchema extends BaseSchema<any>>(
+  resource: SingleFileEditorResource<TSchema>,
+  configRuntime: ConfigRuntime
+): Promise<{ current: Infer<TSchema>; revision: string }> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const before = await computeLlmConfigRevision(configRuntime);
+    const current = await readSingleResource(resource);
+    const after = await computeLlmConfigRevision(configRuntime);
+    if (before === after) {
+      return { current, revision: after };
+    }
+  }
+  throw new EditorRevisionConflictError("LLM 配置正在变化，请稍后重新读取");
+}
+
+async function assertLlmRevision(configRuntime: ConfigRuntime, expectedRevision: string | undefined): Promise<void> {
+  if (!expectedRevision || expectedRevision !== await computeLlmConfigRevision(configRuntime)) {
+    throw new EditorRevisionConflictError();
+  }
+}
+
+async function computeLlmConfigRevision(configRuntime: ConfigRuntime): Promise<string> {
+  const hash = createHash("sha256");
+  for (const filePath of [configRuntime.llmCatalogPath, configRuntime.llmRoutingPresetCatalogPath]) {
+    try {
+      const content = await readFile(filePath);
+      hash.update(String(content.length));
+      hash.update(":");
+      hash.update(content);
+    } catch (error: unknown) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code !== "ENOENT") {
+        throw error;
+      }
+      hash.update("missing");
+    }
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
 function resolveEditorValueState<TSchema extends BaseSchema<any>>(
   resource: EditorResource<TSchema>,
   value: Infer<TSchema>
@@ -518,9 +635,50 @@ async function readOptionalConfigLayer(filePath: string): Promise<Record<string,
 
 function resolveDynamicRefCatalogPath(configRuntime: ConfigRuntime, optionKey: string): string | null {
   switch (optionKey) {
-    case "llm_provider_names": return configRuntime.llmProviderCatalogPath;
-    case "llm_model_names": return configRuntime.llmModelCatalogPath;
+    case "llm_provider_names": return configRuntime.llmCatalogPath;
     case "llm_routing_preset_names": return configRuntime.llmRoutingPresetCatalogPath;
     default: return null;
   }
+}
+
+async function saveLlmCatalogDraft(input: {
+  configRuntime: ConfigRuntime;
+  configManager: Pick<ConfigManager, "runWriteTransaction">;
+  value: unknown;
+  mutations: LlmCatalogProviderMutation[];
+  revision: string | undefined;
+}): Promise<void> {
+  const nextCatalog = parseConfig(llmCatalogFileSchema, input.value, { cloneInput: true });
+
+  await input.configManager.runWriteTransaction(async () => {
+    await assertLlmRevision(input.configRuntime, input.revision);
+    const [previousCatalogRaw, previousRoutingRaw] = await Promise.all([
+      readConfigFileRaw(input.configRuntime.llmCatalogPath).catch(() => ({})),
+      readConfigFileRaw(input.configRuntime.llmRoutingPresetCatalogPath).catch(() => ({}))
+    ]);
+    const previousCatalog = parseConfig(llmCatalogFileSchema, previousCatalogRaw, { cloneInput: true });
+    const previousRouting = parseConfig(llmRoutingPresetCatalogFileSchema, previousRoutingRaw, { cloneInput: true });
+
+    validateLlmCatalogProviderMutations(previousCatalog, nextCatalog, input.mutations);
+    const nextRouting = applyLlmCatalogProviderMutations(previousRouting, input.mutations);
+
+    await writeConfigFile(input.configRuntime.llmCatalogPath, nextCatalog);
+    if (input.mutations.length === 0) {
+      return;
+    }
+
+    try {
+      await writeConfigFile(input.configRuntime.llmRoutingPresetCatalogPath, nextRouting);
+    } catch (error) {
+      try {
+        await writeConfigFile(input.configRuntime.llmCatalogPath, previousCatalog);
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          "Failed to update LLM routing after catalog mutation and failed to restore the catalog"
+        );
+      }
+      throw error;
+    }
+  });
 }

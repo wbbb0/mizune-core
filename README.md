@@ -17,7 +17,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 - WebUI 会话与 OneBot 会话并存
 - 会话级模式切换，当前内置 `rp_assistant` 与 `scenario_host`
 - persona、RP / Scenario 资料、用户资料、记忆和规则持久化
-- LLM provider / model / routing preset 分层配置，支持按 preset 设置历史窗口和 token 上下限
+- LLM provider → model 分层目录与 routing preset，支持供应商内局部模型别名、同名模型快速切换，以及按 preset 设置历史窗口和 token 上下限
 - 历史压缩、自动会话标题、图片说明、音频转写、turn planner
 - shell、workspace 文件、网页搜索、浏览器、ComfyUI 等可选工具能力
   - 后台 shell、下载、ComfyUI 任务完成后，事件会以 `⟦section name="background_event_batch"⟧` 批注入到当前工具调用循环的下一次 LLM 推理前，无需等待当前响应收尾；定时任务（scheduled instruction）仍在无活动响应时开独立 session。
@@ -39,22 +39,20 @@ npm install
 npm --prefix webui install
 
 cp config/global.example.yml config/global.yml
-cp config/llm.providers.example.yml config/llm.providers.yml
-cp config/llm.models.example.yml config/llm.models.yml
+cp config/llm.catalog.example.yml config/llm.catalog.yml
 cp config/llm.routing-presets.example.yml config/llm.routing-presets.yml
 cp config/instances/acc1.example.yml config/instances/default.yml
 ```
 
 然后编辑这些配置：
 
-- `config/llm.providers.yml`：填写 provider 的 `apiKey` / `baseUrl`
-- `config/llm.models.yml`：确认模型引用指向可用 provider
+- `config/llm.catalog.yml`：按 provider 维护连接信息与嵌套模型清单；不同 provider 可复用相同的局部模型别名
 
 OpenAI 接入有两种独立协议：`type: openai` 使用 `/v1/chat/completions`
 兼容接口，`type: openai_responses` 使用 `/v1/responses`。Responses provider
 由本地 transcript 管理上下文并固定发送 `store: false`，不会依赖服务端
 `previous_response_id` 会话链。
-- `config/llm.routing-presets.yml`：确认默认 preset 引用到存在的模型
+- `config/llm.routing-presets.yml`：确认默认 preset 中的 `{ provider, model }` 联合引用存在
 - `config/global.yml`：开启 `llm`、`internalApi.webui`，或关闭 `onebot`
 - `config/instances/default.yml`：设置当前实例的数据目录、端口和 OneBot 地址
 
@@ -98,8 +96,7 @@ npm run install:browsers
 
 目录文件定义可引用对象，不参与实例覆盖：
 
-- `config/llm.providers.yml`
-- `config/llm.models.yml`
+- `config/llm.catalog.yml`
 - `config/llm.routing-presets.yml`
 
 运行时配置层按顺序合并：

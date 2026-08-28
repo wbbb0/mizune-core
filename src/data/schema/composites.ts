@@ -131,6 +131,7 @@ export class RecordSchema<TKey extends string, TValue> extends BaseSchema<Record
 
 export class ObjectSchema<TShape extends Shape> extends BaseSchema<InferShape<TShape>> {
   private _unknownKeys: UnknownKeysPolicy = "strip";
+  private _dynamicRef: string | undefined;
 
   public constructor(private readonly shape: TShape) {
     super();
@@ -148,6 +149,11 @@ export class ObjectSchema<TShape extends Shape> extends BaseSchema<InferShape<TS
 
   public passthrough(): this {
     this._unknownKeys = "passthrough";
+    return this;
+  }
+
+  public dynamicRef(key: string): this {
+    this._dynamicRef = key;
     return this;
   }
 
@@ -206,6 +212,7 @@ export class ObjectSchema<TShape extends Shape> extends BaseSchema<InferShape<TS
       optional: this._optional,
       hasDefault: this._defaultValue !== undefined,
       defaultValue: this._defaultValue !== undefined ? this.resolveDefault() : undefined,
+      dynamicRef: this._dynamicRef,
       fields,
       unknownKeys: this._unknownKeys,
     }) as SchemaMeta;

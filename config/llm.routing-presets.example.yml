@@ -8,26 +8,36 @@ default:
 
 balanced:
   mainSmall:
-    - qwen35_flash
+    - provider: dashscope
+      model: fast
   mainLarge:
-    - qwen35_plus
+    - provider: dashscope
+      model: main
+    - provider: deepseek
+      model: main
+    - provider: anthropic
+      model: main
   summarizer:
-    - qwen35_flash
-    - gemini31_flash_lite_preview
+    - provider: dashscope
+      model: fast
   textInspector:
-    - qwen35_flash
-    - gemini31_flash_lite_preview
+    - provider: dashscope
+      model: fast
   sessionCaptioner:
-    - qwen35_flash
+    - provider: dashscope
+      model: fast
   imageCaptioner:
-    - qwen35_35b_a3b
-    - gemini31_flash_lite_preview
+    - provider: dashscope
+      model: vision
   imageInspector:
-    - gemini31_flash_lite_preview
-    - qwen35_35b_a3b
+    - provider: dashscope
+      model: vision
   audioTranscription:
-    - gemini25_flash_transcription
+    - provider: dashscope
+      model: transcription
   turnPlanner:
-    - qwen35_flash
+    - provider: dashscope
+      model: fast
   embedding:
-    - text_embedding_v4
+    - provider: dashscope
+      model: embedding

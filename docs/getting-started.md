@@ -26,8 +26,7 @@ npm --prefix webui install
 ```bash
 mkdir -p config/instances
 cp config/global.example.yml config/global.yml
-cp config/llm.providers.example.yml config/llm.providers.yml
-cp config/llm.models.example.yml config/llm.models.yml
+cp config/llm.catalog.example.yml config/llm.catalog.yml
 cp config/llm.routing-presets.example.yml config/llm.routing-presets.yml
 cp config/instances/acc1.example.yml config/instances/default.yml
 ```
@@ -42,19 +41,17 @@ config/instances/default.yml
 
 ## 最小可运行配置
 
-第一次运行，最少要检查这五类配置：
+第一次运行，最少要检查这四类配置：
 
-1. `config/llm.providers.yml`
-2. `config/llm.models.yml`
-3. `config/llm.routing-presets.yml`
-4. `config/global.yml`
-5. `config/instances/default.yml`
+1. `config/llm.catalog.yml`
+2. `config/llm.routing-presets.yml`
+3. `config/global.yml`
+4. `config/instances/default.yml`
 
 推荐职责如下：
 
-- `config/llm.providers.yml`：provider 连接信息，例如 `type`、`apiKey`、`baseUrl`、provider feature 开关
-- `config/llm.models.yml`：模型目录，定义每个 `modelRef` 对应哪个 provider、模型名和能力
-- `config/llm.routing-presets.yml`：模型路由预设，定义不同运行角色优先使用哪些 `modelRef`，以及该预设对应的历史窗口和 token 上下限
+- `config/llm.catalog.yml`：以 provider 为一级目录，同时维护连接信息及其嵌套模型清单；模型别名只需在所属 provider 内唯一，因此多个供应商可拥有同名模型
+- `config/llm.routing-presets.yml`：模型路由预设，以 `{ provider, model }` 联合引用定义不同运行角色优先使用哪些模型，以及该预设对应的历史窗口和 token 上下限
 - `config/global.yml`：共享运行策略，例如 LLM 开关、会话策略、工具开关、默认超时
 - `config/instances/<name>.yml`：实例覆盖项，例如数据目录、OneBot 地址、端口、是否开启 WebUI
 
@@ -80,12 +77,12 @@ internalApi:
       enabled: true
 ```
 
-然后把 `config/llm.providers.yml` 里的示例 provider 改成自己实际可用的 key / baseUrl。
+然后把 `config/llm.catalog.yml` 里的示例 provider 改成自己实际可用的 key / baseUrl，并保留需要使用的嵌套模型。
 
 再确认：
 
 - `config/llm.routing-presets.yml` 中存在 `balanced`
-- `config/llm.models.yml` 中包含该 preset 引用到的模型
+- `config/llm.catalog.yml` 中包含该 preset 联合引用到的 provider 与模型
 - `config/instances/default.yml` 中的端口没有和本机已有服务冲突
 
 启动开发环境：
@@ -172,13 +169,12 @@ onebot:
 
 ### 目录文件
 
-这三份文件不是实例覆盖层，而是全局目录文件：
+这两份文件不是实例覆盖层，而是全局目录文件：
 
-- `config/llm.providers.yml`
-- `config/llm.models.yml`
+- `config/llm.catalog.yml`
 - `config/llm.routing-presets.yml`
 
-它们定义“有哪些 provider / modelRef / routing preset 可以被引用”。
+它们定义“每个 provider 下有哪些局部模型，以及有哪些 routing preset 可以被引用”。
 
 ### 运行时配置层
 

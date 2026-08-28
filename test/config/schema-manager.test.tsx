@@ -13,7 +13,11 @@ import {
   s,
   writeConfigFile
 } from "../../src/data/schema/index.ts";
-import { fileConfigSchema } from "../../src/config/configModel.ts";
+import {
+  fileConfigSchema,
+  llmCatalogFileSchema,
+  modelTargetRefSchema
+} from "../../src/config/configModel.ts";
 import { withTempDir } from "../helpers/config-test-support.tsx";
 
 const appSchema = s.object({
@@ -159,6 +163,30 @@ const appSchema = s.object({
     assert.equal((uiTree as any).children.server.node.kind, "group");
     assert.equal((uiTree as any).children.features.node.kind, "record");
     assert.equal((uiTree as any).children.admins.node.kind, "array");
+  });
+
+  test("object schema metadata exposes dynamic model target references", () => {
+    const meta = exportSchemaMeta(modelTargetRefSchema) as any;
+    assert.equal(meta.kind, "object");
+    assert.equal(meta.dynamicRef, "llm_model_targets");
+  });
+
+  test("LLM catalog aliases reject the internal canonical separator", () => {
+    assert.throws(
+      () => parseConfig(llmCatalogFileSchema, {
+        "invalid/provider": {
+          models: {}
+        }
+      }),
+      /must not contain '\/'/
+    );
+    assert.throws(
+      () => parseConfig(modelTargetRefSchema, {
+        provider: "valid",
+        model: "invalid/model"
+      }),
+      /must not contain '\/'/
+    );
   });
 
   test("exportSchemaMeta keeps editor labels in title and hover metadata in description", async () => {

@@ -316,14 +316,14 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.deepEqual(getModelRefsForRole(config, "main_small"), ["devMain"]);
+      assert.deepEqual(getModelRefsForRole(config, "main_small"), ["test/devMain"]);
       assert.deepEqual(getModelRefsForRole(config, "main_large"), []);
-      assert.deepEqual(getModelRefsForRole(config, "summarizer"), ["defaultSummary"]);
-      assert.deepEqual(getModelRefsForRole(config, "text_inspector"), ["defaultSummary"]);
-      assert.deepEqual(getModelRefsForRole(config, "session_captioner"), ["defaultSummary"]);
-      assert.deepEqual(getModelRefsForRole(config, "image_inspector"), ["defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "summarizer"), ["test/defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "text_inspector"), ["test/defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "session_captioner"), ["test/defaultSummary"]);
+      assert.deepEqual(getModelRefsForRole(config, "image_inspector"), ["test/defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "audio_transcription"), []);
-      assert.deepEqual(getModelRefsForRole(config, "turn_planner"), ["defaultPlan"]);
+      assert.deepEqual(getModelRefsForRole(config, "turn_planner"), ["test/defaultPlan"]);
       assert.deepEqual(getModelRefsForRole(config, "embedding"), []);
       assert.deepEqual(getRoutingPresetHistoryWindow(config), {
         maxRecentMessages: 24,
@@ -485,7 +485,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
 
       assert.equal(config.llm.providers.catalogProvider?.baseUrl, "https://catalog.example/v1");
       assert.equal(config.llm.providers.ignoredProvider, undefined);
-      assert.equal(config.llm.models.catalogMain?.provider, "catalogProvider");
+      assert.equal(config.llm.models["catalogProvider/catalogMain"]?.provider, "catalogProvider");
       assert.equal(config.llm.models.ignoredMain, undefined);
     });
   });

@@ -237,10 +237,10 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.equal(config.llm.models.main?.supportsAudioInput, false);
-      assert.equal(config.llm.models.main?.supportsSearch, false);
-      assert.equal(config.llm.models.main?.thinkingControllable, true);
-      assert.equal(config.llm.models.main?.preserveThinking, false);
+      assert.equal(config.llm.models["test/main"]?.supportsAudioInput, false);
+      assert.equal(config.llm.models["test/main"]?.supportsSearch, false);
+      assert.equal(config.llm.models["test/main"]?.thinkingControllable, true);
+      assert.equal(config.llm.models["test/main"]?.preserveThinking, false);
       assert.equal(config.llm.providers.test?.harmBlockThreshold, "BLOCK_NONE");
       assert.deepEqual(config.llm.providers.test?.features, {});
     });
@@ -337,9 +337,50 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           }
         }
       });
-      assert.equal(config.llm.models.main?.supportsAudioInput, true);
-      assert.equal(config.llm.models.main?.supportsSearch, true);
-      assert.equal(config.llm.models.main?.thinkingControllable, false);
+      assert.equal(config.llm.models["test/main"]?.supportsAudioInput, true);
+      assert.equal(config.llm.models["test/main"]?.supportsSearch, true);
+      assert.equal(config.llm.models["test/main"]?.thinkingControllable, false);
+    });
+  });
+
+  test("loadConfig keeps same model aliases distinct across providers", async () => {
+    await withConfigDir("llm-bot-config-provider-scoped-model-test", async (configDir) => {
+      await writeDefaultInstanceYaml(configDir);
+      await writeYaml(join(configDir, "global.yml"), {
+        llm: {
+          enabled: true,
+          routingPreset: "switchable"
+        }
+      });
+      await writeYaml(join(configDir, "llm.catalog.yml"), {
+        first: {
+          models: {
+            shared: { upstreamModel: "first-upstream" }
+          }
+        },
+        second: {
+          models: {
+            shared: { upstreamModel: "second-upstream" }
+          }
+        }
+      });
+      await writeYaml(join(configDir, "llm.routing-presets.yml"), {
+        switchable: {
+          mainSmall: [
+            { provider: "first", model: "shared" },
+            { provider: "second", model: "shared" }
+          ]
+        }
+      });
+
+      const config = loadConfig({ CONFIG_DIR: configDir });
+
+      assert.equal(config.llm.models["first/shared"]?.model, "first-upstream");
+      assert.equal(config.llm.models["second/shared"]?.model, "second-upstream");
+      assert.deepEqual(getModelRefsForRole(config, "main_small"), [
+        "first/shared",
+        "second/shared"
+      ]);
     });
   });
 

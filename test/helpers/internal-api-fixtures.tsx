@@ -69,6 +69,7 @@ export interface InternalApiFixtureState {
   downloadTasks: DownloadRuntimeSnapshot[];
   closedSessionIds: string[];
   configCheckForUpdatesCount: number;
+  configWriteTransactionCount: number;
   whitelistReloadCount: number;
   schedulerReloadCount: number;
   contextCleanupSessionIds: string[];
@@ -158,6 +159,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     downloadTasks: [],
     closedSessionIds: [],
     configCheckForUpdatesCount: 0,
+    configWriteTransactionCount: 0,
     whitelistReloadCount: 0,
     schedulerReloadCount: 0,
     contextCleanupSessionIds: [],
@@ -1435,6 +1437,12 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       async checkForUpdates() {
         state.configCheckForUpdatesCount += 1;
         return true;
+      },
+      async runWriteTransaction<T>(fn: () => Promise<T> | T) {
+        state.configWriteTransactionCount += 1;
+        const result = await fn();
+        state.configCheckForUpdatesCount += 1;
+        return result;
       }
     } as unknown as InternalApiDeps["configManager"],
     sessionPersistence: {

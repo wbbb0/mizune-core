@@ -27,6 +27,7 @@ const {
   save,
   useDefaultValue,
   standardize,
+  beforeRecordMutation,
   updateDraft
 } = useConfigSection();
 
@@ -86,6 +87,7 @@ const compactPane = computed(() => paneWidth.value > 0 && paneWidth.value < 640)
           :effective-value="effectiveValue"
           :editor-features="model.editorFeatures"
           :depth="0"
+          :before-record-mutation="beforeRecordMutation"
           @update:model-value="updateDraft"
         />
       </div>

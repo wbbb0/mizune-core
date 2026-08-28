@@ -5,10 +5,9 @@ import { z } from "zod";
 import {
   configRuntimeSchema,
   fileConfigSchema,
+  llmCatalogFileSchema,
   llmCatalogSchema,
-  llmModelCatalogSchema,
-  llmProviderCatalogSchema,
-  llmRoutingPresetCatalogSchema,
+  llmRoutingPresetCatalogFileSchema,
   type ConfigRuntime,
   type ConfigSummary,
   type FileConfig,
@@ -23,6 +22,10 @@ import {
   getValidatedRoutingPreset,
   normalizeRoutingPresetCatalog
 } from "#llm/shared/modelRouting.ts";
+import {
+  normalizeLlmCatalog,
+  normalizeRoutingPresetTargetCatalog
+} from "#llm/shared/modelTarget.ts";
 
 const envSchema = z.object({
   CONFIG_DIR: z.string().optional().describe("环境变量：配置目录路径"),
@@ -32,8 +35,7 @@ const envSchema = z.object({
 
 const DEFAULT_INSTANCE_NAME = "default";
 const DEFAULT_DATA_DIR = "data";
-const DEFAULT_LLM_PROVIDER_CATALOG_FILE = "llm.providers.yml";
-const DEFAULT_LLM_MODEL_CATALOG_FILE = "llm.models.yml";
+const DEFAULT_LLM_CATALOG_FILE = "llm.catalog.yml";
 const DEFAULT_LLM_ROUTING_PRESET_CATALOG_FILE = "llm.routing-presets.yml";
 
 export type AppConfig = Omit<FileConfig, "whitelist" | "llm"> & {
@@ -96,8 +98,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     : resolve(process.cwd(), "config");
   const globalExampleConfigPath = resolve(configDir, "global.example.yml");
   const globalConfigPath = resolve(configDir, "global.yml");
-  const llmProviderCatalogPath = resolve(configDir, DEFAULT_LLM_PROVIDER_CATALOG_FILE);
-  const llmModelCatalogPath = resolve(configDir, DEFAULT_LLM_MODEL_CATALOG_FILE);
+  const llmCatalogPath = resolve(configDir, DEFAULT_LLM_CATALOG_FILE);
   const llmRoutingPresetCatalogPath = resolve(configDir, DEFAULT_LLM_ROUTING_PRESET_CATALOG_FILE);
   const instanceName = parsedEnv.CONFIG_INSTANCE ?? DEFAULT_INSTANCE_NAME;
   const instanceConfigPath = parsedEnv.CONFIG_INSTANCE_FILE != null
@@ -117,14 +118,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     globalConfig,
     instanceConfig
   ]));
-  const llmCatalog = parseConfig(llmCatalogSchema, {
-    providers: sanitizeSchemaLayer(llmProviderCatalogSchema, loadYamlFile(llmProviderCatalogPath), llmProviderCatalogPath),
-    models: sanitizeSchemaLayer(llmModelCatalogSchema, loadYamlFile(llmModelCatalogPath), llmModelCatalogPath),
-    routingPresets: normalizeRoutingPresetCatalog(sanitizeSchemaLayer(
-      llmRoutingPresetCatalogSchema,
+  const persistedCatalog = parseConfig(
+    llmCatalogFileSchema,
+    sanitizeSchemaLayer(llmCatalogFileSchema, loadYamlFile(llmCatalogPath), llmCatalogPath)
+  );
+  const persistedRoutingPresets = parseConfig(
+    llmRoutingPresetCatalogFileSchema,
+    sanitizeSchemaLayer(
+      llmRoutingPresetCatalogFileSchema,
       loadYamlFile(llmRoutingPresetCatalogPath),
       llmRoutingPresetCatalogPath
-    ) as LlmCatalogConfig["routingPresets"])
+    )
+  );
+  const llmCatalog = parseConfig(llmCatalogSchema, {
+    ...normalizeLlmCatalog(persistedCatalog),
+    routingPresets: normalizeRoutingPresetCatalog(
+      normalizeRoutingPresetTargetCatalog(persistedRoutingPresets)
+    )
   });
   const fileConfig: AppConfig = {
     ...runtimeConfig,
@@ -143,15 +153,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     configDir,
     globalExampleConfigPath,
     globalConfigPath,
-    llmProviderCatalogPath,
-    llmModelCatalogPath,
+    llmCatalogPath,
     llmRoutingPresetCatalogPath,
     instanceName,
     instanceConfigPath,
     loadedConfigPaths: [
       globalConfigPath,
-      llmProviderCatalogPath,
-      llmModelCatalogPath,
+      llmCatalogPath,
       llmRoutingPresetCatalogPath,
       instanceConfigPath
     ].filter(
@@ -271,14 +279,6 @@ function normalizeDataDir(dataDir: string, instanceName: string): string {
 }
 
 function emitConfigConsistencyWarnings(config: AppConfig): void {
-  for (const [modelRef, profile] of Object.entries(config.llm.models)) {
-    if (!(profile.provider in config.llm.providers)) {
-      process.emitWarning(
-        `Model ${modelRef} references unknown provider ${profile.provider}; this model will be unavailable until the provider is defined in ${config.configRuntime.llmProviderCatalogPath}`,
-        "ConfigLoadWarning"
-      );
-    }
-  }
   if (!config.llm.enabled) {
     return;
   }

@@ -1,0 +1,106 @@
+# Provider 是一级目录；每个 provider 内维护自己的局部模型别名。
+# 不同 provider 可以复用同一个模型别名，例如下面的 main，切换供应商时无需改名。
+dashscope:
+  type: dashscope
+  apiKey: replace-me
+  proxy: false
+  features:
+    thinking:
+      type: flag
+      path: enable_thinking
+    search:
+      type: flag
+      path: enable_search
+  models:
+    main:
+      upstreamModel: qwen3.5-plus
+      modelType: chat
+      supportsThinking: true
+      supportsVision: true
+      supportsTools: true
+      supportsSearch: true
+      apiParameters:
+        temperature: 0.7
+        top_p: 0.9
+    fast:
+      upstreamModel: qwen3.5-flash
+      modelType: chat
+      supportsThinking: true
+      supportsTools: true
+    vision:
+      upstreamModel: qwen3.5-35b-a3b
+      modelType: chat
+      supportsThinking: true
+      supportsVision: true
+      supportsTools: true
+    transcription:
+      upstreamModel: qwen3-asr-flash
+      modelType: transcription
+      supportsAudioInput: true
+      supportsTools: false
+    embedding:
+      upstreamModel: text-embedding-v4
+      modelType: embedding
+      supportsTools: false
+
+deepseek:
+  type: deepseek
+  apiKey: replace-me
+  proxy: false
+  models:
+    main:
+      upstreamModel: deepseek-v4-pro
+      modelType: chat
+      supportsThinking: true
+      preserveThinking: true
+      supportsTools: true
+
+anthropic:
+  type: anthropic
+  baseUrl: https://api.anthropic.com
+  apiKey: replace-me
+  proxy: false
+  models:
+    main:
+      upstreamModel: claude-sonnet-4-5-20250929
+      modelType: chat
+      supportsThinking: true
+      preserveThinking: true
+      supportsVision: true
+      supportsTools: true
+      apiParameters:
+        extra:
+          max_tokens: 4096
+
+# OpenAI Responses API 与 type=openai 的 Chat Completions 兼容协议分开配置。
+openai_responses:
+  type: openai_responses
+  baseUrl: https://api.openai.com/v1
+  apiKey: replace-me
+  proxy: true
+  models:
+    main:
+      upstreamModel: gpt-5.6
+      modelType: chat
+      supportsThinking: true
+      preserveThinking: true
+      supportsVision: true
+      supportsTools: true
+      apiParameters:
+        extra:
+          reasoning:
+            effort: medium
+            summary: auto
+          max_output_tokens: 4096
+
+# LM Studio 本地服务的 apiKey 可省略；baseUrl 默认是 http://localhost:1234/v1。
+lmstudio_local:
+  type: lmstudio
+  models:
+    main:
+      upstreamModel: qwen3.6-35b-a3b
+      modelType: chat
+      supportsThinking: true
+      preserveThinking: true
+      supportsVision: true
+      supportsTools: true

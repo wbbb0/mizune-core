@@ -18,7 +18,8 @@
 /*.log
 
 # Local runtime config (keep examples)
-/config/
+/config/**
+!/config/**/
 !/config/**/*.example.yml
 
 # Local assistant/workspace files

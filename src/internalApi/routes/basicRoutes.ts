@@ -38,6 +38,7 @@ import {
   updateSessionTitle
 } from "../application/basicAdminService.ts";
 import { listRequests, listScheduledJobs } from "../application/operationsAdminService.ts";
+import { EditorRevisionConflictError } from "../application/editorService.ts";
 import { replyWithSseStream } from "./sse.ts";
 import {
   parseCreateSessionBody,
@@ -49,6 +50,7 @@ import {
   parseDataResourceRowsQuery,
   parseEditorOptionsParams,
   parseEditorResourceParams,
+  parseLlmProviderImpactBody,
   parseResourceRowParams,
   parseResourceItemParams,
   parseWorkspaceStoredFileParams,
@@ -394,7 +396,23 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
 
     try {
-      return await services.editor.saveDraft(params.resource, body.value);
+      return await services.editor.saveDraft(params.resource, body.value, body.mutations, body.revision);
+    } catch (error: unknown) {
+      if (error instanceof EditorRevisionConflictError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/editors/llm_catalog/provider-impact", async (request, reply) => {
+    const body = parseLlmProviderImpactBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+
+    try {
+      return await services.editor.getLlmProviderImpact(body.provider);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

@@ -106,6 +106,7 @@ export type SchemaMeta =
     optional: boolean;
     hasDefault: boolean;
     defaultValue?: unknown;
+    dynamicRef?: string;
     fields: Record<string, ObjectFieldMeta>;
     unknownKeys: "strip" | "strict" | "passthrough";
   }
