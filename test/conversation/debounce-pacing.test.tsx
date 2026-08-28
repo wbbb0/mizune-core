@@ -69,7 +69,8 @@ test("fixed session debounce overrides normal input scheduling", async () => {
       oneBotOutbound: "immediate",
       toolLoopOutput: "final_only"
     },
-    toolsetPreferences: harness.sessionManager.getToolsetPreferences(harness.sessionId)
+    toolsetPreferences: harness.sessionManager.getToolsetPreferences(harness.sessionId),
+    modelRoutingPreferences: harness.sessionManager.getSession(harness.sessionId).modelRoutingPreferences
   });
   let fired = false;
   harness.debounceManager.schedule(harness.sessionId, () => {

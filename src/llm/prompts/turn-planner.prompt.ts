@@ -83,6 +83,11 @@ export function buildTurnPlannerPrompt(input: {
     renderPromptSection("planner_identity", [
       "你是 turn_planner，负责判断当前批次消息是否应立即回复、选择大小模型、识别话题连贯性，并规划需要语义判断的初始工具集。你不直接回答用户问题。"
     ]),
+    renderPromptSection("planner_model_selection", [
+      "确定需要回复后，模型大小只按当前可见的任务要求判断，与工具集选择分开。",
+      "已明确需要复杂推理、多约束权衡、形式化验证或高风险决策时，选择 reply_large。",
+      "否则选择 reply_small；不要仅因需要工具、执行步骤多、原因未知，或难度取决于尚未读取的代码、日志和工具结果而选择 reply_large。"
+    ]),
     renderPromptSection("planner_rules", [
       `输出格式严格为以下 ${hasTaskContext ? "9" : "8"} 行，不得多写解释、空行或代码块：`,
       "reason: <中文简短理由，少于20字>",
@@ -107,7 +112,7 @@ export function buildTurnPlannerPrompt(input: {
       "判断原则：",
       "1. 末尾意图优先；有明确问题/指令/关键信息就应 reply。",
       "2. 区分该回与能答：即使可能拒答或信息不足，仍应 reply，由主模型处理。",
-      "3. 私聊默认 reply_small，不要输出 no_reply；私聊里即使只是寒暄、确认或收尾，也交给主模型处理。",
+      "3. 私聊默认 reply_small；明确符合 planner_model_selection 的复杂条件时可 reply_large。不要输出 no_reply；私聊里即使只是寒暄、确认或收尾，也交给主模型处理。",
       "4. 群聊中当前批次明显不需要机器人回应时可判 no_reply，例如他人闲聊、对其他人的回应、单纯反馈或无关收尾；no_reply 不选择任何工具集。",
       "5. 含语音/图片/转发/引用通常应 reply，不可仅因文本短判 wait。",
       "6. 仅在明显半句话未完时判 wait。",

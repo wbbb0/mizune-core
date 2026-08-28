@@ -59,6 +59,10 @@ test("session settings panel edits toolset boundary and pacing as one atomic dra
     new URL("../../../webui/src/components/sessions/SessionToolsetBoundaryControl.vue", import.meta.url),
     "utf8"
   );
+  const modelRoutingControl = await readFile(
+    new URL("../../../webui/src/components/sessions/SessionModelRoutingControl.vue", import.meta.url),
+    "utf8"
+  );
 
   assert.match(panel, /sessionsApi\.fetchSettings/);
   assert.match(panel, /sessionsApi\.updateSettings/);
@@ -66,6 +70,8 @@ test("session settings panel edits toolset boundary and pacing as one atomic dra
   assert.doesNotMatch(panel, /structuredClone/);
   assert.match(panel, /<SessionToolsetBoundaryControl/);
   assert.match(panel, /<SessionPacingControl/);
+  assert.match(panel, /<SessionModelRoutingControl/);
+  assert.match(panel, /modelRoutingPreferences/);
   assert.match(panel, /保存设置/);
   assert.match(pacingControl, /用户消息聚合等待/);
   assert.match(pacingControl, /全局自适应/);
@@ -80,4 +86,7 @@ test("session settings panel edits toolset boundary and pacing as one atomic dra
   assert.match(toolsetControl, /限制 Planner 的候选工具集/);
   assert.match(toolsetControl, /恢复模式默认/);
   assert.match(toolsetControl, /delete overrides\[option\.id\]/);
+  assert.match(modelRoutingControl, /允许模型自行升级/);
+  assert.match(modelRoutingControl, /同一 provider/);
+  assert.match(modelRoutingControl, /修改从下一轮生成开始生效/);
 });

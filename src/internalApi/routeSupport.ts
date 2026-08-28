@@ -2,6 +2,7 @@ import type { FastifyReply } from "fastify";
 import { z } from "zod";
 import { sessionPacingPreferencesSchema } from "#conversation/session/sessionPacing.ts";
 import { sessionToolsetPreferencesSchema } from "#conversation/session/sessionToolsetPreferences.ts";
+import { sessionModelRoutingPreferencesSchema } from "#conversation/session/sessionModelRoutingPreferences.ts";
 
 const sessionParamsSchema = z.object({
   sessionId: z.string().trim().min(1, "sessionId is required")
@@ -99,7 +100,8 @@ const updateSessionTitleBodySchema = z.object({
 
 const updateSessionSettingsBodySchema = z.object({
   pacingPreferences: sessionPacingPreferencesSchema,
-  toolsetPreferences: sessionToolsetPreferencesSchema
+  toolsetPreferences: sessionToolsetPreferencesSchema,
+  modelRoutingPreferences: sessionModelRoutingPreferencesSchema
 });
 
 const switchSessionModeBodySchema = z.object({

@@ -14,6 +14,7 @@ import {
   createGenerationFailureFallbackEvent,
   createInternalTriggerEvent,
   createModelFallbackEvent,
+  createModelSelfUpgradeRouteEvent,
   formatErrorDetails
 } from "#conversation/session/internalTranscriptEvents.ts";
 import { buildBuiltinToolContext, type PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
@@ -55,6 +56,10 @@ import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 import { projectProviderWorkingMessagesForBudget } from "./providerWorkingMessageBudget.ts";
 import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
+import {
+  MODEL_SELF_UPGRADE_TOOL_NAME,
+  type ModelSelfUpgradePlan
+} from "#llm/shared/modelSelfUpgrade.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -108,6 +113,7 @@ export interface RunGenerationInput {
   participantProfiles: GenerationPromptParticipantProfile[];
   promptMessages: LlmMessage[];
   resolvedModelRef: string[];
+  modelSelfUpgradePlan?: ModelSelfUpgradePlan | undefined;
   debugSnapshot: PromptDebugSnapshot;
   availableToolNames?: string[] | undefined;
   plannedToolsetIds?: string[] | undefined;
@@ -203,6 +209,7 @@ export function createGenerationExecutor(
       sendTarget,
       promptMessages,
       resolvedModelRef,
+      modelSelfUpgradePlan,
       debugSnapshot,
       availableToolNames,
       plannedToolsetIds,
@@ -369,32 +376,51 @@ export function createGenerationExecutor(
         availableToolsets?.some((item) => item.id === id) ?? false
       )));
       let toolsetUpgradeUsed = false;
+      let modelUpgradeUsed = false;
+      let activeGenerationModelRefs = [...resolvedModelRef];
+
+      const isModelSelfUpgradeAvailable = (): boolean => modelSelfUpgradePlan != null && !modelUpgradeUsed;
 
       const resolveDynamicAllowedToolNames = (): string[] | undefined => {
-        if (!isPlannerToolsetMode) {
-          return availableToolNames;
+        const baseToolNames = isPlannerToolsetMode
+          ? [
+              ...resolveToolNamesFromToolsets(availableToolsets!, Array.from(activeToolsetIds)),
+              ...TURN_PLANNER_ALWAYS_TOOL_NAMES
+            ]
+          : availableToolNames;
+        if (baseToolNames === undefined) {
+          return undefined;
         }
-        return [
-          ...resolveToolNamesFromToolsets(availableToolsets!, Array.from(activeToolsetIds)),
-          ...TURN_PLANNER_ALWAYS_TOOL_NAMES
-        ];
+        return Array.from(new Set([
+          ...baseToolNames.filter((name) => name !== MODEL_SELF_UPGRADE_TOOL_NAME),
+          ...(isModelSelfUpgradeAvailable() ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
+        ]));
       };
 
-      const buildToolSelectionOptions = () => {
-        const dynamicAllowedToolNames = resolveDynamicAllowedToolNames();
+      let toolBudgetToolsDisabled = false;
+      const buildToolSelectionOptions = (options?: { forExecution?: boolean }) => {
+        const forExecution = options?.forExecution === true;
+        const visibleAllowedToolNames = resolveDynamicAllowedToolNames();
+        const dynamicAllowedToolNames = forExecution && toolBudgetToolsDisabled
+          ? (modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
+          : forExecution && modelSelfUpgradePlan && visibleAllowedToolNames !== undefined
+            ? Array.from(new Set([...visibleAllowedToolNames, MODEL_SELF_UPGRADE_TOOL_NAME]))
+            : visibleAllowedToolNames;
         return {
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
           visibilityContext: {
             sessionId,
-            replyDelivery: sendTarget.delivery
+            replyDelivery: sendTarget.delivery,
+            modelSelfUpgradeAvailable: forExecution
+              ? modelSelfUpgradePlan != null
+              : isModelSelfUpgradeAvailable()
           },
           ...(dynamicAllowedToolNames !== undefined
             ? { availableToolNames: dynamicAllowedToolNames }
             : {})
         };
       };
-      let toolBudgetToolsDisabled = false;
       const resolveCandidateTools = () => getBuiltinTools(
         toolRelationship ?? relationship,
         currentUser,
@@ -402,8 +428,50 @@ export function createGenerationExecutor(
         buildToolSelectionOptions()
       );
       const resolveAllowedTools = () => toolBudgetToolsDisabled
-        ? []
+        ? resolveCandidateTools().filter((tool) => tool.function.name === MODEL_SELF_UPGRADE_TOOL_NAME)
         : resolveCandidateTools();
+
+      const modelRoutingAccess = modelSelfUpgradePlan
+        ? {
+            requestModelUpgrade: (reason: string) => {
+              if (modelUpgradeUsed) {
+                return {
+                  ok: true,
+                  upgraded: false,
+                  reason,
+                  message: "本轮后续请求已经使用完整模型路由，请直接继续完成任务。"
+                };
+              }
+              const applied = sessionManager.appendInternalTranscriptIfEpochMatches(
+                sessionId,
+                expectedEpoch,
+                createModelSelfUpgradeRouteEvent({
+                  reason,
+                  fromModelRefs: modelSelfUpgradePlan.smallModelRefs,
+                  toModelRefs: modelSelfUpgradePlan.largeModelRefs,
+                  provider: modelSelfUpgradePlan.provider
+                })
+              );
+              if (!applied) {
+                return {
+                  ok: false,
+                  upgraded: false,
+                  reason,
+                  message: "当前生成状态已经变化，未切换模型路由。"
+                };
+              }
+              modelUpgradeUsed = true;
+              activeGenerationModelRefs = [...modelSelfUpgradePlan.largeModelRefs];
+              persistSession(sessionId, "model_self_upgrade_requested");
+              return {
+                ok: true,
+                upgraded: true,
+                reason,
+                message: "后续请求已切换到完整模型路由。请重新审视当前任务和已有工具结果，再完成回复；不要向用户提及内部模型路由。"
+              };
+            }
+          }
+        : undefined;
 
       const toolsetAccess = isPlannerToolsetMode
         ? {
@@ -511,6 +579,7 @@ export function createGenerationExecutor(
         npcDirectory,
         userIdentityStore: lifecycle.userIdentityStore,
         ...(toolsetAccess ? { toolsetAccess } : {}),
+        ...(modelRoutingAccess ? { modelRoutingAccess } : {}),
         debugSnapshot,
         persistSession,
         listSessionModes,
@@ -539,7 +608,10 @@ export function createGenerationExecutor(
         });
         let toolResult: string | LlmToolExecutionResult;
         try {
-          const rawToolExecutor = createBuiltinToolExecutor(builtinToolContext, buildToolSelectionOptions());
+          const rawToolExecutor = createBuiltinToolExecutor(
+            builtinToolContext,
+            buildToolSelectionOptions({ forExecution: true })
+          );
           toolResult = await rawToolExecutor(toolCall, args);
         } catch (error: unknown) {
           assertGenerationCurrent();
@@ -570,6 +642,9 @@ export function createGenerationExecutor(
           const result = await llmClient.generate({
             messages: promptMessages,
             modelRefOverride: resolvedModelRef,
+            ...(modelSelfUpgradePlan ? {
+              resolveModelRefOverride: () => activeGenerationModelRefs
+            } : {}),
             enableThinkingOverride: config.llm.mainRouting.enableThinking,
             tools: resolveAllowedTools,
             abortSignal: abortController.signal,
@@ -593,6 +668,9 @@ export function createGenerationExecutor(
                 messages: projectedMessages,
                 transcript: sessionManager.getSession(sessionId).internalTranscript,
                 tools: resolveCandidateTools(),
+                retainedToolsWhenDisabled: resolveCandidateTools().filter(
+                  (tool) => tool.function.name === MODEL_SELF_UPGRADE_TOOL_NAME
+                ),
                 config,
                 triggerTokens: getRoutingPresetTokenLimits(config).triggerTokens
               });

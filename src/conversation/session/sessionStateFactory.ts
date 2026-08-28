@@ -23,6 +23,10 @@ import {
   createDefaultSessionToolsetPreferences
 } from "./sessionToolsetPreferences.ts";
 import { cloneSessionBotProfile } from "./sessionBotProfile.ts";
+import {
+  cloneSessionModelRoutingPreferences,
+  createDefaultSessionModelRoutingPreferences
+} from "./sessionModelRoutingPreferences.ts";
 
 // Creates and converts runtime session state snapshots.
 
@@ -62,6 +66,7 @@ export function createSessionState(target: {
     replyDelivery: source,
     pacingPreferences: createDefaultSessionPacingPreferences(source),
     toolsetPreferences: createDefaultSessionToolsetPreferences(),
+    modelRoutingPreferences: createDefaultSessionModelRoutingPreferences(),
     botProfile: null,
     debugControl: {
       enabled: false,
@@ -135,6 +140,9 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     ),
     toolsetPreferences: cloneSessionToolsetPreferences(
       item.toolsetPreferences ?? createDefaultSessionToolsetPreferences()
+    ),
+    modelRoutingPreferences: cloneSessionModelRoutingPreferences(
+      item.modelRoutingPreferences ?? createDefaultSessionModelRoutingPreferences()
     ),
     botProfile: cloneSessionBotProfile(item.botProfile ?? null),
     debugControl: {
@@ -244,6 +252,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     replyDelivery: session.replyDelivery,
     pacingPreferences: cloneSessionPacingPreferences(session.pacingPreferences),
     toolsetPreferences: cloneSessionToolsetPreferences(session.toolsetPreferences),
+    modelRoutingPreferences: cloneSessionModelRoutingPreferences(session.modelRoutingPreferences),
     botProfile: cloneSessionBotProfile(session.botProfile),
     debugControl: {
       enabled: session.debugControl.enabled

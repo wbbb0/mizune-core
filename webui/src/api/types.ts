@@ -353,6 +353,10 @@ export interface SessionToolsetPreferences {
   overrides: Record<string, "enabled" | "disabled">;
 }
 
+export interface SessionModelRoutingPreferences {
+  selfUpgradeEnabled: boolean;
+}
+
 export interface SessionToolsetOption {
   id: string;
   title: string;
@@ -368,6 +372,7 @@ export interface SessionToolsetOption {
 export interface SessionSettings {
   pacingPreferences: SessionPacingPreferences;
   toolsetPreferences: SessionToolsetPreferences;
+  modelRoutingPreferences: SessionModelRoutingPreferences;
 }
 
 export interface SessionSettingsResult {

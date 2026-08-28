@@ -77,8 +77,19 @@ function createConfig() {
       secondMessage && Array.isArray(secondMessage.content) ? secondMessage.content : [];
     const user = userParts.find((part: { type: string; text?: string }) => part.type === "text")?.text ?? "";
     assert.equal(hasPromptSection(system, "planner_identity"), true);
+    assert.equal(hasPromptSection(system, "planner_model_selection"), true);
     assert.equal(hasPromptSection(system, "planner_rules"), true);
     assert.match(system, /reply_decision: <reply_small\|reply_large\|wait\|no_reply>/);
+    assert.match(system, /模型大小只按当前可见的任务要求判断，与工具集选择分开/);
+    assert.match(system, /已明确需要复杂推理、多约束权衡、形式化验证或高风险决策时，选择 reply_large/);
+    assert.match(system, /否则选择 reply_small；不要仅因需要工具、执行步骤多、原因未知/);
+    assert.match(system, /难度取决于尚未读取的代码、日志和工具结果/);
+    assert.ok(
+      system.indexOf("已明确需要复杂推理") < system.indexOf("否则选择 reply_small"),
+      "明确复杂任务的规则应优先于未读取材料的默认规则"
+    );
+    assert.doesNotMatch(system, /request_model_upgrade/);
+    assert.doesNotMatch(system, /主模型.*升级|自行升级/);
     assert.match(system, /私聊默认 reply_small/);
     assert.match(system, /群聊中当前批次明显不需要机器人回应时可判 no_reply/);
     assert.doesNotMatch(system, /包括但不限于/);

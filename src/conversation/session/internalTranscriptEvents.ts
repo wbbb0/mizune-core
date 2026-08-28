@@ -1,5 +1,6 @@
 import type {
   InternalFallbackEventItem,
+  InternalModelRouteEventItem,
   InternalSessionTriggerExecution,
   InternalTriggerEventItem,
   InternalTriggerStage,
@@ -64,6 +65,29 @@ export function createGenerationFailureFallbackEvent(input: {
     summary: "本轮生成失败，已发送兜底回复",
     details: input.details,
     failureMessage: input.failureMessage
+  };
+}
+
+export function createModelSelfUpgradeRouteEvent(input: {
+  timestampMs?: number;
+  reason: string;
+  fromModelRefs: string[];
+  toModelRefs: string[];
+  provider: string;
+}): InternalModelRouteEventItem {
+  return {
+    kind: "model_route_event",
+    llmVisible: false,
+    timestampMs: input.timestampMs ?? Date.now(),
+    routeType: "self_upgrade",
+    fromRole: "main_small",
+    toRole: "main_large",
+    title: "模型路由 · 自助升级",
+    summary: "后续请求已切换到完整模型路由",
+    reason: input.reason,
+    fromModelRefs: [...input.fromModelRefs],
+    toModelRefs: [...input.toModelRefs],
+    provider: input.provider
   };
 }
 

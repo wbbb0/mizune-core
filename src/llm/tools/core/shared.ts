@@ -64,6 +64,7 @@ export type ToolAccessLevel = "any" | "owner" | "operator";
 export interface ToolVisibilityContext {
   sessionId?: string | undefined;
   replyDelivery?: SessionDelivery | undefined;
+  modelSelfUpgradeAvailable?: boolean | undefined;
 }
 
 export interface ToolDescriptor {
@@ -177,6 +178,14 @@ export interface BuiltinToolContext extends
       approved_toolset_ids: string[];
       rejected_toolset_ids: string[];
       active_toolset_ids: string[];
+      reason: string | null;
+      message: string;
+    };
+  };
+  modelRoutingAccess?: {
+    requestModelUpgrade: (reason: string) => {
+      ok: boolean;
+      upgraded: boolean;
       reason: string | null;
       message: string;
     };

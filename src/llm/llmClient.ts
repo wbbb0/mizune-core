@@ -143,12 +143,22 @@ export class LlmClient {
 
   private async runWithTools(params: LlmGenerateParams): Promise<LlmGenerateResult> {
     const requestedModelRefs = normalizeModelRefs(params.modelRefOverride ?? getModelRefsForRole(this.config, "main_small"));
+    let desiredModelRefs = [...requestedModelRefs];
     let activeModelRefs = [...requestedModelRefs];
-    const resolvedModelProfile = getPrimaryModelProfile(this.config, requestedModelRefs);
-    const preserveThinking = resolvedModelProfile?.preserveThinking ?? false;
+    const syncDesiredModelRefs = (): void => {
+      const resolved = normalizeModelRefs(params.resolveModelRefOverride?.() ?? desiredModelRefs);
+      if (resolved.length === 0 || sameModelRefRoute(resolved, desiredModelRefs)) {
+        return;
+      }
+      desiredModelRefs = resolved;
+      activeModelRefs = [...resolved];
+    };
+    const shouldPreserveThinking = (): boolean => (
+      getPrimaryModelProfile(this.config, activeModelRefs)?.preserveThinking ?? false
+    );
     const workingMessages = cloneMessagesForRequest(
       params.messages,
-      preserveThinking
+      shouldPreserveThinking()
     );
     const maxIterations = this.config.llm.toolCallMaxIterations;
     const aggregatedUsage: LlmUsage = createEmptyUsage(requestedModelRefs[0] ?? null, null);
@@ -159,7 +169,7 @@ export class LlmClient {
       return steerMessages.length > 0
         ? cloneMessagesForRequest(
             steerMessages,
-            preserveThinking
+            shouldPreserveThinking()
           )
         : [];
     };
@@ -168,7 +178,7 @@ export class LlmClient {
       return inlineMessages.length > 0
         ? cloneMessagesForRequest(
             inlineMessages,
-            preserveThinking
+            shouldPreserveThinking()
           )
         : [];
     };
@@ -176,11 +186,13 @@ export class LlmClient {
       if (!params.projectMessagesBeforeProvider) {
         return messages;
       }
+      const preserveThinking = shouldPreserveThinking();
       const projected = await params.projectMessagesBeforeProvider(cloneMessagesForRequest(messages, preserveThinking));
       return cloneMessagesForRequest(projected, preserveThinking);
     };
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      syncDesiredModelRefs();
       throwIfAbortSignalAborted(params.abortSignal);
       const steerMessages = await consumeClonedSteerMessages();
       throwIfAbortSignalAborted(params.abortSignal);
@@ -391,6 +403,7 @@ export class LlmClient {
       "tool_call_iteration_limit_reached"
     );
 
+    syncDesiredModelRefs();
     const fallbackMessages = await projectMessagesBeforeProvider([
         ...workingMessages,
         ...(await consumeClonedSteerMessages()),
@@ -622,6 +635,10 @@ export class LlmClient {
         });
     }
   }
+}
+
+function sameModelRefRoute(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 async function executeToolCallBatch(input: {

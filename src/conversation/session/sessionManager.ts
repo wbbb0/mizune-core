@@ -560,8 +560,8 @@ export class SessionManager {
 
   setSettings(
     sessionId: string,
-    settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences">
-  ): Pick<SessionState, "pacingPreferences" | "toolsetPreferences"> {
+    settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences" | "modelRoutingPreferences">
+  ): Pick<SessionState, "pacingPreferences" | "toolsetPreferences" | "modelRoutingPreferences"> {
     const state = setSessionSettingsState(this.requireSession(sessionId), settings);
     this.notifySessionChanged(sessionId);
     return {
@@ -572,6 +572,9 @@ export class SessionManager {
       },
       toolsetPreferences: {
         overrides: { ...state.toolsetPreferences.overrides }
+      },
+      modelRoutingPreferences: {
+        selfUpgradeEnabled: state.modelRoutingPreferences.selfUpgradeEnabled
       }
     };
   }

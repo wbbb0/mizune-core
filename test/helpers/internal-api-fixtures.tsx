@@ -23,6 +23,10 @@ import {
   createDefaultSessionToolsetPreferences,
   type SessionToolsetPreferences
 } from "../../src/conversation/session/sessionToolsetPreferences.ts";
+import {
+  createDefaultSessionModelRoutingPreferences,
+  type SessionModelRoutingPreferences
+} from "../../src/conversation/session/sessionModelRoutingPreferences.ts";
 import type { ContextManagementItem } from "../../src/context/contextTypes.ts";
 import { createInitialScenarioHostSessionState, type ScenarioHostSessionState } from "../../src/modes/scenarioHost/types.ts";
 import type { ShellRunParams, ShellRunResult, ShellSession } from "../../src/services/shell/types.ts";
@@ -49,6 +53,7 @@ export interface InternalApiFixtureState {
     titleSource: "default" | "auto" | "manual" | null;
     pacingPreferences?: SessionPacingPreferences;
     toolsetPreferences?: SessionToolsetPreferences;
+    modelRoutingPreferences?: SessionModelRoutingPreferences;
     phase: { kind: string };
     pendingMessages: Array<{ id?: number }>;
     taskTracker: NonNullable<PersistedSessionState["taskTracker"]>;
@@ -137,6 +142,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       titleSource: "manual",
       pacingPreferences: createDefaultSessionPacingPreferences("onebot"),
       toolsetPreferences: createDefaultSessionToolsetPreferences(),
+      modelRoutingPreferences: createDefaultSessionModelRoutingPreferences(),
       phase: { kind: "idle" },
       pendingMessages: [{ id: 1 }],
       taskTracker: createEmptySessionTaskTracker(),
@@ -472,6 +478,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           pacingPreferences: existing?.pacingPreferences
             ?? createDefaultSessionPacingPreferences(existing?.source ?? (sessionId.startsWith("web:") ? "web" : "onebot")),
           toolsetPreferences: existing?.toolsetPreferences ?? createDefaultSessionToolsetPreferences(),
+          modelRoutingPreferences: existing?.modelRoutingPreferences ?? createDefaultSessionModelRoutingPreferences(),
           phase: existing?.phase ?? { kind: "idle" },
           pendingMessages: [],
           taskTracker: existing?.taskTracker ?? createEmptySessionTaskTracker(),
@@ -541,6 +548,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           titleSource: target.titleSource ?? (title ? "manual" : "default"),
           pacingPreferences: createDefaultSessionPacingPreferences(target.source ?? "onebot"),
           toolsetPreferences: createDefaultSessionToolsetPreferences(),
+          modelRoutingPreferences: createDefaultSessionModelRoutingPreferences(),
           phase: { kind: "idle" },
           pendingMessages: [],
           taskTracker: createEmptySessionTaskTracker(),
@@ -625,6 +633,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           replyDelivery: session.source === "web" ? "web" : "onebot",
           pacingPreferences: session.pacingPreferences,
           toolsetPreferences: session.toolsetPreferences,
+          modelRoutingPreferences: session.modelRoutingPreferences,
           pendingMessages: [],
           taskTracker: session.taskTracker,
           internalTranscript: session.internalTranscript,
@@ -654,6 +663,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           pacingPreferences: item.pacingPreferences
             ?? createDefaultSessionPacingPreferences(item.source ?? "onebot"),
           toolsetPreferences: item.toolsetPreferences ?? createDefaultSessionToolsetPreferences(),
+          modelRoutingPreferences: item.modelRoutingPreferences ?? createDefaultSessionModelRoutingPreferences(),
           phase: { kind: "idle" },
           pendingMessages: [],
           taskTracker: item.taskTracker ?? createEmptySessionTaskTracker(),
@@ -693,6 +703,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       setSettings(sessionId: string, settings: {
         pacingPreferences: SessionPacingPreferences;
         toolsetPreferences: SessionToolsetPreferences;
+        modelRoutingPreferences: SessionModelRoutingPreferences;
       }) {
         const session = state.sessions.find((entry) => entry.id === sessionId);
         if (!session) {
@@ -700,6 +711,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         }
         session.pacingPreferences = structuredClone(settings.pacingPreferences);
         session.toolsetPreferences = structuredClone(settings.toolsetPreferences);
+        session.modelRoutingPreferences = structuredClone(settings.modelRoutingPreferences);
         notifySessionChanged(sessionId);
         return structuredClone(settings);
       },

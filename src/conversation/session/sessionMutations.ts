@@ -352,8 +352,8 @@ export function setSessionDebugControlState(
 
 export function setSessionSettingsState(
   session: SessionState,
-  settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences">
-): Pick<SessionState, "pacingPreferences" | "toolsetPreferences"> {
+  settings: Pick<SessionState, "pacingPreferences" | "toolsetPreferences" | "modelRoutingPreferences">
+): Pick<SessionState, "pacingPreferences" | "toolsetPreferences" | "modelRoutingPreferences"> {
   session.pacingPreferences = {
     inputDebounce: { ...settings.pacingPreferences.inputDebounce },
     oneBotOutbound: settings.pacingPreferences.oneBotOutbound,
@@ -362,10 +362,14 @@ export function setSessionSettingsState(
   session.toolsetPreferences = {
     overrides: { ...settings.toolsetPreferences.overrides }
   };
+  session.modelRoutingPreferences = {
+    selfUpgradeEnabled: settings.modelRoutingPreferences.selfUpgradeEnabled
+  };
   session.lastActiveAt = Date.now();
   return {
     pacingPreferences: session.pacingPreferences,
-    toolsetPreferences: session.toolsetPreferences
+    toolsetPreferences: session.toolsetPreferences,
+    modelRoutingPreferences: session.modelRoutingPreferences
   };
 }
 

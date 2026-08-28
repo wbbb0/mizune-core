@@ -66,14 +66,19 @@ test("session persistence round-trips session settings", async () => {
         dice_roller: "enabled"
       }
     };
+    session.modelRoutingPreferences = {
+      selfUpgradeEnabled: false
+    };
 
     await persistence.save(toPersistedSessionState(session));
     const [loaded] = await persistence.loadAll();
     assert.ok(loaded);
     assert.deepEqual(loaded.pacingPreferences, session.pacingPreferences);
     assert.deepEqual(loaded.toolsetPreferences, session.toolsetPreferences);
+    assert.deepEqual(loaded.modelRoutingPreferences, session.modelRoutingPreferences);
     assert.deepEqual(restoreSessionState(loaded).pacingPreferences, session.pacingPreferences);
     assert.deepEqual(restoreSessionState(loaded).toolsetPreferences, session.toolsetPreferences);
+    assert.deepEqual(restoreSessionState(loaded).modelRoutingPreferences, session.modelRoutingPreferences);
   });
 });
 
@@ -92,6 +97,8 @@ test("sessions without settings derive defaults", () => {
   delete oneBot.pacingPreferences;
   delete web.toolsetPreferences;
   delete oneBot.toolsetPreferences;
+  delete web.modelRoutingPreferences;
+  delete oneBot.modelRoutingPreferences;
 
   assert.deepEqual(restoreSessionState(web).pacingPreferences, {
     inputDebounce: { mode: "immediate" },
@@ -105,6 +112,8 @@ test("sessions without settings derive defaults", () => {
   });
   assert.deepEqual(restoreSessionState(web).toolsetPreferences, { overrides: {} });
   assert.deepEqual(restoreSessionState(oneBot).toolsetPreferences, { overrides: {} });
+  assert.deepEqual(restoreSessionState(web).modelRoutingPreferences, { selfUpgradeEnabled: true });
+  assert.deepEqual(restoreSessionState(oneBot).modelRoutingPreferences, { selfUpgradeEnabled: true });
 });
 
 test("persisted sessions accept the previous pacing shape and strip legacy evidence", () => {
@@ -145,6 +154,7 @@ test("session schema version 6 migrates to session settings storage", async () =
           columns: sessionsTable.columns.filter((column) => (
             column.key !== "pacingPreferencesJson"
             && column.key !== "toolsetPreferencesJson"
+            && column.key !== "modelRoutingPreferencesJson"
             && column.key !== "botProfileJson"
           ))
         }
@@ -171,6 +181,42 @@ test("session schema version 6 migrates to session settings storage", async () =
     const [loaded] = await persistence.loadAll();
     assert.deepEqual(loaded?.pacingPreferences, persisted.pacingPreferences);
     assert.deepEqual(loaded?.toolsetPreferences, persisted.toolsetPreferences);
+  });
+});
+
+test("session schema version 9 migrates and persists model routing preferences", async () => {
+  await withDataDir("llm-bot-session-model-routing-migration-test", async (dataDir: string) => {
+    const logger = pino({ level: "silent" });
+    const sessionsTable = sessionDataDomain.tables.sessions;
+    assert.ok(sessionsTable);
+    const oldDomain = {
+      ...sessionDataDomain,
+      schemaVersion: 9,
+      minReadableSchemaVersion: 6,
+      tables: {
+        ...sessionDataDomain.tables,
+        sessions: {
+          ...sessionsTable,
+          columns: sessionsTable.columns.filter((column) => column.key !== "modelRoutingPreferencesJson")
+        }
+      }
+    };
+    const dbPath = join(dataDir, "sessions", "sessions.sqlite");
+    const oldHandle = await new SqliteService(logger).openDatabase({
+      databaseId: "sessions",
+      dbPath,
+      tableGroups: createTableGroupsFromDataDomain(oldDomain)
+    });
+    oldHandle.close();
+
+    const persistence = new SessionPersistence(dataDir, logger);
+    await persistence.init();
+    const session = createSessionState({ id: "web:model-routing", type: "private", source: "web" });
+    session.modelRoutingPreferences.selfUpgradeEnabled = false;
+    await persistence.save(toPersistedSessionState(session));
+
+    const [loaded] = await persistence.loadAll();
+    assert.deepEqual(loaded?.modelRoutingPreferences, { selfUpgradeEnabled: false });
   });
 });
 
@@ -732,9 +778,23 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
             toProvider: "provider_b"
           },
           {
-            kind: "internal_trigger_event",
+            kind: "model_route_event",
             llmVisible: false,
             timestampMs: 5,
+            routeType: "self_upgrade",
+            fromRole: "main_small",
+            toRole: "main_large",
+            title: "模型路由 · 自助升级",
+            summary: "后续请求已切换到完整模型路由",
+            reason: "任务复杂",
+            fromModelRefs: ["small"],
+            toModelRefs: ["large"],
+            provider: "provider_a"
+          },
+          {
+            kind: "internal_trigger_event",
+            llmVisible: false,
+            timestampMs: 6,
             triggerKind: "scheduled_instruction",
             stage: "started",
             title: "内部触发器 · 开始执行",
