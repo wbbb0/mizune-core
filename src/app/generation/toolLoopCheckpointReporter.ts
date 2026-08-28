@@ -6,9 +6,10 @@ import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTy
 import type {
   LlmFallbackEvent,
   LlmProviderCallUsage,
+  LlmToolLoopLimitCause,
   LlmUsage
 } from "#llm/provider/providerTypes.ts";
-import { LlmUnadvertisedToolCallError, type LlmClient } from "#llm/llmClient.ts";
+import type { LlmClient } from "#llm/llmClient.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import {
   buildToolLoopCheckpointPrompt,
@@ -42,12 +43,17 @@ export async function generateToolLoopCheckpointReport(input: {
   observations: ToolLoopCheckpointObservation[];
   persona: Persona;
   sessionBotProfile: SessionBotProfile | null;
+  cause: LlmToolLoopLimitCause;
   abortSignal: AbortSignal;
   assertCurrent: () => void;
   onProviderCallUsage?: (event: LlmProviderCallUsage) => Promise<void> | void;
   onFallbackEvent?: (event: LlmFallbackEvent) => Promise<void> | void;
 }): Promise<ToolLoopCheckpointReportResult> {
-  const deterministicBody = buildDeterministicCheckpointBody(input.taskTracker, input.observations);
+  const deterministicBody = buildDeterministicCheckpointBody(
+    input.taskTracker,
+    input.observations,
+    input.cause
+  );
   const modelRefs = getModelRefsForRole(input.config, "summarizer");
   if (
     !input.config.llm.summarizer.enabled
@@ -71,7 +77,8 @@ export async function generateToolLoopCheckpointReport(input: {
         taskTracker: input.taskTracker,
         observations: input.observations,
         persona: input.persona,
-        sessionBotProfile: input.sessionBotProfile
+        sessionBotProfile: input.sessionBotProfile,
+        cause: input.cause
       }),
       ...(input.onProviderCallUsage ? { onProviderCallUsage: input.onProviderCallUsage } : {}),
       ...(input.onFallbackEvent ? { onFallbackEvent: input.onFallbackEvent } : {})
@@ -113,13 +120,6 @@ export async function generateToolLoopCheckpointReport(input: {
       sessionId: input.sessionId,
       error: error instanceof Error ? error.message : String(error)
     }, "tool_loop_checkpoint_report_failed_fallback");
-    if (error instanceof LlmUnadvertisedToolCallError) {
-      return {
-        ...fallbackResult(deterministicBody),
-        usage: error.usage,
-        providerCallUsages: error.providerCallUsages
-      };
-    }
     return fallbackResult(deterministicBody);
   }
 }
@@ -127,13 +127,16 @@ export async function generateToolLoopCheckpointReport(input: {
 export function composeToolLoopCheckpointMessage(input: {
   body: string;
   liveResourceLines: string[];
+  cause?: LlmToolLoopLimitCause;
 }): string {
   return [
     input.body.trim(),
     input.liveResourceLines.length > 0
       ? ["当前状态：", ...input.liveResourceLines.map((line) => `- ${line}`)].join("\n")
       : null,
-    "本轮可执行步骤已经达到上限，我先停在这里，避免未经确认继续操作。你希望我继续处理剩余步骤，还是调整方案或停止？"
+    input.cause === "protocol_recovery"
+      ? "模型连续返回了无法直接接受的工具调用；被系统拒绝的调用都没有执行，同批通过校验的合法调用可能已经执行，具体以上方工具摘要和当前状态为准。为了避免错误操作，我先停在这里。你希望我重试当前步骤、调整方案，还是停止？"
+      : "本轮可执行步骤已经达到上限，我先停在这里，避免未经确认继续操作。你希望我继续处理剩余步骤，还是调整方案或停止？"
   ].filter((item): item is string => Boolean(item?.trim())).join("\n\n");
 }
 
@@ -172,7 +175,8 @@ function fallbackResult(body: string): ToolLoopCheckpointReportResult {
 
 function buildDeterministicCheckpointBody(
   taskTracker: SessionTaskTracker,
-  observations: ToolLoopCheckpointObservation[]
+  observations: ToolLoopCheckpointObservation[],
+  cause: LlmToolLoopLimitCause
 ): string {
   const primary = taskTracker.primary;
   const completed = uniqueLines(primary?.done ?? []);
@@ -192,7 +196,9 @@ function buildDeterministicCheckpointBody(
       ? formatSection("我这轮已经处理了：", observed)
       : null
   ].filter((item): item is string => Boolean(item));
-  return sections.join("\n\n") || "我已经完成了这一轮能够执行的步骤，相关操作记录和结果都已保留。";
+  return sections.join("\n\n") || (cause === "protocol_recovery"
+    ? "模型连续返回了无法直接接受的工具调用；被系统拒绝的调用均未执行，当前任务状态已经保留。"
+    : "我已经完成了这一轮能够执行的步骤，相关操作记录和结果都已保留。");
 }
 
 function formatSection(title: string, lines: string[]): string {

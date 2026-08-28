@@ -13,13 +13,23 @@ import {
   type LlmGenerateResult,
   type LlmMessage,
   type LlmProviderCallUsage,
+  type LlmProviderGenerateResult,
   type LlmProviderRequestContext,
   type LlmToolCall,
-  type LlmToolDefinition,
   type LlmToolExecutionResult,
   type LlmUsage
 } from "./provider/providerTypes.ts";
 import { extractToolError, parseToolArguments } from "./shared/toolArgs.ts";
+import { LlmInvalidProviderResponseError } from "./provider/providerProtocolError.ts";
+import {
+  buildProtocolCorrectionMessage,
+  buildRejectedToolResult
+} from "./toolCallRecoveryMessages.ts";
+import {
+  classifyToolCalls,
+  validateToolCallEnvelope,
+  type ToolCallClassification
+} from "./toolCallProtocolValidation.ts";
 
 export type {
   LlmContentPart,
@@ -36,17 +46,6 @@ export type {
   LlmToolExecutionResult,
   LlmUsage
 } from "./provider/providerTypes.ts";
-
-export class LlmUnadvertisedToolCallError extends Error {
-  constructor(
-    readonly toolNames: string[],
-    readonly usage: LlmUsage,
-    readonly providerCallUsages: LlmProviderCallUsage[]
-  ) {
-    super(`Provider returned unadvertised tool calls: ${toolNames.join(", ")}`);
-    this.name = "LlmUnadvertisedToolCallError";
-  }
-}
 
 interface ExecutedToolCall {
   toolCall: LlmToolCall;
@@ -164,9 +163,13 @@ export class LlmClient {
       preserveThinking
     );
     const maxIterations = this.config.llm.toolCallMaxIterations;
+    const maxProtocolRecoveries = this.config.llm.toolCallProtocolRecoveryMaxAttempts;
     const aggregatedUsage: LlmUsage = createEmptyUsage(requestedModelRefs[0] ?? null, null);
     const providerCallUsages: LlmProviderCallUsage[] = [];
     let lastReasoningContent = "";
+    let toolIterations = 0;
+    let protocolRecoveries = 0;
+    let providerCallIndex = 0;
     const consumeClonedSteerMessages = async (): Promise<LlmMessage[]> => {
       const steerMessages = await params.consumeSteerMessages?.() ?? [];
       return steerMessages.length > 0
@@ -193,7 +196,9 @@ export class LlmClient {
       return cloneMessagesForRequest(projected, preserveThinking);
     };
 
-    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    while (toolIterations < maxIterations && protocolRecoveries < maxProtocolRecoveries) {
+      const iteration = providerCallIndex;
+      providerCallIndex += 1;
       throwIfAbortSignalAborted(params.abortSignal);
       const steerMessages = await consumeClonedSteerMessages();
       throwIfAbortSignalAborted(params.abortSignal);
@@ -211,27 +216,104 @@ export class LlmClient {
       const tools = typeof params.tools === "function"
         ? params.tools()
         : (params.tools ?? []);
-      const streamed = await this.streamChatCompletion({
-        messages: workingMessages,
-        tools,
-        ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
-        ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
-        ...(params.onReasoningDelta ? { onReasoningDelta: params.onReasoningDelta } : {}),
-        ...(params.toolExecutor ? { toolExecutor: params.toolExecutor } : {}),
-        ...(params.onFallbackEvent ? { onFallbackEvent: params.onFallbackEvent } : {}),
-        ...(params.modelOverride ? { modelOverride: params.modelOverride } : {}),
-        modelRefOverride: activeModelRefs,
-        ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
-        ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
-        ...(params.preferNativeNoThinkingChatEndpoint != null
-          ? { preferNativeNoThinkingChatEndpoint: params.preferNativeNoThinkingChatEndpoint }
-          : {}),
-        ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
-      });
+      const pendingDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
+      let streamed: LlmProviderGenerateResult & { modelRef: string | null };
+      try {
+        streamed = await this.streamChatCompletion({
+          messages: workingMessages,
+          tools,
+          ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
+          onTextDelta: (delta) => {
+            pendingDeltas.push({ kind: "text", delta });
+          },
+          onReasoningDelta: (delta) => {
+            pendingDeltas.push({ kind: "reasoning", delta });
+          },
+          ...(params.toolExecutor ? { toolExecutor: params.toolExecutor } : {}),
+          ...(params.onFallbackEvent ? { onFallbackEvent: params.onFallbackEvent } : {}),
+          ...(params.modelOverride ? { modelOverride: params.modelOverride } : {}),
+          modelRefOverride: activeModelRefs,
+          ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
+          ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
+          ...(params.preferNativeNoThinkingChatEndpoint != null
+            ? { preferNativeNoThinkingChatEndpoint: params.preferNativeNoThinkingChatEndpoint }
+            : {}),
+          ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
+        });
+      } catch (error: unknown) {
+        if (!(error instanceof LlmInvalidProviderResponseError)) {
+          throw error;
+        }
+        const invalidUsage = createUnknownProviderResponseUsage(
+          activeModelRefs[0] ?? null,
+          this.config
+        );
+        mergeUsage(aggregatedUsage, invalidUsage);
+        const invalidEvent = buildProviderCallUsage(iteration, "invalid_response", {
+          text: "",
+          reasoningContent: "",
+          usage: invalidUsage
+        });
+        providerCallUsages.push(invalidEvent);
+        await params.onProviderCallUsage?.(invalidEvent);
+        await params.onProviderResponseComplete?.({
+          iteration,
+          phase: "invalid_response",
+          text: "",
+          toolCalls: [],
+          usage: invalidUsage,
+          reasoningContent: ""
+        });
+        protocolRecoveries += 1;
+        this.logger.warn({
+          code: error.code,
+          protocolRecoveries,
+          maxProtocolRecoveries
+        }, "llm_invalid_provider_response_recovering");
+        insertProtocolCorrectionMessage(
+          workingMessages,
+          buildProtocolCorrectionMessage([{
+            code: "invalid_tool_call_shape",
+            message: error.message
+          }])
+        );
+        continue;
+      }
       throwIfAbortSignalAborted(params.abortSignal);
       activeModelRefs = narrowActiveModelRefs(activeModelRefs, streamed.modelRef);
       mergeUsage(aggregatedUsage, streamed.usage);
       lastReasoningContent = streamed.reasoningContent;
+
+      const envelopeValidation = validateToolCallEnvelope({
+        text: streamed.text,
+        toolCalls: streamed.toolCalls
+      });
+      if (!envelopeValidation.ok) {
+        const invalidUsage = buildProviderCallUsage(iteration, "invalid_response", streamed);
+        providerCallUsages.push(invalidUsage);
+        await params.onProviderCallUsage?.(invalidUsage);
+        await params.onProviderResponseComplete?.({
+          iteration,
+          phase: "invalid_response",
+          text: streamed.text,
+          toolCalls: [],
+          usage: streamed.usage,
+          reasoningContent: streamed.reasoningContent
+        });
+        protocolRecoveries += 1;
+        this.logger.warn({
+          issueCodes: envelopeValidation.issues.map((issue) => issue.code),
+          protocolRecoveries,
+          maxProtocolRecoveries
+        }, "llm_invalid_tool_envelope_recovering");
+        insertProtocolCorrectionMessage(
+          workingMessages,
+          buildProtocolCorrectionMessage(envelopeValidation.issues)
+        );
+        continue;
+      }
+
+      await replayValidatedProviderDeltas(pendingDeltas, params);
 
       if (streamed.toolCalls.length === 0) {
         const usageEvent = buildProviderCallUsage(iteration, "final_response", streamed);
@@ -255,21 +337,24 @@ export class LlmClient {
         };
       }
 
-      const unadvertisedToolNames = findUnadvertisedToolNames(streamed.toolCalls, tools);
-      if (unadvertisedToolNames.length > 0) {
-        const invalidUsage = buildProviderCallUsage(iteration, "invalid_response", streamed);
-        providerCallUsages.push(invalidUsage);
-        await params.onProviderCallUsage?.(invalidUsage);
-        throw new LlmUnadvertisedToolCallError(
-          unadvertisedToolNames,
-          { ...aggregatedUsage },
-          [...providerCallUsages]
-        );
-      }
-
       const toolCallUsage = buildProviderCallUsage(iteration, "tool_call", streamed);
       providerCallUsages.push(toolCallUsage);
       await params.onProviderCallUsage?.(toolCallUsage);
+      const classifiedToolCalls = classifyToolCalls(streamed.toolCalls, tools);
+      const rejectedToolCalls = classifiedToolCalls.filter(
+        (classification): classification is Extract<ToolCallClassification, { kind: "rejected" }> => (
+          classification.kind === "rejected"
+        )
+      );
+      if (rejectedToolCalls.length > 0) {
+        protocolRecoveries += 1;
+        this.logger.warn({
+          rejectedToolNames: rejectedToolCalls.map((item) => item.toolCall.function.name),
+          rejectionCodes: rejectedToolCalls.map((item) => item.code),
+          protocolRecoveries,
+          maxProtocolRecoveries
+        }, "llm_tool_calls_rejected_recovering");
+      }
       const responseCompleteEvent = {
         iteration,
         phase: "tool_call",
@@ -296,7 +381,29 @@ export class LlmClient {
       workingMessages.push(assistantMessage);
       await params.onAssistantToolCalls?.(assistantMessage, toolCallUsage);
 
+      const classificationById = new Map(
+        classifiedToolCalls.map((classification) => [classification.toolCall.id, classification] as const)
+      );
       const executeOneToolCall = async (toolCall: LlmToolCall): Promise<ExecutedToolCall> => {
+        const classification = classificationById.get(toolCall.id);
+        if (classification?.kind === "rejected") {
+          const toolResult = buildRejectedToolResult({
+            toolName: toolCall.function.name,
+            code: classification.code,
+            message: classification.message
+          });
+          this.logger.warn({
+            toolName: toolCall.function.name,
+            toolCallId: toolCall.id,
+            code: classification.code
+          }, "tool_call_rejected_before_execution");
+          return {
+            toolCall,
+            toolResult,
+            canonicalToolResult: toolResult,
+            supplementalMessages: []
+          };
+        }
         this.logger.info(
           {
             toolName: toolCall.function.name,
@@ -377,18 +484,14 @@ export class LlmClient {
         execute: executeOneToolCall,
         ...(params.toolConcurrency ? { toolConcurrency: params.toolConcurrency } : {})
       });
+      toolIterations += 1;
       throwIfAbortSignalAborted(params.abortSignal);
 
       const supplementalMessagesToAppend: LlmMessage[] = [];
+      let terminalResponseText: string | null = null;
       for (const executed of executedToolCalls) {
         if (executed.terminalResponse) {
-          return {
-            text: executed.terminalResponse.text,
-            reasoningContent: lastReasoningContent,
-            usage: aggregatedUsage,
-            finishReason: { kind: "completed" },
-            providerCallUsages
-          };
+          terminalResponseText ??= executed.terminalResponse.text;
         }
         const toolMessage: LlmMessage = {
           role: "tool",
@@ -409,20 +512,40 @@ export class LlmClient {
       )) {
         workingMessages.push(message);
       }
+      if (terminalResponseText !== null) {
+        return {
+          text: terminalResponseText,
+          reasoningContent: lastReasoningContent,
+          usage: aggregatedUsage,
+          finishReason: { kind: "completed" },
+          providerCallUsages
+        };
+      }
     }
 
     this.logger.warn(
       {
-        toolCallMaxIterations: maxIterations
+        toolCallMaxIterations: maxIterations,
+        toolIterations,
+        protocolRecoveries,
+        maxProtocolRecoveries
       },
       "tool_call_iteration_limit_reached"
     );
 
+    const protocolRecoveryLimitReached = protocolRecoveries >= maxProtocolRecoveries;
     return {
       text: "",
       reasoningContent: "",
       usage: aggregatedUsage,
-      finishReason: { kind: "tool_call_limit", maxIterations },
+      finishReason: protocolRecoveryLimitReached
+        ? {
+            kind: "tool_call_limit",
+            maxIterations,
+            cause: "protocol_recovery",
+            protocolRecoveries
+          }
+        : { kind: "tool_call_limit", maxIterations },
       providerCallUsages
     };
   }
@@ -468,14 +591,19 @@ export class LlmClient {
       const resolvedTools = typeof params.tools === "function"
         ? params.tools()
         : params.tools;
+      const candidateDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
 
       try {
         const result = await provider.generate(providerContext, {
           messages: messageProjection.messages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
-          ...(params.onTextDelta ? { onTextDelta: params.onTextDelta } : {}),
-          ...(params.onReasoningDelta ? { onReasoningDelta: params.onReasoningDelta } : {}),
+          onTextDelta: (delta) => {
+            candidateDeltas.push({ kind: "text", delta });
+          },
+          onReasoningDelta: (delta) => {
+            candidateDeltas.push({ kind: "reasoning", delta });
+          },
           ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
           ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
           ...(params.preferNativeNoThinkingChatEndpoint != null
@@ -483,6 +611,7 @@ export class LlmClient {
             : {}),
           ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
         });
+        await replayValidatedProviderDeltas(candidateDeltas, params);
         return {
           ...result,
           modelRef: providerContext.modelRef
@@ -622,11 +751,16 @@ async function executeToolCallBatch(input: {
 }): Promise<ExecutedToolCall[]> {
   if (!input.toolConcurrency || input.toolCalls.length <= 1 || (input.toolConcurrency.maxConcurrency ?? 4) <= 1) {
     const results: ExecutedToolCall[] = [];
+    let terminalSeen = false;
     for (const toolCall of input.toolCalls) {
+      if (terminalSeen) {
+        results.push(buildSkippedAfterTerminalResult(toolCall));
+        continue;
+      }
       const result = await input.execute(toolCall);
       results.push(result);
       if (result.terminalResponse) {
-        break;
+        terminalSeen = true;
       }
     }
     return results;
@@ -640,7 +774,28 @@ async function executeToolCallBatch(input: {
     ...(input.toolConcurrency.maxConcurrency != null ? { maxConcurrency: input.toolConcurrency.maxConcurrency } : {})
   });
 
-  return scheduledResults.map(result => result.result);
+  const resultById = new Map(
+    scheduledResults.map((result) => [result.result.toolCall.id, result.result] as const)
+  );
+  return input.toolCalls.map((toolCall) => (
+    resultById.get(toolCall.id) ?? buildSkippedAfterTerminalResult(toolCall)
+  ));
+}
+
+function buildSkippedAfterTerminalResult(toolCall: LlmToolCall): ExecutedToolCall {
+  const toolResult = JSON.stringify({
+    ok: false,
+    error: "同批次中的前序工具已经请求直接结束本轮回复，因此此调用没有执行。",
+    error_code: "skipped_after_terminal_response",
+    tool_name: toolCall.function.name,
+    recoverable: false
+  });
+  return {
+    toolCall,
+    toolResult,
+    canonicalToolResult: toolResult,
+    supplementalMessages: []
+  };
 }
 
 function narrowActiveModelRefs(activeModelRefs: string[], selectedModelRef: string | null): string[] {
@@ -1037,21 +1192,6 @@ function cloneToolCall(toolCall: LlmToolCall): LlmToolCall {
   };
 }
 
-function findUnadvertisedToolNames(
-  toolCalls: LlmToolCall[],
-  advertisedTools: LlmToolDefinition[]
-): string[] {
-  if (toolCalls.length === 0) {
-    return [];
-  }
-  const advertisedNames = new Set(advertisedTools.map((tool) => tool.function.name));
-  return Array.from(new Set(
-    toolCalls
-      .map((toolCall) => toolCall.function.name)
-      .filter((name) => !advertisedNames.has(name))
-  ));
-}
-
 function buildProviderCallUsage(
   iteration: number,
   phase: LlmProviderCallUsage["phase"],
@@ -1068,6 +1208,41 @@ function buildProviderCallUsage(
     text: result.text,
     reasoningContent: result.reasoningContent
   };
+}
+
+async function replayValidatedProviderDeltas(
+  deltas: Array<{ kind: "text" | "reasoning"; delta: string }>,
+  params: LlmGenerateParams
+): Promise<void> {
+  for (const event of deltas) {
+    if (event.kind === "reasoning") {
+      params.onReasoningDelta?.(event.delta);
+      continue;
+    }
+    await params.onTextDelta?.(event.delta);
+  }
+}
+
+function createUnknownProviderResponseUsage(
+  modelRef: string | null,
+  config: AppConfig
+): LlmUsage {
+  const model = modelRef ? config.llm.models[modelRef]?.model ?? null : null;
+  return {
+    ...createEmptyUsage(modelRef, model),
+    requestCount: 1
+  };
+}
+
+function insertProtocolCorrectionMessage(messages: LlmMessage[], content: string): void {
+  let insertionIndex = 0;
+  while (messages[insertionIndex]?.role === "system") {
+    insertionIndex += 1;
+  }
+  messages.splice(insertionIndex, 0, {
+    role: "system",
+    content
+  });
 }
 
 function serializeError(error: unknown): { name?: string; message: string; stack?: string } {

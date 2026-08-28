@@ -784,6 +784,9 @@ export function createGenerationExecutor(
           });
           let completedUsage = result.usage;
           if (result.finishReason?.kind === "tool_call_limit") {
+            const checkpointCause = result.finishReason.cause === "protocol_recovery"
+              ? "protocol_recovery"
+              : "tool_iterations";
             assertGenerationCurrent();
             sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
             const originalRequest = renderBatchOriginalRequest(batchMessages);
@@ -805,6 +808,7 @@ export function createGenerationExecutor(
               observations: checkpointObservations,
               persona: input.persona,
               sessionBotProfile: sessionManager.getSession(sessionId).botProfile,
+              cause: checkpointCause,
               abortSignal: abortController.signal,
               assertCurrent: assertGenerationCurrent,
               onProviderCallUsage: recordProviderCallUsage,
@@ -823,7 +827,8 @@ export function createGenerationExecutor(
             assertGenerationCurrent();
             const checkpointText = composeToolLoopCheckpointMessage({
               body: checkpointReport.body,
-              liveResourceLines
+              liveResourceLines,
+              cause: checkpointCause
             });
             const committed = await segmentCoordinator.appendStandalone(checkpointText);
             assertGenerationCurrent();

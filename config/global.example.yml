@@ -32,6 +32,7 @@ llm:
   firstTokenTimeoutMs: 30000
   thinkingTimeoutMs: 30000
   toolCallMaxIterations: 8
+  toolCallProtocolRecoveryMaxAttempts: 2
   mainRouting:
     enabled: true
     timeoutMs: 300000

@@ -1530,6 +1530,72 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     assert.equal(session.lastLlmUsage?.requestCount, 2);
   });
 
+  test("protocol recovery limit emits an accurate checkpoint and leaves the task waiting for confirmation", async () => {
+    let generateCalls = 0;
+    const harness = createExecutorHarness({
+      streamResponse: false,
+      configOverrides: {
+        llm: {
+          summarizer: {
+            enabled: true
+          }
+        }
+      },
+      customGenerate: async (input) => {
+        generateCalls += 1;
+        if (generateCalls === 1) {
+          await input.onToolResultMessage?.({
+            role: "tool",
+            tool_call_id: "call-allowed",
+            content: JSON.stringify({ ok: true, result: "查询完成" })
+          }, "lookup");
+          await input.onToolResultMessage?.({
+            role: "tool",
+            tool_call_id: "call-rejected",
+            content: JSON.stringify({
+              ok: false,
+              error: "删除工具当前轮未开放，调用没有执行。",
+              error_code: "tool_not_available"
+            })
+          }, "delete");
+          return {
+            text: "",
+            reasoningContent: "",
+            usage: createUsage(),
+            finishReason: {
+              kind: "tool_call_limit",
+              maxIterations: 8,
+              cause: "protocol_recovery",
+              protocolRecoveries: 2
+            }
+          };
+        }
+
+        const prompt = JSON.stringify(input.messages);
+        assert.match(prompt, /checkpoint_cause=protocol_recovery/);
+        assert.match(prompt, /被系统拒绝的调用都没有执行/);
+        return {
+          text: "查询已经完成；未开放的删除调用没有执行。",
+          reasoningContent: "",
+          usage: createUsage(),
+          finishReason: { kind: "completed" }
+        };
+      }
+    });
+
+    await waitForCondition(() => harness.sendTextCalls.length === 1, "protocol checkpoint was not sent");
+    harness.resolveDrain();
+    await harness.runPromise;
+
+    assert.equal(generateCalls, 2);
+    assert.match(harness.sendTextCalls[0]?.text ?? "", /连续返回了无法直接接受的工具调用/);
+    assert.match(harness.sendTextCalls[0]?.text ?? "", /被系统拒绝的调用都没有执行/);
+    assert.match(harness.sendTextCalls[0]?.text ?? "", /合法调用可能已经执行/);
+    assert.match(harness.sendTextCalls[0]?.text ?? "", /查询已经完成/);
+    assert.match(harness.sendTextCalls[0]?.text ?? "", /重试当前步骤、调整方案，还是停止/);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).taskTracker.primary?.status, "waiting_user");
+  });
+
   test("checkpoint report replaces stale terminal task context for non-task tools", async () => {
     let generateCalls = 0;
     const harness = createExecutorHarness({

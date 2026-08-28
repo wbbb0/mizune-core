@@ -111,9 +111,16 @@ export interface LlmGenerateResult {
   assistantMetadata?: Record<string, unknown>;
 }
 
+export type LlmToolLoopLimitCause = "tool_iterations" | "protocol_recovery";
+
 export type LlmGenerateFinishReason =
   | { kind: "completed" }
-  | { kind: "tool_call_limit"; maxIterations: number };
+  | {
+      kind: "tool_call_limit";
+      maxIterations: number;
+      cause?: LlmToolLoopLimitCause;
+      protocolRecoveries?: number;
+    };
 
 export interface LlmEmbeddingParams {
   texts: string[];
@@ -136,7 +143,7 @@ export interface LlmProviderCallUsage {
 
 export interface LlmProviderResponseCompleteEvent {
   iteration: number;
-  phase: "tool_call" | "final_response";
+  phase: "tool_call" | "final_response" | "invalid_response";
   text: string;
   toolCalls: LlmToolCall[];
   usage: LlmUsage;

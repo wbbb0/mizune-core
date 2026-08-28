@@ -152,7 +152,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
         model: context.model
       });
       const responseChunks: GoogleStreamChunk[] = [];
-      const toolCalls = new Map<string, LlmToolCall>();
+      const toolCalls = new Map<number, LlmToolCall>();
       const assistantParts: GooglePart[] = [];
       const assistantPartCount = new Map<string, number>();
       const reader = response.body.getReader();
@@ -194,8 +194,8 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
           if ("functionCall" in part && part.functionCall?.name) {
             timeoutController.markFirstResponseReceived();
             timeoutController.markFirstTextReceived();
-            const toolCall = normalizeFunctionCallPart(part);
-            toolCalls.set(toolCall.id, toolCall);
+            const toolCall = normalizeFunctionCallPart(part, toolCalls.size);
+            toolCalls.set(toolCalls.size, toolCall);
           }
         }
       };
@@ -660,13 +660,13 @@ function canReplayGoogleParts(parts: GooglePart[]): boolean {
   return true;
 }
 
-function normalizeFunctionCallPart(part: GoogleFunctionCallPart): LlmToolCall {
+function normalizeFunctionCallPart(part: GoogleFunctionCallPart, ordinal: number): LlmToolCall {
   const args = part.functionCall.args ?? {};
   const thoughtSignature = typeof part.thoughtSignature === "string"
     ? part.thoughtSignature
     : "";
   return {
-    id: part.functionCall.id ?? `google_tool_call_${hashFunctionCall(part.functionCall.name ?? "", args)}`,
+    id: part.functionCall.id ?? `google_tool_call_${ordinal}_${hashFunctionCall(part.functionCall.name ?? "", args)}`,
     type: "function",
     function: {
       name: part.functionCall.name ?? "unknown_function",

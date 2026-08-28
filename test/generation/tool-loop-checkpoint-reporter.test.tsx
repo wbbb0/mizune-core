@@ -41,6 +41,7 @@ const observations: ToolLoopCheckpointObservation[] = [{
 test("checkpoint reporter rejects DSML tool protocol and uses deterministic facts", async () => {
   const config = createLlmTestConfig({});
   config.llm.summarizer.enabled = true;
+  config.llm.toolCallProtocolRecoveryMaxAttempts = 1;
   const client = new LlmClient(config, pino({ level: "silent" }));
 
   await withMockFetch([{
@@ -76,6 +77,7 @@ test("checkpoint reporter rejects DSML tool protocol and uses deterministic fact
       originalRequest: "检查项目并运行测试",
       taskTracker: tracker,
       observations,
+      cause: "tool_iterations",
       persona: { name: "测试助手", temperament: "冷静", voiceStyle: "简洁" },
       sessionBotProfile: null,
       abortSignal: new AbortController().signal,
@@ -92,6 +94,7 @@ test("checkpoint reporter rejects DSML tool protocol and uses deterministic fact
 test("checkpoint reporter accounts for rejected structured tool-call usage without exposing token stats", async () => {
   const config = createLlmTestConfig({});
   config.llm.summarizer.enabled = true;
+  config.llm.toolCallProtocolRecoveryMaxAttempts = 1;
   const client = new LlmClient(config, pino({ level: "silent" }));
 
   await withMockFetch([{
@@ -132,6 +135,7 @@ test("checkpoint reporter accounts for rejected structured tool-call usage witho
       originalRequest: "检查项目并运行测试",
       taskTracker: tracker,
       observations,
+      cause: "tool_iterations",
       persona: { name: "测试助手", temperament: "冷静", voiceStyle: "简洁" },
       sessionBotProfile: null,
       abortSignal: new AbortController().signal,
@@ -140,7 +144,7 @@ test("checkpoint reporter accounts for rejected structured tool-call usage witho
 
     assert.equal(result.modelGenerated, false);
     assert.equal(result.usage?.requestCount, 1);
-    assert.deepEqual(result.providerCallUsages.map((item) => item.phase), ["invalid_response"]);
+    assert.deepEqual(result.providerCallUsages.map((item) => item.phase), ["tool_call"]);
     assert.equal(result.finalProviderCallUsage, null);
     assert.doesNotMatch(result.body, /delete|unexpected/);
   });
@@ -156,6 +160,20 @@ test("checkpoint composer appends live state and one fixed confirmation question
   assert.match(message, /res_download_1/);
   assert.equal(message.match(/你希望我继续处理剩余步骤，还是调整方案或停止？/g)?.length, 1);
   assert.doesNotMatch(message, /工具调用次数|执行额度/);
+});
+
+test("protocol recovery checkpoint distinguishes rejected calls from possibly executed valid calls", () => {
+  const message = composeToolLoopCheckpointMessage({
+    body: "当前任务状态已经保留。",
+    liveResourceLines: [],
+    cause: "protocol_recovery"
+  });
+
+  assert.match(message, /连续返回了无法直接接受的工具调用/);
+  assert.match(message, /被系统拒绝的调用都没有执行/);
+  assert.match(message, /合法调用可能已经执行/);
+  assert.match(message, /重试当前步骤、调整方案，还是停止/);
+  assert.doesNotMatch(message, /可执行步骤已经达到上限/);
 });
 
 test("checkpoint reporter body contract rejects questions, limits, and whole-task completion claims", () => {

@@ -481,21 +481,15 @@ function extractReasoningSummary(output: unknown[] | undefined): string {
 function extractFunctionCalls(output: unknown[] | undefined): LlmToolCall[] {
   const toolCalls: LlmToolCall[] = [];
   for (const item of output ?? []) {
-    if (
-      !isRecord(item)
-      || item.type !== "function_call"
-      || typeof item.call_id !== "string"
-      || typeof item.name !== "string"
-      || typeof item.arguments !== "string"
-    ) {
+    if (!isRecord(item) || item.type !== "function_call") {
       continue;
     }
     toolCalls.push({
-      id: item.call_id,
+      id: typeof item.call_id === "string" ? item.call_id : "",
       type: "function",
       function: {
-        name: item.name,
-        arguments: item.arguments
+        name: typeof item.name === "string" ? item.name : "",
+        arguments: typeof item.arguments === "string" ? item.arguments : ""
       }
     });
   }

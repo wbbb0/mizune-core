@@ -39,7 +39,7 @@ export function parseToolArguments(
   }
 }
 
-function parseNormalizedToolArguments(raw: string): unknown {
+export function parseNormalizedToolArguments(raw: string): unknown {
   return JSON.parse(normalizeToolArgumentJson(raw));
 }
 

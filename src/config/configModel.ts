@@ -552,6 +552,7 @@ const llmRuntimeConfigSchema = s.object({
   firstTokenTimeoutMs: s.number().int().positive().title("首 Token 超时毫秒").default(30000),
   thinkingTimeoutMs: s.number().int().positive().title("思考超时毫秒").describe("从首个思考 token 开始计时，超时未产出可见文本则中止请求。").default(30000),
   toolCallMaxIterations: s.number().int().positive().title("工具调用最大轮次").default(8),
+  toolCallProtocolRecoveryMaxAttempts: s.number().int().positive().title("工具协议纠错最大次数").default(2),
   mainRouting: llmMainRoutingConfigSchema,
   summarizer: s.object({
     enabled: s.boolean().title("启用").default(true),

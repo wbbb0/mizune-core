@@ -5,10 +5,12 @@ import {
   type LlmProviderGenerateParams,
   type LlmUsage
 } from "./providerTypes.ts";
+import { LlmInvalidProviderResponseError } from "./providerProtocolError.ts";
 
 export interface IndexedToolCallDelta {
   index?: number;
   id?: string;
+  type?: string;
   function?: {
     name?: string;
     arguments?: string;
@@ -103,19 +105,41 @@ export function createProviderStreamAccumulator(input: {
 // Appends streamed function-call deltas into stable indexed tool-call objects.
 export function mergeIndexedToolCallDeltas(
   target: Map<number, LlmToolCall>,
-  deltas: IndexedToolCallDelta[],
-  idPrefix = "tool_call"
+  deltas: IndexedToolCallDelta[]
 ): void {
   for (const toolCallDelta of deltas) {
     const index = toolCallDelta.index ?? 0;
     const existing = target.get(index) ?? {
-      id: toolCallDelta.id ?? `${idPrefix}_${index}`,
+      id: "",
       type: "function" as const,
       function: {
         name: "",
         arguments: ""
       }
     };
+
+    if (toolCallDelta.type && toolCallDelta.type !== "function") {
+      throw new LlmInvalidProviderResponseError(
+        "invalid_tool_call_type",
+        `工具调用索引 ${index} 返回了不支持的类型。`
+      );
+    }
+    if (existing.id && toolCallDelta.id && existing.id !== toolCallDelta.id) {
+      throw new LlmInvalidProviderResponseError(
+        "conflicting_tool_call_index",
+        `工具调用索引 ${index} 在同一响应中关联了不同调用 ID。`
+      );
+    }
+    if (
+      existing.function.name
+      && toolCallDelta.function?.name
+      && existing.function.name !== toolCallDelta.function.name
+    ) {
+      throw new LlmInvalidProviderResponseError(
+        "conflicting_tool_call_index",
+        `工具调用索引 ${index} 在同一响应中关联了不同工具名称。`
+      );
+    }
 
     if (toolCallDelta.id) {
       existing.id = toolCallDelta.id;

@@ -1377,6 +1377,63 @@ function createUnterminatedSseResponse(payload: any) {
     });
   });
 
+  test("google ai studio preserves duplicate explicit call IDs for atomic envelope rejection", async () => {
+    const config = createLlmTestConfig();
+    config.llm.providers.test!.type = "google";
+    config.llm.toolCallProtocolRecoveryMaxAttempts = 1;
+    const client = new LlmClient(config, pino({ level: "silent" }));
+    let executeCount = 0;
+    let assistantToolCallCount = 0;
+
+    await withMockFetch([{
+      assertRequest() {},
+      payloads: [{
+        candidates: [{
+          content: {
+            parts: [
+              {
+                functionCall: {
+                  id: "duplicate-call-id",
+                  name: "lookup",
+                  args: {}
+                }
+              },
+              {
+                functionCall: {
+                  id: "duplicate-call-id",
+                  name: "read_other",
+                  args: {}
+                }
+              }
+            ]
+          }
+        }]
+      }]
+    }], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "读取两项" }],
+        tools: [createToolDefinition("lookup"), createToolDefinition("read_other")],
+        toolExecutor: async () => {
+          executeCount += 1;
+          return "{}";
+        },
+        onAssistantToolCalls() {
+          assistantToolCallCount += 1;
+        }
+      });
+
+      assert.equal(executeCount, 0);
+      assert.equal(assistantToolCallCount, 0);
+      assert.deepEqual(result.finishReason, {
+        kind: "tool_call_limit",
+        maxIterations: 4,
+        cause: "protocol_recovery",
+        protocolRecoveries: 1
+      });
+      assert.deepEqual(result.providerCallUsages?.map((event) => event.phase), ["invalid_response"]);
+    });
+  });
+
   test("vertex ai requests use bearer auth and vertex publisher endpoint", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex";

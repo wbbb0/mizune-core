@@ -327,6 +327,61 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
+  test("terminal responses still emit one result for every call in the batch", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const executedNames: string[] = [];
+    const observedResults: Array<{ id: string; content: string }> = [];
+
+    await withMockFetch([{
+      assertRequest() {},
+      payloads: [{
+        choices: [{
+          delta: {
+            tool_calls: [
+              {
+                index: 0,
+                id: "call-terminal",
+                type: "function",
+                function: { name: "end_turn_without_reply", arguments: "{}" }
+              },
+              {
+                index: 1,
+                id: "call-after-terminal",
+                type: "function",
+                function: { name: "lookup", arguments: "{}" }
+              }
+            ]
+          }
+        }]
+      }]
+    }], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "结束" }],
+        tools: [createToolDefinition("end_turn_without_reply"), createToolDefinition("lookup")],
+        toolExecutor: async (toolCall) => {
+          executedNames.push(toolCall.function.name);
+          return {
+            content: "{\"ok\":true}",
+            ...(toolCall.function.name === "end_turn_without_reply"
+              ? { terminalResponse: { text: "" } }
+              : {})
+          };
+        },
+        onToolResultMessage(message) {
+          observedResults.push({
+            id: message.tool_call_id ?? "",
+            content: String(message.content)
+          });
+        }
+      });
+
+      assert.equal(result.text, "");
+      assert.deepEqual(executedNames, ["end_turn_without_reply"]);
+      assert.deepEqual(observedResults.map((item) => item.id), ["call-terminal", "call-after-terminal"]);
+      assert.equal(JSON.parse(observedResults[1]!.content).error_code, "skipped_after_terminal_response");
+    });
+  });
+
   test("steer user messages are injected before the next tool-loop model call without opening a new generate", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
     let consumeCount = 0;
@@ -506,7 +561,7 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
     });
   });
 
-  test("provider tool calls must be among the tools advertised for that request", async () => {
+  test("unadvertised tool calls return failed tool results and continue the model loop", async () => {
     const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
     let executeCount = 0;
     const usagePhases: string[] = [];
@@ -531,24 +586,280 @@ import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../hel
             }
           }]
         }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 3);
+          assert.equal(body.messages[1].role, "assistant");
+          assert.equal(body.messages[1].tool_calls[0].id, "tool-call-not-advertised");
+          assert.equal(body.messages[2].role, "tool");
+          assert.equal(body.messages[2].tool_call_id, "tool-call-not-advertised");
+          const failure = JSON.parse(body.messages[2].content);
+          assert.equal(failure.ok, false);
+          assert.equal(failure.error_code, "tool_not_available");
+          assert.doesNotMatch(failure.recovery, /request_toolset|list_available_toolsets/);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "当前没有开放删除工具，操作没有执行。"
+            }
+          }]
+        }]
       }
     ], async () => {
-      await assert.rejects(
-        client.generate({
-          messages: [{ role: "user", content: "只总结，不要调用工具" }],
-          tools: [],
-          onProviderCallUsage(event) {
-            usagePhases.push(event.phase);
-          },
-          toolExecutor: async () => {
-            executeCount += 1;
-            return "{}";
-          }
-        }),
-        /unadvertised tool calls: delete/
-      );
+      const result = await client.generate({
+        messages: [{ role: "user", content: "只总结，不要调用工具" }],
+        tools: [],
+        onProviderCallUsage(event) {
+          usagePhases.push(event.phase);
+        },
+        toolExecutor: async () => {
+          executeCount += 1;
+          return "{}";
+        }
+      });
       assert.equal(executeCount, 0);
-      assert.deepEqual(usagePhases, ["invalid_response"]);
+      assert.equal(result.text, "当前没有开放删除工具，操作没有执行。");
+      assert.deepEqual(usagePhases, ["tool_call", "final_response"]);
+    });
+  });
+
+  test("complete DSML tool envelopes are discarded and corrected without leaking text deltas", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const visibleDeltas: string[] = [];
+    const usagePhases: string[] = [];
+
+    await withMockFetch([
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 1);
+        },
+        payloads: [{
+          choices: [{
+            delta: {
+              content: "说明如下：\n```xml\n<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"delete\"></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>\n```"
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 2);
+          assert.equal(body.messages[0].role, "system");
+          assert.match(body.messages[0].content, /任何工具都没有执行/);
+          assert.doesNotMatch(body.messages[0].content, /request_toolset|list_available_toolsets/);
+          assert.equal(body.messages.some((message: any) => message.role === "assistant"), false);
+        },
+        payloads: [{
+          choices: [{ delta: { content: "没有执行任何工具。" } }]
+        }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "继续" }],
+        tools: [],
+        onTextDelta(delta) {
+          visibleDeltas.push(delta);
+        },
+        onProviderCallUsage(event) {
+          usagePhases.push(event.phase);
+        }
+      });
+
+      assert.equal(result.text, "没有执行任何工具。");
+      assert.deepEqual(visibleDeltas, ["没有执行任何工具。"]);
+      assert.deepEqual(usagePhases, ["invalid_response", "final_response"]);
+    });
+  });
+
+  test("protocol recovery attempts are bounded independently from tool iterations", async () => {
+    const config = createLlmTestConfig();
+    config.llm.toolCallProtocolRecoveryMaxAttempts = 1;
+    const client = new LlmClient(config, pino({ level: "silent" }));
+
+    await withMockFetch([{
+      assertRequest() {},
+      payloads: [{
+        choices: [{
+          delta: {
+            content: "<｜｜DSML｜｜tool_calls></｜｜DSML｜｜tool_calls>"
+          }
+        }]
+      }]
+    }], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "继续" }],
+        tools: []
+      });
+
+      assert.deepEqual(result.finishReason, {
+        kind: "tool_call_limit",
+        maxIterations: 4,
+        cause: "protocol_recovery",
+        protocolRecoveries: 1
+      });
+      assert.deepEqual(result.providerCallUsages?.map((event) => event.phase), ["invalid_response"]);
+    });
+  });
+
+  test("invalid tool arguments return a correlated failure without executing the tool", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    let executeCount = 0;
+
+    await withMockFetch([
+      {
+        assertRequest() {},
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: "call-invalid-args",
+                type: "function",
+                function: { name: "write_file", arguments: "" }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[2].tool_call_id, "call-invalid-args");
+          const failure = JSON.parse(body.messages[2].content);
+          assert.equal(failure.error_code, "invalid_arguments_json");
+        },
+        payloads: [{ choices: [{ delta: { content: "参数有误，未写入文件。" } }] }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "写文件" }],
+        tools: [{
+          type: "function",
+          function: {
+            name: "write_file",
+            description: "写文件",
+            parameters: {
+              type: "object",
+              properties: { path: { type: "string" } },
+              required: ["path"]
+            }
+          }
+        }],
+        toolExecutor: async () => {
+          executeCount += 1;
+          return "{}";
+        }
+      });
+
+      assert.equal(executeCount, 0);
+      assert.equal(result.text, "参数有误，未写入文件。");
+    });
+  });
+
+  test("malformed tool envelopes are rejected atomically before transcript callbacks or execution", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    let executeCount = 0;
+    let assistantToolCallCount = 0;
+    let toolResultCount = 0;
+
+    await withMockFetch([
+      {
+        assertRequest() {},
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [{
+                index: 0,
+                type: "function",
+                function: { name: "lookup", arguments: "{}" }
+              }]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages.length, 2);
+          assert.equal(body.messages[0].role, "system");
+          assert.equal(body.messages.some((message: any) => message.role === "assistant"), false);
+          assert.equal(body.messages.some((message: any) => message.role === "tool"), false);
+        },
+        payloads: [{ choices: [{ delta: { content: "工具调用结构有误，未执行。" } }] }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "查询" }],
+        tools: [createToolDefinition("lookup")],
+        toolExecutor: async () => {
+          executeCount += 1;
+          return "{}";
+        },
+        onAssistantToolCalls() {
+          assistantToolCallCount += 1;
+        },
+        onToolResultMessage() {
+          toolResultCount += 1;
+        }
+      });
+
+      assert.equal(result.text, "工具调用结构有误，未执行。");
+      assert.equal(executeCount, 0);
+      assert.equal(assistantToolCallCount, 0);
+      assert.equal(toolResultCount, 0);
+      assert.deepEqual(result.providerCallUsages?.map((event) => event.phase), ["invalid_response", "final_response"]);
+    });
+  });
+
+  test("mixed advertised and unadvertised calls preserve result order and execute only allowed tools", async () => {
+    const client = new LlmClient(createLlmTestConfig(), pino({ level: "silent" }));
+    const executedNames: string[] = [];
+
+    await withMockFetch([
+      {
+        assertRequest() {},
+        payloads: [{
+          choices: [{
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call-allowed",
+                  type: "function",
+                  function: { name: "lookup", arguments: "{}" }
+                },
+                {
+                  index: 1,
+                  id: "call-blocked",
+                  type: "function",
+                  function: { name: "delete", arguments: "{}" }
+                }
+              ]
+            }
+          }]
+        }]
+      },
+      {
+        assertRequest(body: any) {
+          assert.equal(body.messages[2].tool_call_id, "call-allowed");
+          assert.equal(body.messages[2].content, "lookup-result");
+          assert.equal(body.messages[3].tool_call_id, "call-blocked");
+          assert.equal(JSON.parse(body.messages[3].content).error_code, "tool_not_available");
+        },
+        payloads: [{ choices: [{ delta: { content: "查询完成，删除未执行。" } }] }]
+      }
+    ], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "查询并删除" }],
+        tools: [createToolDefinition("lookup")],
+        toolExecutor: async (toolCall) => {
+          executedNames.push(toolCall.function.name);
+          return "lookup-result";
+        }
+      });
+
+      assert.deepEqual(executedNames, ["lookup"]);
+      assert.equal(result.text, "查询完成，删除未执行。");
     });
   });
 
