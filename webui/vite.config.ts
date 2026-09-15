@@ -141,7 +141,6 @@ export default defineConfig({
     vue(),
     tailwindcss(),
     createDevServiceWorkerCleanupPlugin(),
-    createGzipPrecompressionPlugin(),
     VitePWA({
       strategies: "injectManifest",
       base: webuiBase,
@@ -149,6 +148,7 @@ export default defineConfig({
       filename: "sw.ts",
       registerType: "prompt",
       injectRegister: false,
+      useCredentials: true,
       includeAssets: ["icons/apple-touch-icon.png"],
       manifest: {
         name: "llm-bot",
@@ -194,8 +194,13 @@ export default defineConfig({
         suppressWarnings: true,
         resolveTempFolder: () => "dev-dist"
       }
-    })
+    }),
+    // VitePWA writes sw.js during closeBundle, so compression must run after it.
+    createGzipPrecompressionPlugin()
   ],
+  define: {
+    __LLM_BOT_RELEASE_ID__: JSON.stringify(process.env["LLM_BOT_RELEASE_ID"]?.trim() || "development")
+  },
   resolve: {
     alias: {
       "@": resolve(configDir, "src"),

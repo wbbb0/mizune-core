@@ -1,0 +1,8 @@
+instances:
+  - name: acc1
+    healthUrl: http://127.0.0.1:3231/healthz
+    # Omit to preserve the current enable state during deployment.
+    # enableOnBoot: true
+
+retainReleases: 3
+healthTimeoutMs: 30000

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
@@ -41,6 +41,13 @@ function resolveWebuiDistPath(): string {
   ];
   const resolved = candidates.find((candidate) => existsSync(candidate));
   return resolved ?? candidates[0]!;
+}
+
+function resolveWebuiAssetsPath(distPath: string): string {
+  const configuredPath = process.env.LLM_BOT_WEBUI_ASSETS_DIR?.trim();
+  return configuredPath
+    ? (isAbsolute(configuredPath) ? configuredPath : join(process.cwd(), configuredPath))
+    : join(distPath, "assets");
 }
 
 function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiServices): void {
@@ -105,8 +112,9 @@ export async function startInternalApi(deps: InternalApiRuntimeDeps) {
     if (!externalWebuiMode) {
       const distPath = resolveWebuiDistPath();
       if (existsSync(distPath)) {
-        await registerWebuiStaticRoutes(app, distPath);
-        deps.logger.info({ distPath }, "webui_static_serving_enabled");
+        const assetsPath = resolveWebuiAssetsPath(distPath);
+        await registerWebuiStaticRoutes(app, distPath, assetsPath);
+        deps.logger.info({ distPath, assetsPath }, "webui_static_serving_enabled");
       } else {
         deps.logger.warn({ distPath }, "webui_dist_not_found — run `npm run build:webui` first");
       }

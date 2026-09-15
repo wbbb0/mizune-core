@@ -57,11 +57,14 @@ export function createGzipPrecompressionPlugin(): Plugin {
     configResolved(resolvedConfig) {
       config = resolvedConfig;
     },
-    async closeBundle() {
-      if (!config) {
-        return;
+    closeBundle: {
+      order: "post",
+      async handler() {
+        if (!config) {
+          return;
+        }
+        await writeGzipPrecompressedAssets(resolve(config.root, config.build.outDir));
       }
-      await writeGzipPrecompressedAssets(resolve(config.root, config.build.outDir));
     }
   };
 }

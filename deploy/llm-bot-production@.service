@@ -1,0 +1,19 @@
+# Managed by llm-onebot production deployment.
+[Unit]
+Description=llm-bot production (%i)
+
+[Service]
+Type=simple
+WorkingDirectory=@@PROJECT_ROOT@@
+Environment=NODE_ENV=production
+Environment=CONFIG_INSTANCE=%i
+Environment=CONFIG_DIR=@@PROJECT_ROOT@@/config
+Environment=LLM_BOT_WEBUI_ASSETS_DIR=@@PROJECT_ROOT@@/.deploy/web-assets
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=@@NODE_PATH@@ @@PROJECT_ROOT@@/.deploy/current/run-release.mjs
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

@@ -6,6 +6,7 @@
 /dist/
 /webui/dist/
 /webui/dev-dist/
+/.deploy/
 
 # Runtime data
 /data/

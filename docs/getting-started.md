@@ -316,7 +316,7 @@ CONFIG_INSTANCE=acc1 npm run start:bot
 
 ## systemd
 
-`deploy/` 中提供了 service 示例。`deploy/llm-bot@.service` 使用 `%i` 作为实例名，并传给：
+`deploy/` 中提供了用户级 systemd 模板。正式环境应使用项目内不可变 Release 部署流程，详见 [正式部署](operations/production-deployment.md)。部署脚本读取 `config/production.yml`，只为其中的正式实例维护精确 unit；共享模板下的开发实例不会被迁移。实例名会通过 `%i` 传给：
 
 ```text
 CONFIG_INSTANCE=%i
@@ -325,10 +325,10 @@ CONFIG_INSTANCE=%i
 例如：
 
 ```bash
-systemctl --user enable --now llm-bot@acc1
+npm run deploy:production
 ```
 
-这会启动实例 `acc1`，对应读取：
+如果正式清单包含 `acc1`，它会对应读取：
 
 ```text
 config/instances/acc1.yml

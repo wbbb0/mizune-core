@@ -33,6 +33,8 @@ test("webui prompts before activating production updates and cleans production c
 
   assert.doesNotMatch(serviceWorkerSource, /^self\.skipWaiting\(\);$/m);
   assert.match(serviceWorkerSource, /event\.data\?\.type === "SKIP_WAITING"/);
+  assert.match(serviceWorkerSource, /addPlugins/);
+  assert.match(serviceWorkerSource, /precacheResponseValidationPlugin/);
   assert.match(serviceWorkerSource, /void self\.skipWaiting\(\)/);
   assert.match(serviceWorkerSource, /clientsClaim\(\)/);
 

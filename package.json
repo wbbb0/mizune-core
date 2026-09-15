@@ -38,6 +38,7 @@
     "dev": "NODE_ENV=development node scripts/dev.mjs",
     "dev:bot": "NODE_ENV=development LLM_BOT_WEBUI_MODE=external tsx watch src/index.ts",
     "dev:webui": "NODE_ENV=development npm --prefix webui run dev",
+    "deploy:production": "node --import tsx scripts/deploy-production.ts",
     "install:browsers": "playwright install chromium",
     "cleanup:invalid-chat-media": "npx tsx scripts/cleanup-invalid-chat-media.ts",
     "migrate:memory": "npx tsx scripts/migrate-memory-refactor.ts",

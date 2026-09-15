@@ -8,6 +8,8 @@ test("vite pwa uses custom service worker and dev cache cleanup", async () => {
   assert.match(source, /strategies:\s*"injectManifest"/);
   assert.match(source, /srcDir:\s*"src"/);
   assert.match(source, /filename:\s*"sw\.ts"/);
+  assert.match(source, /useCredentials:\s*true/);
+  assert.match(source, /__LLM_BOT_RELEASE_ID__/);
   assert.match(source, /injectManifest:\s*{[\s\S]*globPatterns/);
   assert.match(source, /createDevServiceWorkerCleanupPlugin/);
   assert.match(source, /server\.middlewares\.use\(`\$\{webuiBase\}sw\.js`/);

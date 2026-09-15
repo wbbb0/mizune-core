@@ -10,6 +10,7 @@ import type {
   InternalApiUserDeps,
   InternalApiWhitelistDeps
 } from "../types.ts";
+import type { AppConfig } from "#config/config.ts";
 import type {
   ParsedCopySessionBody,
   ParsedCreateSessionBody,
@@ -76,8 +77,13 @@ function buildSessionSummary(session: SessionState): InternalApiSessionSummary {
   };
 }
 
-export function getHealthStatus() {
-  return { ok: true };
+export function getHealthStatus(config: AppConfig) {
+  return {
+    ok: true,
+    instance: config.configRuntime.instanceName,
+    releaseId: process.env.LLM_BOT_RELEASE_ID?.trim() || "development",
+    pid: process.pid
+  };
 }
 
 export function getConfigSummary(deps: InternalApiConfigSummaryDeps) {

@@ -1,13 +1,9 @@
 [Unit]
 Description=llm-bot (%i)
-After=network-online.target
-After=napcat@%i.service
-Wants=network-online.target
-Wants=napcat@%i.service
 
 [Service]
 Type=simple
-WorkingDirectory=%h/Workspace/nodejs/llm-onebot
+WorkingDirectory=@@PROJECT_ROOT@@
 Environment=NODE_ENV=production
 Environment=CONFIG_INSTANCE=%i
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin

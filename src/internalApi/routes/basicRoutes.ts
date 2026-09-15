@@ -69,7 +69,7 @@ import {
 import type { InternalApiServices } from "../types.ts";
 
 export function registerBasicRoutes(app: FastifyInstance, services: InternalApiServices["basicRoutes"]): void {
-  app.get("/healthz", async () => getHealthStatus());
+  app.get("/healthz", async () => getHealthStatus(services.config.config));
 
   app.get("/api/config-summary", async () => getConfigSummary(services.config));
 
