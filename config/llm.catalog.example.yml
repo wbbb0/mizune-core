@@ -4,13 +4,6 @@ dashscope:
   type: dashscope
   apiKey: replace-me
   proxy: false
-  features:
-    thinking:
-      type: flag
-      path: enable_thinking
-    search:
-      type: flag
-      path: enable_search
   models:
     main:
       upstreamModel: qwen3.5-plus
@@ -45,11 +38,15 @@ dashscope:
 
 deepseek:
   type: deepseek
+  baseUrl: https://api.deepseek.com/anthropic
   apiKey: replace-me
   proxy: false
+  search:
+    maxUses: 3
   models:
     main:
-      upstreamModel: deepseek-v4-pro
+      upstreamModel: deepseek-flash
+      supportsSearch: true
       modelType: chat
       supportsThinking: true
       preserveThinking: true
@@ -69,8 +66,7 @@ anthropic:
       supportsVision: true
       supportsTools: true
       apiParameters:
-        extra:
-          max_tokens: 4096
+        maxOutputTokens: 4096
 
 # OpenAI Responses API 与 type=openai 的 Chat Completions 兼容协议分开配置。
 openai_responses:
@@ -87,11 +83,11 @@ openai_responses:
       supportsVision: true
       supportsTools: true
       apiParameters:
+        maxOutputTokens: 4096
         extra:
           reasoning:
             effort: medium
             summary: auto
-          max_output_tokens: 4096
 
 # LM Studio 本地服务的 apiKey 可省略；baseUrl 默认是 http://localhost:1234/v1。
 lmstudio_local:
@@ -104,3 +100,18 @@ lmstudio_local:
       preserveThinking: true
       supportsVision: true
       supportsTools: true
+
+# Vertex 自动拼接项目与区域地址；apiKey 填写现有访问令牌。
+vertex:
+  type: vertex
+  projectId: your-google-cloud-project
+  location: global
+  apiKey: replace-with-access-token
+  models:
+    main:
+      upstreamModel: gemini-2.5-flash
+      supportsThinking: true
+      supportsVision: true
+      supportsSearch: true
+      apiParameters:
+        maxOutputTokens: 4096

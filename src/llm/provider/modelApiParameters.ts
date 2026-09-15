@@ -6,7 +6,8 @@ type KnownModelApiParameter =
   | "top_k"
   | "min_p"
   | "presence_penalty"
-  | "repetition_penalty";
+  | "repetition_penalty"
+  | "maxOutputTokens";
 
 const OPENAI_COMPAT_PARAMETER_KEYS: KnownModelApiParameter[] = [
   "temperature",
@@ -21,15 +22,17 @@ const GEMINI_PARAMETER_MAP: Partial<Record<KnownModelApiParameter, string>> = {
   temperature: "temperature",
   top_p: "topP",
   top_k: "topK",
-  presence_penalty: "presencePenalty"
+  presence_penalty: "presencePenalty",
+  maxOutputTokens: "maxOutputTokens"
 };
 
 export function buildOpenAiCompatibleModelApiParameters(
   context: LlmProviderRequestContext
 ): Record<string, unknown> {
-  return buildMappedParameters(context, Object.fromEntries(
-    OPENAI_COMPAT_PARAMETER_KEYS.map((key) => [key, key])
-  ));
+  return buildMappedParameters(context, {
+    ...Object.fromEntries(OPENAI_COMPAT_PARAMETER_KEYS.map((key) => [key, key])),
+    maxOutputTokens: context.providerConfig?.type === "openai" ? context.providerConfig.maxOutputTokenField : "max_tokens"
+  });
 }
 
 export function buildOpenAiResponsesModelApiParameters(
@@ -37,16 +40,18 @@ export function buildOpenAiResponsesModelApiParameters(
 ): Record<string, unknown> {
   return buildMappedParameters(context, {
     temperature: "temperature",
-    top_p: "top_p"
+    top_p: "top_p",
+    maxOutputTokens: "max_output_tokens"
   });
 }
 
 export function buildDashScopeModelApiParameters(
   context: LlmProviderRequestContext
 ): Record<string, unknown> {
-  return buildMappedParameters(context, Object.fromEntries(
-    OPENAI_COMPAT_PARAMETER_KEYS.map((key) => [key, key])
-  ));
+  return buildMappedParameters(context, {
+    ...Object.fromEntries(OPENAI_COMPAT_PARAMETER_KEYS.map((key) => [key, key])),
+    maxOutputTokens: "max_tokens"
+  });
 }
 
 export function buildGeminiGenerationConfigParameters(
@@ -64,7 +69,8 @@ export function buildLmStudioNativeModelApiParameters(
     top_k: "top_k",
     min_p: "min_p",
     presence_penalty: "presence_penalty",
-    repetition_penalty: "repeat_penalty"
+    repetition_penalty: "repeat_penalty",
+    maxOutputTokens: "max_output_tokens"
   });
 }
 

@@ -53,6 +53,12 @@ OpenAI 接入有两种独立协议：`type: openai` 使用 `/v1/chat/completions
 兼容接口，`type: openai_responses` 使用 `/v1/responses`。Responses provider
 由本地 transcript 管理上下文并固定发送 `store: false`，不会依赖服务端
 `previous_response_id` 会话链。
+
+`type: deepseek` 使用 Anthropic Messages 协议，默认地址为
+`https://api.deepseek.com/anthropic`，支持服务端原生搜索与普通工具混合调用。
+搜索配置、内容块回传和真实 smoke 见 [DeepSeek provider 说明](docs/development/deepseek-provider.md)。
+供应商类型决定表单选项，已知协议的工具定义自动生成，详见 [供应商配置设计](docs/development/provider-configuration.md)。
+
 - `config/llm.routing-presets.yml`：确认默认 preset 中的 `{ provider, model }` 联合引用存在
 - `config/global.yml`：开启 `llm`、`internalApi.webui`，或关闭 `onebot`
 - `config/instances/default.yml`：设置当前实例的数据目录、端口和 OneBot 地址

@@ -1,3 +1,4 @@
+import { llmProviderCatalogSchema } from "#config/configModel.ts";
 import type {
   LlmCatalogConfig,
   LlmCatalogFile,
@@ -58,7 +59,7 @@ export function normalizeLlmCatalog(catalog: LlmCatalogFile): Pick<LlmCatalogCon
 
   for (const [providerAlias, catalogProvider] of Object.entries(catalog)) {
     const { models: providerModels, ...providerConfig } = catalogProvider;
-    providers[providerAlias] = providerConfig;
+    providers[providerAlias] = llmProviderCatalogSchema.parseFromObject({ [providerAlias]: providerConfig })[providerAlias]!;
 
     for (const [modelAlias, catalogProfile] of Object.entries(providerModels)) {
       const { upstreamModel, ...profile } = catalogProfile;
@@ -68,6 +69,7 @@ export function normalizeLlmCatalog(catalog: LlmCatalogFile): Pick<LlmCatalogCon
       });
       models[canonicalRef] = {
         ...profile,
+        supportsSearch: profile.supportsSearch ?? false,
         provider: providerAlias,
         model: upstreamModel
       };

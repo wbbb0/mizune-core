@@ -304,6 +304,7 @@ export class DiscriminatedUnionSchema<
   public toMeta(): SchemaMeta {
     return compactObject({
       kind: "union",
+      discriminator: this.key,
       title: this._title,
       description: this._description,
       optional: this._optional,

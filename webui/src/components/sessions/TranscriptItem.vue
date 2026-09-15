@@ -4,6 +4,7 @@ import { Bot, FileText, GitBranch, Image as ImageIcon, Info, MoreHorizontal, Use
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 import { WorkbenchCard, WorkbenchDisclosure } from "@workbench-kit/vue";
+import NativeSearchResults from "./NativeSearchResults.vue";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
 import type { TranscriptExpandState } from "./ChatPanel.vue";
 
@@ -787,6 +788,7 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'assistant_message'" class="flex flex-col gap-2">
+        <NativeSearchResults :metadata="item.providerMetadata" />
         <WorkbenchDisclosure
           v-if="item.reasoningContent"
           :expanded="reasoningExpanded"
@@ -816,6 +818,7 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'assistant_tool_call'" class="flex flex-col gap-2">
+        <NativeSearchResults :metadata="item.providerMetadata" />
         <WorkbenchDisclosure
           v-if="item.reasoningContent"
           :expanded="reasoningExpanded"

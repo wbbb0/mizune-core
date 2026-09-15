@@ -9,6 +9,14 @@ export class VertexAiProvider extends GoogleGeminiProviderBase {
   readonly type = "vertex" as const;
   protected readonly providerLabel = "Vertex AI";
 
+  override resolveBaseUrl(providerConfig: LlmProviderRequestContext["providerConfig"]): string | null {
+    if (providerConfig.baseUrl?.trim()) return providerConfig.baseUrl.trim();
+    if (!providerConfig.projectId) return null;
+    const location = providerConfig.location;
+    const host = location === "global" ? "aiplatform.googleapis.com" : `${location}-aiplatform.googleapis.com`;
+    return `https://${host}/v1/projects/${encodeURIComponent(providerConfig.projectId)}/locations/${encodeURIComponent(location)}/publishers/google`;
+  }
+
   protected getDefaultBaseUrl(): string | null {
     return null;
   }

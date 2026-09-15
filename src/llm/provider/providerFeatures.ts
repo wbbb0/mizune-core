@@ -19,7 +19,7 @@ export function getProviderFeature(
   }
 
   const providerConfig = config.llm.providers[modelProfile.provider];
-  return providerConfig?.features[featureName] ?? null;
+  return providerConfig ? resolveProviderFeature(providerConfig, featureName) : null;
 }
 
 export function getProviderFeatureFromContext(
@@ -29,7 +29,7 @@ export function getProviderFeatureFromContext(
   if (!isFeatureSupportedByModel(context.modelProfile, featureName)) {
     return null;
   }
-  return context.providerConfig.features[featureName] ?? null;
+  return resolveProviderFeature(context.providerConfig, featureName);
 }
 
 export function hasNativeSearchFeature(
@@ -44,4 +44,24 @@ function isFeatureSupportedByModel(modelProfile: ModelProfile, featureName: Prov
     return modelProfile.supportsThinking && modelProfile.thinkingControllable;
   }
   return modelProfile.supportsSearch;
+}
+
+/** 用户只声明模型是否允许搜索；协议工具名称和字段由 provider 负责。 */
+function resolveProviderFeature(provider: LlmProviderConfig, feature: ProviderFeatureName): ProviderFeatureConfig | null {
+  if (["openai", "openai_responses", "lmstudio"].includes(provider.type)) {
+    const override = provider.features[feature];
+    if (override) return override;
+  }
+  if (feature === "thinking") {
+    return provider.type === "dashscope" ? { type: "flag", path: "enable_thinking" } : null;
+  }
+  switch (provider.type) {
+    case "deepseek": return { type: "builtin_tool", tool: { type: "web_search_20250305", name: "web_search", max_uses: provider.search.maxUses } };
+    case "openai_responses": return { type: "builtin_tool", tool: { type: "web_search" } };
+    case "google":
+    case "vertex":
+    case "vertex_express": return { type: "builtin_tool", tool: { googleSearch: {} } };
+    case "dashscope": return { type: "flag", path: "enable_search" };
+    default: return null;
+  }
 }

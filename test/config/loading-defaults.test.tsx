@@ -258,7 +258,6 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           test: {
             baseUrl: "https://example.com/v1",
             apiKey: "test-key",
-            harmBlockThreshold: "BLOCK_LOW_AND_ABOVE",
             features: {
               thinking: {
                 type: "flag",
@@ -328,7 +327,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.equal(config.llm.providers.test?.harmBlockThreshold, "BLOCK_LOW_AND_ABOVE");
+      assert.equal(config.llm.providers.test?.harmBlockThreshold, "BLOCK_NONE");
       assert.deepEqual(config.llm.providers.test?.features, {
         thinking: {
           type: "flag",

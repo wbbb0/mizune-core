@@ -57,9 +57,9 @@ export function resolveTurnPlannerOutputTokenLimit(config: AppConfig, modelRefs:
       case "deepseek":
       case "lmstudio":
       case "openai_responses":
+      case "dashscope":
         return true;
       case "openai":
-      case "dashscope":
         return provider.features.thinking?.type === "flag";
       case "google":
       case "vertex":

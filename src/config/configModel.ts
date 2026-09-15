@@ -1,16 +1,8 @@
+import { modelApiParametersSchema, createModelApiParametersSchema } from "./modelApiParameterSchema.ts";
+import { llmProviderTypes, llmProviderDefinitions, type LlmProviderType } from "./llmProviderDefinitions.ts";
 import { createSchemaTemplate, parseConfig, s, type Infer } from "#data/schema/index.ts";
 
 const emptyObject = () => ({} as never);
-
-const modelApiParametersSchema = s.object({
-  temperature: s.number().title("temperature").optional(),
-  top_p: s.number().title("top_p").optional(),
-  top_k: s.number().title("top_k").optional(),
-  min_p: s.number().title("min_p").optional(),
-  presence_penalty: s.number().title("presence_penalty").optional(),
-  repetition_penalty: s.number().title("repetition_penalty").optional(),
-  extra: s.object({}).passthrough().title("额外 API 参数").describe("按 provider 目标位置原样透传；缺省不传。").optional()
-}).title("API 模型参数").describe("为该模型请求附加 provider API 参数；缺省字段不会发送。").default(emptyObject);
 
 const createCatalogAliasSchema = () => s.string()
   .trim()
@@ -23,7 +15,7 @@ const modelProfileCapabilitySchemaShape = {
   thinkingControllable: s.boolean().title("可控制思考").default(true),
   supportsVision: s.boolean().title("支持视觉").default(false),
   supportsAudioInput: s.boolean().title("支持音频输入").default(false),
-  supportsSearch: s.boolean().title("支持搜索").default(false),
+  supportsSearch: s.boolean().title("允许联网搜索").describe("模型支持联网时启用。已知供应商自动配置原生搜索，无需填写工具名称。").default(false),
   supportsTools: s.boolean().title("支持工具").default(true),
   preserveThinking: s.boolean().title("保留历史思考").default(false),
   apiParameters: modelApiParametersSchema
@@ -181,18 +173,18 @@ const llmMainRoutingConfigSchema = s.object({
   enableThinking: s.boolean().title("启用思考").default(true)
 }).title("主路由").describe("在主回复链路中选择不同规模的模型。").default(emptyObject);
 
-const llmProviderFeatureFlagSchema = s.object({
+const createLlmProviderFeatureFlagSchema = () => s.object({
   type: s.literal("flag").title("类型"),
-  path: s.string().trim().nonempty().title("响应路径").describe("从 provider 响应中读取能力开关的字段路径。")
-}).title("响应标记能力").strict();
+  path: s.string().trim().nonempty().title("请求字段路径").describe("兼容接口的请求参数路径，例如 enable_search；仅在服务商明确要求时填写。")
+}).title("自定义请求开关").strict();
 
 const llmProviderFeatureBuiltinToolSchema = s.object({
   type: s.literal("builtin_tool").title("类型"),
   tool: s.object({}).passthrough().title("工具定义")
-}).title("内置工具能力").strict();
+}).title("自定义工具定义（高级）").strict();
 
 const createLlmProviderFeatureSchema = () => s.union([
-  llmProviderFeatureFlagSchema,
+  createLlmProviderFeatureFlagSchema(),
   llmProviderFeatureBuiltinToolSchema
 ]);
 
@@ -202,17 +194,7 @@ const llmProviderFeaturesSchema = s.object({
 }).title("能力映射").default(emptyObject);
 
 const llmProviderSchemaShape = {
-  type: s.enum([
-    "openai",
-    "openai_responses",
-    "deepseek",
-    "google",
-    "vertex",
-    "vertex_express",
-    "dashscope",
-    "lmstudio",
-    "anthropic"
-  ] as const).title("类型").default("openai"),
+  type: s.enum(llmProviderTypes).title("供应商类型").default("openai"),
   baseUrl: s.string().url().nonempty().title("Base URL").optional(),
   apiKey: s.string().trim().nonempty().title("API Key").optional(),
   proxy: s.boolean().title("使用代理").default(false),
@@ -223,7 +205,13 @@ const llmProviderSchemaShape = {
     "BLOCK_LOW_AND_ABOVE",
     "HARM_BLOCK_THRESHOLD_UNSPECIFIED"
   ] as const).title("内容拦截阈值").default("BLOCK_NONE"),
-  features: llmProviderFeaturesSchema
+  maxOutputTokenField: s.enum(["max_tokens", "max_completion_tokens"] as const).title("输出上限参数（兼容接口）").describe("多数兼容服务使用 max_tokens；仅当服务商要求时改为 max_completion_tokens。").default("max_tokens"),
+  projectId: s.string().trim().nonempty().title("Google Cloud 项目 ID").optional(),
+  location: s.string().trim().nonempty().refine(value => /^[a-z][a-z0-9-]*$/.test(value), "区域只能包含小写字母、数字和连字符").title("区域").default("global"),
+  features: llmProviderFeaturesSchema,
+  search: s.object({
+    maxUses: s.number().int().positive().title("单次请求搜索次数上限").default(3)
+  }).title("原生搜索设置").describe("在模型中开启允许联网搜索后生效。").default(emptyObject)
 };
 
 const llmProviderSchema = s.object(llmProviderSchemaShape)
@@ -640,16 +628,39 @@ export const llmRoutingPresetCatalogSchema = s.record(
   llmRoutingPresetSchema
 ).title("模型路由预设目录").describe("维护可引用的模型路由预设。").default({});
 
+function createProviderCatalogVariant<T extends LlmProviderType>(type: T) {
+  const definition = llmProviderDefinitions[type];
+  const { supportsSearch, ...baseCapabilities } = modelProfileCapabilitySchemaShape;
+  return s.object({
+    type: s.literal(type).title("供应商类型").default(type),
+    baseUrl: s.string().url().nonempty().title("接口地址（可选覆盖）")
+      .describe(type === "vertex" ? "填写项目 ID 时自动生成；自定义地址应以 /publishers/google 结尾。" : "标准接口留空即可使用协议默认地址；转发服务请填写其接口地址。").optional(),
+    apiKey: s.string().trim().nonempty().title(type === "vertex" ? "访问令牌" : type === "lmstudio" ? "API Key（本地服务可选）" : "API Key").optional(),
+    ...(type === "openai" ? { maxOutputTokenField: llmProviderSchemaShape.maxOutputTokenField } : {}),
+    ...(type === "vertex" ? { projectId: llmProviderSchemaShape.projectId, location: llmProviderSchemaShape.location } : {}),
+    proxy: llmProviderSchemaShape.proxy,
+    ...(definition.googleSafety ? { harmBlockThreshold: llmProviderSchemaShape.harmBlockThreshold } : {}),
+    ...(definition.customFeatures ? { features: s.object({
+      thinking: createLlmProviderFeatureFlagSchema().title("思考参数覆盖").optional(),
+      ...(definition.search !== "none" ? { search: createLlmProviderFeatureSchema().title("搜索参数覆盖").optional() } : {})
+    }).title("兼容接口高级设置").describe("标准接口无需填写；仅用于服务商自定义参数。留空使用协议默认值。").optional() } : {}),
+    ...(type === "deepseek" ? { search: llmProviderSchemaShape.search } : {}),
+    models: s.record(createCatalogAliasSchema(), s.object({
+      upstreamModel: s.string().trim().nonempty().title("上游模型名"),
+      ...baseCapabilities,
+      apiParameters: createModelApiParametersSchema(type),
+      ...(definition.search !== "none" ? { supportsSearch } : {})
+    }).title("模型配置").default(emptyObject)).title("模型清单").default({})
+  }).title(definition.title)
+    .refine(value => type !== "vertex" || Boolean(value.baseUrl || value.projectId), "Vertex 需要填写项目 ID 或自定义接口地址");
+}
+
 export const llmCatalogFileSchema = s.record(
   createCatalogAliasSchema(),
-  s.object({
-    ...llmProviderSchemaShape,
-    models: s.record(
-      createCatalogAliasSchema(),
-      catalogModelProfileSchema
-    ).title("模型清单").default({})
-  }).title("Provider 与模型").default(emptyObject)
-).title("LLM 目录").describe("以 provider 为一级目录，同时维护连接配置及其局部模型清单。").default({});
+  s.discriminatedUnion("type", llmProviderTypes.map(createProviderCatalogVariant))
+    .title("供应商类型与配置")
+    .default(() => ({ type: "openai", models: {} }) as never)
+).title("LLM 目录").describe("选择供应商类型后只显示适用选项；在模型中开启联网搜索即可使用协议预设。").default({});
 
 export const llmRoutingPresetCatalogFileSchema = s.record(
   s.string().trim().nonempty(),

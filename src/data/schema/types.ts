@@ -112,6 +112,7 @@ export type SchemaMeta =
   }
   | {
     kind: "union";
+    discriminator?: string;
     title?: string;
     description?: string;
     optional: boolean;

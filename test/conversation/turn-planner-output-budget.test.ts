@@ -20,10 +20,10 @@ test("short planner budgets require every fallback to actually disable thinking"
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), undefined);
 });
 
-test("DashScope short budgets require an explicit thinking control mapping", () => {
+test("DashScope short budgets use native thinking control", () => {
   const config = createLlmTestConfig({ supportsThinking: true });
   config.llm.providers.test!.type = "dashscope";
-  assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), undefined);
+  assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), 512);
   config.llm.providers.test!.features.thinking = { type: "flag", path: "enable_thinking" };
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), 512);
 });
