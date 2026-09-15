@@ -22,7 +22,9 @@ function createConfig() {
         }
       },
       turnPlanner: {
-        enabled: true
+        enabled: true,
+        toolSelection: "planned",
+        semanticWait: true
       }
     }
   });
@@ -37,6 +39,7 @@ function createConfig() {
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "group",
       relationship: "owner",
@@ -90,7 +93,7 @@ function createConfig() {
     );
     assert.doesNotMatch(system, /request_model_upgrade/);
     assert.doesNotMatch(system, /主模型.*升级|自行升级/);
-    assert.match(system, /私聊默认 reply_small/);
+    assert.match(system, /仅在明显半句话未完时判 wait/);
     assert.match(system, /群聊中当前批次明显不需要机器人回应时可判 no_reply/);
     assert.doesNotMatch(system, /包括但不限于/);
     assert.doesNotMatch(system, /像“取消这个吧”/);
@@ -115,6 +118,7 @@ function createConfig() {
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -163,6 +167,7 @@ function createConfig() {
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -200,10 +205,11 @@ function createConfig() {
 
   test("group reply gate keeps no_reply and clears toolsets", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "群里闲聊无需回应|no_reply|continue_topic|web_research"
+      resultText: "reason: 群里闲聊无需回应\nreply_decision: no_reply\ntopic_decision: continue_topic\ntoolset_ids: web_research"
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:g:100",
       chatType: "group",
       relationship: "known",
@@ -243,6 +249,7 @@ function createConfig() {
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -307,10 +314,11 @@ function createConfig() {
 
   test("reply gate no longer locally ignores explicit chat-closing acknowledgements", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "礼貌收尾但仍可接住|reply_small|continue_topic"
+      resultText: "reason: 礼貌收尾但仍可接住\nreply_decision: reply_small\ntopic_decision: continue_topic"
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -329,9 +337,12 @@ function createConfig() {
 
   test("generation reply gate requests old history compaction on topic switch", async () => {
     const persistReasons: string[] = [];
+    const config = createConfig();
+    config.conversation.historyCompression.enabled = true;
+    config.llm.summarizer.enabled = true;
     const result = await handleGenerationTurnPlanner(
       createGenerationReplyGateDeps({
-        config: createConfig(),
+        config,
         turnPlanner: {
           isEnabled() {
             return true;
@@ -346,6 +357,7 @@ function createConfig() {
       }),
       createGenerationReplyGateHandlers(),
       createGenerationReplyGateInput({
+        topicCompressionCandidate: { messageCount: 6, estimatedReclaimableTokens: 3000 },
         batchMessages: [
           {
             ...createGenerationReplyGateInput().batchMessages[0]!,
@@ -500,16 +512,17 @@ function createConfig() {
       assert.deepEqual(result.toolsetIds, []);
       assert.equal(result.plannerDecision?.replyDecision, "reply_small");
     }
-    assert.equal(transcriptItems[0]?.replyDecision, "reply_small");
+    assert.equal(transcriptItems[0]?.replyDecision, "reply");
     assert.equal(transcriptItems[0]?.action, "continue");
   });
 
-  test("reply gate coerces model ignore decisions back to reply for normal requests", async () => {
+  test("reply gate coerces no_reply back to reply for private requests", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "请求敏感内容|ignore"
+      resultText: "reason: 请求敏感内容\nreply_decision: no_reply"
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -528,10 +541,11 @@ function createConfig() {
 
   test("reply gate coerces no-reply wait decisions back to reply", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "对方只是确认无需回复|wait"
+      resultText: "reason: 对方只是确认无需回复\nreply_decision: wait"
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -550,10 +564,11 @@ function createConfig() {
 
   test("reply gate keeps wait only for clearly unfinished text", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "半句话未完|wait"
+      resultText: "reason: 半句话未完\nreply_decision: wait"
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -579,6 +594,7 @@ function createConfig() {
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -604,6 +620,7 @@ function createConfig() {
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",
@@ -623,10 +640,11 @@ function createConfig() {
 
   test("reply gate parses topic_switch decisions", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "明显换题了|reply_large|new_topic"
+      resultText: "reason: 明显换题了\nreply_decision: reply_large\ntopic_decision: new_topic"
     });
 
     const result = await gate.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
       sessionId: "qqbot:p:owner",
       chatType: "private",
       relationship: "owner",

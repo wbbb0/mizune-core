@@ -75,6 +75,10 @@ llm:
     recentMessageCount: 6
     enableThinking: false
     maxWaitPasses: 1
+    toolSelection: all # all 固定提供当前权限和模式允许的全部工具；planned 按轮次选择
+    semanticWait: false # false 仅依赖 debounce；true 允许规划模型判断是否等待消息发完
+    topicCompressionMinTokens: 2000 # 预计可回收 token，按旧原始历史 token 的 50% 估算
+    topicCompressionMinMessages: 6 # 上次压缩后积累的待压缩原始消息数，不含已有摘要
     supplementToolsets: true
   debugDump:
     enabled: false

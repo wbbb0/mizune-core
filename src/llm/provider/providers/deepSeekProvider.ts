@@ -82,6 +82,7 @@ export class DeepSeekProvider implements LlmProvider {
         type: resolvedEnableThinking ? "enabled" : "disabled"
       },
       ...buildOpenAiCompatibleModelApiParameters(context),
+      ...(params.maxOutputTokensOverride ? { max_tokens: params.maxOutputTokensOverride } : {}),
       ...(resolvedEnableThinking ? { reasoning_effort: "high" } : {}),
       ...((params.tools?.length ?? 0) > 0 ? { tools: params.tools } : {})
     };

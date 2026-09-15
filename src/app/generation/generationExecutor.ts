@@ -403,7 +403,8 @@ export function createGenerationExecutor(
           }
         } : {})
       });
-      const isPlannerToolsetMode = !setupMode && Array.isArray(availableToolsets);
+      const hasToolsetBoundary = !setupMode && Array.isArray(availableToolsets);
+      const isPlannerToolsetMode = hasToolsetBoundary && config.llm.turnPlanner.toolSelection === "planned";
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
         availableToolsets?.some((item) => item.id === id) ?? false
       )));
@@ -414,10 +415,12 @@ export function createGenerationExecutor(
       const isModelSelfUpgradeAvailable = (): boolean => modelSelfUpgradePlan != null && !modelUpgradeUsed;
 
       const resolveDynamicAllowedToolNames = (): string[] | undefined => {
-        const baseToolNames = isPlannerToolsetMode
+        const baseToolNames = hasToolsetBoundary
           ? [
-              ...resolveToolNamesFromToolsets(availableToolsets!, Array.from(activeToolsetIds)),
-              ...TURN_PLANNER_ALWAYS_TOOL_NAMES
+              ...resolveToolNamesFromToolsets(availableToolsets!, isPlannerToolsetMode
+                ? Array.from(activeToolsetIds)
+                : availableToolsets!.map((item) => item.id)),
+              ...(isPlannerToolsetMode ? TURN_PLANNER_ALWAYS_TOOL_NAMES : [])
             ]
           : availableToolNames;
         if (baseToolNames === undefined) {

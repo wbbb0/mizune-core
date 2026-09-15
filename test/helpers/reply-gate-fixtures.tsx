@@ -41,7 +41,7 @@ export function createReplyGate(
   const llmClient = {
     async generate(input: LlmGenerateParams) {
       await options.onGenerate?.(input);
-      return { text: options.resultText ?? "继续处理|reply_small|continue_topic" };
+      return { text: options.resultText ?? "reason: 继续处理\nreply_decision: reply_small\ntopic_decision: continue_topic" };
     }
   } as unknown as LlmClient;
 

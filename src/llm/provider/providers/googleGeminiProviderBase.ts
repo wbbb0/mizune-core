@@ -355,7 +355,8 @@ function buildGenerationConfig(
   params: LlmProviderGenerateParams
 ): Record<string, unknown> {
   const generationConfig: Record<string, unknown> = {
-    ...buildGeminiGenerationConfigParameters(context)
+    ...buildGeminiGenerationConfigParameters(context),
+    ...(params.maxOutputTokensOverride ? { maxOutputTokens: params.maxOutputTokensOverride } : {})
   };
 
   if (context.modelProfile.supportsThinking) {

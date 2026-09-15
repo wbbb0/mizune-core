@@ -1,6 +1,7 @@
 import type { AppConfig } from "#config/config.ts";
 import { getModelRefsForRole } from "./modelRouting.ts";
 import { normalizeModelRefs } from "./modelProfiles.ts";
+import { areMainModelRoutesEquivalent } from "./modelRouteEquivalence.ts";
 
 export const MODEL_SELF_UPGRADE_TOOL_NAME = "request_model_upgrade";
 
@@ -17,7 +18,7 @@ export function resolveModelSelfUpgradePlan(input: {
   currentModelRefs: string | string[];
   enabled: boolean;
 }): ModelSelfUpgradePlan | null {
-  if (!input.enabled || !input.config.llm.enabled) {
+  if (!input.enabled || !input.config.llm.enabled || areMainModelRoutesEquivalent(input.config)) {
     return null;
   }
 
@@ -53,7 +54,7 @@ export function resolveModelSelfUpgradePlan(input: {
 
   const smallPrimaryModel = profiles[0]?.model;
   const largePrimaryModel = input.config.llm.models[largeModelRefs[0]!]?.model;
-  if (!smallPrimaryModel || !largePrimaryModel || smallPrimaryModel === largePrimaryModel) {
+  if (!smallPrimaryModel || !largePrimaryModel) {
     return null;
   }
 

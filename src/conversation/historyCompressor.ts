@@ -1,4 +1,6 @@
 import type { Logger } from "pino";
+import { estimateTokens } from "./session/tokenEstimator.ts";
+import type { TopicCompressionCandidate } from "./turnPlannerPolicy.ts";
 import type { AppConfig } from "#config/config.ts";
 import { annotateStructuredMediaReferences, extractStructuredMediaIds } from "#images/imageReferences.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
@@ -50,6 +52,20 @@ export class HistoryCompressor {
     private readonly logger: Logger,
     private readonly chatFileStore?: Pick<ChatFileStore, "getMany">
   ) {}
+
+  getTopicCompressionCandidate(sessionId: string, recentMessageCountToKeep: number): TopicCompressionCandidate | null {
+    if (!this.config.conversation.historyCompression.enabled || !this.config.llm.summarizer.enabled
+      || !this.llmClient.isConfigured(this.resolveModelRefs()) || this.inFlightSessions.has(sessionId)) {
+      return null;
+    }
+    const snapshot = this.sessionManager.getHistoryForCompression(sessionId, recentMessageCountToKeep, recentMessageCountToKeep);
+    if (!snapshot) return null;
+    const weights = this.config.conversation.historyCompression.tokenEstimation;
+    const rawTokens = snapshot.messagesToCompress.reduce((total, message) => total + estimateTokens(message.content, weights), 0)
+      + snapshot.toolObservationsToCompress.reduce((total, observation) => total + estimateTokens(JSON.stringify(observation), weights), 0);
+    // Reserve half the source for the new summary. Existing summaries never satisfy the new-message threshold.
+    return { messageCount: snapshot.messagesToCompress.length, estimatedReclaimableTokens: Math.floor(rawTokens / 2) };
+  }
 
   async maybeCompress(sessionId: string, options?: HistoryCompressionOptions): Promise<boolean> {
     const tokenLimits = getRoutingPresetTokenLimits(this.config);

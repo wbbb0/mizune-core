@@ -671,6 +671,7 @@ export function createGenerationSessionOrchestrator(
             batchMessages: promptSafety.runtimeBatchMessages,
             availableToolsets: plannerToolsets,
             taskContext: buildTurnPlannerTaskContext(refreshedSession.taskTracker),
+            topicCompressionCandidate: historyCompressor.getTopicCompressionCandidate(sessionId, promptSafety.runtimeBatchMessages.length),
             sendTarget: {
               delivery: resolvedDelivery,
               chatType: last.chatType,
@@ -755,8 +756,13 @@ export function createGenerationSessionOrchestrator(
             supportsTools: getPrimaryModelProfile(config, resolvedModelRef)?.supportsTools ?? null
           }, "turn_planner_available_toolsets_empty_after_routing");
         }
+      } else {
+        logger.info({ sessionId, reason: setupMode ? "setup_mode" : "explicit_continuation", inputTokens: 0, outputTokens: 0 }, "turn_planner_skipped");
       }
-      if (!setupMode && plannerToolsets.length > 0) {
+      if (config.llm.turnPlanner.toolSelection === "all") {
+        plannedToolsetIds = plannerToolsets.map((item) => item.id);
+      }
+      if (!setupMode && config.llm.turnPlanner.toolSelection === "planned" && plannerToolsets.length > 0) {
         const autoActivation = resolveAutoActivatedToolsets({
           selectedToolsetIds: plannedToolsetIds,
           availableToolsets: plannerToolsets,
@@ -776,7 +782,7 @@ export function createGenerationSessionOrchestrator(
           plannedToolsetIds = autoActivation.toolsetIds;
         }
       }
-      if (!setupMode && config.llm.turnPlanner.supplementToolsets && plannerToolsets.length > 0) {
+      if (!setupMode && config.llm.turnPlanner.toolSelection === "planned" && config.llm.turnPlanner.supplementToolsets && plannerToolsets.length > 0) {
         const supplement = supplementPlannedToolsets({
           selectedToolsetIds: plannedToolsetIds,
           availableToolsets: plannerToolsets,

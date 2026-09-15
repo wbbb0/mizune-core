@@ -322,7 +322,7 @@ function buildAnthropicRequestBody(
   enableThinking: boolean
 ): Record<string, unknown> {
   const apiParameters = buildAnthropicModelApiParameters(context);
-  const maxTokens = resolveMaxTokens(apiParameters, enableThinking);
+  const maxTokens = params.maxOutputTokensOverride ?? resolveMaxTokens(apiParameters, enableThinking);
   const body: Record<string, unknown> = {
     model: context.model,
     stream: true,

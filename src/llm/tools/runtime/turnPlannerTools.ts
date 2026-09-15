@@ -16,6 +16,7 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
+    isEnabled: (config) => config.llm.turnPlanner.toolSelection === "planned",
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
@@ -39,6 +40,7 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
+    isEnabled: (config) => config.llm.turnPlanner.toolSelection === "planned",
     resultObservation: stateChangePolicy()
   }
 ];

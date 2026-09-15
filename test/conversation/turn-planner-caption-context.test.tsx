@@ -71,6 +71,7 @@ test("turn planner injects image captions for non-vision planner models", async 
   );
 
   const result = await planner.decide({
+      requirements: { modelSelection: true, toolSelection: true, replyGate: true, semanticWait: true, topicSwitch: true, taskIntent: true },
     sessionId: "web:test",
     chatType: "private",
     relationship: "owner",

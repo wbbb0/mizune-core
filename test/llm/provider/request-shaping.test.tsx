@@ -44,6 +44,21 @@ function createUnterminatedSseResponse(payload: any) {
   );
 }
 
+test("per-request output limit overrides chat model limits without mutating the profile", async () => {
+  const config = createLlmTestConfig({ apiParameters: { extra: { max_tokens: 9000, max_completion_tokens: 8000 } } });
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  await withMockFetch([{
+    assertRequest(body: any) {
+      assert.equal(body.max_completion_tokens, 512);
+      assert.equal(body.max_tokens, undefined);
+    },
+    payloads: [{ choices: [{ delta: { content: "完成" } }] }]
+  }], async () => {
+    await client.generate({ messages: [{ role: "user", content: "判断本轮意图" }], maxOutputTokensOverride: 512 });
+  });
+  assert.deepEqual(config.llm.models.main!.apiParameters.extra, { max_tokens: 9000, max_completion_tokens: 8000 });
+});
+
   test("native search injects provider flag into request body", async () => {
     const config = createLlmTestConfig({ supportsSearch: true });
     config.llm.providers.test!.features.search = {
@@ -159,7 +174,7 @@ function createUnterminatedSseResponse(payload: any) {
     });
   });
 
-  test("anthropic provider maps messages, tools, vision, and thinking internally", async () => {
+test("anthropic provider maps messages, tools, vision, and thinking internally", async () => {
     const config = createLlmTestConfig({
       provider: "test",
       model: "claude-test",
@@ -191,7 +206,7 @@ function createUnterminatedSseResponse(payload: any) {
           assert.equal(body.model, "claude-test");
           assert.equal(body.stream, true);
           assert.equal(body.system, "system prompt");
-          assert.equal(body.max_tokens, 2048);
+          assert.equal(body.max_tokens, 4096);
           assert.deepEqual(body.thinking, {
             type: "enabled",
             budget_tokens: 1024
@@ -278,6 +293,7 @@ function createUnterminatedSseResponse(payload: any) {
       }
     ], async () => {
       const result = await client.generate({
+        maxOutputTokensOverride: 4096,
         messages: [
           { role: "system", content: "system prompt" },
           {
@@ -591,7 +607,7 @@ function createUnterminatedSseResponse(payload: any) {
     });
   });
 
-  test("dashscope sends configured model api parameters under parameters", async () => {
+test("dashscope sends configured model api parameters under parameters", async () => {
     const config = createLlmTestConfig({
       provider: "test",
       apiParameters: {
@@ -618,7 +634,7 @@ function createUnterminatedSseResponse(payload: any) {
           assert.equal(body.parameters.min_p, 0.03);
           assert.equal(body.parameters.presence_penalty, 0.1);
           assert.equal(body.parameters.repetition_penalty, 1.1);
-          assert.equal(body.parameters.max_tokens, 128);
+          assert.equal(body.parameters.max_tokens, 512);
         },
         payloads: [{
           output: {
@@ -637,6 +653,7 @@ function createUnterminatedSseResponse(payload: any) {
       }
     ], async () => {
       const result = await client.generate({
+        maxOutputTokensOverride: 512,
         messages: [{ role: "user", content: "hello" }]
       });
 
@@ -727,7 +744,7 @@ function createUnterminatedSseResponse(payload: any) {
     });
   });
 
-  test("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
+test("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
     const config = createLlmTestConfig({
       provider: "test",
       supportsVision: true,
@@ -763,7 +780,7 @@ function createUnterminatedSseResponse(payload: any) {
           assert.equal(body.presence_penalty, 0.1);
           assert.equal(body.repeat_penalty, 1.05);
           assert.equal("repetition_penalty" in body, false);
-          assert.equal(body.max_output_tokens, 96);
+          assert.equal(body.max_output_tokens, 512);
           assert.equal(body.previous_response_id, "resp_previous");
           assert.equal(body.system_prompt, "system prompt");
           assert.deepEqual(body.input, [
@@ -797,6 +814,7 @@ function createUnterminatedSseResponse(payload: any) {
     ], async () => {
       const deltas: string[] = [];
       const result = await client.generate({
+        maxOutputTokensOverride: 512,
         messages: [
           { role: "system", content: "system prompt" },
           {
@@ -1215,7 +1233,7 @@ function createUnterminatedSseResponse(payload: any) {
     );
   });
 
-  test("google ai studio maps configured model api parameters to generation config", async () => {
+test("google ai studio maps configured model api parameters to generation config", async () => {
     const config = createLlmTestConfig({
       apiParameters: {
         temperature: 0.4,
@@ -1240,7 +1258,7 @@ function createUnterminatedSseResponse(payload: any) {
           assert.equal(body.generationConfig.topP, 0.8);
           assert.equal(body.generationConfig.topK, 16);
           assert.equal(body.generationConfig.presencePenalty, 0.25);
-          assert.equal(body.generationConfig.maxOutputTokens, 64);
+          assert.equal(body.generationConfig.maxOutputTokens, 512);
           assert.equal(body.generationConfig.frequencyPenalty, 0.3);
           assert.equal("min_p" in body.generationConfig, false);
           assert.equal("repetition_penalty" in body.generationConfig, false);
@@ -1260,6 +1278,7 @@ function createUnterminatedSseResponse(payload: any) {
       }
     ], async () => {
       const result = await client.generate({
+        maxOutputTokensOverride: 512,
         messages: [{ role: "user", content: "hello" }]
       });
 

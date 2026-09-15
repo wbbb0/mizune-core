@@ -3,7 +3,8 @@ import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { analyzeTurnPlannerBatch } from "./turnPlannerBatchAnalysis.ts";
-import type { LlmClient } from "#llm/llmClient.ts";
+import type { LlmClient, LlmUsage } from "#llm/llmClient.ts";
+import { getTurnPlannerReasons, resolveTurnPlannerOutputTokenLimit, type TurnPlannerRequirements } from "./turnPlannerPolicy.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
 import { buildTurnPlannerPrompt } from "#llm/prompts/turn-planner.prompt.ts";
@@ -17,7 +18,6 @@ import { collectVisualAttachmentFileIds, isPendingChatAttachmentId } from "#serv
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
 import {
-  normalizeTaskPlannerIntent,
   parseTaskPlannerIntent,
   type TaskPlannerIntent,
   type TurnPlannerTaskContext
@@ -46,6 +46,7 @@ export type TurnPlannerContextDependency =
 export type TurnPlannerFollowupMode = "none" | "elliptical" | "explicit_reference";
 
 export interface TurnPlannerInput {
+  requirements: TurnPlannerRequirements;
   sessionId: string;
   chatType: "private" | "group";
   relationship: Relationship;
@@ -85,6 +86,18 @@ export interface TurnPlannerResult {
   toolsetIds: string[];
   taskIntent?: TaskPlannerIntent | undefined;
   reasoningContent?: string;
+  metrics?: TurnPlannerMetrics;
+}
+
+export interface TurnPlannerMetrics {
+  durationMs: number;
+  mediaPreparationMs: number;
+  generationMs: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedTokens: number | null;
+  mediaCaptionCount: number;
+  emojiInputCount: number;
 }
 
 type TurnPlannerMediaCaptionKind = "image" | "emoji";
@@ -126,11 +139,11 @@ export class TurnPlanner {
   }
 
   async decide(input: TurnPlannerInput): Promise<TurnPlannerResult> {
-    if (!this.isEnabled()) {
+    if (!this.isEnabled() || getTurnPlannerReasons(input.requirements).length === 0) {
       return {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
-        reason: "turn planner disabled",
+        reason: "未启用规划或无需判断",
         requiredCapabilities: [],
         contextDependencies: [],
         recentDomainReuse: [],
@@ -141,6 +154,7 @@ export class TurnPlanner {
 
     const startedAt = Date.now();
     const plannerModelRefs = this.resolveModelRefs();
+    const maxOutputTokens = resolveTurnPlannerOutputTokenLimit(this.config, plannerModelRefs);
     const recentMessages = input.recentMessages.slice(-this.config.llm.turnPlanner.recentMessageCount);
     const batchAnalysis = analyzeTurnPlannerBatch(input.batchMessages);
     const plannerProfile = getPrimaryModelProfile(this.config, plannerModelRefs);
@@ -201,10 +215,24 @@ export class TurnPlanner {
 
     let raw: string;
     let plannerReasoningContent = "";
+    const mediaPreparationMs = Date.now() - startedAt;
+    const generationStartedAt = Date.now();
+    let usage: LlmUsage | undefined;
+    const metrics = (): TurnPlannerMetrics => ({
+      durationMs: Date.now() - startedAt,
+      mediaPreparationMs,
+      generationMs: Date.now() - generationStartedAt,
+      inputTokens: usage?.inputTokens ?? null,
+      outputTokens: usage?.outputTokens ?? null,
+      cachedTokens: usage?.cachedTokens ?? null,
+      mediaCaptionCount: captionContext.mediaCaptions.length,
+      emojiInputCount: emojiInputs.length
+    });
     try {
       const result = await this.llmClient.generate({
         modelRefOverride: plannerModelRefs,
         timeoutMsOverride: this.config.llm.turnPlanner.timeoutMs,
+        ...(maxOutputTokens != null ? { maxOutputTokensOverride: maxOutputTokens } : {}),
         enableThinkingOverride: this.config.llm.turnPlanner.enableThinking,
         preferNativeNoThinkingChatEndpoint: true,
         skipDebugDump: true,
@@ -219,18 +247,20 @@ export class TurnPlanner {
         })
       });
       raw = result.text;
+      usage = result.usage;
       plannerReasoningContent = result.reasoningContent ?? "";
     } catch (error: unknown) {
       const durationMs = Date.now() - startedAt;
       if (input.abortSignal?.aborted || isAbortError(error)) {
         this.logger.info({ sessionId: input.sessionId, durationMs }, "turn_planner_aborted");
       } else {
-        this.logger.warn({ sessionId: input.sessionId, durationMs, err: error }, "turn_planner_llm_failed");
+        this.logger.warn({ sessionId: input.sessionId, ...metrics(), callReasons: getTurnPlannerReasons(input.requirements), err: error }, "turn_planner_llm_failed");
       }
       return {
         replyDecision: "reply_small",
         topicDecision: "continue_topic",
-        reason: "turn planner failed",
+        reason: "规划失败，继续回复",
+        metrics: metrics(),
         requiredCapabilities: [],
         contextDependencies: [],
         recentDomainReuse: [],
@@ -239,7 +269,7 @@ export class TurnPlanner {
       };
     }
 
-    const parsedRaw = this.normalizeDecision(this.parseDecision(raw), input, batchAnalysis);
+    const parsedRaw = { ...this.normalizeDecision(this.parseDecision(raw), input, batchAnalysis), metrics: metrics() };
     const parsed: TurnPlannerResult = plannerReasoningContent
       ? { ...parsedRaw, reasoningContent: plannerReasoningContent }
       : parsedRaw;
@@ -248,6 +278,11 @@ export class TurnPlanner {
     this.logger.info(
       {
         sessionId: input.sessionId,
+        callReasons: getTurnPlannerReasons(input.requirements),
+        ...parsed.metrics,
+        modelRef: usage?.modelRef ?? plannerModelRefs[0] ?? null,
+        model: usage?.model ?? plannerProfile?.model ?? null,
+        requestCount: usage?.requestCount ?? null,
         replyDecision: parsed.replyDecision,
         topicDecision: parsed.topicDecision,
         ...(parsed.taskIntent ? { taskIntent: parsed.taskIntent.kind, taskIntentConfidence: parsed.taskIntent.confidence } : {}),
@@ -272,74 +307,10 @@ export class TurnPlanner {
   }
 
   private parseDecision(raw: string): TurnPlannerResult {
-    const trimmed = raw.trim();
-    const structured = parseStructuredPlannerResult(trimmed);
-    if (structured) {
-      return structured;
-    }
-    const line4Match = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|no_reply|ignore|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*\|\s*(.+)\s*$/is);
-    if (line4Match) {
-      return {
-        ...normalizeParsedDecisions(line4Match[2], line4Match[3]),
-        reason: summarizeReasonForLog(line4Match[1] ?? "", 160),
-        requiredCapabilities: [],
-        contextDependencies: [],
-        recentDomainReuse: [],
-        followupMode: "none",
-        toolsetIds: parseToolsetIds(line4Match[4] ?? "")
-      };
-    }
-
-    const tripleMatch = trimmed.match(/^(.+?)\s*\|\s*(reply_small|reply_large|wait|no_reply|ignore|reply|topic_switch)\s*\|\s*(continue_topic|new_topic)\s*$/is);
-    if (tripleMatch) {
-      return {
-        ...normalizeParsedDecisions(tripleMatch[2], tripleMatch[3]),
-        reason: summarizeReasonForLog(tripleMatch[1] ?? "", 160),
-        requiredCapabilities: [],
-        contextDependencies: [],
-        recentDomainReuse: [],
-        followupMode: "none",
-        toolsetIds: []
-      };
-    }
-
-    try {
-      const parsed = JSON.parse(trimmed) as {
-        decision?: unknown;
-        replyDecision?: unknown;
-        topicDecision?: unknown;
-        requiredCapabilities?: unknown;
-        contextDependencies?: unknown;
-        recentDomainReuse?: unknown;
-        followupMode?: unknown;
-        reason?: unknown;
-        toolsetIds?: unknown;
-        toolsets?: unknown;
-        taskIntent?: unknown;
-        task_intent?: unknown;
-      };
-      const rawTaskIntent = parsed.taskIntent ?? parsed.task_intent;
-      const taskIntent = typeof rawTaskIntent === "string"
-        ? parseTaskPlannerIntent(rawTaskIntent)
-        : normalizeTaskPlannerIntent(rawTaskIntent);
-      return {
-        ...normalizeParsedDecisions(parsed.replyDecision ?? parsed.decision, parsed.topicDecision),
-        reason: summarizeReasonForLog(typeof parsed.reason === "string" ? parsed.reason : "", 160),
-        requiredCapabilities: parseRequiredCapabilities(parsed.requiredCapabilities),
-        contextDependencies: parseContextDependencies(parsed.contextDependencies),
-        recentDomainReuse: parseStringList(parsed.recentDomainReuse),
-        followupMode: normalizeFollowupMode(parsed.followupMode),
-        toolsetIds: parseUnknownToolsetIds(parsed.toolsetIds ?? parsed.toolsets),
-        ...(taskIntent ? { taskIntent } : {})
-      };
-    } catch {
-      // ignore
-    }
-
-    const fallbackDecision = trimmed.match(/\b(reply_small|reply_large|wait|no_reply|ignore|reply|topic_switch)\b/is)?.[1];
-    return {
-      ...normalizeParsedDecisions(fallbackDecision ?? "reply_small", "continue_topic"),
-      reason: summarizeReasonForLog(trimmed, 160),
+    return parseStructuredPlannerResult(raw.trim()) ?? {
+      replyDecision: "reply_small",
+      topicDecision: "continue_topic",
+      reason: "规划格式无效，继续回复",
       requiredCapabilities: [],
       contextDependencies: [],
       recentDomainReuse: [],
@@ -403,12 +374,26 @@ export class TurnPlanner {
     input: TurnPlannerInput,
     batchAnalysis: ReturnType<typeof analyzeTurnPlannerBatch>
   ): TurnPlannerResult {
+    const needs = input.requirements;
+    parsed = {
+      ...parsed,
+      replyDecision: (parsed.replyDecision === "wait" && !needs.semanticWait)
+        || (parsed.replyDecision === "no_reply" && !needs.replyGate)
+        || (parsed.replyDecision === "reply_large" && !needs.modelSelection)
+        ? "reply_small" : parsed.replyDecision,
+      topicDecision: needs.topicSwitch ? parsed.topicDecision : "continue_topic",
+      requiredCapabilities: needs.toolSelection ? parsed.requiredCapabilities : [],
+      contextDependencies: needs.toolSelection ? parsed.contextDependencies : [],
+      recentDomainReuse: needs.toolSelection ? parsed.recentDomainReuse : [],
+      followupMode: needs.toolSelection ? parsed.followupMode : "none",
+      toolsetIds: needs.toolSelection ? parsed.toolsetIds : []
+    };
     const allowedToolsetIds = new Set((input.availableToolsets ?? []).map((item) => item.id));
     const filteredToolsetIds = parsed.replyDecision === "wait" || parsed.replyDecision === "no_reply"
       ? []
       : Array.from(new Set(parsed.toolsetIds.filter((id) => allowedToolsetIds.has(id))));
     const normalized = { ...parsed, toolsetIds: filteredToolsetIds };
-    if (!input.taskContext) {
+    if (!needs.taskIntent || !input.taskContext) {
       delete normalized.taskIntent;
     }
 
@@ -510,16 +495,6 @@ function uniqueIds(ids: string[]): string[] {
   return Array.from(new Set(ids.map((item) => String(item ?? "").trim()).filter(Boolean)));
 }
 
-function parseUnknownToolsetIds(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-  if (typeof value === "string") {
-    return parseToolsetIds(value);
-  }
-  return [];
-}
-
 function parseToolsetIds(value: string): string[] {
   const normalized = sanitizeReason(value);
   if (!normalized || normalized === "-" || normalized === "none") {
@@ -541,7 +516,7 @@ function parseStructuredPlannerResult(raw: string): TurnPlannerResult | null {
     }
     fieldMap.set(match[1] ?? "", (match[2] ?? "").trim());
   }
-  if (!fieldMap.has("reason") || !fieldMap.has("reply_decision") || !fieldMap.has("topic_decision")) {
+  if (!fieldMap.has("reason")) {
     return null;
   }
   const taskIntent = parseTaskPlannerIntent(fieldMap.get("task_intent"));
@@ -611,7 +586,7 @@ function normalizeReplyDecision(input: unknown): TurnPlannerResult["replyDecisio
   if (normalized === "wait") {
     return normalized;
   }
-  if (normalized === "no_reply" || normalized === "ignore") {
+  if (normalized === "no_reply") {
     return "no_reply";
   }
   return "reply_small";
@@ -619,7 +594,7 @@ function normalizeReplyDecision(input: unknown): TurnPlannerResult["replyDecisio
 
 function normalizeTopicDecision(input: unknown): TurnPlannerResult["topicDecision"] {
   const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
-  if (normalized === "new_topic" || normalized === "topic_switch") {
+  if (normalized === "new_topic") {
     return "new_topic";
   }
   return "continue_topic";
@@ -663,12 +638,6 @@ function normalizeParsedDecisions(
   replyInput: unknown,
   topicInput: unknown
 ): Pick<TurnPlannerResult, "replyDecision" | "topicDecision"> {
-  if (replyInput === "topic_switch") {
-    return {
-      replyDecision: "reply_small",
-      topicDecision: "new_topic"
-    };
-  }
   const replyDecision = normalizeReplyDecision(replyInput);
   if (replyDecision === "wait") {
     return {

@@ -255,6 +255,7 @@ export class LlmClient {
           ...(params.modelOverride ? { modelOverride: params.modelOverride } : {}),
           modelRefOverride: activeModelRefs,
           ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
+          ...(params.maxOutputTokensOverride ? { maxOutputTokensOverride: params.maxOutputTokensOverride } : {}),
           ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
           ...(params.preferNativeNoThinkingChatEndpoint != null
             ? { preferNativeNoThinkingChatEndpoint: params.preferNativeNoThinkingChatEndpoint }
@@ -629,6 +630,7 @@ export class LlmClient {
             candidateDeltas.push({ kind: "reasoning", delta });
           },
           ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
+          ...(params.maxOutputTokensOverride ? { maxOutputTokensOverride: params.maxOutputTokensOverride } : {}),
           ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
           ...(params.preferNativeNoThinkingChatEndpoint != null
             ? { preferNativeNoThinkingChatEndpoint: params.preferNativeNoThinkingChatEndpoint }

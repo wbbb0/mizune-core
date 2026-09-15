@@ -86,6 +86,7 @@ test("persona setup uses the current draft and snapshots output mode before asyn
     sessionRuntime: {
       logger,
       historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
         async maybeCompress() {
           sessionManager.setSettings(sessionId, {
             pacingPreferences: {
@@ -257,6 +258,7 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
     sessionRuntime: {
       logger,
       historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
         async maybeCompress() {
           sessionManager.setSettings(sessionId, {
             pacingPreferences: sessionManager.getPacingPreferences(sessionId),
@@ -440,6 +442,7 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
     sessionRuntime: {
       logger,
       historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
         async maybeCompress() {
           return false;
         }
@@ -625,6 +628,7 @@ test("normal prompt provider replay excludes the active input batch", async () =
     sessionRuntime: {
       logger,
       historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
         async maybeCompress() {
           return false;
         }
@@ -782,6 +786,7 @@ test("normal prompt history excludes active transcript group instead of subtract
     sessionRuntime: {
       logger,
       historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
         async maybeCompress() {
           return false;
         }
@@ -938,6 +943,7 @@ test("normal prompt receives task tracker changes from the current user batch", 
     sessionRuntime: {
       logger,
       historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
         async maybeCompress() {
           return false;
         }
@@ -1031,8 +1037,10 @@ test("normal prompt receives task tracker changes from the current user batch", 
 
 test("normal prompt receives task tracker changes from turn planner intent", async () => {
   const config = createTestAppConfig({
+    conversation: { historyCompression: { enabled: true } },
     llm: {
       enabled: true,
+      summarizer: { enabled: true },
       turnPlanner: {
         enabled: true
       }
@@ -1094,6 +1102,7 @@ test("normal prompt receives task tracker changes from turn planner intent", asy
       sessionRuntime: {
         logger,
         historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
           async maybeCompress() {
             return false;
           },
@@ -1226,7 +1235,8 @@ test("normal prompt receives task tracker changes from turn planner intent", asy
 test("turn planner receives content-safety projected history and batch", async () => {
   const config = createTestAppConfig({
     llm: {
-      enabled: true
+      enabled: true,
+      turnPlanner: { enabled: true, semanticWait: true }
     }
   });
   const logger = pino({ level: "silent" });
@@ -1307,6 +1317,7 @@ test("turn planner receives content-safety projected history and batch", async (
     sessionRuntime: {
       logger,
       historyCompressor: {
+        getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
         async maybeCompress() {
           return false;
         },

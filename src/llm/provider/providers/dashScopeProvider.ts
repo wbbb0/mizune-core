@@ -295,7 +295,8 @@ function buildDashScopeRequestBody(
   const parameters: Record<string, unknown> = {
     incremental_output: true,
     result_format: "message",
-    ...buildDashScopeModelApiParameters(context)
+    ...buildDashScopeModelApiParameters(context),
+    ...(params.maxOutputTokensOverride ? { max_tokens: params.maxOutputTokensOverride } : {})
   };
 
   const thinkingFeature = getProviderFeatureFromContext(context, "thinking");

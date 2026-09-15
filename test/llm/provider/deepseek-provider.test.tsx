@@ -86,7 +86,7 @@ test("deepseek provider includes configured model api parameters", async () => {
         assert.equal(body.temperature, 0.65);
         assert.equal(body.top_p, 0.88);
         assert.equal(body.presence_penalty, 0.15);
-        assert.equal(body.max_tokens, 512);
+        assert.equal(body.max_tokens, 256);
       },
       payloads: [{
         choices: [{
@@ -98,6 +98,7 @@ test("deepseek provider includes configured model api parameters", async () => {
     }
   ], async () => {
     const result = await client.generate({
+        maxOutputTokensOverride: 256,
       messages: [{ role: "user", content: "你好" }]
     });
 

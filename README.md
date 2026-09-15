@@ -19,6 +19,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 - persona、RP / Scenario 资料、用户资料、记忆和规则持久化
 - LLM provider → model 分层目录与 routing preset，支持供应商内局部模型别名、同名模型快速切换，以及按 preset 设置历史窗口和 token 上下限
 - 历史压缩、自动会话标题、图片说明、音频转写、turn planner
+  - turn planner 按需调用：默认全量提供当前允许的工具、关闭语义等待；大小模型候选链与参数等价时自动跳过模型选择和升级工具。话题切换仅在旧历史值得压缩时判断，硬性 token 阈值压缩独立运行。配置与成本观测见 [轮次规划](docs/architecture/turn-planner.md)。
 - shell、workspace 文件、网页搜索、浏览器、ComfyUI 等可选工具能力
   - 后台 shell、下载、ComfyUI 任务完成后，事件会以 `⟦section name="background_event_batch"⟧` 批注入到当前工具调用循环的下一次 LLM 推理前，无需等待当前响应收尾；定时任务（scheduled instruction）仍在无活动响应时开独立 session。
 - Fastify 内部 API 与 Vue 3 + Tailwind WebUI

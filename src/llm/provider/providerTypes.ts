@@ -86,6 +86,7 @@ export interface LlmGenerateParams {
   modelRefOverride?: string | string[];
   resolveModelRefOverride?: () => string | string[];
   timeoutMsOverride?: number;
+  maxOutputTokensOverride?: number;
   enableThinkingOverride?: boolean;
   preferNativeNoThinkingChatEndpoint?: boolean;
   skipDebugDump?: boolean;
@@ -193,6 +194,7 @@ export interface LlmProviderGenerateParams {
   onTextDelta?: (delta: string) => Promise<void> | void;
   onReasoningDelta?: (delta: string) => void;
   timeoutMsOverride?: number;
+  maxOutputTokensOverride?: number;
   enableThinkingOverride?: boolean;
   preferNativeNoThinkingChatEndpoint?: boolean;
   skipDebugDump?: boolean;

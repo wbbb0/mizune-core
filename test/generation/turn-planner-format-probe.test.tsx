@@ -480,7 +480,7 @@ import {
     assert.equal(capturedTools, undefined);
   });
 
-  test("buildTurnPlannerFormatProbePrompt removes the legacy pipe-format instruction", async () => {
+  test("buildTurnPlannerFormatProbePrompt uses the production full-planning template", async () => {
     const messages = buildTurnPlannerFormatProbePrompt(
       createDefaultTurnPlannerProbeCases()[0]!,
       [createProbeToolset("web_research")]
@@ -493,6 +493,6 @@ import {
     );
     assert.match(
       String(systemMessage?.content),
-      /必须严格输出下面 8 行/
+      /严格输出以下 8 行/
     );
   });

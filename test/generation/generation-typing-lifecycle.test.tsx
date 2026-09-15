@@ -511,7 +511,7 @@ test("an explicitly empty toolset boundary never falls back to all builtin tools
   harness.resolveDrain();
   await harness.runPromise;
 
-  assert.deepEqual(visibleToolNames, ["list_available_toolsets", "request_toolset"]);
+  assert.deepEqual(visibleToolNames, []);
 });
 
 test("an explicitly empty direct tool boundary exposes no builtin tools", async () => {

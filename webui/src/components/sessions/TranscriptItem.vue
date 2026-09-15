@@ -504,6 +504,13 @@ const plannerOutputRows = computed(() => {
   }
   return [
     { key: "action", value: props.item.action },
+    { key: "规划原因", value: props.item.plannerReasons?.map((reason) => ({
+      modelSelection: "模型选择", toolSelection: "工具集选择", replyGate: "群聊回复判断",
+      semanticWait: "语义等待", topicSwitch: "话题压缩判断", taskIntent: "任务意图"
+    } as Record<string, string>)[reason] ?? reason).join("、") ?? null },
+    { key: "规划耗时", value: props.item.plannerMetrics ? `${props.item.plannerMetrics.durationMs} ms（媒体准备 ${props.item.plannerMetrics.mediaPreparationMs} ms，模型 ${props.item.plannerMetrics.generationMs} ms）` : null },
+    { key: "规划 Token", value: props.item.plannerMetrics ? `输入 ${props.item.plannerMetrics.inputTokens ?? "未知"} / 输出 ${props.item.plannerMetrics.outputTokens ?? "未知"} / 缓存 ${props.item.plannerMetrics.cachedTokens ?? "未知"}` : null },
+    { key: "规划媒体", value: props.item.plannerMetrics ? `描述 ${props.item.plannerMetrics.mediaCaptionCount} / 表情输入 ${props.item.plannerMetrics.emojiInputCount}` : null },
     { key: "replyDecision", value: props.item.replyDecision ?? null },
     { key: "topicDecision", value: props.item.topicDecision ?? null },
     { key: "waitPassCount", value: props.item.waitPassCount != null ? String(props.item.waitPassCount) : null },

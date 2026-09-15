@@ -130,33 +130,6 @@ const DEFAULT_PROBE_TOOLSET_IDS = [
   "time_utils"
 ] as const;
 
-const PROBE_FORMAT_GUIDANCE = [
-  "你正在参加 turn_planner 格式稳定性实验，必须严格输出下面 8 行，不得多写任何解释、前后缀、代码块或空行：",
-  "reason: <少于20字的中文理由>",
-  "reply_decision: <reply_small|reply_large|wait|no_reply>",
-  "topic_decision: <continue_topic|new_topic>",
-  "required_capabilities: <逗号分隔标签；无则填 none>",
-  "context_dependencies: <逗号分隔标签；无则填 none>",
-  "recent_domain_reuse: <逗号分隔 toolset id；无则填 none>",
-  "followup_mode: <none|elliptical|explicit_reference>",
-  "toolset_ids: <逗号分隔 toolset id；无则填 none>",
-  "required_capabilities 可用标签：external_info_lookup, web_navigation, filesystem_access, chat_context_lookup, shell_execution, memory_write, scheduler_management, time_lookup, social_admin, conversation_navigation, chat_delegation, image_generation",
-  "context_dependencies 可用标签：structured_message_context, prior_web_context, prior_shell_context, prior_file_context, prior_chat_context",
-  "recent_domain_reuse 只可填写当前可用工具集中的 id。",
-  "保持原 turn_planner 判定原则不变，只改变输出格式。缺失工具集比多给 1 个工具集代价更高。"
-].join("\n");
-
-const LEGACY_OUTPUT_FORMAT_RULE_LINES = [
-  "输出格式严格单行：简短理由|<动作标签>|<话题标签>|<工具集ID列表>",
-  "理由用中文，少于20字，给出直接依据。",
-  "动作标签（三选一）：reply_small / reply_large / wait。",
-  "话题标签（二选一）：continue_topic / new_topic（若动作为 wait，话题必须是 continue_topic）。",
-  "工具集ID列表：",
-  "- 动作为 wait 时填 -",
-  "- reply_* 时填逗号分隔 ID，例如 web_research,memory_profile；若无需工具可填 none。",
-  "只可从给定 available_toolsets 中挑选，不要编造 ID。",
-  "若任务可能跨多个能力域，可一次返回多个工具集；但不要无谓扩大范围。"
-] as const;
 
 export function createProbeToolset(toolsetId: string): ToolsetView {
   const definition = TOOLSET_DEFINITIONS.find((item) => item.id === toolsetId);
@@ -659,6 +632,7 @@ export function buildTurnPlannerFormatProbePrompt(
   availableToolsets: ToolsetView[]
 ): LlmMessage[] {
   const basePrompt = buildTurnPlannerPrompt({
+    requirements: { modelSelection: true, toolSelection: true, replyGate: probeCase.chatType === "group", semanticWait: true, topicSwitch: true, taskIntent: false },
     sessionId: probeCase.sessionId ?? `probe-${probeCase.id}`,
     chatType: probeCase.chatType,
     relationship: probeCase.relationship,
@@ -670,15 +644,7 @@ export function buildTurnPlannerFormatProbePrompt(
     emojiInputs: []
   });
 
-  return basePrompt.map((message, index) => {
-    if (index !== 0 || message.role !== "system" || typeof message.content !== "string") {
-      return message;
-    }
-    return {
-      ...message,
-      content: `${stripLegacyOutputFormatRules(message.content)}\n\n${PROBE_FORMAT_GUIDANCE}`
-    };
-  });
+  return basePrompt;
 }
 
 function createProbeBatchMessage(
@@ -739,12 +705,6 @@ function singleLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function stripLegacyOutputFormatRules(content: string): string {
-  return content
-    .split("\n")
-    .filter((line) => !LEGACY_OUTPUT_FORMAT_RULE_LINES.includes(line.trim() as typeof LEGACY_OUTPUT_FORMAT_RULE_LINES[number]))
-    .join("\n");
-}
 
 function normalizeTurnPlannerProbeDecision(input: TurnPlannerProbeDecision): TurnPlannerProbeDecision {
   const normalizationWarnings = [...input.normalizationWarnings];

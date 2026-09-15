@@ -36,7 +36,7 @@ test("model self-upgrade fails closed for cross-provider fallback candidates", (
   }), null);
 });
 
-test("model self-upgrade is hidden when disabled, already on large, same actual model, or tools unsupported", () => {
+test("model self-upgrade is hidden when disabled, already on large, equivalent routes, or tools unsupported", () => {
   const config = createUpgradeConfig();
   assert.equal(resolveModelSelfUpgradePlan({
     config,
@@ -50,6 +50,7 @@ test("model self-upgrade is hidden when disabled, already on large, same actual 
   }), null);
 
   config.llm.models.large!.model = config.llm.models.small!.model;
+  config.llm.models.large_fallback!.model = config.llm.models.small_fallback!.model;
   assert.equal(resolveModelSelfUpgradePlan({
     config,
     currentModelRefs: ["small", "small_fallback"],

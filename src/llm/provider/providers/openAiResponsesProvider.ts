@@ -179,6 +179,7 @@ function buildOpenAiResponsesRequestBody(
     model: context.model,
     stream: true,
     ...buildOpenAiResponsesModelApiParameters(context),
+    ...(params.maxOutputTokensOverride ? { max_output_tokens: params.maxOutputTokensOverride } : {}),
     input,
     tools: buildOpenAiResponsesTools(context, params.tools ?? []),
     store: false

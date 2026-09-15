@@ -42,6 +42,10 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.equal(config.llm.routingPreset, "");
       assert.deepEqual(getModelRefsForRole(config, "main_small"), []);
       assert.equal(config.llm.turnPlanner.supplementToolsets, true);
+      assert.equal(config.llm.turnPlanner.toolSelection, "all");
+      assert.equal(config.llm.turnPlanner.semanticWait, false);
+      assert.equal(config.llm.turnPlanner.topicCompressionMinTokens, 2000);
+      assert.equal(config.llm.turnPlanner.topicCompressionMinMessages, 6);
       assert.equal(config.llm.sessionCaptioner.timeoutMs, 15000);
       assert.equal(config.llm.imageInspector.enabled, true);
       assert.equal(config.llm.imageInspector.timeoutMs, 45000);

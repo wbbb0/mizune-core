@@ -114,9 +114,13 @@ export class OpenAiProvider implements LlmProvider {
         include_usage: true
       },
       ...buildOpenAiCompatibleModelApiParameters(context),
+      ...(params.maxOutputTokensOverride ? { max_completion_tokens: params.maxOutputTokensOverride } : {}),
       ...(requestTools.length > 0 ? { tools: requestTools } : {})
     };
 
+    if (params.maxOutputTokensOverride) {
+      delete requestBody.max_tokens;
+    }
     const thinkingFeature = getProviderFeatureFromContext(context, "thinking");
     if (thinkingFeature?.type === "flag") {
       setPropertyByPath(requestBody, thinkingFeature.path, resolvedEnableThinking);

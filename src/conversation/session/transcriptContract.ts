@@ -333,13 +333,24 @@ export const transcriptGateDecisionItemSchema = z.object({
   reason: z.string().nullable(),
   reasoningContent: z.string().optional(),
   waitPassCount: z.number().int().nonnegative().optional(),
-  replyDecision: z.enum(["reply_small", "reply_large", "wait", "no_reply", "ignore"]).optional(),
+  replyDecision: z.enum(["reply", "reply_small", "reply_large", "wait", "no_reply", "ignore"]).optional(),
   topicDecision: z.string().optional(),
   requiredCapabilities: z.array(z.string()).optional(),
   contextDependencies: z.array(z.string()).optional(),
   recentDomainReuse: z.array(z.string()).optional(),
   followupMode: z.string().optional(),
   toolsetIds: z.array(z.string()).optional(),
+  plannerReasons: z.array(z.string()).optional(),
+  plannerMetrics: z.object({
+    durationMs: z.number().nonnegative(),
+    mediaPreparationMs: z.number().nonnegative(),
+    generationMs: z.number().nonnegative(),
+    inputTokens: z.number().nullable(),
+    outputTokens: z.number().nullable(),
+    cachedTokens: z.number().nullable(),
+    mediaCaptionCount: z.number().nonnegative(),
+    emojiInputCount: z.number().nonnegative()
+  }).optional(),
   timestampMs: z.number().int().nonnegative()
 });
 

@@ -136,8 +136,12 @@ const llmTurnPlannerConfigSchema = s.object({
   enableThinking: s.boolean().title("启用思考").default(false),
   recentMessageCount: s.number().int().positive().title("近期消息数").default(6),
   maxWaitPasses: s.number().int().min(0).title("最大等待轮数").default(1),
+  toolSelection: s.enum(["planned", "all"] as const).title("工具集选择").describe("planned 按需选择；all 提供当前权限与模式允许的全部工具，稳定工具清单。").default("all"),
+  semanticWait: s.boolean().title("语义等待").describe("关闭后只依赖 debounce 合并连续消息，不再让规划模型判断消息是否说完。").default(false),
+  topicCompressionMinTokens: s.number().int().positive().title("话题压缩最小回收 Token").describe("预计可压缩旧历史扣除摘要预算后达到此值，才判断话题切换。硬性 Token 阈值压缩独立运行。").default(2000),
+  topicCompressionMinMessages: s.number().int().positive().title("话题压缩最少新消息").describe("待压缩原始消息达到此数量才判断话题切换；已有摘要不计入。").default(6),
   supplementToolsets: s.boolean().title("补充工具集").default(true)
-}).title("轮次规划").describe("决定是否继续等待新消息，还是开始本轮回复。").default(emptyObject);
+}).title("轮次规划").describe("按需判断回复、模型、工具集、任务意图和话题压缩；无判断职责时跳过模型调用。").default(emptyObject);
 
 const llmImageCaptionerConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),

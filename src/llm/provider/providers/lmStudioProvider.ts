@@ -148,7 +148,7 @@ export class LmStudioProvider implements LlmProvider {
         context,
         params,
         endpoint,
-        buildNativeChatRequestBody(context, params.messages),
+        buildNativeChatRequestBody(context, params.messages, params.maxOutputTokensOverride),
         resolvedTimeoutMs
       );
 
@@ -215,7 +215,7 @@ function canMapMessagesToNativeChatInput(messages: LlmMessage[]): boolean {
   return true;
 }
 
-function buildNativeChatRequestBody(context: LlmProviderRequestContext, messages: LlmMessage[]): Record<string, unknown> {
+function buildNativeChatRequestBody(context: LlmProviderRequestContext, messages: LlmMessage[], maxOutputTokensOverride?: number): Record<string, unknown> {
   const systemPrompts: string[] = [];
   const input: NativeLmStudioInput[] = [];
 
@@ -261,6 +261,7 @@ function buildNativeChatRequestBody(context: LlmProviderRequestContext, messages
     model: context.model,
     input,
     ...modelApiParameters,
+    ...(maxOutputTokensOverride ? { max_output_tokens: maxOutputTokensOverride } : {}),
     reasoning: "off",
     stream: true,
     store: typeof modelApiParameters.store === "boolean" ? modelApiParameters.store : false,

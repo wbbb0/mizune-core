@@ -7,6 +7,7 @@ import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./gene
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { TurnPlannerResult } from "#conversation/turnPlanner.ts";
 import type { TurnPlannerTaskContext } from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
+import { getTurnPlannerReasons, resolveTurnPlannerRequirements, type TopicCompressionCandidate } from "#conversation/turnPlannerPolicy.ts";
 import {
   collectVisualAttachmentFileIds,
   dedupeResolvedChatAttachments,
@@ -20,6 +21,7 @@ export interface GenerationTurnPlannerInput {
   batchMessages: GenerationRuntimeBatchMessage[];
   availableToolsets: ToolsetView[];
   taskContext?: TurnPlannerTaskContext | null | undefined;
+  topicCompressionCandidate?: TopicCompressionCandidate | null | undefined;
   sendTarget: GenerationSendTarget;
   historyForPrompt: GenerationPromptHistoryMessage[];
   pendingReplyGateWaitPasses: number;
@@ -50,20 +52,23 @@ export async function handleGenerationTurnPlanner(
     config,
     logger,
     llmClient,
-    sessionCaptioner,
     turnPlanner,
     debounceManager,
     sessionManager,
     persistSession
   } = deps;
   const defaultModelRef = getModelRefsForRole(config, "main_small");
+  const continueWithoutPlanner = (reason: string): GenerationTurnPlannerResult => {
+    logger.info({ sessionId: input.sessionId, reason, inputTokens: 0, outputTokens: 0, durationMs: 0 }, "turn_planner_skipped");
+    return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
+  };
 
   if (input.batchMessages.length === 0 || !llmClient.isConfigured(defaultModelRef)) {
-    return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
+    return continueWithoutPlanner("empty_batch_or_model_unavailable");
   }
 
   if (!turnPlanner.isEnabled()) {
-    return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
+    return continueWithoutPlanner("disabled");
   }
 
   const last = input.batchMessages[input.batchMessages.length - 1];
@@ -73,8 +78,19 @@ export async function handleGenerationTurnPlanner(
 
   if (input.batchMessages.some((message) => message.audioSources.length > 0)) {
     logger.info({ sessionId: input.sessionId }, "turn_planner_audio_todo_bypassed");
-    return { action: "continue", resolvedModelRef: defaultModelRef, toolsetIds: input.availableToolsets.map((item) => item.id) };
+    return continueWithoutPlanner("audio_pending_transcription");
   }
+
+  const requirements = resolveTurnPlannerRequirements(config, {
+    canSkipReply: !shouldCoerceNoReplyToReply(input),
+    pendingWaitPasses: input.pendingReplyGateWaitPasses,
+    availableToolsetCount: input.availableToolsets.length,
+    taskContext: input.taskContext,
+    topicCompressionCandidate: input.topicCompressionCandidate
+  });
+  const callReasons = getTurnPlannerReasons(requirements);
+  if (callReasons.length === 0) return continueWithoutPlanner("no_required_decisions");
+  logger.info({ sessionId: input.sessionId, callReasons, topicCompressionCandidate: input.topicCompressionCandidate }, "turn_planner_required");
 
   const plannerProfile = getPrimaryModelProfile(config, getModelRefsForRole(config, "turn_planner"));
   const hasEmojiWithoutGateVision = (
@@ -111,13 +127,14 @@ export async function handleGenerationTurnPlanner(
   });
 
   let planner = await turnPlanner.decide({
+    requirements,
     sessionId: input.sessionId,
     chatType: input.sendTarget.chatType,
     relationship: input.relationship,
     currentUserSpecialRole: input.currentUser?.specialRole ?? null,
     recentMessages: input.historyForPrompt,
-    availableToolsets: input.availableToolsets,
-    taskContext: input.taskContext,
+    availableToolsets: requirements.toolSelection ? input.availableToolsets : [],
+    taskContext: requirements.taskIntent ? input.taskContext : null,
     abortSignal: input.abortSignal,
     batchMessages: plannerBatchMessages
   });
@@ -157,7 +174,7 @@ export async function handleGenerationTurnPlanner(
     finalAction = "skip";
   }
 
-  if (finalAction === "continue" && planner.topicDecision === "new_topic" && planner.replyDecision !== "wait") {
+  if (requirements.topicSwitch && finalAction === "continue" && planner.topicDecision === "new_topic" && planner.replyDecision !== "wait") {
     const preservedMessageCount = input.batchMessages.length;
     logger.info(
       {
@@ -171,7 +188,7 @@ export async function handleGenerationTurnPlanner(
     topicSwitchCompression = { preservedMessageCount };
   }
 
-  if (planner.replyDecision === "wait") {
+  if (requirements.semanticWait && planner.replyDecision === "wait") {
     const nextWaitPassCount = input.pendingReplyGateWaitPasses + 1;
     if (nextWaitPassCount > config.llm.turnPlanner.maxWaitPasses) {
       logger.info(
@@ -214,8 +231,10 @@ export async function handleGenerationTurnPlanner(
       reason: planner.reason ?? null,
       ...(planner.reasoningContent ? { reasoningContent: planner.reasoningContent } : {}),
       ...(typeof finalWaitPassCount === "number" ? { waitPassCount: finalWaitPassCount } : {}),
-      replyDecision: planner.replyDecision,
-      topicDecision: planner.topicDecision,
+      replyDecision: !requirements.modelSelection && planner.replyDecision === "reply_small" ? "reply" : planner.replyDecision,
+      ...(requirements.topicSwitch ? { topicDecision: planner.topicDecision } : {}),
+      plannerReasons: callReasons,
+      ...(planner.metrics ? { plannerMetrics: planner.metrics } : {}),
       ...(planner.requiredCapabilities.length > 0 ? { requiredCapabilities: planner.requiredCapabilities } : {}),
       ...(planner.contextDependencies.length > 0 ? { contextDependencies: planner.contextDependencies } : {}),
       ...(planner.recentDomainReuse.length > 0 ? { recentDomainReuse: planner.recentDomainReuse } : {}),
@@ -234,9 +253,9 @@ export async function handleGenerationTurnPlanner(
     action: "continue",
     resolvedModelRef: getModelRefsForRole(
       config,
-      planner.replyDecision === "reply_large" ? "main_large" : "main_small"
+      requirements.modelSelection && planner.replyDecision === "reply_large" ? "main_large" : "main_small"
     ),
-    toolsetIds: planner.toolsetIds,
+    toolsetIds: requirements.toolSelection ? planner.toolsetIds : input.availableToolsets.map((item) => item.id),
     plannerDecision: planner,
     ...(topicSwitchCompression ? { topicSwitchCompression } : {})
   };

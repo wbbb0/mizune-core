@@ -57,7 +57,7 @@ test("openai responses provider maps request content, tools, parameters, and str
         assert.equal(body.store, false);
         assert.equal(body.temperature, 0.4);
         assert.equal(body.top_p, 0.8);
-        assert.equal(body.max_output_tokens, 512);
+        assert.equal(body.max_output_tokens, 256);
         assert.equal("top_k" in body, false);
         assert.equal("presence_penalty" in body, false);
         assert.deepEqual(body.reasoning, { effort: "none" });
@@ -140,6 +140,7 @@ test("openai responses provider maps request content, tools, parameters, and str
     }
   ], async () => {
     const result = await client.generate({
+        maxOutputTokensOverride: 256,
       messages: [
         { role: "system", content: "你是助手" },
         {

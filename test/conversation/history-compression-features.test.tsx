@@ -55,6 +55,30 @@ function appendSimpleHistory(
   }, timestampMs);
 }
 
+test("topic compression candidates exclude summaries and reset after compaction", async () => {
+  const config = createConfig();
+  const manager = new SessionManager(config);
+  const sessionId = "qqbot:p:topic-candidate";
+  manager.ensureSession({ id: sessionId, type: "private" });
+  const compressor = new HistoryCompressor(config, {
+    isConfigured: () => true,
+    async generate() { return { text: "摘要".repeat(5000) }; }
+  } as never, manager, { ensureReady: async () => new Map() } as never, pino({ level: "silent" }));
+  assert.equal(compressor.getTopicCompressionCandidate(sessionId, 1), null);
+  for (let index = 0; index < 7; index++) {
+    appendSimpleHistory(manager, sessionId, index % 2 === 0 ? "user" : "assistant", "旧历史".repeat(300), index + 1);
+  }
+  const candidate = compressor.getTopicCompressionCandidate(sessionId, 1);
+  assert.equal(candidate?.messageCount, 6);
+  assert.ok((candidate?.estimatedReclaimableTokens ?? 0) > 2000);
+  assert.equal(await compressor.compactOldHistoryKeepingRecent(sessionId, 1), true);
+  assert.equal(compressor.getTopicCompressionCandidate(sessionId, 1), null);
+  appendSimpleHistory(manager, sessionId, "assistant", "短消息", 10);
+  assert.equal(compressor.getTopicCompressionCandidate(sessionId, 1)?.messageCount, 1);
+  config.llm.summarizer.enabled = false;
+  assert.equal(compressor.getTopicCompressionCandidate(sessionId, 1), null);
+});
+
   test("forceCompact uses default retain count from config", async () => {
     const sessionManager = new SessionManager(createConfig());
     sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });

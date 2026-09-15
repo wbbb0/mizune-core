@@ -34,7 +34,7 @@ session 持久化字段为 `taskTrackerJson`，内存结构为：
 - “算了”“先这样”等模糊表达进入 `cancel_confirming`。
 - “继续/接着做/恢复刚才的任务”会恢复 suspended、cancel_confirming 或 ready_to_close。
 
-如果 turnPlanner 启用，TaskTracker 不新增 LLM 调用，而是向现有 turnPlanner 追加一个极短 `task_context`，由 planner 多输出一行 `task_intent`：
+如果 turnPlanner 启用且存在未结束的主任务或 parked task，TaskTracker 向按需规划请求追加一个极短 `task_context`，由 planner 输出 `task_intent`。任务意图本身可以成为调用 planner 的唯一原因；若本轮还需要其他判断，则合并到同一次请求。没有相关任务状态时不发送任务上下文和输出字段。详见 [轮次规划](../architecture/turn-planner.md)。
 
 ```text
 task_intent: <kind>|<target_task_id_or_none>|<low|medium|high>
