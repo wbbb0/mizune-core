@@ -1,3 +1,4 @@
+import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import type { NpcDirectory } from "#identity/npcDirectory.ts";
@@ -95,6 +96,7 @@ export interface AppServiceBootstrap {
   searchService: SearchService;
   browserService: BrowserService;
   localFileService: LocalFileService;
+  temporaryWorkspaceService: TemporaryWorkspaceService;
   chatFileStore: ChatFileStore;
   downloadRuntime: DownloadRuntime;
   assetLifecycleStore: AssetLifecycleStore;

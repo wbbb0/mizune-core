@@ -1,3 +1,4 @@
+import { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import { ContextRetrievalService } from "#context/contextRetrievalService.ts";
@@ -85,6 +86,7 @@ export function createBootstrapServices(
   const audioStore = new AudioStore(dataDir, logger);
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
+  const temporaryWorkspaceService = new TemporaryWorkspaceService(config, dataDir, (error) => logger.warn({ error }, "temporary_workspace_cleanup_failed"));
   const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir);
   const downloadRuntime = new DownloadRuntime(config, logger, dataDir, chatFileStore);
   const contentSafetyStore = new ContentSafetyStore(dataDir, logger);
@@ -188,6 +190,7 @@ export function createBootstrapServices(
     searchService,
     browserService,
     localFileService,
+    temporaryWorkspaceService,
     chatFileStore,
     downloadRuntime,
     assetLifecycleStore,
@@ -223,6 +226,7 @@ export async function initializeBootstrapState(
       | "sessionSnapshotStore"
       | "audioStore"
       | "localFileService"
+      | "temporaryWorkspaceService"
       | "chatFileStore"
       | "assetLifecycleService"
       | "mediaVisionService"
@@ -262,6 +266,7 @@ export async function initializeBootstrapState(
     sessionSnapshotStore,
     audioStore,
     localFileService,
+    temporaryWorkspaceService,
     chatFileStore,
     assetLifecycleService,
     contentSafetyStore,
@@ -294,6 +299,7 @@ export async function initializeBootstrapState(
   await sessionPersistence.init();
   await sessionSnapshotStore.init();
   await localFileService.init();
+  await temporaryWorkspaceService.init();
   await chatFileStore.init();
   await assetLifecycleService.init();
   await contentSafetyStore?.init();

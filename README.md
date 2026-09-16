@@ -187,12 +187,23 @@ onebot:
 
 历史补全只写入会话历史，不进入回复触发、排队和生成流程。
 
+## 临时工作区
+
+明确目标路径时，`filesystem_*` 继续使用原有本地路径规则。无明确位置或处理临时文件时，先调用 `workspace_create`，再给 `filesystem_*` 传 `workspace_id` 和工作区内相对路径；包括读写、修改、搜索、复制、移动、媒体查看与发送。
+
+- 消息附件、群文件和网络文件沿用现有获取/下载工具，拿到 asset 后使用 `asset_export_to_filesystem(workspace_id, asset_ref, to_path)` 复制到工作区，修改不会影响原资产。
+- `workspace_clone` 获取公开 HTTPS Git 仓库的浅克隆文件快照；`workspace_extract` 解压 ZIP；`workspace_pack` 打包 ZIP；`workspace_export` 将文件登记为长期资产。工作区内文件也可以直接通过 `filesystem_send_to_chat` 发送，发送前会复制登记为资产。
+- 工作区按会话与创建用户隔离，固定 24 小时有效，服务重启后继续可用。启动时和每小时扫描清理，工具及预览接口每次访问都检查是否到期；`workspace_close` 可提前清理。已导出的资产按现有资产规则保留。
+- WebUI 资源清单显示工作区，详情使用文件列表/预览分栏，窄屏自动切换 Tab。支持分页文本、图片和音视频预览及下载，HTML/SVG 等不会作为网页执行。
+
+工作区随 `localFiles.enabled` 启用，保存在实例 `dataDir/temporary-workspaces/`，不受 `localFiles.root` 影响。它提供受限文件操作，不提供任意命令执行；未传 `workspace_id` 的调用继续遵守原有本地文件能力边界。公开 Git 获取使用固定参数、无凭据、无项目脚本，最长两分钟；不跟随重定向、不获取子模块、不保留 `.git`，不支持含符号链接的仓库。ZIP 与仓库文件快照上限为 256 MiB、10000 个条目；文本预览和编辑沿用 `localFiles.maxPatchFileBytes`。详见 [临时工作区](docs/architecture/temporary-workspaces.md)。
+
 ## 项目结构
 
 ```text
 src/          后端源码
 webui/        Vue 3 + Tailwind WebUI
-packages/     WebUI 共享源码包（workbench、resource editor、file workspace）
+vendor/workbench-kit/  WebUI 共享组件子模块
 config/       运行配置与示例配置
 data/         本地运行时数据
 docs/         长期维护文档
@@ -209,7 +220,7 @@ deploy/       systemd 服务示例
 - `internalApi/`：内部 HTTP API、应用服务与 WebUI 托管
 - `context/`、`memory/`、`persona/`、`modes/`：长期上下文、规则、资料和模式相关能力
 
-`packages/` 当前包含 repo 内复用的前端源码包：
+`vendor/workbench-kit/packages/` 包含复用的前端源码包：
 
 - `vue-workbench`：工作台外壳、导航、pane、菜单、toast、窗口和基础 primitives
 - `vue-resource-editor`：schema 驱动资源编辑器类型、渲染组件、草稿状态和 editor client 契约

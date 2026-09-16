@@ -82,6 +82,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       shellRuntime: {} as never,
       searchService: {} as never,
       browserService: {} as never,
+      temporaryWorkspaceService: { async init() {}, list() { return []; } } as any,
       localFileService: {} as never,
       chatFileStore: {} as never,
       downloadRuntime: {} as never,

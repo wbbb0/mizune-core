@@ -258,6 +258,7 @@ export function createBrowserToolContext(
     comfyClient: null as unknown as BuiltinToolContext["comfyClient"],
     comfyTaskStore: null as unknown as BuiltinToolContext["comfyTaskStore"],
     comfyTemplateCatalog: null as unknown as BuiltinToolContext["comfyTemplateCatalog"],
+    temporaryWorkspaceService: { async init() {}, list() { return []; } } as any,
     localFileService: {
       resolvePath(relativePath = ".") {
         return {

@@ -38,6 +38,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
         return { pages: [] };
       }
     } as any,
+    temporaryWorkspaceService: { list() { return []; } } as any,
     localFileService: {} as any,
     chatFileStore: {} as any,
     downloadRuntime: { list() { return []; } } as any,
@@ -128,6 +129,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -421,6 +423,10 @@ function createActiveTaskTracker() {
           };
         }
       } as any,
+      temporaryWorkspaceService: { list(actor: { sessionId: string; userId: string }) {
+        assert.equal(actor.userId, "10001");
+        return [{ resource_id: "ws_prompt", name: "临时源码", status: "active", createdAtMs: 1, expiresAtMs: 86400001 }];
+      } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -543,6 +549,8 @@ function createActiveTaskTracker() {
 
     const system = readPromptSystemText(result.promptMessages);
     assert.match(system, /当前可复用 live_resource/);
+    assert.match(system, /ws_prompt \| workspace \| active/);
+    assert.match(system, /workspace_id=ws_prompt/);
     assert.match(system, /res_browser_7 \| browser \| active \| Docs 7 \| 浏览第 7 个页面/);
     assert.match(system, /res_browser_1 \| browser \| active \| Docs 1/);
     assert.match(system, /res_shell_1 \| shell \| active \| npm test @ \/repo \| 跑测试/);
@@ -568,6 +576,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -1128,6 +1137,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -1249,6 +1259,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -1384,6 +1395,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -1564,6 +1576,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -1968,6 +1981,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -2084,6 +2098,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -2265,6 +2280,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -2418,6 +2434,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -2628,6 +2645,7 @@ function createActiveTaskTracker() {
           return { pages: [] };
         }
       } as any,
+      temporaryWorkspaceService: { list() { return []; } } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,

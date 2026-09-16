@@ -1,3 +1,4 @@
+import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { ConfigManager } from "#config/configManager.ts";
 import type { Logger } from "pino";
 import { startInternalApi } from "#internalApi/server.ts";
@@ -113,6 +114,7 @@ export async function shutdownRuntime(input: {
   internalApi: InternalApiController | null;
   browserService: BrowserService;
   downloadRuntime: DownloadRuntime;
+  temporaryWorkspaceService: TemporaryWorkspaceService;
   schedulerStarted: boolean;
   scheduler: Scheduler;
   contextMaintenanceService: ContextMaintenanceService;
@@ -134,6 +136,7 @@ export async function shutdownRuntime(input: {
     }
     await input.browserService.shutdown();
     await input.downloadRuntime.close();
+    await input.temporaryWorkspaceService.shutdown();
     input.contextMaintenanceService.stop();
     input.contextExtractionQueue.stop();
     await input.comfyTaskRunner.stop();

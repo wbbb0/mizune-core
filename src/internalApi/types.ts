@@ -1,3 +1,4 @@
+import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
@@ -207,6 +208,7 @@ export interface InternalApiBrowserDeps {
 
 export interface InternalApiWorkspaceDeps {
   localFileService: LocalFileService;
+  temporaryWorkspaceService: TemporaryWorkspaceService;
   chatFileStore: ChatFileStore;
   oneBotClient: OneBotClient;
 }
@@ -253,6 +255,7 @@ export interface InternalApiDeps {
   flushSession: MessageFlushSession;
   browserService: BrowserService;
   localFileService: LocalFileService;
+  temporaryWorkspaceService: TemporaryWorkspaceService;
   chatFileStore: ChatFileStore;
   audioStore: AudioStore;
   contentSafetyStore?: ContentSafetyStore;
@@ -356,6 +359,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       },
       workspace: {
         localFileService: deps.localFileService,
+        temporaryWorkspaceService: deps.temporaryWorkspaceService,
         chatFileStore: deps.chatFileStore,
         oneBotClient: deps.oneBotClient
       }

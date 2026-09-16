@@ -67,7 +67,7 @@ export interface PromptHistoryMessage {
 
 export interface PromptLiveResource {
   resourceId: string;
-  kind: "browser_page" | "shell_session" | "download";
+  kind: "browser_page" | "shell_session" | "download" | "workspace";
   status: "active" | "expired" | "closed" | "unrecoverable";
   title?: string | null;
   description?: string | null;

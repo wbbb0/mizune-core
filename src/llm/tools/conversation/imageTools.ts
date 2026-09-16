@@ -1,3 +1,4 @@
+import { withFilesystemScopeDescriptors, withFilesystemScopeHandlers } from "../core/filesystemScope.ts";
 import { stat } from "node:fs/promises";
 import type { LlmContentPart, LlmToolExecutionResult } from "../../llmClient.ts";
 import type { AppConfig } from "#config/config.ts";
@@ -28,7 +29,7 @@ import type { MediaInspectionResult, MediaInspectionResultItem } from "#services
 
 const MAX_MEDIA_VIEW_PER_CALL = 5;
 
-export const imageToolDescriptors: ToolDescriptor[] = [
+export const imageToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescriptors([
   {
     definition: {
       type: "function",
@@ -132,7 +133,7 @@ export const imageToolDescriptors: ToolDescriptor[] = [
     isEnabled: isMediaInspectionEnabled,
     resultObservation: mediaInspectionPolicy()
   }
-];
+]);
 
 function isDirectMediaViewEnabled(config: AppConfig, options?: { modelRef?: string | string[] }): boolean {
   const modelRef = options?.modelRef ?? getModelRefsForRole(config, "main_small");
@@ -144,7 +145,7 @@ function isMediaInspectionEnabled(config: AppConfig): boolean {
     && getVisionInputModelRefsForRole(config, "image_inspector").modelRefs.length > 0;
 }
 
-export const imageToolHandlers: Record<string, ToolHandler> = {
+export const imageToolHandlers: Record<string, ToolHandler> = withFilesystemScopeHandlers({
   async filesystem_media_inspect(_toolCall, args, context) {
     const path = getStringArg(args, "path");
     const question = getStringArg(args, "question");
@@ -438,7 +439,7 @@ export const imageToolHandlers: Record<string, ToolHandler> = {
       });
     }
   }
-};
+});
 
 async function localFileStatFromResolvedPath(resolved: ResolvedSendablePath): Promise<LocalFileItemStat> {
   const itemStat = await stat(resolved.absolutePath);

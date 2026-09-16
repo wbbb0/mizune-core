@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, type Component } from "vue";
-import { ChevronDown, ChevronRight, Download, Globe, Play, RefreshCw, SquareTerminal } from "lucide-vue-next";
+import { ChevronDown, ChevronRight, Download, Folder, Globe, Play, RefreshCw, SquareTerminal } from "lucide-vue-next";
 import { ResizableDisclosureStack, WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchIconButton, WorkbenchListItem } from "@workbench-kit/vue";
 import { useResourcesSection } from "@/composables/sections/useResourcesSection";
 import type { DownloadTask } from "@/api/runtimeResources";
 
 const {
+  workspaces, selectedWorkspaceId, selectedResourceKind, selectWorkspace, refreshWorkspaces,
   shellSessions,
   selectedShellId,
   downloadTasks,
@@ -30,8 +31,9 @@ const downloadProxy = ref<"auto" | "direct">("auto");
 const runningCount = computed(() => shellSessions.value.filter((item) => item.status === "running").length);
 const activeDownloadCount = computed(() => downloadTasks.value.filter((item) => item.status === "running" || item.status === "paused").length);
 let downloadRefreshTimer: number | null = null;
+let workspaceRefreshTimer: number | null = null;
 
-type ResourceSectionId = "shell" | "browser" | "downloads";
+type ResourceSectionId = "shell" | "browser" | "downloads" | "workspaces";
 type ResourceSection = {
   id: ResourceSectionId;
   title: string;
@@ -41,6 +43,7 @@ type ResourceSection = {
 };
 
 const resourceSections = computed<ResourceSection[]>(() => [
+  { id: "workspaces", title: "工作区", meta: `${workspaces.value.filter((item) => item.status === "active").length} 可用`, icon: Folder, weight: 1.5 },
   {
     id: "shell",
     title: "Shell",
@@ -109,12 +112,14 @@ function formatBytes(value: number) {
 }
 
 onMounted(() => {
+  workspaceRefreshTimer = window.setInterval(() => { void refreshWorkspaces(); }, 60000);
   downloadRefreshTimer = window.setInterval(() => {
     if (downloadTasks.value.some((item) => item.status === "running")) void refreshDownloads();
   }, 1000);
 });
 
 onBeforeUnmount(() => {
+  if (workspaceRefreshTimer != null) window.clearInterval(workspaceRefreshTimer);
   if (downloadRefreshTimer != null) window.clearInterval(downloadRefreshTimer);
 });
 </script>
@@ -153,7 +158,7 @@ onBeforeUnmount(() => {
               <WorkbenchListItem
                 v-for="session in shellSessions"
                 :key="session.id"
-                :selected="selectedShellId === session.id"
+                :selected="selectedResourceKind === 'shell' && selectedShellId === session.id"
                 :title="session.command"
                 :meta="shellMeta(session)"
                 @select="selectShell(session.id)"
@@ -179,6 +184,17 @@ onBeforeUnmount(() => {
           class="h-full justify-center px-3 py-6 text-center text-small text-text-subtle"
           message="浏览器页面待接入"
         />
+
+        <div v-else-if="section.id === 'workspaces'" class="scrollbar-thin h-full min-h-0 overflow-y-auto p-2">
+          <WorkbenchListItem v-for="workspace in workspaces" :key="workspace.resource_id"
+            :selected="selectedResourceKind === 'workspace' && selectedWorkspaceId === workspace.resource_id"
+            :title="workspace.name"
+            :meta="workspace.status === 'active' ? `到期 ${new Date(workspace.expiresAtMs).toLocaleString()}` : workspace.status === 'expired' ? '已过期' : '已关闭'"
+            @select="selectWorkspace(workspace.resource_id)">
+            <template #icon><Folder :size="15" /></template>
+          </WorkbenchListItem>
+          <WorkbenchEmptyState v-if="!workspaces.length" message="暂无临时工作区" />
+        </div>
 
         <div v-else class="flex h-full min-h-0 flex-col">
           <div class="border-b border-border-subtle px-3 py-3">
@@ -210,7 +226,7 @@ onBeforeUnmount(() => {
               <WorkbenchListItem
                 v-for="task in downloadTasks"
                 :key="task.resource_id"
-                :selected="selectedDownloadId === task.resource_id"
+                :selected="selectedResourceKind === 'download' && selectedDownloadId === task.resource_id"
                 :title="task.source_name || task.source_url"
                 :meta="downloadMeta(task)"
                 @select="selectDownload(task.resource_id)"

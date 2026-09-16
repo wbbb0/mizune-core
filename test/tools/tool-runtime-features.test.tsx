@@ -290,6 +290,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const config = createForwardFeatureConfig();
     config.browser.enabled = true;
     config.chatFiles.enabled = false;
+    config.localFiles.enabled = false;
     const names = new Set(getBuiltinTools("owner", config, undefined, {
       visibilityContext: { sessionId: "qqbot:g:123456", replyDelivery: "onebot" }
     }).map((tool) => tool.function.name));
@@ -408,6 +409,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     config.browser.enabled = false;
     config.shell.enabled = false;
     config.chatFiles.enabled = false;
+    config.localFiles.enabled = false;
     const names = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     assert.ok(!names.includes("ground_with_google_search"));
     assert.ok(!names.includes("search_with_iqs_lite_advanced"));
@@ -5399,6 +5401,8 @@ function createRuntimeWaitToolContext() {
       {},
       {
         config: createForwardFeatureConfig(),
+        temporaryWorkspaceService: { list() { return []; } },
+        lastMessage: { sessionId: "test", userId: "owner" },
         browserService: {
           async listPages() {
             return {
@@ -5512,6 +5516,8 @@ function createRuntimeWaitToolContext() {
       {},
       {
         config: createForwardFeatureConfig(),
+        temporaryWorkspaceService: { list() { return []; } },
+        lastMessage: { sessionId: "test", userId: "owner" },
         browserService: {
           async listPages() {
             return {

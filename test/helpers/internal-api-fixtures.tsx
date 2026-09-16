@@ -341,6 +341,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           }));
       }
     } as unknown as InternalApiDeps["audioStore"],
+    temporaryWorkspaceService: { async init() {}, list() { return []; } } as any,
     localFileService: {
       rootDir: state.workspaceRoot,
       async listItems(relativePath = ".") {

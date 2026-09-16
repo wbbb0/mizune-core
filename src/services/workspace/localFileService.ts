@@ -1,4 +1,5 @@
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, posix, resolve } from "node:path";
 import type { AppConfig } from "#config/config.ts";
 import type {
@@ -29,9 +30,9 @@ interface ParsedHunk {
 export class LocalFileService {
   readonly rootDir: string;
 
-  constructor(private readonly config: AppConfig, dataDir: string) {
+  constructor(private readonly config: AppConfig, dataDir: string, private readonly scope?: { root: string; assertActive: () => void }) {
     const configuredRoot = String(config.localFiles.root ?? "").trim();
-    this.rootDir = resolve(!configuredRoot || configuredRoot === "data" ? dataDir : configuredRoot);
+    this.rootDir = scope?.root ?? resolve(!configuredRoot || configuredRoot === "data" ? dataDir : configuredRoot);
   }
 
   isEnabled(): boolean {
@@ -49,8 +50,12 @@ export class LocalFileService {
     if (!this.isEnabled()) {
       throw new Error("filesystem tools are disabled");
     }
+    this.scope?.assertActive();
     const normalizedInput = String(inputPath ?? "").trim() || ".";
 
+    if (this.scope && (isAbsolute(normalizedInput) || normalizedInput.includes("\\") || normalizedInput.includes("\0"))) {
+      throw new Error("工作区只接受相对路径");
+    }
     if (isAbsolute(normalizedInput)) {
       const absolutePath = resolve(normalizedInput);
       return {
@@ -71,6 +76,20 @@ export class LocalFileService {
     if (relativeFromRoot == null) {
       throw new Error("filesystem path cannot escape the root directory");
     }
+    if (this.scope) {
+      let cursor = this.rootDir;
+      for (const part of ["", ...cleanedRelative.split("/").filter(Boolean)]) {
+        cursor = join(cursor, part);
+        try {
+          const info = lstatSync(cursor);
+          if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile())) {
+            throw new Error("工作区不允许符号链接或特殊文件");
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
+    }
     return {
       relativePath: cleanedRelative || ".",
       absolutePath
@@ -89,7 +108,7 @@ export class LocalFileService {
       const itemRelativePath = target.relativePath === "."
         ? entry.name
         : posix.join(target.relativePath, entry.name);
-      const itemAbsolutePath = join(target.absolutePath, entry.name);
+      const itemAbsolutePath = this.scope ? this.resolvePath(itemRelativePath).absolutePath : join(target.absolutePath, entry.name);
       const itemStat = await stat(itemAbsolutePath);
       return {
         path: itemRelativePath,
@@ -126,6 +145,7 @@ export class LocalFileService {
     endLine?: number;
   }): Promise<LocalFileReadResult> {
     const target = this.resolvePath(relativePath);
+    if (this.scope && (await stat(target.absolutePath)).size > this.config.localFiles.maxPatchFileBytes) throw new Error("文件过大，无法预览文本");
     const rawBuffer = await readFile(target.absolutePath);
     assertTextFile(rawBuffer, target.relativePath, this.config.localFiles.maxPatchFileBytes);
     const raw = rawBuffer.toString("utf8");
@@ -134,7 +154,7 @@ export class LocalFileService {
     const requestedEndLine = options?.endLine == null
       ? startLine + DEFAULT_READ_LINE_LIMIT - 1
       : Math.max(startLine, Math.floor(options.endLine));
-    const safeEndLine = Math.min(lines.length, requestedEndLine);
+    const safeEndLine = Math.min(lines.length, requestedEndLine, startLine + DEFAULT_READ_LINE_LIMIT - 1);
     const sliced = lines.slice(startLine - 1, safeEndLine);
     return {
       path: target.relativePath,
@@ -199,6 +219,8 @@ export class LocalFileService {
   }
 
   async moveItem(fromPath: string, toPath: string): Promise<LocalFileMoveResult> {
+    this.assertMutablePath(fromPath);
+    this.assertMutablePath(toPath);
     const from = this.resolvePath(fromPath);
     const to = this.resolvePath(toPath);
     await mkdir(dirname(to.absolutePath), { recursive: true });
@@ -210,6 +232,8 @@ export class LocalFileService {
   }
 
   async copyItem(fromPath: string, toPath: string): Promise<LocalFileMoveResult> {
+    this.assertMutablePath(fromPath);
+    this.assertMutablePath(toPath);
     const from = this.resolvePath(fromPath);
     const to = this.resolvePath(toPath);
     const fromStat = await stat(from.absolutePath);
@@ -227,6 +251,7 @@ export class LocalFileService {
 
   async deleteItem(relativePath: string): Promise<LocalFileDeleteResult> {
     const target = this.resolvePath(relativePath);
+    this.assertMutablePath(relativePath);
     const existed = await stat(target.absolutePath).then(() => true).catch(() => false);
     await rm(target.absolutePath, { recursive: true, force: true });
     return {
@@ -324,6 +349,7 @@ export class LocalFileService {
         return false;
       }
       const absolutePath = this.resolvePath(itemPath).absolutePath;
+      if (this.scope && (await stat(absolutePath)).size > this.config.localFiles.maxPatchFileBytes) return true;
       const buffer = await readFile(absolutePath).catch(() => null);
       if (!buffer) {
         return true;
@@ -357,6 +383,10 @@ export class LocalFileService {
       matches,
       truncated
     };
+  }
+
+  private assertMutablePath(path: string): void {
+    if (this.scope && this.resolvePath(path).relativePath === ".") throw new Error("不能移动、复制或删除工作区根目录，请使用 workspace_close");
   }
 
   private async walk(

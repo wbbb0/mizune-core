@@ -1,3 +1,4 @@
+import { temporaryWorkspaceToolDescriptors, temporaryWorkspaceToolHandlers } from "../runtime/temporaryWorkspaceTools.ts";
 import type { AppConfig } from "#config/config.ts";
 import { diceToolDescriptors, diceToolHandlers } from "../runtime/diceTools.ts";
 import { debugToolDescriptors, debugToolHandlers } from "../runtime/debugTools.ts";
@@ -27,6 +28,7 @@ const runtimeStaticToolDescriptorsRegistry = [
   ...schedulerToolDescriptors,
   ...shellToolDescriptors,
   ...localFileToolDescriptors,
+  ...temporaryWorkspaceToolDescriptors,
   ...chatFileToolDescriptors,
   ...imageTransformToolDescriptors,
   ...assetDocumentToolDescriptors,
@@ -52,6 +54,7 @@ export const runtimeToolHandlersRegistry = {
   ...schedulerToolHandlers,
   ...shellToolHandlers,
   ...localFileToolHandlers,
+  ...temporaryWorkspaceToolHandlers,
   ...chatFileToolHandlers,
   ...imageTransformToolHandlers,
   ...assetDocumentToolHandlers,

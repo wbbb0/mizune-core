@@ -198,12 +198,20 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
     id: "filesystem_io",
     title: "本地文件",
-    description: "浏览、编辑、搜索和发送本地文件。",
+    description: "浏览、编辑、搜索和发送明确路径的文件，或创建一天有效的临时工作区处理下载文件。",
     plannerSignals: [
       "读写或搜索本地文件",
       "按路径发送本地文件"
     ],
     toolNames: [
+      "workspace_create",
+      "workspace_close",
+      "workspace_export",
+      "workspace_clone",
+      "workspace_extract",
+      "workspace_pack",
+      "list_live_resources",
+      "asset_export_to_filesystem",
       "filesystem_list",
       "filesystem_mkdir",
       "filesystem_read",

@@ -1,3 +1,4 @@
+import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
@@ -130,6 +131,7 @@ export interface BuiltinToolRuntimeDeps {
   searchService: SearchService;
   browserService: BrowserService;
   localFileService: LocalFileService;
+  temporaryWorkspaceService: TemporaryWorkspaceService;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;

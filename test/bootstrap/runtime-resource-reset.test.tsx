@@ -46,6 +46,7 @@ test("initializeBootstrapState initializes state database before resetting runti
       sessionPersistence: { async init() {}, async loadAll() { return []; } } as any,
       sessionSnapshotStore: { async init() {} } as any,
       audioStore: { async init() {} } as any,
+      temporaryWorkspaceService: { async init() {}, list() { return []; } } as any,
       localFileService: { async init() {} } as any,
       chatFileStore: { async init() {} } as any,
       assetLifecycleService: { async init() {}, async sweep() {}, async onSessionDeleted() {} } as any,

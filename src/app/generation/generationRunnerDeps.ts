@@ -1,3 +1,4 @@
+import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { Logger } from "pino";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { NpcDirectory } from "#identity/npcDirectory.ts";
@@ -66,6 +67,7 @@ export interface GenerationPromptBuilderDeps {
   browserService: BrowserService;
   shellRuntime: ShellRuntime;
   localFileService: LocalFileService;
+  temporaryWorkspaceService: TemporaryWorkspaceService;
   chatFileStore: ChatFileStore;
   downloadRuntime: DownloadRuntime;
   mediaVisionService: MediaVisionService;
@@ -113,6 +115,7 @@ export interface GenerationToolRuntimeDeps {
   searchService: SearchService;
   browserService: BrowserService;
   localFileService: LocalFileService;
+  temporaryWorkspaceService: TemporaryWorkspaceService;
   chatFileStore: ChatFileStore;
   downloadRuntime: DownloadRuntime;
   mediaInspectionService: MediaInspectionService;

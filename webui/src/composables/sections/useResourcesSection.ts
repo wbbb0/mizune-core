@@ -1,3 +1,4 @@
+import { workspacesApi, type WorkspaceResource } from "@/api/workspaces";
 import { computed, ref } from "vue";
 import { createSharedSectionState } from "@/composables/sections/sharedSectionState";
 import {
@@ -12,7 +13,10 @@ const shellSessions = ref<ShellSession[]>([]);
 const selectedShellId = ref<string | null>(null);
 const downloadTasks = ref<DownloadTask[]>([]);
 const selectedDownloadId = ref<string | null>(null);
-const selectedResourceKind = ref<"shell" | "download">("shell");
+const workspaces = ref<WorkspaceResource[]>([]);
+const selectedWorkspaceId = ref<string | null>(null);
+const selectedWorkspace = computed(() => workspaces.value.find((item) => item.resource_id === selectedWorkspaceId.value) ?? null);
+const selectedResourceKind = ref<"shell" | "download" | "workspace">("shell");
 const loading = ref(false);
 const busy = ref(false);
 const error = ref<string | null>(null);
@@ -21,6 +25,11 @@ const selectedShell = computed(() => shellSessions.value.find((item) => item.id 
 const selectedDownload = computed(() => downloadTasks.value.find((item) => item.resource_id === selectedDownloadId.value) ?? null);
 
 type ResourcesSectionState = {
+  workspaces: typeof workspaces;
+  selectedWorkspaceId: typeof selectedWorkspaceId;
+  selectedWorkspace: typeof selectedWorkspace;
+  refreshWorkspaces: () => Promise<void>;
+  selectWorkspace: (id: string) => void;
   shellSessions: typeof shellSessions;
   selectedShellId: typeof selectedShellId;
   selectedShell: typeof selectedShell;
@@ -51,6 +60,8 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
   const workbenchNavigation = useWorkbenchNavigation();
 
   function resetState() {
+    workspaces.value = [];
+    selectedWorkspaceId.value = null;
     shellSessions.value = [];
     selectedShellId.value = null;
     downloadTasks.value = [];
@@ -59,6 +70,19 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
     loading.value = false;
     busy.value = false;
     error.value = null;
+  }
+
+  async function refreshWorkspaces() {
+    try {
+      workspaces.value = (await workspacesApi.list()).workspaces;
+      if (selectedWorkspaceId.value && !workspaces.value.some((item) => item.resource_id === selectedWorkspaceId.value)) selectedWorkspaceId.value = null;
+    } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause); }
+  }
+
+  function selectWorkspace(id: string) {
+    selectedWorkspaceId.value = id;
+    selectedResourceKind.value = "workspace";
+    workbenchNavigation.showArea("mainArea");
   }
 
   async function refreshDownloads() {
@@ -77,7 +101,7 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
   async function refreshResources() {
     loading.value = true;
     try {
-      await Promise.all([refreshShells(), refreshDownloads()]);
+      await Promise.all([refreshShells(), refreshDownloads(), refreshWorkspaces()]);
     } finally {
       loading.value = false;
     }
@@ -222,6 +246,7 @@ export const useResourcesSection = createSharedSectionState<ResourcesSectionStat
   void refreshResources();
 
   return {
+    workspaces, selectedWorkspaceId, selectedWorkspace, refreshWorkspaces, selectWorkspace,
     shellSessions,
     selectedShellId,
     selectedShell,

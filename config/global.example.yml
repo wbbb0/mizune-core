@@ -196,6 +196,8 @@ shell:
     inputPromptCooldownMs: 30000
     inputSuppressionAfterWriteMs: 1200
     detectionTailMaxChars: 8000
+# 同时启用临时工作区：固定 24 小时保留，启动时/每小时清理，重启保留。
+# 工作区存储于实例 dataDir/temporary-workspaces，不使用下方 root。
 localFiles:
   enabled: true
   root: data

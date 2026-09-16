@@ -1,3 +1,4 @@
+import { workspaceActor } from "../core/filesystemScope.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import type { BuiltinToolContext } from "../core/shared.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
@@ -12,20 +13,20 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "list_live_resources",
-        description: "列出当前可复用的 browser live_resource 和后台下载资源。live_resource 只表示正在运行的可继续操作句柄，不是工作区文件；终端资源请用 terminal_list。",
+        description: "列出当前可复用的浏览器、后台下载与当前用户的临时工作区资源。工作区文件通过 filesystem 工具传 workspace_id 查看；终端资源请用 terminal_list。",
         parameters: {
           type: "object",
           properties: {
             type: {
               type: "string",
-              enum: ["all", "browser", "download"]
+              enum: ["all", "browser", "download", "workspace"]
             }
           },
           additionalProperties: false
         }
       }
     },
-    isEnabled: (config) => config.browser.enabled || config.chatFiles.enabled,
+    isEnabled: (config) => config.browser.enabled || config.chatFiles.enabled || config.localFiles.enabled,
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
@@ -175,8 +176,8 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
     const type = typeof args === "object" && args && "type" in args
       ? String((args as { type: unknown }).type).trim()
       : "all";
-    if (!["all", "browser", "download"].includes(type)) {
-      return JSON.stringify({ error: "type must be all, browser or download" });
+    if (!["all", "browser", "download", "workspace"].includes(type)) {
+      return JSON.stringify({ error: "type 必须为 all、browser、download 或 workspace" });
     }
 
     const includeBrowser = type === "all" || type === "browser";
@@ -189,7 +190,10 @@ export const resourceToolHandlers: Record<string, ToolHandler> = {
       ? context.downloadRuntime.list()
       : [];
 
+    const workspaces = (type === "all" || type === "workspace") && context.config.localFiles.enabled
+      ? context.temporaryWorkspaceService.list(workspaceActor(context)) : [];
     const resources = [
+      ...workspaces.map((item) => ({ ...item, title: item.name, summary: `工作区：${item.name}`, lastAccessedAtMs: item.createdAtMs })),
       ...pages.pages.map((item) => ({
         resource_id: item.resource_id,
         kind: "browser_page",

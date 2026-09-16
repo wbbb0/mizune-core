@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import "@xterm/xterm/css/xterm.css";
+import WorkspaceDetailPane from "./WorkspaceDetailPane.vue";
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { ChevronDown, ChevronUp, Circle, ClipboardPaste, Copy, Eraser, Files, Pause, Play, PlugZap, RefreshCw, Search, Square, Trash2, X, Zap } from "lucide-vue-next";
@@ -13,6 +14,7 @@ import { openShellSocket, type ShellSession, type ShellSocketMessage } from "@/a
 import { useResourcesSection } from "@/composables/sections/useResourcesSection";
 
 const {
+  selectedWorkspace,
   selectedShell,
   selectedShellId,
   selectedDownload,
@@ -68,12 +70,12 @@ const statusClass = computed(() => {
 });
 
 onMounted(() => {
-  if (!isDownloadView.value) createTerminal();
+  if (selectedResourceKind.value === "shell") createTerminal();
   resizeObserver = new ResizeObserver(() => scheduleFit());
   if (terminalHost.value) {
     resizeObserver.observe(terminalHost.value);
   }
-  if (selectedShellId.value) {
+  if (selectedShellId.value && selectedResourceKind.value === "shell") {
     void attachSelectedShell();
   }
 });
@@ -93,11 +95,11 @@ onBeforeUnmount(() => {
 });
 
 watch(selectedShellId, () => {
-  if (!isDownloadView.value) void attachSelectedShell();
+  if (selectedResourceKind.value === "shell") void attachSelectedShell();
 });
 
 watch(selectedResourceKind, async (kind) => {
-  if (kind === "download") {
+  if (kind !== "shell") {
     detachSocket();
     disposeTerminal();
     return;
@@ -530,7 +532,8 @@ function isShellSession(value: unknown): value is ShellSession {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-surface">
+  <WorkspaceDetailPane v-if="selectedResourceKind === 'workspace'" :workspace="selectedWorkspace" />
+  <div v-else class="flex h-full min-h-0 flex-col bg-surface">
     <WorkbenchAreaHeader :title="title">
       <template #actions>
         <template v-if="isDownloadView">

@@ -54,6 +54,9 @@ type PersonaState = Awaited<ReturnType<PersonaStore["get"]>>;
 type StoredUser = Awaited<ReturnType<UserStore["getByUserId"]>>;
 const LIVE_RESOURCE_TOOL_NAMES = new Set([
   "list_live_resources",
+  "workspace_create",
+  "filesystem_read",
+  "filesystem_write",
   "start_download_resource",
   "read_download_resource",
   "pause_download_resource",
@@ -687,14 +690,20 @@ async function projectPreparedBatchDerivedText(
   return messages;
 }
 
-async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps): Promise<PromptLiveResource[]> {
+async function collectPromptLiveResources(deps: GenerationPromptBuilderDeps, actor: { sessionId: string; userId: string }): Promise<PromptLiveResource[]> {
   const [browserPages, shellSessions] = await Promise.all([
     deps.browserService.listPages(),
     deps.shellRuntime.listSessionResources()
   ]);
   const downloads = deps.downloadRuntime.list();
+  const workspaces = deps.config.localFiles.enabled ? deps.temporaryWorkspaceService.list(actor) : [];
 
   return [
+    ...workspaces.map((item) => ({
+      resourceId: item.resource_id, kind: "workspace" as const, status: item.status, title: item.name,
+      summary: `使用 workspace_id=${item.resource_id} 与相对路径；到期时间 ${new Date(item.expiresAtMs).toISOString()}`,
+      lastAccessedAtMs: item.createdAtMs
+    })),
     ...browserPages.pages.map((item) => ({
       resourceId: item.resource_id,
       kind: "browser_page" as const,
@@ -1143,7 +1152,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         })
       : undefined;
     const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
-      ? await collectPromptLiveResources(deps)
+      ? await collectPromptLiveResources(deps, { sessionId: input.sessionId, userId: input.currentUser?.userId ?? "" })
       : [];
     const rawPreparedBatchMessages = await preparePromptBatchMessages(
       deps,
@@ -1347,7 +1356,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }),
       shouldIncludeLiveResources(input.visibleToolNames)
-        ? collectPromptLiveResources(deps)
+        ? collectPromptLiveResources(deps, { sessionId: input.sessionId, userId: input.currentUser?.userId ?? "" })
         : Promise.resolve([]),
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.globalRuleStore.getAll(),
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.toolsetRuleStore.getAll(),

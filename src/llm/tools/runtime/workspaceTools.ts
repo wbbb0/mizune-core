@@ -1,3 +1,4 @@
+import { withFilesystemScopeDescriptors, withFilesystemScopeHandlers } from "../core/filesystemScope.ts";
 import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { ChatFileOrigin, ChatFileRecord } from "#services/workspace/types.ts";
@@ -50,7 +51,7 @@ function enqueueToolSend(
   });
 }
 
-export const localFileToolDescriptors: ToolDescriptor[] = [
+export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescriptors([
   {
     definition: {
       type: "function",
@@ -253,9 +254,9 @@ export const localFileToolDescriptors: ToolDescriptor[] = [
     isEnabled: isLocalFileToolEnabled,
     resultObservation: fileSendPolicy()
   }
-];
+]);
 
-export const chatFileToolDescriptors: ToolDescriptor[] = [
+export const chatFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescriptors([
   {
     definition: {
       type: "function",
@@ -339,9 +340,9 @@ export const chatFileToolDescriptors: ToolDescriptor[] = [
     isEnabled: (config) => config.chatFiles.enabled && config.localFiles.enabled,
     resultObservation: localFileMutationPolicy()
   }
-];
+]);
 
-export const localFileToolHandlers: Record<string, ToolHandler> = {
+export const localFileToolHandlers: Record<string, ToolHandler> = withFilesystemScopeHandlers({
   async filesystem_list(_toolCall, args, context) {
     const path = getStringArg(args, "path") || ".";
     const s = await context.localFileService.statItem(path);
@@ -459,11 +460,18 @@ export const localFileToolHandlers: Record<string, ToolHandler> = {
     } catch (error) {
       return projectWorkspaceToolResult("filesystem_send_to_chat", { error: error instanceof Error ? error.message : String(error) });
     }
+    if (getStringArg(args, "workspace_id")) {
+      const file = await context.chatFileStore.importFileFromPath({
+        sourcePath: resolvedPath.absolutePath, sourceName: resolvedPath.sourceName,
+        origin: "local_file_import", sourceContext: { sessionId: context.lastMessage.sessionId, workspaceId: getStringArg(args, "workspace_id")! }
+      });
+      return sendChatFileToChat(context, file, getStringArg(args, "text"));
+    }
     return sendResolvedPathToChat(context, resolvedPath, getStringArg(args, "text"));
   }
-};
+});
 
-export const chatFileToolHandlers: Record<string, ToolHandler> = {
+export const chatFileToolHandlers: Record<string, ToolHandler> = withFilesystemScopeHandlers({
   async asset_list(_toolCall, args, context) {
     const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
     if (selector) {
@@ -574,7 +582,7 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = {
       size_bytes: copiedStat.size
     });
   }
-};
+});
 
 function projectWorkspaceToolResult(toolName: string, canonical: unknown) {
   const result = projectToolResult({

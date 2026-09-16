@@ -1,3 +1,4 @@
+import { registerTemporaryWorkspaceRoutes } from "./routes/temporaryWorkspaceRoutes.ts";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,6 +56,7 @@ function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiSe
   registerBrowserRoutes(app, services.browserRoutes);
   registerShellRoutes(app, services.shellRoutes);
   registerDownloadRoutes(app, services.downloadRoutes);
+  registerTemporaryWorkspaceRoutes(app, services.basicRoutes.workspace.temporaryWorkspaceService);
   registerMessagingRoutes(app, services.messagingRoutes);
   registerUploadRoutes(app, services.uploadRoutes);
 }
