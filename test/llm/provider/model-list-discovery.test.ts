@@ -47,7 +47,7 @@ test("model list endpoint resolves per provider type with defaults", () => {
     [{ type: "openai_responses" }, "https://api.openai.com/v1/models"],
     [{ type: "deepseek" }, "https://api.deepseek.com/models"],
     [{ type: "lmstudio" }, "http://localhost:1234/v1/models"],
-    [{ type: "anthropic" }, "https://api.anthropic.com/v1/models"],
+    [{ type: "anthropic" }, "https://api.anthropic.com/v1/models?limit=1000"],
     [{ type: "openai", baseUrl: "https://proxy.example.com/v1" }, "https://proxy.example.com/v1/models"]
   ];
   for (const [provider, expected] of cases) {
@@ -97,6 +97,50 @@ test("stageProviderModels keeps existing aliases for known upstream models", () 
   assert.equal(reasoner.exists, true);
   assert.equal(coder.alias, "deepseek_coder");
   assert.equal(coder.exists, false);
+});
+
+test("stageProviderModels inherits existing capability values on re-import instead of resetting", () => {
+  const existing = {
+    main: {
+      upstreamModel: "gpt-4o",
+      modelType: "chat",
+      supportsThinking: true,
+      supportsVision: true,
+      supportsSearch: true,
+      supportsTools: false
+    }
+  };
+  const [slot] = stageProviderModels(["gpt-4o", "gpt-5.6"], "openai", existing);
+  assert.ok(slot);
+  assert.equal(slot.exists, true);
+  assert.equal(slot.capabilities.modelType, "chat");
+  assert.equal(slot.capabilities.supportsThinking, true);
+  assert.equal(slot.capabilities.supportsVision, true);
+  assert.equal(slot.capabilities.supportsSearch, true);
+  assert.equal(slot.capabilities.supportsTools, false);
+});
+
+test("deepseek model list endpoint normalizes an anthropic-compat base to the OpenAI root", () => {
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [{ type: "deepseek" }, "https://api.deepseek.com/models"],
+    [{ type: "deepseek", baseUrl: "https://api.deepseek.com/anthropic" }, "https://api.deepseek.com/models"],
+    [{ type: "deepseek", baseUrl: "https://proxy.example.com/deepseek/anthropic/" }, "https://proxy.example.com/deepseek/models"]
+  ];
+  for (const [provider, expected] of cases) {
+    const resolved = resolveProviderModelListEndpoint(provider as { type: LlmProviderType; baseUrl?: string });
+    assert.deepEqual(resolved, { endpoint: expected });
+  }
+});
+
+test("anthropic model list endpoint requests a full page via limit", () => {
+  const cases: Array<[Record<string, unknown>, string]> = [
+    [{ type: "anthropic" }, "https://api.anthropic.com/v1/models?limit=1000"],
+    [{ type: "anthropic", baseUrl: "https://proxy.example.com/anthropic" }, "https://proxy.example.com/anthropic/v1/models?limit=1000"]
+  ];
+  for (const [provider, expected] of cases) {
+    const resolved = resolveProviderModelListEndpoint(provider as { type: LlmProviderType; baseUrl?: string });
+    assert.deepEqual(resolved, { endpoint: expected });
+  }
 });
 
 test("stageProviderModels uniquifies generated aliases against existing ones", () => {

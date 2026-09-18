@@ -149,5 +149,21 @@ export interface LlmModelAddEntry {
 
 /** 按供应商草稿的连接信息拉取其模型清单并生成为可导入槽位。 */
 export function listProviderModels(provider: unknown): Promise<ProviderModelListResult> {
-  return api.post(`/api/editors/llm_catalog/list-models`, { provider });
+  return api.post(`/api/editors/llm_catalog/list-models`, { provider: pruneEmptyOptionalFields(provider) });
+}
+
+/** 剔除草稿中清空为 "" 的可选连接字段，避免服务端 nonempty 校验误判为非法输入。 */
+function pruneEmptyOptionalFields(provider: unknown): unknown {
+  if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
+    return provider;
+  }
+  const record = provider as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value === "") {
+      continue;
+    }
+    next[key] = value;
+  }
+  return next;
 }

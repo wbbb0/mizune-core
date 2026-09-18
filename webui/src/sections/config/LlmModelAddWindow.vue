@@ -78,8 +78,6 @@ const fetchError = ref<string | null>(null);
 const fetched = ref<ProviderModelListResult | null>(null);
 const selectedIndex = ref(-1);
 
-/** 已识别为同名已导入模型时记录其别名，提交即更新该条目。 */
-const existingUpstreamAlias = ref<string | null>(null);
 const upstreamModel = ref("");
 const alias = ref("");
 const aliasTouched = ref(false);
@@ -89,10 +87,10 @@ const capabilities = ref<Record<string, string | boolean>>(
 const usedAliases = new Set(props.existingAliases);
 
 function applyCapabilityDefaults(overrides?: Record<string, string | boolean>) {
-  const base = defaultCapabilitiesForProviderType(providerType.value);
+  // 直接采用清单返回的能力草案（含已存在模型继承的现有值），手动模式回退到镜像默认值。
   capabilities.value = overrides
-    ? { ...base, ...Object.fromEntries(Object.entries(overrides).filter(([key]) => key !== "modelType")) }
-    : base;
+    ? { ...overrides }
+    : defaultCapabilitiesForProviderType(providerType.value);
 }
 
 function selectModelByIndex(index: number) {
@@ -102,7 +100,6 @@ function selectModelByIndex(index: number) {
   }
   selectedIndex.value = index;
   upstreamModel.value = slot.upstreamModel;
-  existingUpstreamAlias.value = slot.exists ? slot.alias : null;
   if (slot.exists) {
     alias.value = slot.alias;
     aliasTouched.value = false;
@@ -125,9 +122,6 @@ function switchMode(next: "list" | "manual") {
   }
   mode.value = next;
   fetchError.value = null;
-  if (next === "manual" && !upstreamModel.value) {
-    existingUpstreamAlias.value = null;
-  }
 }
 
 function onUpstreamInput() {
@@ -155,6 +149,8 @@ async function fetchModels() {
       fetched.value = null;
       return;
     }
+    // 重置选中项，让 watch 对新列表重新选中第一项，避免旧索引错位。
+    selectedIndex.value = -1;
     fetched.value = result;
     if (result.models.length === 0) {
       fetchError.value = "接口返回空的模型清单，可切换到手动填写。";
@@ -167,8 +163,18 @@ async function fetchModels() {
   }
 }
 
+let settled = false;
+
+function settleWindow(result: WorkbenchWindowResult) {
+  if (settled) {
+    return;
+  }
+  settled = true;
+  props.closeWindow(props.windowId, result);
+}
+
 function cancel() {
-  props.closeWindow(props.windowId, {
+  settleWindow({
     reason: "dismiss",
     values: {}
   });
@@ -178,7 +184,7 @@ function submit() {
   if (!canSubmit.value) {
     return;
   }
-  props.closeWindow(props.windowId, {
+  settleWindow({
     reason: "action",
     actionId: "add",
     values: {},
@@ -189,6 +195,33 @@ function submit() {
     }
   });
 }
+
+/** 当前输入的上游模型名已存在于 provider 时，返回其现有别名（清单与手动模式通用）。 */
+const existingUpstreamAlias = computed(() => {
+  const upstream = upstreamModel.value.trim();
+  if (!upstream) {
+    return null;
+  }
+  const models = (props.provider.models ?? {}) as Record<string, { upstreamModel?: unknown }>;
+  for (const [alias, profile] of Object.entries(models)) {
+    if (profile.upstreamModel === upstream) {
+      return alias;
+    }
+  }
+  return null;
+});
+
+/** 手动把别名改成已存在的其他别名时提示覆盖风险。 */
+const aliasCollidesWithExisting = computed(() => {
+  const candidate = alias.value.trim();
+  if (!candidate || !aliasValid.value) {
+    return false;
+  }
+  if (existingUpstreamAlias.value === candidate) {
+    return false;
+  }
+  return props.existingAliases.includes(candidate);
+});
 
 const capabilityKeys = computed(() => Object.entries(CAPABILITY_LABELS));
 const fetchedOptions = computed(() => fetched.value?.kind === "ok" ? fetched.value.models : []);
@@ -272,6 +305,9 @@ const fetchedOptions = computed(() => fetched.value?.kind === "ok" ? fetched.val
 
     <p v-if="existingUpstreamAlias" class="rounded border border-border-subtle bg-surface-sidebar px-3 py-2 text-small text-text-secondary">
       该上游模型已存在于别名 <span class="font-mono">{{ existingUpstreamAlias }}</span>，提交将更新其能力配置。
+    </p>
+    <p v-if="aliasCollidesWithExisting" class="rounded border border-danger/40 bg-surface-sidebar px-3 py-2 text-small text-danger">
+      别名 <span class="font-mono">{{ alias }}</span> 已存在，提交将覆盖该条目（保留其 apiParameters）。
     </p>
 
     <fieldset class="rounded border border-border-default bg-surface-sidebar px-3 py-3">

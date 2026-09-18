@@ -110,6 +110,26 @@ test("internal api reports unsupported provider types without hitting the networ
   }
 });
 
+test("internal api rejects malformed list payloads with a clear error", async () => {
+  const deps = createInternalApiDeps();
+  setFetchImplementationForTests(async () => makeResponse({ object: "list", data: "oops" }));
+  const app = await createInternalApiApp(deps);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/editors/llm_catalog/list-models",
+      payload: {
+        provider: { type: "lmstudio", baseUrl: "http://localhost:1234/v1" }
+      }
+    });
+    assert.equal(response.statusCode, 400);
+    assert.match(response.json().error, /缺少 data 数组/);
+  } finally {
+    setFetchImplementationForTests(null);
+    await app.close();
+  }
+});
+
 test("internal api surfaces upstream list errors as bad requests", async () => {
   const deps = createInternalApiDeps();
   setFetchImplementationForTests(async () => new Response("{\"error\":{\"code\":\"invalid_api_key\"}}", {

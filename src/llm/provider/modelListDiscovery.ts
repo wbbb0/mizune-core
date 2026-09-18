@@ -31,9 +31,9 @@ export type ProviderModelListResult =
 const MODEL_LIST_TIMEOUT_MS = 15000;
 
 /**
- * 各供应商生成链路的默认接口地址，与各 provider 类 `resolveBaseUrl` 保持一致；
- * 只有发现模块需要，故单独维护一份带注释的映射，避免把远端拉取逻辑耦合进生成链路。
- * Anthropic 仅标记为“其他供应商”格式：清单接口为 `/{base}/v1/models`。
+ * 模型清单接口的默认地址。注意它与生成链路的 `resolveBaseUrl` 并不总一致：
+ * deepseek 的生成默认走 Anthropic 兼容端点（`api.deepseek.com/anthropic`），
+ * 但模型清单按 OpenAI 兼容协议从根路径提供，这里单独维护一份映射并做协议归一化。
  */
 const DEFAULT_MODEL_LIST_BASE_URLS: Partial<Record<LlmProviderType, string>> = {
   openai: "https://api.openai.com/v1",
@@ -88,7 +88,9 @@ export function createProviderModelCapabilityDraft(providerType: LlmProviderType
 /**
  * 解析模型清单接口地址。
  * OpenAI 兼容协议（openai / openai_responses / deepseek / dashscope / lmstudio）走 `{baseUrl}/models`，
- * Anthropic 走 `{baseUrl}/v1/models`；DashScope 的推广地址使用 compatible-mode 前缀。
+ * Anthropic 走 `{baseUrl}/v1/models`（该接口默认分页，固定请求 `?limit=1000` 取全量）；
+ * DashScope 的推广地址使用 compatible-mode 前缀。
+ * deepseek 用户可配置 Anthropic 兼容端点（`…/anthropic`），此时先归一化到 OpenAI 兼容根再拼 `/models`。
  */
 export function resolveProviderModelListEndpoint(provider: {
   type: LlmProviderType;
@@ -102,11 +104,15 @@ export function resolveProviderModelListEndpoint(provider: {
     };
   }
   const resolvedBase = (provider.baseUrl ?? defaultBase).replace(/\/+$/, "");
+  if (provider.type === "deepseek") {
+    const openAiBase = resolvedBase.replace(/\/anthropic\/?$/, "");
+    return { endpoint: `${openAiBase}/models` };
+  }
   if (provider.type === "dashscope") {
     const compatibleBase = resolvedBase.replace(/\/api\/v1\/?$/, "/compatible-mode/v1");
     return { endpoint: `${compatibleBase}/models` };
   }
-  const suffix = provider.type === "anthropic" ? "/v1/models" : "/models";
+  const suffix = provider.type === "anthropic" ? "/v1/models?limit=1000" : "/models";
   return { endpoint: `${resolvedBase}${suffix}` };
 }
 
@@ -129,14 +135,15 @@ function buildModelListHeaders(provider: { type: LlmProviderType; apiKey?: strin
 export function stageProviderModels(
   ids: readonly string[],
   providerType: LlmProviderType,
-  existingModels: Readonly<Record<string, { upstreamModel?: string }>>
+  existingModels: Readonly<Record<string, Record<string, unknown>>>
 ): ProviderModelSlot[] {
   const usedAliases = new Set(Object.keys(existingModels));
-  const entries = new Map<string, { alias: string; exists: true }>();
+  const entries = new Map<string, { alias: string; profile: Record<string, unknown> }>();
 
   for (const [alias, profile] of Object.entries(existingModels)) {
-    if (profile.upstreamModel && !entries.has(profile.upstreamModel)) {
-      entries.set(profile.upstreamModel, { alias, exists: true });
+    const upstreamModel = profile.upstreamModel;
+    if (typeof upstreamModel === "string" && upstreamModel && !entries.has(upstreamModel)) {
+      entries.set(upstreamModel, { alias, profile });
     }
   }
 
@@ -150,11 +157,19 @@ export function stageProviderModels(
 
     const existing = entries.get(upstreamModel);
     if (existing) {
+      // 已存在模型沿用其别名，能力草案从现有配置继承，避免重导入静默重置能力。
+      const capabilities = createProviderModelCapabilityDraft(providerType);
+      for (const key of Object.keys(capabilities)) {
+        const existingValue = existing.profile[key];
+        if (existingValue !== undefined) {
+          (capabilities as Record<string, string | boolean>)[key] = existingValue as string | boolean;
+        }
+      }
       slots.push({
         upstreamModel,
         alias: existing.alias,
         exists: true,
-        capabilities: createProviderModelCapabilityDraft(providerType)
+        capabilities
       });
       continue;
     }
