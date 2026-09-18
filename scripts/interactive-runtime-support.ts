@@ -132,7 +132,6 @@ export async function prepareInteractiveRuntime(
   await services.setupStore.advanceAfterOwnerBound(await services.personaStore.get());
   await services.globalProfileReadinessStore.setPersonaReadiness("ready");
   await services.globalProfileReadinessStore.setRpReadiness("ready");
-  await services.globalProfileReadinessStore.setScenarioReadiness("ready");
 }
 
 export async function resolveActiveInternalUserId(

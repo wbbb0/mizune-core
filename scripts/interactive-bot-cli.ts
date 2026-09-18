@@ -5,7 +5,6 @@ import type { AppConfig } from "#config/config.ts";
 import { createAppRuntime } from "#app/runtime/appRuntime.ts";
 import type { AppServiceBootstrap } from "#app/bootstrap/appServiceBootstrap.ts";
 import { FakeOneBotClient, type FakeOneBotSentMessage } from "#testing/fakeOneBotClient.ts";
-import { projectTaskTrackerForSessionView } from "#conversation/taskTracker/taskTrackerView.ts";
 import { buildGroupSessionId, buildPrivateSessionId } from "#conversation/session/sessionIdentity.ts";
 import {
   createInteractiveConfig,
@@ -297,7 +296,6 @@ async function printStatus(state: CliState, services: AppServiceBootstrap): Prom
       taskTracker: {
         primaryStatus: session.taskTracker.primary?.status ?? null,
         parkedCount: session.taskTracker.parked.length,
-        evidenceCount: session.taskTracker.evidence.length,
         importantToolRefCount: session.taskTracker.primary?.importantToolRefs.length ?? 0
       }
     })),
@@ -319,7 +317,7 @@ function printTaskTrackers(state: CliState, services: AppServiceBootstrap, inclu
     activeSessionId,
     sessions: sessions.map((session) => ({
       id: session.id,
-      taskTracker: projectTaskTrackerForSessionView(session.taskTracker)
+      taskTracker: structuredClone(session.taskTracker)
     }))
   }, null, 2) + "\n");
 }

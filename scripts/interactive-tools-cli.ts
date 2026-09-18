@@ -127,8 +127,8 @@ async function main(): Promise<void> {
     forceOneBotStartup: true,
     disableBackgroundServices: true,
     transformConfig: (config) => createInteractiveConfig(config, {
-      routingPreset: args.routingPreset,
-      dataDir: args.dataDir,
+      ...(args.routingPreset ? { routingPreset: args.routingPreset } : {}),
+      ...(args.dataDir ? { dataDir: args.dataDir } : {}),
       useInstanceData: args.useInstanceData,
       enableShell: args.enableShell,
       enableBrowser: args.enableBrowser,
@@ -460,6 +460,7 @@ async function buildToolContext(
     searchService: services.searchService,
     browserService: services.browserService,
     localFileService: services.localFileService,
+    temporaryWorkspaceService: services.temporaryWorkspaceService,
     comfyClient: services.comfyClient,
     comfyTaskStore: services.comfyTaskStore,
     comfyTemplateCatalog: services.comfyTemplateCatalog,
@@ -578,7 +579,7 @@ function parseJsonInvocation(line: string): ToolInvocation | null {
   if (typeof parsed !== "object" || parsed == null) {
     return null;
   }
-  const record = parsed as { tool?: unknown; name?: unknown; args?: unknown; arguments?: unknown };
+  const record = parsed as { id?: unknown; tool?: unknown; name?: unknown; args?: unknown; arguments?: unknown };
   const tool = String(record.tool ?? record.name ?? "").trim();
   if (!tool) {
     return null;
