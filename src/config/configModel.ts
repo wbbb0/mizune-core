@@ -655,11 +655,13 @@ function createProviderCatalogVariant<T extends LlmProviderType>(type: T) {
     .refine(value => type !== "vertex" || Boolean(value.baseUrl || value.projectId), "Vertex 需要填写项目 ID 或自定义接口地址");
 }
 
+export const llmCatalogProviderFileSchema = s.discriminatedUnion("type", llmProviderTypes.map(createProviderCatalogVariant))
+  .title("供应商类型与配置")
+  .default(() => ({ type: "openai", models: {} }) as never);
+
 export const llmCatalogFileSchema = s.record(
   createCatalogAliasSchema(),
-  s.discriminatedUnion("type", llmProviderTypes.map(createProviderCatalogVariant))
-    .title("供应商类型与配置")
-    .default(() => ({ type: "openai", models: {} }) as never)
+  llmCatalogProviderFileSchema
 ).title("LLM 目录").describe("选择供应商类型后只显示适用选项；在模型中开启联网搜索即可使用协议预设。").default({});
 
 export const llmRoutingPresetCatalogFileSchema = s.record(
@@ -722,6 +724,7 @@ export type FileConfig = Infer<typeof fileConfigSchema>;
 export type LlmRuntimeConfig = Infer<typeof llmRuntimeConfigSchema>;
 export type LlmCatalogConfig = Infer<typeof llmCatalogSchema>;
 export type LlmCatalogFile = Infer<typeof llmCatalogFileSchema>;
+export type LlmCatalogProviderFile = Infer<typeof llmCatalogProviderFileSchema>;
 export type ConfigRuntime = Infer<typeof configRuntimeSchema>;
 export type ModelProfile = Infer<typeof modelProfileSchema>;
 export type CatalogModelProfile = Infer<typeof catalogModelProfileSchema>;

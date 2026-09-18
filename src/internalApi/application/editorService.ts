@@ -6,6 +6,7 @@ import type { AppConfig } from "#config/config.ts";
 import {
   fileConfigSchema,
   llmCatalogFileSchema,
+  llmCatalogProviderFileSchema,
   llmRoutingPresetCatalogFileSchema
 } from "#config/configModel.ts";
 import type { ConfigRuntime } from "#config/configModel.ts";
@@ -27,6 +28,10 @@ import {
 import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
+import {
+  listProviderModelSlots,
+  type ProviderModelListResult
+} from "#llm/provider/modelListDiscovery.ts";
 
 import type { ConfigManager } from "#config/configManager.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
@@ -104,6 +109,8 @@ export interface EditorService {
     parsed: unknown;
   }>;
   getLlmProviderImpact(provider: string): Promise<LlmProviderMutationImpact>;
+  /** 按供应商草稿的连接信息拉取其模型清单，并生成为可导入的模型槽位。 */
+  listProviderModels(providerDraft: unknown): Promise<ProviderModelListResult>;
   normalizeDraft(resourceKey: string, value: unknown): Promise<{
     ok: true;
     path: string;
@@ -127,7 +134,7 @@ export interface EditorService {
 }
 
 export function createEditorService(input: {
-  config: Pick<AppConfig, "configRuntime" | "dataDir">;
+  config: AppConfig;
   configManager: Pick<ConfigManager, "checkForUpdates" | "runWriteTransaction">;
   whitelistStore: Pick<WhitelistStore, "reloadFromDisk">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
@@ -346,6 +353,11 @@ export function createEditorService(input: {
       const catalog = parseConfig(llmCatalogFileSchema, catalogRaw, { cloneInput: true });
       const routingPresets = parseConfig(llmRoutingPresetCatalogFileSchema, routingRaw, { cloneInput: true });
       return summarizeLlmProviderMutationImpact(catalog, routingPresets, provider);
+    },
+
+    async listProviderModels(providerDraft) {
+      const provider = parseConfig(llmCatalogProviderFileSchema, providerDraft, { cloneInput: true });
+      return listProviderModelSlots({ provider, config: input.config });
     },
 
     async normalizeDraft(resourceKey, value) {

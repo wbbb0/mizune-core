@@ -17,6 +17,22 @@ LLM 目录以供应商为一级目录。创建供应商后先选择类型，表�
 “允许联网搜索”默认关闭，只有模型实际支持时才启用。供应商能力预设不会替用户判断模型能力。
 上游模型名和 API key 仍需填写；标准供应商通常不需要填写 Base URL，自建或转发接口应填写其地址。
 
+### 新增模型：从清单选择或手动填写
+
+在 provider 的 `models` 目录点“添加”时，弹窗而非直接插入空行，避免手动拆模型 id 的格式：
+
+- **从清单选择**：点“获取模型清单”调用后端 `POST /api/editors/llm_catalog/list-models`，携带当前 provider 草稿连接信息，
+  从模型清单接口拉取模型 id。支持 OpenAI 兼容协议（`openai` / `openai_responses` / `deepseek` / `dashscope` / `lmstudio` 走 `{baseUrl}/models`，
+  DashScope 默认重写到 `compatible-mode/v1`）与 Anthropic（`{baseUrl}/v1/models`）；Google / Vertex 暂不自动拉取，会给出提示。
+- **手动填写**：直接输入上游模型名。
+- 两种方式都会自动生成 `[a-z0-9_]` 格式的局部模型别名（可改，重复时追加 `_2`、`_3`），并给出默认能力勾选
+  （思考 / 视觉 / 音频 / 工具 / 联网搜索（适用供应商）/ 保留思考），提交后写入该 provider 的 `models`。
+- 若清单接口返回的模型已存在于当前 provider（按上游模型名匹配），弹窗会提示“已存在”，提交时更新其能力而保留原 aliases 与 `apiParameters`。
+
+该流程复用了 workbench-kit `vue-resource-editor` 的 record 变更拦截钩子：`beforeRecordMutation` 事件扩展了
+`kind: "add"`（含 record 节点 `path`），返回 `false` 时可取消默认的空白新增，转由业务层弹窗写入。
+拉取、别名生成与能力裁剪的纯函数位于 `src/llm/provider/modelListDiscovery.ts`，可独立单测。
+
 ## 结构边界
 
 - `llmProviderDefinitions.ts` 维护供应商类型、展示名和适用能力目录。

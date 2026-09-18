@@ -158,6 +158,10 @@ const llmProviderImpactBodySchema = z.object({
   provider: z.string().trim().min(1)
 }).strict();
 
+const llmModelListBodySchema = z.object({
+  provider: z.record(z.string(), z.unknown())
+}).strict();
+
 const dataResourceRowPatchBodySchema = z.object({
   patch: z.record(z.string(), z.unknown()),
   revision: z.union([z.string().trim().min(1), z.number().finite()]).optional(),
@@ -259,6 +263,7 @@ export type ParsedUploadAssetsBody = z.infer<typeof uploadWorkspaceFilesBodySche
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
 export type ParsedLlmProviderImpactBody = z.infer<typeof llmProviderImpactBodySchema>;
+export type ParsedLlmModelListBody = z.infer<typeof llmModelListBodySchema>;
 export type ParsedDataResourceRowPatchBody = z.infer<typeof dataResourceRowPatchBodySchema>;
 export type ParsedEditorResourceParams = z.infer<typeof editorResourceParamsSchema>;
 export type ParsedResourceItemParams = z.infer<typeof resourceItemParamsSchema>;
@@ -407,6 +412,10 @@ export function parseConfigSaveBody(body: unknown): ParsedConfigSaveBody | { err
 
 export function parseLlmProviderImpactBody(body: unknown): ParsedLlmProviderImpactBody | { error: string } {
   return parseWithSchema(llmProviderImpactBodySchema, body);
+}
+
+export function parseLlmModelListBody(body: unknown): ParsedLlmModelListBody | { error: string } {
+  return parseWithSchema(llmModelListBodySchema, body);
 }
 
 export function parseDataResourceRowPatchBody(body: unknown): ParsedDataResourceRowPatchBody | { error: string } {

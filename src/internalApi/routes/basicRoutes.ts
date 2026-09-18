@@ -50,6 +50,7 @@ import {
   parseDataResourceRowsQuery,
   parseEditorOptionsParams,
   parseEditorResourceParams,
+  parseLlmModelListBody,
   parseLlmProviderImpactBody,
   parseResourceRowParams,
   parseResourceItemParams,
@@ -413,6 +414,19 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
 
     try {
       return await services.editor.getLlmProviderImpact(body.provider);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/editors/llm_catalog/list-models", async (request, reply) => {
+    const body = parseLlmModelListBody(request.body);
+    if (!parseOrReply(reply, body)) {
+      return reply;
+    }
+
+    try {
+      return await services.editor.listProviderModels(body.provider);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

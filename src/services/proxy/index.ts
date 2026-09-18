@@ -16,6 +16,11 @@ export interface ProxyResolveOptions {
 	modelRef?: string;
 	browserMethod?: "playwright";
 	searchProxyEnabled?: boolean;
+	/**
+	 * 显式指定 provider 级代理开关（仅 llm consumer 生效）。
+	 * 用于尚无 modelRef 的连接探测（如模型清单拉取），此时无法按模型目录反查 provider 的 proxy。
+	 */
+	providerProxy?: boolean;
 }
 
 interface ResolvedProxyTarget {
@@ -52,6 +57,10 @@ export function isProxyEnabled(
 
 	if (consumer === "browser") {
 		return config.browser.playwright.proxy;
+	}
+
+	if (consumer === "llm" && typeof options.providerProxy === "boolean") {
+		return options.providerProxy;
 	}
 
 	const resolvedModelRef = options.modelRef ?? getModelRefsForRole(config, "main_small");
