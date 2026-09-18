@@ -1,10 +1,13 @@
 import {
   createResourceEditorState,
   type EditorRecordMutationEvent,
-  type ResourceEditorState
+  type ResourceEditorState,
+  type WorkbenchWindowResult
 } from "@workbench-kit/vue";
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue";
+import LlmModelAddWindow from "@/sections/config/LlmModelAddWindow.vue";
+import { type LlmModelAddEntry } from "@/api/editor";
 import {
   editorApi,
   clearEditorMutations,
@@ -94,7 +97,13 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
   }
 
   async function beforeRecordMutation(event: EditorRecordMutationEvent): Promise<boolean> {
-    if (state.selectedKey.value !== "llm_catalog" || event.path.length !== 0) {
+    if (state.selectedKey.value !== "llm_catalog") {
+      return true;
+    }
+    if (event.kind === "add") {
+      return addLlmCatalogModel(event.path);
+    }
+    if (event.path.length !== 0) {
       return true;
     }
 
@@ -141,6 +150,67 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
       ? { kind: "rename_provider", provider: event.key, nextProvider: event.nextKey }
       : { kind: "delete_provider", provider: event.key });
     return true;
+  }
+
+  /** 拦截 llm_catalog 的 provider.models 记录新增：弹窗选择/手写上游模型并自动生成别名。 */
+  async function addLlmCatalogModel(path: Array<string | number>): Promise<boolean> {
+    if (path.length !== 2 || path[1] !== "models" || typeof path[0] !== "string") {
+      return true;
+    }
+    const providerName = path[0];
+    const draft = state.draftValue.value;
+    if (!draft || typeof draft !== "object") {
+      return true;
+    }
+    const record = draft as Record<string, unknown>;
+    const provider = record[providerName];
+    if (!provider || typeof provider !== "object") {
+      return true;
+    }
+    const providerRecord = provider as Record<string, unknown>;
+    const existingModels = (providerRecord.models as Record<string, unknown> | undefined) ?? {};
+
+    const result = await windows.open({
+      kind: "dialog",
+      title: `添加模型 · ${providerName}`,
+      description: "从供应商模型清单中选择，或手动填写上游模型名；生成 [a-z0-9_] 别名后写入目录。",
+      size: "lg",
+      modal: true,
+      closeOnBackdrop: false,
+      closeOnEscape: false,
+      footer: "hidden",
+      blocks: [{
+        kind: "component",
+        component: LlmModelAddWindow,
+        props: {
+          provider: providerRecord,
+          existingAliases: Object.keys(existingModels),
+          closeWindow: (windowId: string, closeResult: WorkbenchWindowResult) => windows.close(windowId, closeResult)
+        }
+      }]
+    });
+
+    if (result.reason !== "action" || result.actionId !== "add") {
+      return false;
+    }
+    const entry = result.result as LlmModelAddEntry | undefined;
+    if (!entry || !entry.upstreamModel.trim() || !/^[a-z0-9_]+$/.test(entry.alias)) {
+      return false;
+    }
+
+    const nextDraft = cloneValue(draft);
+    const nextRecord = nextDraft as Record<string, unknown>;
+    const nextProvider = nextRecord[providerName] as Record<string, unknown>;
+    const nextModels = (nextProvider.models as Record<string, unknown> | undefined) ?? {};
+    const existing = nextModels[entry.alias] as Record<string, unknown> | undefined;
+    nextModels[entry.alias] = {
+      upstreamModel: entry.upstreamModel.trim(),
+      ...entry.capabilities,
+      ...(existing?.apiParameters !== undefined ? { apiParameters: existing.apiParameters } : {})
+    };
+    nextProvider.models = nextModels;
+    state.updateDraft(nextDraft);
+    return false;
   }
 
   async function confirmStandardizeGlobalConfig(): Promise<boolean> {

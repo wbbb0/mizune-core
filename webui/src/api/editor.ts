@@ -127,3 +127,43 @@ export function normalizeEditorResource(
 ): Promise<ResourceEditorSaveResult> {
   return api.post(`/api/editors/${encodeURIComponent(key)}/normalize`, { value });
 }
+
+/** 从模型清单接口拉取得到的可导入模型行。 */
+export interface ProviderModelSlot {
+  upstreamModel: string;
+  alias: string;
+  exists: boolean;
+  capabilities: Record<string, string | boolean>;
+}
+
+export type ProviderModelListResult =
+  | { kind: "ok"; providerType: string; endpoint: string | null; models: ProviderModelSlot[] }
+  | { kind: "unsupported"; providerType: string; reason: string };
+
+/** 新增模型弹窗提交的条目，写入 provider.models[alias]。 */
+export interface LlmModelAddEntry {
+  upstreamModel: string;
+  alias: string;
+  capabilities: Record<string, string | boolean>;
+}
+
+/** 按供应商草稿的连接信息拉取其模型清单并生成为可导入槽位。 */
+export function listProviderModels(provider: unknown): Promise<ProviderModelListResult> {
+  return api.post(`/api/editors/llm_catalog/list-models`, { provider: pruneEmptyOptionalFields(provider) });
+}
+
+/** 剔除草稿中清空为 "" 的可选连接字段，避免服务端 nonempty 校验误判为非法输入。 */
+function pruneEmptyOptionalFields(provider: unknown): unknown {
+  if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
+    return provider;
+  }
+  const record = provider as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (value === "") {
+      continue;
+    }
+    next[key] = value;
+  }
+  return next;
+}
