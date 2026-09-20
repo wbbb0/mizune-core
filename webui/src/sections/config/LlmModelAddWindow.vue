@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { AlertCircle, Check, DownloadCloud, RefreshCw, Search } from "lucide-vue-next";
 import {
   WorkbenchButton,
@@ -14,16 +14,20 @@ import {
   WorkbenchTextInput,
   type WorkbenchDataTableColumn,
   type WorkbenchMultiSelectOption,
-  type WorkbenchTabStripItem,
-  type WorkbenchWindowResult
+  type WorkbenchTabStripItem
 } from "@workbench-kit/vue";
-import { listProviderModels, type ProviderModelListResult, type ProviderModelSlot } from "@/api/editor";
+import {
+  listProviderModels,
+  type LlmModelAddEntry,
+  type ProviderModelListResult,
+  type ProviderModelSlot
+} from "@/api/editor";
 
 interface LlmModelAddWindowProps {
   provider: Record<string, unknown>;
   existingAliases: string[];
-  windowId: string;
-  closeWindow: (windowId: string, result: WorkbenchWindowResult) => void;
+  /** DialogRenderer 注入的响应式窗口值，用于驱动原生 footer action。 */
+  values: Record<string, unknown>;
 }
 
 type AddMode = "catalog" | "manual";
@@ -258,35 +262,21 @@ const canSubmit = computed(() => (
 ));
 const isUpdating = computed(() => existingUpstreamAlias.value === activeDraft.value.alias.trim());
 
-let settled = false;
-
-function settleWindow(result: WorkbenchWindowResult) {
-  if (settled) {
-    return;
-  }
-  settled = true;
-  props.closeWindow(props.windowId, result);
-}
-
-function cancel() {
-  settleWindow({ reason: "dismiss", values: {} });
-}
-
-function submit() {
-  if (!canSubmit.value) {
-    return;
-  }
-  settleWindow({
-    reason: "action",
-    actionId: "add",
-    values: {},
-    result: {
-      upstreamModel: activeDraft.value.upstreamModel.trim(),
-      alias: activeDraft.value.alias.trim(),
-      capabilities: { ...activeDraft.value.capabilities }
-    }
-  });
-}
+watch(
+  [activeDraft, canSubmit, isUpdating],
+  () => {
+    props.values.entry = canSubmit.value
+      ? {
+          upstreamModel: activeDraft.value.upstreamModel.trim(),
+          alias: activeDraft.value.alias.trim(),
+          capabilities: { ...activeDraft.value.capabilities }
+        } satisfies LlmModelAddEntry
+      : undefined;
+    props.values.canSubmit = canSubmit.value;
+    props.values.updating = isUpdating.value;
+  },
+  { deep: true, immediate: true }
+);
 
 onMounted(() => {
   void fetchModels();
@@ -428,13 +418,5 @@ onMounted(() => {
         </div>
       </template>
     </ResponsiveSplitPane>
-
-    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border-default pt-3">
-      <p class="min-w-0 text-small text-text-subtle">{{ canSubmit ? `将写入 ${activeDraft.alias}` : "请选择或填写一个有效模型" }}</p>
-      <div class="ml-auto flex items-center gap-2">
-        <WorkbenchButton label="取消" @click="cancel" />
-        <WorkbenchButton :label="isUpdating ? '更新模型' : '添加模型'" variant="primary" :disabled="!canSubmit" @click="submit" />
-      </div>
-    </div>
   </div>
 </template>

@@ -1,8 +1,7 @@
 import {
   createResourceEditorState,
   type EditorRecordMutationEvent,
-  type ResourceEditorState,
-  type WorkbenchWindowResult
+  type ResourceEditorState
 } from "@workbench-kit/vue";
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue";
@@ -30,6 +29,12 @@ export type ConfigSectionState = ResourceEditorState & {
   useDefaultValue: () => void;
   standardize: () => Promise<void>;
   beforeRecordMutation: (event: EditorRecordMutationEvent) => Promise<boolean>;
+};
+
+type LlmModelAddDialogValues = Record<string, unknown> & {
+  entry?: LlmModelAddEntry;
+  canSubmit?: boolean;
+  updating?: boolean;
 };
 
 function cloneValue<T>(value: T): T {
@@ -170,7 +175,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     const providerRecord = provider as Record<string, unknown>;
     const existingModels = (providerRecord.models as Record<string, unknown> | undefined) ?? {};
 
-    const result = await windows.open({
+    const result = await windows.open<LlmModelAddDialogValues, LlmModelAddEntry>({
       kind: "dialog",
       title: `添加模型 · ${providerName}`,
       description: "从供应商清单选择，或手动填写模型；确认别名与能力后写入目录。",
@@ -178,19 +183,30 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
       modal: true,
       closeOnBackdrop: false,
       closeOnEscape: false,
-      footer: "hidden",
       blocks: [{
         kind: "component",
         component: LlmModelAddWindow,
+        grow: true,
         props: {
           provider: providerRecord,
-          existingAliases: Object.keys(existingModels),
-          closeWindow: (windowId: string, closeResult: WorkbenchWindowResult) => windows.close(windowId, closeResult)
+          existingAliases: Object.keys(existingModels)
+        }
+      }],
+      actions: [{
+        id: "save",
+        label: ({ values }) => values.updating ? "更新模型" : "添加模型",
+        variant: "primary",
+        disabled: ({ values }) => values.canSubmit !== true,
+        run: ({ values }) => {
+          if (!values.entry) {
+            throw new Error("模型配置尚未完成");
+          }
+          return values.entry;
         }
       }]
     });
 
-    if (result.reason !== "action" || result.actionId !== "add") {
+    if (result.reason !== "action" || result.actionId !== "save") {
       return false;
     }
     const entry = result.result as LlmModelAddEntry | undefined;
