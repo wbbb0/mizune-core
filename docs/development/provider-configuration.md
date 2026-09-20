@@ -21,13 +21,16 @@ LLM 目录以供应商为一级目录。创建供应商后先选择类型，表�
 
 在 provider 的 `models` 目录点“添加”时，弹窗而非直接插入空行，避免手动拆模型 id 的格式：
 
-- **从清单选择**：点“获取模型清单”调用后端 `POST /api/editors/llm_catalog/list-models`，携带当前 provider 草稿连接信息，
-  从模型清单接口拉取模型 id。支持 OpenAI 兼容协议（`openai` / `openai_responses` / `deepseek` / `dashscope` / `lmstudio` 走 `{baseUrl}/models`，
+- **从供应商清单选择**：打开窗口后自动调用后端 `POST /api/editors/llm_catalog/list-models`，携带当前 provider 草稿连接信息，
+  从模型清单接口拉取模型 id；窗口支持按模型名或别名搜索、区分可添加与已配置模型，并可手动刷新。支持 OpenAI 兼容协议
+  （`openai` / `openai_responses` / `deepseek` / `dashscope` / `lmstudio` 走 `{baseUrl}/models`，
   DashScope 默认重写到 `compatible-mode/v1`）与 Anthropic（`{baseUrl}/v1/models`）；Google / Vertex 暂不自动拉取，会给出提示。
 - **手动填写**：直接输入上游模型名。
-- 两种方式都会自动生成 `[a-z0-9_]` 格式的局部模型别名（可改，重复时追加 `_2`、`_3`），并给出默认能力勾选
+- 两种方式都会自动生成 `[a-z0-9_]` 格式的局部模型别名（新模型可改，重复时追加 `_2`、`_3`），并给出默认能力选择
   （思考 / 视觉 / 音频 / 工具 / 联网搜索（适用供应商）/ 保留思考），提交后写入该 provider 的 `models`。
-- 若清单接口返回的模型已存在于当前 provider（按上游模型名匹配），弹窗会提示“已存在”，提交时更新其能力而保留原 aliases 与 `apiParameters`。
+- 若模型已存在于当前 provider（按上游模型名匹配），窗口会锁定并沿用原别名，提交时更新其能力而保留原 alias 与 `apiParameters`；
+  新模型若手动输入了其他模型正在使用的别名，会阻止提交，避免静默覆盖目录项。
+- 窗口使用 workbench-kit 的容器响应式分栏：宽窗口并排显示来源与配置，拖窄后改为上下堆叠；模型清单会填充可用高度并独立滚动。
 
 该流程复用了 workbench-kit `vue-resource-editor` 的 record 变更拦截钩子：`beforeRecordMutation` 事件扩展了
 `kind: "add"`（含 record 节点 `path`），返回 `false` 时可取消默认的空白新增，转由业务层弹窗写入。

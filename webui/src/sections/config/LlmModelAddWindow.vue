@@ -1,18 +1,38 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { DownloadCloud, RefreshCw } from "lucide-vue-next";
-import { listProviderModels, type ProviderModelListResult } from "@/api/editor";
-import type { WorkbenchWindowResult } from "@workbench-kit/vue";
+import { computed, onMounted, ref } from "vue";
+import { AlertCircle, Check, DownloadCloud, RefreshCw, Search } from "lucide-vue-next";
+import {
+  WorkbenchButton,
+  WorkbenchCard,
+  WorkbenchDataTable,
+  WorkbenchEmptyState,
+  WorkbenchFormField,
+  WorkbenchMultiSelect,
+  ResponsiveSplitPane,
+  WorkbenchSelect,
+  WorkbenchTabStrip,
+  WorkbenchTextInput,
+  type WorkbenchDataTableColumn,
+  type WorkbenchMultiSelectOption,
+  type WorkbenchTabStripItem,
+  type WorkbenchWindowResult
+} from "@workbench-kit/vue";
+import { listProviderModels, type ProviderModelListResult, type ProviderModelSlot } from "@/api/editor";
 
 interface LlmModelAddWindowProps {
-  /** 当前 provider 草稿（含连接信息与已有 models）。 */
   provider: Record<string, unknown>;
-  /** 已有模型别名，用于别名去重。 */
   existingAliases: string[];
-  /** 当前 workbench 窗口 id（block 注入）。 */
   windowId: string;
-  /** 关闭窗口并把结果交给调用方。 */
   closeWindow: (windowId: string, result: WorkbenchWindowResult) => void;
+}
+
+type AddMode = "catalog" | "manual";
+
+interface ModelDraft {
+  upstreamModel: string;
+  alias: string;
+  aliasTouched: boolean;
+  capabilities: Record<string, string | boolean>;
 }
 
 const props = defineProps<LlmModelAddWindowProps>();
@@ -28,11 +48,19 @@ function defaultCapabilitiesForProviderType(providerType: unknown): Record<strin
     supportsTools: true,
     preserveThinking: false
   };
-  // lmstudio / anthropic 在 llmProviderDefinitions 中 search 为 none，不提供联网搜索开关。
   if (providerType !== "lmstudio" && providerType !== "anthropic") {
     capabilities.supportsSearch = false;
   }
   return capabilities;
+}
+
+function createEmptyDraft(): ModelDraft {
+  return {
+    upstreamModel: "",
+    alias: "",
+    aliasTouched: false,
+    capabilities: defaultCapabilitiesForProviderType(props.provider.type)
+  };
 }
 
 function slugifyAlias(raw: string): string {
@@ -44,24 +72,18 @@ function uniqueAlias(base: string, used: ReadonlySet<string>): string {
   if (!used.has(base)) {
     return base;
   }
-  let candidate = "";
   for (let index = 2; ; index += 1) {
-    candidate = `${base}_${index}`;
+    const candidate = `${base}_${index}`;
     if (!used.has(candidate)) {
       return candidate;
     }
   }
 }
 
-const CAPABILITY_LABELS: Record<string, string> = {
-  supportsThinking: "思考",
-  thinkingControllable: "思考可控",
-  supportsVision: "视觉",
-  supportsAudioInput: "音频输入",
-  supportsTools: "工具",
-  supportsSearch: "联网搜索",
-  preserveThinking: "保留思考"
-};
+const MODE_TABS: WorkbenchTabStripItem[] = [
+  { id: "catalog", label: "从供应商清单选择", controls: "catalog-source-panel" },
+  { id: "manual", label: "手动添加", controls: "manual-source-panel" }
+];
 
 const MODEL_TYPE_OPTIONS = [
   { value: "chat", label: "对话" },
@@ -70,98 +92,171 @@ const MODEL_TYPE_OPTIONS = [
   { value: "embedding", label: "向量" }
 ];
 
-const providerType = computed(() => props.provider.type);
+const CAPABILITY_OPTIONS: Record<string, { label: string; description: string }> = {
+  supportsThinking: { label: "思考", description: "模型可以生成思考内容" },
+  thinkingControllable: { label: "思考可控", description: "请求可以控制是否启用思考" },
+  supportsVision: { label: "视觉", description: "模型可以接收图片输入" },
+  supportsAudioInput: { label: "音频输入", description: "模型可以接收音频输入" },
+  supportsTools: { label: "工具调用", description: "模型可以发起工具调用" },
+  supportsSearch: { label: "联网搜索", description: "模型支持供应商原生搜索" },
+  preserveThinking: { label: "保留思考", description: "在后续请求中保留思考内容" }
+};
 
-const mode = ref<"list" | "manual">("list");
-const fetching = ref(false);
-const fetchError = ref<string | null>(null);
-const fetched = ref<ProviderModelListResult | null>(null);
-const selectedIndex = ref(-1);
+const MODEL_COLUMNS: WorkbenchDataTableColumn<ProviderModelSlot>[] = [
+  { key: "upstreamModel", title: "模型", width: "minmax(10rem, 1fr)", cellClass: "font-mono text-text-secondary" },
+  { key: "status", title: "状态", width: "5rem" }
+];
 
-const upstreamModel = ref("");
-const alias = ref("");
-const aliasTouched = ref(false);
-const capabilities = ref<Record<string, string | boolean>>(
-  defaultCapabilitiesForProviderType(providerType.value)
-);
 const usedAliases = new Set(props.existingAliases);
+const mode = ref<AddMode>("catalog");
+const catalogDraft = ref<ModelDraft>(createEmptyDraft());
+const manualDraft = ref<ModelDraft>(createEmptyDraft());
+const activeDraft = computed(() => mode.value === "catalog" ? catalogDraft.value : manualDraft.value);
 
-function applyCapabilityDefaults(overrides?: Record<string, string | boolean>) {
-  // 直接采用清单返回的能力草案（含已存在模型继承的现有值），手动模式回退到镜像默认值。
-  capabilities.value = overrides
-    ? { ...overrides }
-    : defaultCapabilitiesForProviderType(providerType.value);
-}
+const fetching = ref(false);
+const fetchAttempted = ref(false);
+const fetchError = ref<string | null>(null);
+const fetched = ref<Extract<ProviderModelListResult, { kind: "ok" }> | null>(null);
+const query = ref("");
 
-function selectModelByIndex(index: number) {
-  const slot = fetched.value?.kind === "ok" ? fetched.value.models[index] : undefined;
-  if (!slot) {
-    return;
+const fetchedModels = computed(() => fetched.value?.models ?? []);
+const filteredModels = computed(() => {
+  const normalizedQuery = query.value.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return fetchedModels.value;
   }
-  selectedIndex.value = index;
-  upstreamModel.value = slot.upstreamModel;
-  if (slot.exists) {
-    alias.value = slot.alias;
-    aliasTouched.value = false;
-  } else if (!aliasTouched.value) {
-    alias.value = slot.alias;
-  }
-  const usableCapabilities = slot.capabilities as Record<string, string | boolean> | undefined;
-  applyCapabilityDefaults(usableCapabilities);
-}
-
-watch(fetched, (next) => {
-  if (next?.kind === "ok" && next.models.length > 0 && selectedIndex.value < 0) {
-    selectModelByIndex(0);
-  }
+  return fetchedModels.value.filter(slot => (
+    slot.upstreamModel.toLowerCase().includes(normalizedQuery)
+    || slot.alias.toLowerCase().includes(normalizedQuery)
+  ));
 });
+const newModelCount = computed(() => fetchedModels.value.filter(slot => !slot.exists).length);
+const existingModelCount = computed(() => fetchedModels.value.length - newModelCount.value);
 
-function switchMode(next: "list" | "manual") {
-  if (mode.value === next) {
-    return;
-  }
-  mode.value = next;
-  fetchError.value = null;
+function selectModel(slot: ProviderModelSlot) {
+  catalogDraft.value = {
+    upstreamModel: slot.upstreamModel,
+    alias: slot.alias,
+    aliasTouched: false,
+    capabilities: { ...slot.capabilities }
+  };
 }
-
-function onUpstreamInput() {
-  if (!aliasTouched.value) {
-    alias.value = uniqueAlias(slugifyAlias(upstreamModel.value), usedAliases);
-  }
-}
-
-/** 重新从上游模型名生成别名，并恢复“上游变化时自动同步别名”的联动。 */
-function resetAliasAutoSync() {
-  aliasTouched.value = false;
-  onUpstreamInput();
-}
-
-const aliasValid = computed(() => /^[a-z0-9_]+$/.test(alias.value.trim()));
-const canSubmit = computed(() => upstreamModel.value.trim().length > 0 && aliasValid.value);
 
 async function fetchModels() {
   fetching.value = true;
+  fetchAttempted.value = true;
   fetchError.value = null;
+  const previousSelection = catalogDraft.value.upstreamModel;
   try {
     const result = await listProviderModels(props.provider);
     if (result.kind === "unsupported") {
       fetchError.value = result.reason;
-      fetched.value = null;
       return;
     }
-    // 重置选中项，让 watch 对新列表重新选中第一项，避免旧索引错位。
-    selectedIndex.value = -1;
     fetched.value = result;
-    if (result.models.length === 0) {
-      fetchError.value = "接口返回空的模型清单，可切换到手动填写。";
+    const nextSelection = result.models.find(slot => slot.upstreamModel === previousSelection) ?? result.models[0];
+    if (nextSelection) {
+      selectModel(nextSelection);
+    } else {
+      catalogDraft.value = createEmptyDraft();
     }
   } catch (error: unknown) {
     fetchError.value = error instanceof Error ? error.message : String(error);
-    fetched.value = null;
   } finally {
     fetching.value = false;
   }
 }
+
+function findExistingModel(upstreamModel: string): { alias: string; profile: Record<string, unknown> } | null {
+  const models = (props.provider.models ?? {}) as Record<string, Record<string, unknown>>;
+  for (const [alias, profile] of Object.entries(models)) {
+    if (profile.upstreamModel === upstreamModel) {
+      return { alias, profile };
+    }
+  }
+  return null;
+}
+
+function capabilitiesFromProfile(profile: Record<string, unknown>): Record<string, string | boolean> {
+  const capabilities = defaultCapabilitiesForProviderType(props.provider.type);
+  for (const key of Object.keys(capabilities)) {
+    const value = profile[key];
+    if (typeof value === "string" || typeof value === "boolean") {
+      capabilities[key] = value;
+    }
+  }
+  return capabilities;
+}
+
+function updateManualUpstreamModel(value: string) {
+  const existing = findExistingModel(value.trim());
+  manualDraft.value.upstreamModel = value;
+  manualDraft.value.capabilities = existing
+    ? capabilitiesFromProfile(existing.profile)
+    : defaultCapabilitiesForProviderType(props.provider.type);
+  if (existing) {
+    manualDraft.value.alias = existing.alias;
+    manualDraft.value.aliasTouched = false;
+  } else if (!manualDraft.value.aliasTouched) {
+    manualDraft.value.alias = uniqueAlias(slugifyAlias(value), usedAliases);
+  }
+}
+
+function resetAliasAutoSync() {
+  const existing = findExistingModel(activeDraft.value.upstreamModel.trim());
+  activeDraft.value.aliasTouched = false;
+  activeDraft.value.alias = existing?.alias
+    ?? uniqueAlias(slugifyAlias(activeDraft.value.upstreamModel), usedAliases);
+}
+
+const existingUpstreamAlias = computed(() => (
+  findExistingModel(activeDraft.value.upstreamModel.trim())?.alias ?? null
+));
+
+const aliasValid = computed(() => /^[a-z0-9_]+$/.test(activeDraft.value.alias.trim()));
+const aliasCollidesWithExisting = computed(() => {
+  const candidate = activeDraft.value.alias.trim();
+  return aliasValid.value
+    && props.existingAliases.includes(candidate)
+    && existingUpstreamAlias.value !== candidate;
+});
+const aliasError = computed(() => {
+  if (!activeDraft.value.alias.trim()) {
+    return "请输入模型别名";
+  }
+  if (!aliasValid.value) {
+    return "别名只能包含小写字母、数字和下划线";
+  }
+  if (aliasCollidesWithExisting.value) {
+    return `别名 ${activeDraft.value.alias.trim()} 已被其他模型使用`;
+  }
+  return "";
+});
+
+const capabilityOptions = computed<WorkbenchMultiSelectOption[]>(() => (
+  Object.keys(activeDraft.value.capabilities)
+    .filter(key => key !== "modelType")
+    .map(key => ({ value: key, ...(CAPABILITY_OPTIONS[key] ?? { label: key, description: "" }) }))
+));
+const selectedCapabilities = computed({
+  get: () => Object.entries(activeDraft.value.capabilities)
+    .filter(([key, value]) => key !== "modelType" && value === true)
+    .map(([key]) => key),
+  set: (selected: string[]) => {
+    const selectedSet = new Set(selected);
+    for (const key of Object.keys(activeDraft.value.capabilities)) {
+      if (key !== "modelType" && typeof activeDraft.value.capabilities[key] === "boolean") {
+        activeDraft.value.capabilities[key] = selectedSet.has(key);
+      }
+    }
+  }
+});
+const canSubmit = computed(() => (
+  activeDraft.value.upstreamModel.trim().length > 0
+  && aliasValid.value
+  && !aliasCollidesWithExisting.value
+));
+const isUpdating = computed(() => existingUpstreamAlias.value === activeDraft.value.alias.trim());
 
 let settled = false;
 
@@ -174,10 +269,7 @@ function settleWindow(result: WorkbenchWindowResult) {
 }
 
 function cancel() {
-  settleWindow({
-    reason: "dismiss",
-    values: {}
-  });
+  settleWindow({ reason: "dismiss", values: {} });
 }
 
 function submit() {
@@ -189,161 +281,160 @@ function submit() {
     actionId: "add",
     values: {},
     result: {
-      upstreamModel: upstreamModel.value.trim(),
-      alias: alias.value.trim(),
-      capabilities: { ...capabilities.value }
+      upstreamModel: activeDraft.value.upstreamModel.trim(),
+      alias: activeDraft.value.alias.trim(),
+      capabilities: { ...activeDraft.value.capabilities }
     }
   });
 }
 
-/** 当前输入的上游模型名已存在于 provider 时，返回其现有别名（清单与手动模式通用）。 */
-const existingUpstreamAlias = computed(() => {
-  const upstream = upstreamModel.value.trim();
-  if (!upstream) {
-    return null;
-  }
-  const models = (props.provider.models ?? {}) as Record<string, { upstreamModel?: unknown }>;
-  for (const [alias, profile] of Object.entries(models)) {
-    if (profile.upstreamModel === upstream) {
-      return alias;
-    }
-  }
-  return null;
+onMounted(() => {
+  void fetchModels();
 });
-
-/** 手动把别名改成已存在的其他别名时提示覆盖风险。 */
-const aliasCollidesWithExisting = computed(() => {
-  const candidate = alias.value.trim();
-  if (!candidate || !aliasValid.value) {
-    return false;
-  }
-  if (existingUpstreamAlias.value === candidate) {
-    return false;
-  }
-  return props.existingAliases.includes(candidate);
-});
-
-const capabilityKeys = computed(() => Object.entries(CAPABILITY_LABELS));
-const fetchedOptions = computed(() => fetched.value?.kind === "ok" ? fetched.value.models : []);
 </script>
 
 <template>
   <div class="flex min-h-0 flex-col gap-4">
-    <div class="flex gap-1.5">
-      <button
-        class="btn btn-secondary flex-1"
-        :class="mode === 'list' ? 'ring-1 ring-border-default' : ''"
-        type="button"
-        @click="switchMode('list')"
-      >
-        从清单选择
-      </button>
-      <button
-        class="btn btn-secondary flex-1"
-        :class="mode === 'manual' ? 'ring-1 ring-border-default' : ''"
-        type="button"
-        @click="switchMode('manual')"
-      >
-        手动填写
-      </button>
-    </div>
+    <WorkbenchTabStrip v-model="mode" :items="MODE_TABS" bordered />
 
-    <div v-if="mode === 'list'" class="flex flex-col gap-2">
-      <div class="flex items-center gap-2">
-        <button class="btn btn-secondary shrink-0" type="button" :disabled="fetching" @click="fetchModels">
-          <RefreshCw v-if="fetching" :size="13" class="spin" :stroke-width="2" />
-          <DownloadCloud v-else :size="13" :stroke-width="1.8" />
-          {{ fetching ? "获取中…" : "获取模型清单" }}
-        </button>
-        <span v-if="fetched?.kind === 'ok' && fetched.endpoint" class="truncate font-mono text-small text-text-muted">
-          {{ fetched.endpoint }}
-        </span>
-      </div>
-      <p v-if="fetchError" class="whitespace-pre-line text-small leading-5 text-danger">⚠ {{ fetchError }}</p>
-      <label v-if="fetchedOptions.length > 0" class="flex flex-col gap-1 text-small text-text-muted">
-        上游模型
-        <select v-model.number="selectedIndex" class="input-base text-ui" @change="selectModelByIndex(selectedIndex)">
-          <option
-            v-for="(slot, index) in fetchedOptions"
-            :key="slot.upstreamModel"
-            :value="index"
+    <ResponsiveSplitPane
+      class="min-h-0 flex-1 basis-80"
+      :breakpoint="620"
+      :default-primary-size="350"
+      :default-stacked-primary-size="320"
+      :min-primary-size="240"
+      :min-secondary-size="260"
+      compact-mode="stacked"
+      primary-title="模型来源"
+      secondary-title="模型配置"
+    >
+      <template #primary="{ stacked }">
+        <section
+          v-if="mode === 'catalog'"
+          id="catalog-source-panel"
+          class="flex h-full min-h-0 flex-col gap-3"
+          :class="stacked ? 'pb-3' : 'pr-3'"
+          role="tabpanel"
+        >
+          <div class="flex min-w-0 items-center gap-2">
+            <WorkbenchFormField class="min-w-0 flex-1" for-id="model-search">
+              <div class="relative">
+                <Search class="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-subtle" />
+                <WorkbenchTextInput id="model-search" v-model="query" class="pl-8" type="search" placeholder="搜索模型名或别名" :disabled="!fetchedModels.length" />
+              </div>
+            </WorkbenchFormField>
+            <WorkbenchButton :icon="RefreshCw" :label="fetching ? '正在刷新' : '刷新'" :disabled="fetching" :class="fetching ? '[&_svg]:animate-spin' : ''" @click="fetchModels" />
+          </div>
+
+          <div v-if="fetched" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-text-subtle">
+            <span>共 {{ fetchedModels.length }} 个</span>
+            <span class="text-success">{{ newModelCount }} 个可添加</span>
+            <span v-if="existingModelCount">{{ existingModelCount }} 个已配置</span>
+            <span v-if="fetched.endpoint" class="min-w-0 flex-1 truncate text-right font-mono" :title="fetched.endpoint">{{ fetched.endpoint }}</span>
+          </div>
+          <div v-if="fetchError && fetched" class="flex items-start gap-2 rounded-md border border-danger/40 bg-surface-muted px-3 py-2 text-small text-danger">
+            <AlertCircle class="mt-0.5 size-4 shrink-0" />
+            刷新失败，当前仍显示上一次获取的结果：{{ fetchError }}
+          </div>
+
+          <WorkbenchCard class="flex min-h-40 flex-1 flex-col overflow-hidden" padding="none" surface="sidebar">
+            <div v-if="fetching && !fetched" class="flex flex-1 items-center justify-center gap-2 text-text-muted">
+              <RefreshCw class="size-4 animate-spin" />
+              正在读取供应商模型清单…
+            </div>
+            <div v-else-if="fetchError" class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+              <AlertCircle class="size-6 text-danger" />
+              <div>
+                <p class="text-text-secondary">无法读取模型清单</p>
+                <p class="mt-1 whitespace-pre-line text-small text-danger">{{ fetchError }}</p>
+              </div>
+              <WorkbenchButton :icon="DownloadCloud" label="重新获取" @click="fetchModels" />
+            </div>
+            <WorkbenchDataTable
+              v-else-if="fetched"
+              :rows="filteredModels"
+              :columns="MODEL_COLUMNS"
+              :get-row-key="slot => slot.upstreamModel"
+              :selected-row-key="catalogDraft.upstreamModel || null"
+              :empty-message="query ? '没有匹配的模型' : '供应商没有返回可用模型'"
+              @select-row="selectModel"
+            >
+              <template #cell="{ row, column }">
+                <template v-if="column.key === 'status'">
+                  <span v-if="row.exists" class="rounded bg-surface-muted px-1.5 py-0.5 text-text-subtle">已配置</span>
+                  <span v-else class="rounded bg-success/10 px-1.5 py-0.5 text-success">可添加</span>
+                </template>
+                <template v-else>{{ row.upstreamModel }}</template>
+              </template>
+            </WorkbenchDataTable>
+            <WorkbenchEmptyState v-else-if="fetchAttempted" message="暂无模型" />
+          </WorkbenchCard>
+        </section>
+
+        <section
+          v-else
+          id="manual-source-panel"
+          class="scrollbar-thin flex h-full min-h-0 flex-col gap-3 overflow-y-auto"
+          :class="stacked ? 'pb-3' : 'pr-3'"
+          role="tabpanel"
+        >
+          <WorkbenchCard title="上游模型" surface="sidebar" padding="lg">
+            <WorkbenchFormField label="模型名" for-id="manual-upstream-model" hint="填写供应商接口实际使用的模型 ID。" required>
+              <WorkbenchTextInput id="manual-upstream-model" :model-value="manualDraft.upstreamModel" placeholder="例如 deepseek-chat" spellcheck="false" @update:model-value="updateManualUpstreamModel" />
+            </WorkbenchFormField>
+          </WorkbenchCard>
+          <p class="text-small leading-5 text-text-subtle">仅在供应商不提供模型清单接口，或目标模型没有出现在清单中时使用手动添加。</p>
+        </section>
+      </template>
+
+      <template #secondary="{ stacked }">
+        <div class="h-full min-h-0" :class="stacked ? 'pt-3' : 'pl-3'">
+          <WorkbenchCard
+            title="模型配置"
+            class="scrollbar-thin flex h-full min-h-0 flex-col gap-4 overflow-y-auto"
+            surface="sidebar"
+            padding="lg"
           >
-            {{ slot.upstreamModel }}{{ slot.exists ? ` · 已存在（${slot.alias}，提交将更新）` : "" }}
-          </option>
-        </select>
-      </label>
-    </div>
+            <div v-if="!activeDraft.upstreamModel" class="flex min-h-28 flex-1 items-center justify-center text-center text-text-subtle">
+              {{ mode === "catalog" ? "从左侧选择一个模型后继续" : "填写上游模型名后继续" }}
+            </div>
+            <template v-else>
+              <div class="min-w-0">
+                <p class="text-small text-text-subtle">上游模型</p>
+                <p class="mt-1 truncate font-mono text-text-primary" :title="activeDraft.upstreamModel">{{ activeDraft.upstreamModel }}</p>
+              </div>
 
-    <label v-else class="flex flex-col gap-1 text-small text-text-muted">
-      上游模型名
-      <input
-        v-model="upstreamModel"
-        class="input-base text-ui"
-        type="text"
-        placeholder="如 deepseek-chat"
-        @input="onUpstreamInput"
-      />
-    </label>
+              <WorkbenchFormField label="模型别名" for-id="model-alias" :error="aliasError" hint="用于目录引用，只能包含小写字母、数字和下划线。" required>
+                <div class="flex items-center gap-2">
+                  <WorkbenchTextInput id="model-alias" v-model="activeDraft.alias" class="min-w-0 flex-1 font-mono" :disabled="Boolean(existingUpstreamAlias)" spellcheck="false" @update:model-value="activeDraft.aliasTouched = true" />
+                  <WorkbenchButton label="重新生成" variant="ghost" :disabled="!activeDraft.upstreamModel || Boolean(existingUpstreamAlias)" @click="resetAliasAutoSync" />
+                </div>
+              </WorkbenchFormField>
 
-    <label class="flex flex-col gap-1 text-small text-text-muted">
-      模型别名<template v-if="aliasValid">（{{ alias.length }} 字符）</template>
-      <div class="flex items-center gap-2">
-        <input
-          v-model="alias"
-          class="input-base font-mono text-ui"
-          type="text"
-          :class="aliasValid ? '' : 'border-danger'"
-          spellcheck="false"
-          @input="aliasTouched = true"
-        />
-        <button class="btn btn-ghost shrink-0" type="button" :disabled="!upstreamModel" @click="resetAliasAutoSync">
-          重新生成
-        </button>
-      </div>
-      <span v-if="!aliasValid" class="text-small text-danger">别名只能包含小写字母、数字和下划线。</span>
-    </label>
+              <WorkbenchFormField label="模型类型" for-id="model-type">
+                <WorkbenchSelect id="model-type" v-model="activeDraft.capabilities.modelType as string" :options="MODEL_TYPE_OPTIONS" />
+              </WorkbenchFormField>
 
-    <p v-if="existingUpstreamAlias" class="rounded border border-border-subtle bg-surface-sidebar px-3 py-2 text-small text-text-secondary">
-      该上游模型已存在于别名 <span class="font-mono">{{ existingUpstreamAlias }}</span>，提交将更新其能力配置。
-    </p>
-    <p v-if="aliasCollidesWithExisting" class="rounded border border-danger/40 bg-surface-sidebar px-3 py-2 text-small text-danger">
-      别名 <span class="font-mono">{{ alias }}</span> 已存在，提交将覆盖该条目（保留其 apiParameters）。
-    </p>
+              <WorkbenchFormField label="模型能力" hint="决定模型可接收的输入及可用功能，之后仍可在目录表单中调整。">
+                <WorkbenchMultiSelect v-model="selectedCapabilities" :options="capabilityOptions" placeholder="选择模型能力" search-placeholder="搜索能力" empty-message="没有可配置的能力" />
+              </WorkbenchFormField>
 
-    <fieldset class="rounded border border-border-default bg-surface-sidebar px-3 py-3">
-      <legend class="px-1 text-small font-medium text-text-secondary">能力（可稍后在表单中修改）</legend>
-      <div class="flex flex-col gap-3">
-        <label class="flex items-center gap-2 text-small text-text-muted">
-          类型
-          <select v-model="capabilities.modelType" class="input-base min-h-7 text-ui">
-            <option v-for="option in MODEL_TYPE_OPTIONS" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </label>
-        <div class="flex flex-wrap gap-x-4 gap-y-2">
-          <label
-            v-for="[key, label] in capabilityKeys"
-            :key="key"
-            v-show="key in capabilities"
-            class="flex items-center gap-1.5 text-small text-text-muted"
-          >
-            <input
-              v-model="capabilities[key]"
-              class="size-4 shrink-0 accent-[var(--accent)]"
-              type="checkbox"
-            />
-            <span>{{ label }}</span>
-          </label>
+              <div v-if="isUpdating" class="flex items-start gap-2 rounded-md border border-border-subtle bg-surface-muted px-3 py-2 text-small text-text-secondary">
+                <Check class="mt-0.5 size-4 shrink-0 text-success" />
+                此模型已配置，提交后会更新其类型与能力，并保留已有 API 参数。
+              </div>
+            </template>
+          </WorkbenchCard>
         </div>
-      </div>
-    </fieldset>
+      </template>
+    </ResponsiveSplitPane>
 
-    <div class="flex items-center justify-end gap-2 border-t border-border-default pt-3">
-      <button class="btn btn-secondary" type="button" @click="cancel">取消</button>
-      <button class="btn btn-primary" type="button" :disabled="!canSubmit" @click="submit">
-        添加模型
-      </button>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border-default pt-3">
+      <p class="min-w-0 text-small text-text-subtle">{{ canSubmit ? `将写入 ${activeDraft.alias}` : "请选择或填写一个有效模型" }}</p>
+      <div class="ml-auto flex items-center gap-2">
+        <WorkbenchButton label="取消" @click="cancel" />
+        <WorkbenchButton :label="isUpdating ? '更新模型' : '添加模型'" variant="primary" :disabled="!canSubmit" @click="submit" />
+      </div>
     </div>
   </div>
 </template>

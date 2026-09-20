@@ -173,8 +173,8 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     const result = await windows.open({
       kind: "dialog",
       title: `添加模型 · ${providerName}`,
-      description: "从供应商模型清单中选择，或手动填写上游模型名；生成 [a-z0-9_] 别名后写入目录。",
-      size: "lg",
+      description: "从供应商清单选择，或手动填写模型；确认别名与能力后写入目录。",
+      size: "xl",
       modal: true,
       closeOnBackdrop: false,
       closeOnEscape: false,
