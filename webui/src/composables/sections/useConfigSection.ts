@@ -38,9 +38,8 @@ type LlmModelAddDialogValues = Record<string, unknown> & {
 };
 
 function cloneValue<T>(value: T): T {
-  return typeof globalThis.structuredClone === "function"
-    ? globalThis.structuredClone(value)
-    : JSON.parse(JSON.stringify(value)) as T;
+  // 编辑器配置是 JSON 数据；序列化同时解除所有嵌套 Vue Proxy。
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 export const useConfigSection = createSharedSectionState<ConfigSectionState>(() => {
@@ -175,7 +174,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     const providerRecord = provider as Record<string, unknown>;
     const existingModels = (providerRecord.models as Record<string, unknown> | undefined) ?? {};
 
-    const result = await windows.open<LlmModelAddDialogValues, LlmModelAddEntry>({
+    await windows.open<LlmModelAddDialogValues, void>({
       kind: "dialog",
       title: `添加模型 · ${providerName}`,
       description: "从供应商清单选择，或手动填写模型；确认别名与能力后写入目录。",
@@ -198,34 +197,39 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
         variant: "primary",
         disabled: ({ values }) => values.canSubmit !== true,
         run: ({ values }) => {
-          if (!values.entry) {
-            throw new Error("模型配置尚未完成");
+          try {
+            const entry = values.entry;
+            if (!values.canSubmit || !entry || !entry.upstreamModel.trim() || !/^[a-z0-9_]+$/.test(entry.alias)) {
+              throw new Error("模型配置尚未完成");
+            }
+            if (state.selectedKey.value !== "llm_catalog") {
+              throw new Error("当前配置目录已切换，请重新打开添加窗口");
+            }
+            const nextDraft = cloneValue(state.draftValue.value) as Record<string, unknown>;
+            const nextProvider = nextDraft[providerName] as Record<string, unknown> | undefined;
+            if (!nextProvider) {
+              throw new Error("供应商已不存在，请重新打开添加窗口");
+            }
+            const nextModels = (nextProvider.models as Record<string, unknown> | undefined) ?? {};
+            const existing = nextModels[entry.alias] as Record<string, unknown> | undefined;
+            if (existing && existing.upstreamModel !== entry.upstreamModel.trim()) {
+              throw new Error(`别名 ${entry.alias} 已被其他模型使用`);
+            }
+            nextModels[entry.alias] = {
+              upstreamModel: entry.upstreamModel.trim(),
+              ...entry.capabilities,
+              ...(existing?.apiParameters !== undefined ? { apiParameters: existing.apiParameters } : {})
+            };
+            nextProvider.models = nextModels;
+            state.updateDraft(nextDraft);
+          } catch (error: unknown) {
+            toast.push({ type: "error", message: error instanceof Error ? error.message : "添加模型失败" });
+            throw error;
           }
-          return values.entry;
         }
       }]
     });
 
-    if (result.reason !== "action" || result.actionId !== "save") {
-      return false;
-    }
-    const entry = result.result as LlmModelAddEntry | undefined;
-    if (!entry || !entry.upstreamModel.trim() || !/^[a-z0-9_]+$/.test(entry.alias)) {
-      return false;
-    }
-
-    const nextDraft = cloneValue(draft);
-    const nextRecord = nextDraft as Record<string, unknown>;
-    const nextProvider = nextRecord[providerName] as Record<string, unknown>;
-    const nextModels = (nextProvider.models as Record<string, unknown> | undefined) ?? {};
-    const existing = nextModels[entry.alias] as Record<string, unknown> | undefined;
-    nextModels[entry.alias] = {
-      upstreamModel: entry.upstreamModel.trim(),
-      ...entry.capabilities,
-      ...(existing?.apiParameters !== undefined ? { apiParameters: existing.apiParameters } : {})
-    };
-    nextProvider.models = nextModels;
-    state.updateDraft(nextDraft);
     return false;
   }
 

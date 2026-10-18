@@ -291,19 +291,18 @@ onMounted(() => {
       class="min-h-0 flex-1 basis-80"
       :breakpoint="620"
       :default-primary-size="350"
-      :default-stacked-primary-size="320"
       :min-primary-size="240"
       :min-secondary-size="260"
-      compact-mode="stacked"
+      compact-mode="tabs"
       primary-title="模型来源"
       secondary-title="模型配置"
     >
-      <template #primary="{ stacked }">
+      <template #primary="{ compact }">
         <section
           v-if="mode === 'catalog'"
           id="catalog-source-panel"
           class="flex h-full min-h-0 flex-col gap-3"
-          :class="stacked ? 'pb-3' : 'pr-3'"
+          :class="compact ? '' : 'pr-3'"
           role="tabpanel"
         >
           <div class="flex min-w-0 items-center gap-2">
@@ -365,7 +364,7 @@ onMounted(() => {
           v-else
           id="manual-source-panel"
           class="scrollbar-thin flex h-full min-h-0 flex-col gap-3 overflow-y-auto"
-          :class="stacked ? 'pb-3' : 'pr-3'"
+          :class="compact ? '' : 'pr-3'"
           role="tabpanel"
         >
           <WorkbenchCard title="上游模型" surface="sidebar" padding="lg">
@@ -377,8 +376,8 @@ onMounted(() => {
         </section>
       </template>
 
-      <template #secondary="{ stacked }">
-        <div class="h-full min-h-0" :class="stacked ? 'pt-3' : 'pl-3'">
+      <template #secondary="{ compact }">
+        <div class="h-full min-h-0" :class="compact ? '' : 'pl-3'">
           <WorkbenchCard
             title="模型配置"
             class="scrollbar-thin flex h-full min-h-0 flex-col gap-4 overflow-y-auto"
@@ -386,7 +385,7 @@ onMounted(() => {
             padding="lg"
           >
             <div v-if="!activeDraft.upstreamModel" class="flex min-h-28 flex-1 items-center justify-center text-center text-text-subtle">
-              {{ mode === "catalog" ? "从左侧选择一个模型后继续" : "填写上游模型名后继续" }}
+              {{ mode === "catalog" ? "从模型来源选择一个模型后继续" : "填写上游模型名后继续" }}
             </div>
             <template v-else>
               <div class="min-w-0">
