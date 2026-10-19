@@ -62,29 +62,27 @@ export function subscribeRuntimeReload(input: {
   setInternalApi: (value: InternalApiController | null) => void;
   services: InternalApiServices;
 }): void {
-  input.configManager.subscribe(async ({ previousConfig, currentConfig }) => {
-    input.searchService.reloadConfig();
-    await input.browserService.reloadConfig();
-    await input.oneBotClient.reloadConfig(previousConfig);
-    await input.comfyTemplateCatalog.reload();
-    await input.comfyTaskRunner.reloadConfig();
-
-    const schedulerEnabledChanged = previousConfig.scheduler.enabled !== currentConfig.scheduler.enabled;
-    if (schedulerEnabledChanged) {
-      if (currentConfig.scheduler.enabled) {
+  input.configManager.subscribe(() => input.searchService.reloadConfig());
+  input.configManager.subscribe(() => input.browserService.reloadConfig());
+  input.configManager.subscribe(({ previousConfig }) => input.oneBotClient.reloadConfig(previousConfig));
+  input.configManager.subscribe(() => input.comfyTemplateCatalog.reload());
+  input.configManager.subscribe(() => input.comfyTaskRunner.reloadConfig());
+  input.configManager.subscribe(async ({ currentConfig }) => {
+    if (currentConfig.scheduler.enabled) {
+      if (!input.isSchedulerStarted()) {
         await input.scheduler.start();
         input.setSchedulerStarted(true);
-        input.logger.info("scheduler_started_after_config_reload");
-      } else if (input.isSchedulerStarted()) {
-        await input.scheduler.stop();
-        input.setSchedulerStarted(false);
-        input.logger.info("scheduler_stopped_after_config_reload");
       }
+    } else {
+      // start() may fail after installing some timers, before started becomes true.
+      await input.scheduler.stop();
+      input.setSchedulerStarted(false);
     }
-
+  });
+  input.configManager.subscribe(async ({ previousConfig, currentConfig }) => {
     const internalApiNeedsRestart =
-      previousConfig.internalApi.enabled !== currentConfig.internalApi.enabled
-      || previousConfig.internalApi.port !== currentConfig.internalApi.port;
+      JSON.stringify(previousConfig.internalApi) !== JSON.stringify(currentConfig.internalApi)
+      || (currentConfig.internalApi.enabled && input.getInternalApi() == null);
     if (!internalApiNeedsRestart) {
       return;
     }

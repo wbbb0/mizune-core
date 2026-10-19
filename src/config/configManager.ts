@@ -17,6 +17,7 @@ export class ConfigManager {
   private readonly env: NodeJS.ProcessEnv;
   private readonly logger: Logger;
   private timer: NodeJS.Timeout | null = null;
+  private requestedReload: NodeJS.Immediate | null = null;
   private lastFileStates = new Map<string, FileState>();
   private reloading = false;
   private reloadCompletion: Promise<void> | null = null;
@@ -44,7 +45,19 @@ export class ConfigManager {
     this.timer.unref?.();
   }
 
+  requestReload(): void {
+    if (this.requestedReload) return;
+    this.requestedReload = setImmediate(() => {
+      this.requestedReload = null;
+      void this.checkForUpdates();
+    });
+  }
+
   stop(): void {
+    if (this.requestedReload) {
+      clearImmediate(this.requestedReload);
+      this.requestedReload = null;
+    }
     if (this.timer != null) {
       clearInterval(this.timer);
       this.timer = null;
@@ -74,7 +87,7 @@ export class ConfigManager {
       this.writeTransactionActive = true;
       const result = await fn();
       this.writeTransactionActive = false;
-      await this.checkForUpdates();
+      this.requestReload();
       return result;
     } finally {
       this.writeTransactionActive = false;
@@ -103,22 +116,27 @@ export class ConfigManager {
       const previousConfig = structuredClone(this.config);
       const reloadedConfig = loadConfig(this.env);
       syncPlainObject(this.config as unknown as Record<string, unknown>, reloadedConfig as unknown as Record<string, unknown>);
-      this.lastFileStates = await this.collectFileStates();
-
-      this.logger.info(
-        {
-          changedPaths,
-          startup: toConfigSummary(this.config)
-        },
-        "config_reloaded"
-      );
-
-      for (const listener of this.listeners) {
-        await listener({
-          previousConfig,
-          currentConfig: this.config
-        });
+      const applied: ConfigReloadListener[] = [];
+      try {
+        for (const listener of this.listeners) {
+          applied.push(listener);
+          await listener({ previousConfig, currentConfig: this.config });
+        }
+      } catch (error) {
+        syncPlainObject(this.config as unknown as Record<string, unknown>, previousConfig as unknown as Record<string, unknown>);
+        for (const listener of applied.reverse()) {
+          try {
+            await listener({ previousConfig: reloadedConfig, currentConfig: this.config });
+          } catch (rollbackError) {
+            this.logger.error({ err: rollbackError }, "config_reload_rollback_failed");
+          }
+        }
+        throw error;
       }
+      // Acknowledge only the files that produced this candidate. Changes made while
+      // listeners were running must be picked up by the next poll.
+      this.lastFileStates = nextStates;
+      this.logger.info({ changedPaths, startup: toConfigSummary(this.config) }, "config_reloaded");
       return true;
     } catch (error: unknown) {
       this.logger.error(

@@ -133,6 +133,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
         await writeYaml(join(configDir, "global.yml"), { appName: "after" });
         reloadDuringTransaction = await manager.checkForUpdates();
       });
+      await manager.checkForUpdates();
       manager.stop();
 
       assert.equal(reloadDuringTransaction, false);
@@ -362,3 +363,95 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
       assert.equal(config.shell.enabled, true);
     });
   });
+
+test("failed runtime reload rolls back and retries unchanged candidate files", async () => {
+  await withConfigDir("llm-bot-reload-rollback", async (configDir) => {
+    await mkdir(join(configDir, "instances"), { recursive: true });
+    await writeLlmCatalog(configDir);
+    await writeYaml(join(configDir, "global.yml"), { appName: "before" });
+    await writeYaml(join(configDir, "instances", "acc1.yml"), {});
+    const env = { CONFIG_DIR: configDir, CONFIG_INSTANCE: "acc1" };
+    const config = loadConfig(env);
+    const manager = new ConfigManager(config, pino({ level: "silent" }), env);
+    await manager.start(); manager.stop();
+    let runtimeName = config.appName;
+    let fail = true;
+    manager.subscribe(({ currentConfig }) => { runtimeName = currentConfig.appName; });
+    manager.subscribe(({ currentConfig }) => {
+      if (currentConfig.appName === "after" && fail) throw new Error("runtime start failed");
+    });
+    await sleep(20);
+    await writeYaml(join(configDir, "global.yml"), { appName: "after" });
+    assert.equal(await manager.checkForUpdates(), false);
+    assert.equal(config.appName, "before");
+    assert.equal(runtimeName, "before");
+    fail = false;
+    assert.equal(await manager.checkForUpdates(), true);
+    assert.equal(config.appName, "after");
+    assert.equal(runtimeName, "after");
+    assert.equal(await manager.checkForUpdates(), false);
+  });
+});
+
+for (const path of ["editor", "transaction"] as const) {
+  test(`HTTP ${path} save responds before its reload closes the serving app`, async () => {
+    const { default: Fastify } = await import("fastify");
+    const { createEditorService } = await import("../../src/internalApi/application/editorService.ts");
+    await withConfigDir("llm-bot-http-reload", async (configDir) => {
+      await writeLlmCatalog(configDir);
+      await writeYaml(join(configDir, "global.yml"), { appName: "before" });
+      await writeYaml(join(configDir, "instances", "acc1.yml"), {});
+      const env = { CONFIG_DIR: configDir, CONFIG_INSTANCE: "acc1" };
+      const config = loadConfig(env);
+      const manager = new ConfigManager(config, pino({ level: "silent" }), env);
+      await manager.start(); manager.stop();
+      const app = Fastify();
+      let closed = false;
+      const editor = createEditorService({ config, configManager: manager,
+        whitelistStore: { async reloadFromDisk() {} } as any, scheduler: { async reloadFromStore() {} } });
+      app.post("/save", async () => {
+        if (path === "editor") return editor.saveDraft("global_config", { appName: "after" });
+        await manager.runWriteTransaction(() => writeYaml(join(configDir, "global.yml"), { appName: "after" }));
+        return { ok: true };
+      });
+      manager.subscribe(async () => { await app.close(); closed = true; });
+      try {
+        const address = await app.listen({ host: "127.0.0.1", port: 0 });
+        const response = await fetch(`${address}/save`, { method: "POST", signal: AbortSignal.timeout(3000) });
+        assert.equal(response.status, 200);
+        assert.equal((await response.json() as { ok: boolean }).ok, true);
+        for (let i = 0; i < 100 && !closed; i++) await sleep(10);
+        assert.equal(closed, true);
+        assert.equal(config.appName, "after");
+      } finally { manager.stop(); await app.close(); }
+    });
+  });
+}
+
+test("runtime rollback cleans partially started scheduler even before the started flag is set", async () => {
+  const { subscribeRuntimeReload } = await import("../../src/app/runtime/runtimeLifecycle.ts");
+  await withConfigDir("llm-bot-runtime-rollback", async (configDir) => {
+    await writeLlmCatalog(configDir);
+    await writeYaml(join(configDir, "global.yml"), { scheduler: { enabled: false }, internalApi: { enabled: false } });
+    await writeYaml(join(configDir, "instances", "acc1.yml"), {});
+    const env = { CONFIG_DIR: configDir, CONFIG_INSTANCE: "acc1" };
+    const config = loadConfig(env);
+    const manager = new ConfigManager(config, pino({ level: "silent" }), env);
+    await manager.start(); manager.stop();
+    let timerActive = false;
+    let started = false;
+    subscribeRuntimeReload({
+      configManager: manager, config, logger: pino({ level: "silent" }),
+      searchService: { reloadConfig() {} }, browserService: { async reloadConfig() {} },
+      oneBotClient: { async reloadConfig() {} }, comfyTemplateCatalog: { async reload() {} }, comfyTaskRunner: { async reloadConfig() {} },
+      scheduler: { async start() { timerActive = true; throw new Error("partially installed"); }, async stop() { timerActive = false; } },
+      isSchedulerStarted: () => started, setSchedulerStarted: (value: boolean) => { started = value; },
+      getInternalApi: () => null, setInternalApi() {}
+    } as any);
+    await writeYaml(join(configDir, "global.yml"), { scheduler: { enabled: true }, internalApi: { enabled: false } });
+    assert.equal(await manager.checkForUpdates(), false);
+    assert.equal(config.scheduler.enabled, false);
+    assert.equal(started, false);
+    assert.equal(timerActive, false);
+  });
+});

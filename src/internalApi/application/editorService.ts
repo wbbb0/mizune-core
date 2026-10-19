@@ -137,7 +137,7 @@ export interface EditorService {
 
 export function createEditorService(input: {
   config: AppConfig;
-  configManager: Pick<ConfigManager, "checkForUpdates" | "runWriteTransaction">;
+  configManager: Pick<ConfigManager, "requestReload" | "runWriteTransaction">;
   whitelistStore: Pick<WhitelistStore, "reloadFromDisk">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
 }): EditorService {
@@ -424,7 +424,7 @@ export function createEditorService(input: {
 
 function buildEditorResourceMap(input: {
   config: Pick<AppConfig, "configRuntime" | "dataDir">;
-  configManager: Pick<ConfigManager, "checkForUpdates">;
+  configManager: Pick<ConfigManager, "requestReload">;
   whitelistStore: Pick<WhitelistStore, "reloadFromDisk">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
 }): Map<string, EditorResource<any>> {
@@ -442,8 +442,8 @@ function buildEditorResourceMap(input: {
         unsetMode: "optional",
         draftEffectiveMode: "draft_only"
       }),
-      afterSave: async () => {
-        await input.configManager.checkForUpdates();
+      afterSave: () => {
+        input.configManager.requestReload();
       }
     },
     {
@@ -464,8 +464,8 @@ function buildEditorResourceMap(input: {
         { key: "global", path: input.config.configRuntime.globalConfigPath, optional: true },
         { key: "instance", path: input.config.configRuntime.instanceConfigPath }
       ],
-      afterSave: async () => {
-        await input.configManager.checkForUpdates();
+      afterSave: () => {
+        input.configManager.requestReload();
       }
     },
     {
@@ -480,8 +480,8 @@ function buildEditorResourceMap(input: {
         unsetMode: "optional",
         draftEffectiveMode: "draft_only"
       }),
-      afterSave: async () => {
-        await input.configManager.checkForUpdates();
+      afterSave: () => {
+        input.configManager.requestReload();
       }
     },
     {
@@ -496,8 +496,8 @@ function buildEditorResourceMap(input: {
       createValueState: (currentValue) => createRoutingPresetCatalogEditorValueState(
         currentValue as Record<string, never>
       ),
-      afterSave: async () => {
-        await input.configManager.checkForUpdates();
+      afterSave: () => {
+        input.configManager.requestReload();
       }
     }
   ];

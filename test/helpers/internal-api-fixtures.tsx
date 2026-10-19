@@ -1435,6 +1435,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     } as unknown as InternalApiDeps["downloadRuntime"],
     configManager: {
+      requestReload() { state.configCheckForUpdatesCount += 1; },
       async checkForUpdates() {
         state.configCheckForUpdatesCount += 1;
         return true;

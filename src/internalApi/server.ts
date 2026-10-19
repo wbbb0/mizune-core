@@ -62,7 +62,7 @@ function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiSe
 }
 
 export async function startInternalApi(deps: InternalApiRuntimeDeps) {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, forceCloseConnections: true });
   const { services } = deps;
   const webuiEnabled = deps.config.internalApi.webui.enabled;
   const webuiAuthEnabled = webuiEnabled && deps.config.internalApi.webui.auth.enabled;
