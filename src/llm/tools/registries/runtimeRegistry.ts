@@ -1,3 +1,4 @@
+import { stickerToolDescriptors, stickerToolHandlers } from "../runtime/stickerTools.ts";
 import { imageGenerationToolDescriptors, imageGenerationToolHandlers } from "../runtime/imageGenerationTools.ts";
 import { temporaryWorkspaceToolDescriptors, temporaryWorkspaceToolHandlers } from "../runtime/temporaryWorkspaceTools.ts";
 import type { AppConfig } from "#config/config.ts";
@@ -22,6 +23,7 @@ import {
 } from "../runtime/workspaceTools.ts";
 
 const runtimeStaticToolDescriptorsRegistry = [
+  ...stickerToolDescriptors,
   ...debugToolDescriptors,
   ...resourceToolDescriptors,
   ...turnPlannerToolDescriptors,
@@ -48,6 +50,7 @@ export function runtimeToolDescriptorsRegistry(config?: AppConfig) {
 }
 
 export const runtimeToolHandlersRegistry = {
+  ...stickerToolHandlers,
   ...comfyToolHandlers,
   ...debugToolHandlers,
   ...resourceToolHandlers,

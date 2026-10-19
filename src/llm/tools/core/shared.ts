@@ -1,3 +1,4 @@
+import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
@@ -95,6 +96,7 @@ export interface BuiltinToolCommunicationDeps {
   oneBotClient: OneBotClient;
   audioStore: AudioStore;
   chatFileStore: ChatFileStore;
+  stickerService?: StickerService;
   downloadRuntime: DownloadRuntime;
   mediaVisionService: MediaVisionService;
   mediaCaptionService: MediaCaptionService;

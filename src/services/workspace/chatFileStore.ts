@@ -412,13 +412,13 @@ export class ChatFileStore {
       return false;
     }
     const absolutePath = await this.resolveAbsolutePath(fileId);
-    await rm(absolutePath, { force: true });
-    await rm(this.resolveDocumentCacheDirectory(fileId), { recursive: true, force: true }).catch((error: unknown) => {
-      this.logger.warn({ fileId, error }, "chat_file_document_cache_cleanup_failed");
-    });
     await this.withWriteLock(async () => {
       const db = await this.getReadyDb();
       db.prepare("DELETE FROM chat_files WHERE file_id = ?").run(fileId);
+    });
+    await rm(absolutePath, { force: true });
+    await rm(this.resolveDocumentCacheDirectory(fileId), { recursive: true, force: true }).catch((error: unknown) => {
+      this.logger.warn({ fileId, error }, "chat_file_document_cache_cleanup_failed");
     });
     return true;
   }

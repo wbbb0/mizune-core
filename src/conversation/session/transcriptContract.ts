@@ -13,7 +13,7 @@ export const transcriptProfilePhaseTransitionTargetValues = ["persona", "rp", "s
 export const transcriptProfilePhaseTransitionPhaseValues = ["setup", "config"] as const;
 export const transcriptProfilePhaseTransitionActionValues = ["enter", "exit_confirmed", "exit_cancelled"] as const;
 export const transcriptProfilePhaseTransitionSourceValues = ["command", "automatic"] as const;
-export const transcriptOutboundMediaToolNameValues = ["asset_send_to_chat", "filesystem_send_to_chat"] as const;
+export const transcriptOutboundMediaToolNameValues = ["asset_send_to_chat", "filesystem_send_to_chat", "sticker_send"] as const;
 export const transcriptInternalTriggerKindValues = [
   "scheduled_instruction",
   "comfy_task_completed",
@@ -290,7 +290,7 @@ export const transcriptOutboundMediaMessageItemSchema = z.object({
   llmVisible: z.literal(false),
   role: z.literal("assistant"),
   delivery: z.enum(["onebot", "web"]),
-  mediaKind: z.enum(["image", "file"]),
+  mediaKind: z.enum(["image", "emoji", "file"]),
   fileId: z.string().min(1).nullable(),
   fileRef: z.string().nullable(),
   sourceName: z.string().nullable(),

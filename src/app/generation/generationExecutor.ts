@@ -585,6 +585,7 @@ export function createGenerationExecutor(
         mediaVisionService,
         mediaCaptionService,
         mediaInspectionService,
+        ...(deps.toolRuntime.stickerService ? { stickerService: deps.toolRuntime.stickerService } : {}),
         textInspectionService,
         ...(deps.toolRuntime.documentSummaryService ? { documentSummaryService: deps.toolRuntime.documentSummaryService } : {}),
         ...(deps.toolRuntime.contextEmbeddingService ? { contextEmbeddingService: deps.toolRuntime.contextEmbeddingService } : {}),

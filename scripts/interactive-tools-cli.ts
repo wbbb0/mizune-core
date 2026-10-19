@@ -435,6 +435,7 @@ async function buildToolContext(
     mediaVisionService: services.mediaVisionService,
     mediaCaptionService: services.mediaCaptionService,
     mediaInspectionService: services.mediaInspectionService,
+    stickerService: services.stickerService,
     textInspectionService: services.textInspectionService,
     documentSummaryService: services.documentSummaryService,
     contextEmbeddingService: services.contextEmbeddingService,

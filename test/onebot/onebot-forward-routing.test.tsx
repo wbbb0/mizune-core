@@ -157,3 +157,29 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
     assert.equal(normalizeOneBotMessageId(""), null);
     assert.equal(normalizeOneBotMessageId("abc"), null);
   });
+
+test("view_message retains native market sticker metadata when importing a quoted message", async () => {
+  const sessionManager = new SessionManager(createForwardFeatureConfig());
+  sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
+  const imports: any[] = [];
+  const result = await messageToolHandlers.view_message!(
+    { id: "view-sticker", type: "function", function: { name: "view_message", arguments: '{"message_id":"123"}' } },
+    { message_id: "123" },
+    {
+      lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" }, sessionManager,
+      oneBotClient: { getMessage: async () => ({
+        message_id: 123, message_type: "private", sender: {},
+        message: [{ type: "image", data: { url: "https://example.com/face.gif", emoji_id: "face", emoji_package_id: 123, key: "market-key", summary: "笑" } }]
+      }) },
+      chatFileStore: { importRemoteSource: async (input: any) => {
+        imports.push(input);
+        return { fileId: "file_sticker", kind: "animated_image", sourceName: "face.gif", mimeType: "image/gif", sourceContext: input.sourceContext };
+      } }
+    } as any
+  );
+  assert.equal(imports.length, 1);
+  assert.deepEqual(imports[0].sourceContext, {
+    mediaKind: "emoji", emojiId: "face", emojiPackageId: 123, emojiKey: "market-key", emojiSummary: "笑"
+  });
+  assert.doesNotMatch(typeof result === "string" ? result : result.content, /market-key/);
+});

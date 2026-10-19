@@ -77,7 +77,7 @@ export type ProjectedChatTimelineItem =
   | {
       kind: "image";
       role: "assistant";
-      mediaKind: "image";
+      mediaKind: "image" | "emoji";
       fileId: string | null;
       fileRef: string | null;
       sourceName: string | null;
@@ -86,7 +86,7 @@ export type ProjectedChatTimelineItem =
       mimeType: string | null;
       sizeBytes: number | null;
       messageId: number | null;
-      toolName: "asset_send_to_chat" | "filesystem_send_to_chat";
+      toolName: "asset_send_to_chat" | "filesystem_send_to_chat" | "sticker_send";
       captionText: string | null;
       timestampMs: number;
     }
@@ -102,7 +102,7 @@ export type ProjectedChatTimelineItem =
       mimeType: string | null;
       sizeBytes: number | null;
       messageId: number | null;
-      toolName: "asset_send_to_chat" | "filesystem_send_to_chat";
+      toolName: "asset_send_to_chat" | "filesystem_send_to_chat" | "sticker_send";
       captionText: string | null;
       timestampMs: number;
     };
@@ -143,7 +143,7 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
       };
       projected.push(item.mediaKind === "file"
         ? { ...base, kind: "file" as const, mediaKind: "file" as const }
-        : { ...base, kind: "image" as const, mediaKind: "image" as const });
+        : { ...base, kind: "image" as const, mediaKind: item.mediaKind });
     }
   }
   return projected;

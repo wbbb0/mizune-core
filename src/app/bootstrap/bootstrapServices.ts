@@ -1,3 +1,4 @@
+import { StickerService } from "#services/stickers/stickerService.ts";
 import { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
@@ -93,6 +94,7 @@ export function createBootstrapServices(
   const contentSafetyService = new ContentSafetyService(config, logger, contentSafetyStore, chatFileStore, audioStore);
   const mediaVisionService = new MediaVisionService(config, logger, chatFileStore, contentSafetyService);
   const mediaCaptionService = new MediaCaptionService(config, llmClient, chatFileStore, mediaVisionService, logger, contentSafetyService);
+  const stickerService = new StickerService(config, dataDir, logger, chatFileStore, mediaVisionService, llmClient);
   const mediaInspectionService = new MediaInspectionService(config, llmClient, logger);
   const textInspectionService = new TextInspectionService(config, llmClient, logger);
   const documentSummaryService = new DocumentSummaryService(config, llmClient, logger);
@@ -200,6 +202,7 @@ export function createBootstrapServices(
     mediaVisionService,
     mediaCaptionService,
     mediaInspectionService,
+    stickerService,
     textInspectionService,
     documentSummaryService,
     comfyClient,

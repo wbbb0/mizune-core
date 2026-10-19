@@ -178,7 +178,7 @@ function toChatTimelineItems(
       id: entry.id,
       itemId: entry.item.id,
       groupId: entry.item.groupId,
-      actionTitle: "图片消息",
+      actionTitle: entry.item.mediaKind === "emoji" ? "表情消息" : "图片消息",
       kind: "image",
       role: "assistant",
       side: "left",

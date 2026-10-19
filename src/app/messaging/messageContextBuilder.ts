@@ -1,3 +1,4 @@
+import { marketFaceSourceContext } from "#services/onebot/messageSegments.ts";
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { MessageContentPart, MessageMediaContentPart } from "#messages/contentParts.ts";
 import {
@@ -40,6 +41,7 @@ export async function createMessageProcessingContext(
           origin: "chat_message",
           sourceContext: {
             mediaKind: part.kind,
+            ...marketFaceSourceContext(part.marketFace),
             userId: resolvedUserId,
             senderName: incomingMessage.senderName
           }

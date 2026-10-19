@@ -19,6 +19,14 @@ export interface ToolsetView {
 
 export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
+    id: "sticker_library",
+    title: "精选表情库",
+    description: "按需收藏、整理和淘汰值得复用的表情，或从QQ收藏导入；不是每轮都需要整理。",
+    modeUniversal: { defaultEnabled: true },
+    plannerSignals: ["收藏或整理表情", "维护表情描述、使用情景和风格", "查看QQ收藏"],
+    toolNames: ["sticker_collect", "sticker_update", "sticker_remove", "sticker_qq_list", "sticker_search", "sticker_send"]
+  },
+  {
     modeUniversal: { defaultEnabled: true },
     id: "chat_context",
     title: "会话上下文",
@@ -30,6 +38,8 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "为当前聊天设置、修改或清除 bot 身份"
     ],
     toolNames: [
+      "sticker_search",
+      "sticker_send",
       "view_message",
       "download_message_file",
       "view_forward_record",

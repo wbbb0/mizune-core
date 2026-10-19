@@ -1,3 +1,4 @@
+import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
 import type { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
@@ -98,6 +99,7 @@ export interface AppServiceBootstrap {
   localFileService: LocalFileService;
   temporaryWorkspaceService: TemporaryWorkspaceService;
   chatFileStore: ChatFileStore;
+  stickerService: StickerService;
   downloadRuntime: DownloadRuntime;
   assetLifecycleStore: AssetLifecycleStore;
   assetLifecycleService: AssetLifecycleService;

@@ -109,7 +109,7 @@ const itemTitle = computed(() => {
       title = `工具结果 · ${props.item.toolName || "未知工具结果"}`;
       break;
     case "outbound_media_message":
-      title = `${props.item.mediaKind === "file" ? "发送文件" : "发送图片"} · ${props.item.toolName}`;
+      title = `${props.item.mediaKind === "file" ? "发送文件" : props.item.mediaKind === "emoji" ? "发送表情" : "发送图片"} · ${props.item.toolName}`;
       break;
     case "gate_decision":
       title = `Turn Planner 判定 · ${formatPlannerAction(props.item.action)}`;

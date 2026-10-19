@@ -117,6 +117,43 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     assert.equal(firstItem.imageUrl, "/api/chat-files/assistant-image-1/content");
   });
 
+  test("chat timeline labels outbound stickers as emoji messages", () => {
+    const items = buildChatTimelineItems([createUserMessageEntry(), {
+      id: "entry-media-1",
+      eventId: "event-media-1",
+      index: 1,
+      item: {
+        id: "item-media-1",
+        groupId: "group-media-1",
+        runtimeExcluded: false,
+        kind: "outbound_media_message",
+        llmVisible: false,
+        role: "assistant",
+        delivery: "onebot",
+        mediaKind: "emoji",
+        fileId: "assistant-image-1",
+        fileRef: "assistant.png",
+        sourceName: "assistant.png",
+        chatFilePath: "workspace/media/assistant.png",
+        sourcePath: null,
+        messageId: 12,
+        toolName: "sticker_send",
+        timestampMs: 1710000001000
+      }
+    }], {
+      activeComposerUserId: "10001"
+    });
+
+    const firstItem = items[0];
+    assert.equal(firstItem?.actionTitle, "表情消息");
+    assert.equal(firstItem?.kind, "image");
+    assert.equal(firstItem?.role, "assistant");
+    if (firstItem?.kind !== "image") {
+      throw new Error("expected image item");
+    }
+    assert.equal(firstItem.imageUrl, "/api/chat-files/assistant-image-1/content");
+  });
+
   test("chat timeline renders outbound file messages as downloadable file parts", () => {
     const items = buildChatTimelineItems([{
       id: "entry-file-1",

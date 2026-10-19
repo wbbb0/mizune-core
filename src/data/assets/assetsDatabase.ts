@@ -298,6 +298,35 @@ const ASSETS_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
     validateSchema: validateChatFilesSchema
   },
   {
+    groupId: "assets.stickers",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["stickers"],
+    ownedIndexes: [],
+    createSchema(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS stickers (
+        id TEXT PRIMARY KEY NOT NULL,
+        file_id TEXT NOT NULL REFERENCES chat_files(file_id) ON DELETE RESTRICT,
+        content_hash TEXT NOT NULL UNIQUE,
+        metadata_json TEXT NOT NULL,
+        locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+        revision INTEGER NOT NULL DEFAULT 1,
+        use_count INTEGER NOT NULL DEFAULT 0,
+        last_used_at_ms INTEGER,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        reason TEXT NOT NULL
+      )`);
+    },
+    validateSchema(db) {
+      assertTableColumns(db, "stickers", {
+        id: "TEXT", file_id: "TEXT", content_hash: "TEXT", metadata_json: "TEXT",
+        locked: "INTEGER", revision: "INTEGER", use_count: "INTEGER", last_used_at_ms: "INTEGER",
+        created_at_ms: "INTEGER", updated_at_ms: "INTEGER", reason: "TEXT"
+      });
+    }
+  },
+  {
     groupId: "assets.comfy_tasks",
     schemaVersion: 2,
     ownedTables: ["comfy_tasks", "comfy_task_result_files"],

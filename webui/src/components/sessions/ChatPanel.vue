@@ -300,7 +300,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
     case "assistant_message":
       return "模型回复";
     case "outbound_media_message":
-      return "发送图片";
+      return item.mediaKind === "file" ? "发送文件" : item.mediaKind === "emoji" ? "发送表情" : "发送图片";
     case "direct_command":
       return item.direction === "input" ? "指令输入" : "指令输出";
     case "assistant_tool_call":

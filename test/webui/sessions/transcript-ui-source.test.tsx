@@ -87,3 +87,13 @@ import { readFile } from "node:fs/promises";
     assert.doesNotMatch(source, /<img :src="getChatFileContentUrl/);
     assert.match(source, /text="语音消息"/);
   });
+
+  test("outbound media labels distinguish stickers, images and files in transcript and actions", async () => {
+    for (const filename of ["TranscriptItem.vue", "ChatPanel.vue"]) {
+      const source = await readFile(new URL(`../../../webui/src/components/sessions/${filename}`, import.meta.url), "utf8");
+      const outboundCase = source.match(/case "outbound_media_message":([\s\S]*?)(?:break;|case )/)?.[1];
+      assert.ok(outboundCase, `${filename} has an outbound media label`);
+      assert.match(outboundCase, /mediaKind === "file" \? "发送文件"/);
+      assert.match(outboundCase, /mediaKind === "emoji" \? "发送表情" : "发送图片"/);
+    }
+  });

@@ -14,6 +14,7 @@ type SentImmediateText = {
 };
 
 interface DirectCommandFixtureOptions {
+  stickerService?: Parameters<typeof createDirectCommandHandler>[0]["stickerService"];
   config?: Parameters<typeof createTestAppConfig>[0];
   session?: Record<string, unknown>;
   cancelGeneration?: () => boolean;
@@ -120,6 +121,7 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
   };
 
   const handler = createDirectCommandHandler({
+    ...(options.stickerService ? { stickerService: options.stickerService } : {}),
     config: createTestAppConfig({
       shell: {
         enabled: true

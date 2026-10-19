@@ -686,6 +686,10 @@ export const fileConfigSchema = s.object({
   shell: shellConfigSchema,
   localFiles: localFilesConfigSchema,
   chatFiles: chatFilesConfigSchema,
+  stickers: s.object({
+    enabled: s.boolean().default(true),
+    maxCount: s.number().int().min(1).max(200).default(25)
+  }).title("精选表情库").describe("实例共享；达到上限时必须明确替换旧表情。降额不自动删除已有收藏。").default(emptyObject),
   assets: assetsConfigSchema,
   comfy: comfyConfigSchema,
   contentSafety: contentSafetyConfigSchema,

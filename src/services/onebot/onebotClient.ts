@@ -510,6 +510,15 @@ export class OneBotClient extends EventEmitter {
     };
   }
 
+  async fetchCustomFaces(count = 48): Promise<string[]> {
+    const payload = await this.postApi<OneBotApiResponse>("fetch_custom_face", { count });
+    this.assertApiSuccess("fetch_custom_face", payload, { count });
+    if (!Array.isArray(payload.data) || !payload.data.every((item) => typeof item === "string" && /^https?:\/\//i.test(item))) {
+      throw new Error("NapCat 收藏清单格式无效");
+    }
+    return payload.data as string[];
+  }
+
   async getImage(file: string): Promise<{ file: string | null; url: string | null }> {
     const payload = await this.postApi<OneBotApiResponse>("get_image", {
       file

@@ -1,3 +1,4 @@
+import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { Logger } from "pino";
 import type { ConversationAccessService } from "#identity/conversationAccessService.ts";
@@ -117,6 +118,7 @@ export interface GenerationToolRuntimeDeps {
   localFileService: LocalFileService;
   temporaryWorkspaceService: TemporaryWorkspaceService;
   chatFileStore: ChatFileStore;
+  stickerService?: StickerService;
   downloadRuntime: DownloadRuntime;
   mediaInspectionService: MediaInspectionService;
   textInspectionService: TextInspectionService;

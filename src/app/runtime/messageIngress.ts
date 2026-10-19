@@ -34,6 +34,7 @@ type DirectCommandDeps = Pick<
   | "contextStore"
   | "userIdentityStore"
   | "recentErrorStore"
+  | "stickerService"
 > & {
   sessionManager: SessionDirectCommandAccess & Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
   persistSession: (sessionId: string, reason: string) => void;
@@ -124,6 +125,7 @@ function createDeliveryHandleDirectCommand(
 ): MessageEventHandlerDeps["handleDirectCommand"] {
   return createDirectCommandHandler({
     config: deps.config,
+    stickerService: deps.stickerService,
     sessionManager: deps.sessionManager,
     oneBotClient: deps.oneBotClient,
     logger: deps.logger,

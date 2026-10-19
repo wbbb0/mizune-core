@@ -5,6 +5,7 @@ import {
   extractMentions,
   extractReplyMessageId,
   extractText,
+  marketFaceSourceContext,
   normalizeSegmentsForTool
 } from "#services/onebot/messageSegments.ts";
 import { importOneBotMessageFile } from "#services/onebot/fileSourceImport.ts";
@@ -71,7 +72,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
       const normalizedSegments = normalizeSegmentsForTool(message.message);
       const imageSources = normalizedSegments.flatMap((segment) => (
         segment.kind === "image"
-          ? [{ source: segment.source, kind: segment.mediaKind }]
+          ? [{ source: segment.source, kind: segment.mediaKind, marketFace: segment.marketFace }]
           : []
       ));
       const workspaceImageAssets = await Promise.all(
@@ -81,7 +82,8 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
             kind: "image",
             origin: "chat_message",
             sourceContext: {
-              mediaKind: item.kind
+              mediaKind: item.kind,
+              ...marketFaceSourceContext(item.marketFace)
             }
           }).catch(() => null))
       );

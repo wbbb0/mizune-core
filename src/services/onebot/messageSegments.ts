@@ -3,6 +3,20 @@ import type { MessageContentPart } from "#messages/contentParts.ts";
 
 export type MediaSemanticKind = "image" | "emoji";
 
+export interface MarketFaceMetadata {
+  emojiId: string;
+  packageId: number;
+  key: string;
+  summary: string;
+}
+
+export function marketFaceSourceContext(face?: MarketFaceMetadata): Record<string, string | number> {
+  return face ? {
+    emojiId: face.emojiId, emojiPackageId: face.packageId,
+    emojiKey: face.key, emojiSummary: face.summary
+  } : {};
+}
+
 export interface MentionExtraction {
   mentionedSelf: boolean;
   mentionedAll: boolean;
@@ -53,7 +67,7 @@ export interface NormalizedOtherSegment {
 
 export type NormalizedMessageToolSegment =
   | { kind: "text"; text: string }
-  | { kind: "image"; source: string; viewable: boolean; mediaKind: MediaSemanticKind }
+  | { kind: "image"; source: string; viewable: boolean; mediaKind: MediaSemanticKind; marketFace?: MarketFaceMetadata }
   | { kind: "file"; fileId: string; filename: string | null; busid: string | number | null; sizeBytes: number | null; mimeType: string | null; summary: string }
   | { kind: "forward"; forwardId: string }
   | { kind: "reply"; messageId: string }
@@ -230,9 +244,11 @@ export function extractContentParts(
 
     const imageSource = getImageSource(segment);
     if (imageSource) {
+      const marketFace = getMarketFaceMetadata(segment);
       parts.push({
         kind: getSegmentMediaKind(segment),
-        source: imageSource
+        source: imageSource,
+        ...(marketFace ? { marketFace } : {})
       });
       continue;
     }
@@ -370,10 +386,12 @@ export function normalizeSegmentsForTool(
 
     const imageSource = getImageSource(segment);
     if (imageSource) {
+      const marketFace = getMarketFaceMetadata(segment);
       normalized.push({
         kind: "image",
         source: imageSource,
         mediaKind: getSegmentMediaKind(segment),
+        ...(marketFace ? { marketFace } : {}),
         viewable: true
       });
       continue;
@@ -466,7 +484,11 @@ export function getAudioSource(segment: OneBotMessageSegment): string | null {
 }
 
 export function getSegmentMediaKind(segment: OneBotMessageSegment): MediaSemanticKind {
-  return segment.type === "mface" ? "emoji" : "image";
+  if (segment.type === "mface") return "emoji";
+  if (segment.type !== "image") return "image";
+  const data = segment.data;
+  return Number(data.sub_type) === 1 || Boolean(data.emoji_id && data.emoji_package_id)
+    || data.file === "marketface" ? "emoji" : "image";
 }
 
 export function getForwardId(segment: OneBotMessageSegment): string | null {
@@ -724,4 +746,10 @@ function truncateValue(value: unknown): string {
     ? value
     : JSON.stringify(value);
   return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+export function getMarketFaceMetadata(segment: OneBotMessageSegment): MarketFaceMetadata | null {
+  const { emoji_id, emoji_package_id, key, summary } = segment.data;
+  if (!emoji_id || !Number.isSafeInteger(Number(emoji_package_id)) || Number(emoji_package_id) <= 0 || !key) return null;
+  return { emojiId: String(emoji_id), packageId: Number(emoji_package_id), key: String(key), summary: String(summary ?? "[表情]") };
 }

@@ -292,3 +292,9 @@ ComfyUI 完成任务先保存为 `succeeded`，完成事件提交成功后才标
 配置保存先确认文件写入，再异步重载运行时，避免保存请求等待关闭自身所在的 API；重启会断开现有连接，WebUI 流需要重新连接。配置热更新失败会恢复上一份配置并尝试恢复已更新的运行时组件；失败候选不会被标记为已处理，下次轮询会重试。WebUI 端口、启用状态和鉴权设置的变化也会触发 API 重启。若运行时恢复本身失败，日志会记录 `config_reload_rollback_failed`。
 
 模型目录采用多用途子树，向量模型独立配置于 `context.embedding.model`。模型发现、自动填空、OpenRouter 分区清单和旧字段调整说明见 [模型目录与向量配置](docs/development/model-catalog.md)。
+
+### 精选表情库
+
+Agent 可按需收藏、检索、维护和发送表情。`stickers.enabled` 默认开启，`stickers.maxCount` 默认 25；满额后必须明确替换旧表情，owner 可通过 `.sticker lock <表情ID>` 锁定条目、`.sticker unlock <表情ID>` 解锁；模型没有锁管理工具。收藏时复用 `llm.imageInspector` 生成画面描述、使用情景、情绪和风格，之后检索不调用模型；客观描述修改需重新读图。动态清单只出现在工具结果中，不改变固定 prompt 前缀。
+
+支持从 NapCat QQ 收藏按需导入；本地删除不会取消 QQ 原有收藏。收藏素材受资产回收保护，发送沿用消息队列，Sessions 页标注为表情消息。详见 [精选表情库设计与运维](docs/architecture/sticker-library.md)。

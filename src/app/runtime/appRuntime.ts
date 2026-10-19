@@ -208,6 +208,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     },
     directCommandDeps: {
       config,
+      stickerService: services.stickerService,
       sessionManager,
       oneBotClient,
       logger,

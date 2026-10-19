@@ -1,12 +1,12 @@
-import type { MediaSemanticKind } from "#services/onebot/messageSegments.ts";
+import type { MediaSemanticKind, MarketFaceMetadata } from "#services/onebot/messageSegments.ts";
 import type { OneBotMessageFileSummary } from "#services/onebot/types.ts";
 import type { ChatFileKind } from "#types/chatContracts.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 
 export type MessageContentPart =
   | { kind: "text"; text: string }
-  | { kind: "image"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined }
-  | { kind: "emoji"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined }
+  | { kind: "image"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; marketFace?: MarketFaceMetadata }
+  | { kind: "emoji"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; marketFace?: MarketFaceMetadata }
   | { kind: "file"; file: OneBotMessageFileSummary }
   | { kind: "asset_file"; fileId: string; fileKind: ChatFileKind; sourceName: string | null; mimeType: string | null; sizeBytes: number | null }
   | { kind: "mention"; target: "self" | "all" | "user"; userId?: string | undefined }

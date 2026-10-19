@@ -104,7 +104,11 @@ export class AssetLifecycleStore {
       FROM asset_session_refs
       WHERE asset_kind = ?
     `).all(assetKind) as Array<{ assetId: string }>;
-    return new Set(rows.map((row) => row.assetId));
+    const ids = new Set(rows.map((row) => row.assetId));
+    if (assetKind === "chat_file") {
+      for (const row of db.prepare("SELECT file_id FROM stickers").all() as Array<{ file_id: string }>) ids.add(row.file_id);
+    }
+    return ids;
   }
 
   async removeRefsForAsset(assetKind: AssetKind, assetId: string): Promise<number> {

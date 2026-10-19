@@ -225,6 +225,7 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
       true
     );
     assert.deepEqual(toolsets.map((item) => item.id), [
+      "sticker_library",
       "chat_context",
       "web_research",
       "shell_runtime",

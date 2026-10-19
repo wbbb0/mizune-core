@@ -84,6 +84,7 @@ export function buildGenerationToolRuntimeDeps(services: AppServiceBootstrap): G
     chatFileStore: services.chatFileStore,
     downloadRuntime: services.downloadRuntime,
     mediaInspectionService: services.mediaInspectionService,
+    stickerService: services.stickerService,
     textInspectionService: services.textInspectionService,
     documentSummaryService: services.documentSummaryService,
     contextEmbeddingService: services.contextEmbeddingService,

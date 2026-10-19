@@ -1,3 +1,4 @@
+import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { Logger } from "pino";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { AppConfig } from "#config/config.ts";
@@ -26,6 +27,7 @@ type DebugModeArg = "on" | "off" | "once" | "status";
 type ConfigTarget = "persona" | "rp" | "scenario";
 
 type DirectCommandArgsMap = {
+  sticker: { action: "lock" | "unlock"; id: string };
   clear: {};
   help: {};
   error: { count?: number };
@@ -72,6 +74,7 @@ interface DirectCommandIncomingMessage {
 
 interface DirectCommandHandlerInput {
   config: AppConfig;
+  stickerService?: Pick<StickerService, "init" | "store">;
   sessionManager: SessionDirectCommandAccess;
   oneBotClient: OneBotClient;
   logger: Logger;
@@ -429,6 +432,35 @@ async function syncSelfAccountNicknameFromPersona(
 }
 
 const directCommandDescriptors: DirectCommandDescriptor[] = [
+  {
+    name: "sticker",
+    help: ".sticker lock|unlock <表情ID> 锁定或解锁表情（仅 owner）",
+    dispatch: { requireTextOnly: true },
+    routing: { allowInPrivate: true, allowInOwnerMentionedGroup: true },
+    parse(text) {
+      const match = text.match(/^[。.]\s*sticker\s+(lock|unlock)\s+(\S+)\s*$/i);
+      return match ? { name: "sticker", action: match[1]!.toLowerCase() as "lock" | "unlock", id: match[2]! } : null;
+    },
+    access: (ctx) => ctx.incomingMessage.relationship === "owner" ? null : "只有 owner 可以锁定或解锁表情。",
+    async execute(ctx, command) {
+      if (command.name !== "sticker") return;
+      const library = ctx.input.stickerService;
+      if (!ctx.input.config.stickers.enabled || !ctx.input.config.chatFiles.enabled || !library) {
+        await ctx.send("表情库未启用。");
+        return;
+      }
+      let reply: string;
+      try {
+        await library.init();
+        const item = library.store.get(command.id);
+        library.store.setLocked(item.id, item.revision, command.action === "lock");
+        reply = `表情 ${item.id} 已${command.action === "lock" ? "锁定" : "解锁"}。`;
+      } catch (error) {
+        reply = `表情锁定操作失败：${error instanceof Error ? error.message : String(error)}`;
+      }
+      await ctx.send(reply);
+    }
+  },
   {
     name: "help",
     help: ".help 查看帮助",
@@ -1101,6 +1133,9 @@ function resolveInvalidDirectCommand(text: string): InvalidDirectCommand | null 
     return null;
   }
   const commandWord = matched[1]?.toLowerCase();
+  if (commandWord === "sticker") {
+    return { name: "invalid", rawText: text, message: "用法：.sticker lock <表情ID> 或 .sticker unlock <表情ID>（仅 owner）。" };
+  }
   if (commandWord === "setup") {
     return {
       name: "invalid",
