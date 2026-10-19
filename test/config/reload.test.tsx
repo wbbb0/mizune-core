@@ -444,6 +444,7 @@ test("runtime rollback cleans partially started scheduler even before the starte
       configManager: manager, config, logger: pino({ level: "silent" }),
       searchService: { reloadConfig() {} }, browserService: { async reloadConfig() {} },
       oneBotClient: { async reloadConfig() {} }, comfyTemplateCatalog: { async reload() {} }, comfyTaskRunner: { async reloadConfig() {} },
+      contextExtractionQueue: { reloadConfig() {} },
       scheduler: { async start() { timerActive = true; throw new Error("partially installed"); }, async stop() { timerActive = false; } },
       isSchedulerStarted: () => started, setSchedulerStarted: (value: boolean) => { started = value; },
       getInternalApi: () => null, setInternalApi() {}

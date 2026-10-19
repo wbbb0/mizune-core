@@ -357,6 +357,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
         scheduler,
         comfyTemplateCatalog,
         comfyTaskRunner,
+        contextExtractionQueue,
         isSchedulerStarted: () => schedulerStarted,
         setSchedulerStarted: (value) => {
           schedulerStarted = value;

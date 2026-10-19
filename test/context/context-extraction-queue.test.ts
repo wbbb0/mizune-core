@@ -259,3 +259,91 @@ function deferred() {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 }
+
+test("global extraction capacity stays occupied until cancelled work settles and ready keys are fair", async () => {
+  const releases = [deferred(), deferred(), deferred()];
+  const calls: string[] = [];
+  let active = 0;
+  let peak = 0;
+  const queue = new ContextExtractionQueue(createTestAppConfig({ context: { extraction: {
+    maxConcurrency: 2, maxTurnsPerBatch: 1, debounceMs: 1
+  } } }), { async processTurns(input) {
+    const index = calls.length;
+    calls.push(input.sessionId);
+    peak = Math.max(peak, ++active);
+    try { await releases[index]?.promise; } finally { active--; }
+    if (index === 0) throw new Error("synthetic failure");
+    return { created: 0, replaced: 0, ignored: 0, items: [] };
+  } }, pino({ level: "silent" }));
+  const enqueue = (id: string) => queue.enqueueTurn(createTurn({ sessionId: id, userId: "u", text: "memory", receivedAt: 0 }));
+  try {
+    enqueue("a"); enqueue("b");
+    await sleep(20);
+    assert.deepEqual(calls, ["a", "b"]);
+    enqueue("a"); enqueue("c"); enqueue("removed");
+    await sleep(20);
+    queue.cancelSession({ sessionId: "removed" });
+    queue.cancelSession({ sessionId: "b" });
+    assert.deepEqual(calls, ["a", "b"]);
+    releases[0]!.resolve(); await sleep(20);
+    assert.deepEqual(calls, ["a", "b", "c"]);
+    releases[1]!.resolve(); await sleep(20);
+    assert.deepEqual(calls, ["a", "b", "c", "a"]);
+    assert.equal(peak, 2);
+    queue.stop(); releases[2]!.resolve(); await sleep(20);
+    assert.equal(calls.includes("removed"), false);
+  } finally { queue.stop(); releases.forEach((release) => release.resolve()); }
+});
+
+test("stopping a saturated extraction queue prevents ready batches from starting", async () => {
+  const release = deferred();
+  const calls: string[] = [];
+  const queue = new ContextExtractionQueue(createTestAppConfig({ context: { extraction: {
+    maxConcurrency: 1, maxTurnsPerBatch: 1
+  } } }), { async processTurns(input) {
+    calls.push(input.sessionId); await release.promise;
+    return { created: 0, replaced: 0, ignored: 0, items: [] };
+  } }, pino({ level: "silent" }));
+  try {
+    for (const id of ["a", "b"]) queue.enqueueTurn(createTurn({ sessionId: id, userId: "u", text: "memory", receivedAt: 0 }));
+    await sleep(20); queue.stop(); release.resolve(); await sleep(20);
+    assert.deepEqual(calls, ["a"]);
+  } finally { queue.stop(); release.resolve(); }
+});
+
+test("config reload resumes paused ready batches", async () => {
+  const config = createTestAppConfig({ context: { extraction: { maxConcurrency: 1, maxTurnsPerBatch: 1 } } });
+  const release = deferred();
+  const calls: string[] = [];
+  const queue = new ContextExtractionQueue(config, { async processTurns(input) {
+    calls.push(input.sessionId);
+    if (input.sessionId === "a") await release.promise;
+    return { created: 0, replaced: 0, ignored: 0, items: [] };
+  } }, pino({ level: "silent" }));
+  try {
+    for (const id of ["a", "b"]) queue.enqueueTurn(createTurn({ sessionId: id, userId: "u", text: "memory", receivedAt: 0 }));
+    await sleep(20);
+    config.context.extraction.enabled = false;
+    release.resolve(); await sleep(20);
+    assert.deepEqual(calls, ["a"]);
+    config.context.extraction.enabled = true; queue.reloadConfig(); await sleep(20);
+    assert.deepEqual(calls, ["a", "b"]);
+  } finally { queue.stop(); release.resolve(); }
+});
+
+
+test("raising extraction concurrency starts waiting work without waiting for in-flight completion", async () => {
+  const config = createTestAppConfig({ context: { extraction: { maxConcurrency: 1, maxTurnsPerBatch: 1 } } });
+  const release = deferred();
+  const calls: string[] = [];
+  const queue = new ContextExtractionQueue(config, { async processTurns(input) {
+    calls.push(input.sessionId); await release.promise;
+    return { created: 0, replaced: 0, ignored: 0, items: [] };
+  } }, pino({ level: "silent" }));
+  try {
+    for (const id of ["a", "b"]) queue.enqueueTurn(createTurn({ sessionId: id, userId: "u", text: "memory", receivedAt: 0 }));
+    await sleep(20); assert.deepEqual(calls, ["a"]);
+    config.context.extraction.maxConcurrency = 2; queue.reloadConfig();
+    assert.deepEqual(calls, ["a", "b"]);
+  } finally { queue.stop(); release.resolve(); }
+});

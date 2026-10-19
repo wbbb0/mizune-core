@@ -141,6 +141,7 @@ context:
     debounceMs: 90000
     maxDelayMs: 300000
     maxTurnsPerBatch: 3
+    maxConcurrency: 2 # 所有会话合计的记忆抽取并发上限
     minConfidence: 0.7
     relatedMemoryLimit: 8
     timeoutMs: 30000

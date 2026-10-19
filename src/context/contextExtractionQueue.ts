@@ -30,6 +30,7 @@ export interface ContextExtractionQueueObserver {
 export class ContextExtractionQueue {
   private readonly pending = new Map<string, PendingExtractionBatch>();
   private readonly runningSessions = new Map<string, { sessionId: string; turns: ContextExtractionTurn[]; controller: AbortController }>();
+  private readonly ready = new Set<string>();
   private stopped = false;
 
   constructor(
@@ -73,6 +74,10 @@ export class ContextExtractionQueue {
     this.schedule(queueKey);
   }
 
+  reloadConfig(): void {
+    this.pump();
+  }
+
   stop(): void {
     this.stopped = true;
     for (const pending of this.pending.values()) {
@@ -81,6 +86,7 @@ export class ContextExtractionQueue {
       }
     }
     this.pending.clear();
+    this.ready.clear();
     for (const running of this.runningSessions.values()) running.controller.abort();
   }
 
@@ -98,6 +104,7 @@ export class ContextExtractionQueue {
         clearTimeout(pending.timer);
       }
       this.pending.delete(queueKey);
+      this.ready.delete(queueKey);
       cancelledBatchCount += 1;
       cancelledTurnCount += pending.turns.length;
     }
@@ -119,7 +126,7 @@ export class ContextExtractionQueue {
 
   private schedule(queueKey: string, delayOverrideMs?: number): void {
     const pending = this.pending.get(queueKey);
-    if (!pending || this.runningSessions.has(queueKey)) {
+    if (!pending || this.runningSessions.has(queueKey) || this.ready.has(queueKey)) {
       return;
     }
     if (pending.timer) {
@@ -134,9 +141,20 @@ export class ContextExtractionQueue {
       : Math.min(now + config.debounceMs, pending.firstQueuedAt + config.maxDelayMs);
     const delayMs = Math.max(0, dueAt - now);
     pending.timer = setTimeout(() => {
-      void this.flush(queueKey);
+      pending.timer = null;
+      this.ready.add(queueKey);
+      this.pump();
     }, delayMs);
     pending.timer.unref?.();
+  }
+
+  private pump(): void {
+    if (this.stopped || !this.config.context.extraction.enabled) return;
+    for (const key of this.ready) {
+      if (this.runningSessions.size >= this.config.context.extraction.maxConcurrency) break;
+      this.ready.delete(key);
+      void this.flush(key);
+    }
   }
 
   private async flush(queueKey: string): Promise<void> {
@@ -173,8 +191,9 @@ export class ContextExtractionQueue {
     } finally {
       this.runningSessions.delete(queueKey);
       if (this.pending.has(queueKey) && !this.stopped) {
-        this.schedule(queueKey, 0);
+        this.ready.add(queueKey);
       }
+      this.pump();
     }
   }
 

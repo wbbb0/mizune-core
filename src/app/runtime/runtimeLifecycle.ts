@@ -56,6 +56,7 @@ export function subscribeRuntimeReload(input: {
   scheduler: Scheduler;
   comfyTemplateCatalog: ComfyTemplateCatalogService;
   comfyTaskRunner: ComfyTaskRunner;
+  contextExtractionQueue: Pick<ContextExtractionQueue, "reloadConfig">;
   isSchedulerStarted: () => boolean;
   setSchedulerStarted: (value: boolean) => void;
   getInternalApi: () => InternalApiController | null;
@@ -67,6 +68,7 @@ export function subscribeRuntimeReload(input: {
   input.configManager.subscribe(({ previousConfig }) => input.oneBotClient.reloadConfig(previousConfig));
   input.configManager.subscribe(() => input.comfyTemplateCatalog.reload());
   input.configManager.subscribe(() => input.comfyTaskRunner.reloadConfig());
+  input.configManager.subscribe(() => input.contextExtractionQueue.reloadConfig());
   input.configManager.subscribe(async ({ currentConfig }) => {
     if (currentConfig.scheduler.enabled) {
       if (!input.isSchedulerStarted()) {

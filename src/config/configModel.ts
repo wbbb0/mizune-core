@@ -299,6 +299,7 @@ const contextConfigSchema = s.object({
     debounceMs: s.number().int().positive().title("抽取防抖毫秒").default(90 * 1000),
     maxDelayMs: s.number().int().positive().title("最大延迟毫秒").default(5 * 60 * 1000),
     maxTurnsPerBatch: s.number().int().positive().title("每批最大轮数").default(3),
+    maxConcurrency: s.number().int().positive().title("抽取最大并发").default(2),
     minConfidence: s.number().min(0).max(1).title("最低置信度").default(0.7),
     relatedMemoryLimit: s.number().int().min(0).title("相关旧记忆数量").default(8),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(30 * 1000),
