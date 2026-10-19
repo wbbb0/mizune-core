@@ -570,3 +570,50 @@ test("dialog renderer keeps the window open when an action throws", async () => 
   assert.equal(wrapper.emitted("resolve"), undefined);
   assert.equal((wrapper.get('input[type="text"]').element as HTMLInputElement).value, "保留输入");
 });
+
+test("模型组件状态在窗口快照刷新后保留，向量模型仍可提交", async () => {
+  const apiUrl = createDataModule(`
+    export async function listProviderModels() {
+      return { kind: 'ok', warnings: [], models: [{
+        upstreamModel: 'qwen/qwen3-embedding-8b', alias: 'qwen_qwen3_embedding_8b', exists: false,
+        profile: { embedding: { limits: { maxInputTokens: 32768 } } },
+        suggested: { embedding: { limits: { maxInputTokens: 32768 } } }, sources: ['embedding']
+      }] };
+    }
+  `);
+  const widgetsUrl = createDataModule(`
+    import { h } from '${VUE_RUNTIME_URL}';
+    const Box = { setup: (_, { slots }) => () => h('div', slots.default?.()) };
+    export const WorkbenchButton = Box, WorkbenchCard = Box, WorkbenchEmptyState = Box,
+      WorkbenchFormField = Box, WorkbenchMultiSelect = Box, WorkbenchSelect = Box,
+      WorkbenchTabStrip = Box, WorkbenchTextInput = Box, WorkbenchDataTable = Box;
+    export const ResponsiveSplitPane = { setup: (_, { slots }) => () => h('div', [slots.primary?.({compact: false}), slots.secondary?.({compact: false})]) };
+  `);
+  const iconsUrl = createDataModule(`export const AlertCircle = {}, Check = {}, DownloadCloud = {}, RefreshCw = {}, Search = {};`);
+  const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, {
+    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl
+  });
+  const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
+    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
+    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl
+  });
+  const { default: ModelAdd } = await import(modelUrl);
+  const definition: WorkbenchWindowDefinition = {
+    kind: 'dialog', title: '添加模型', size: 'xl',
+    blocks: [{ kind: 'component', component: ModelAdd, props: { provider: {}, existingAliases: [] } }],
+    actions: [{ id: 'save', label: '添加模型', disabled: ({ values }) => values.canSubmit !== true }]
+  };
+  const wrapper = vueMount(DialogRenderer, { props: { windowId: 'model-add', definition } });
+  await vueTestUtils.flushPromises();
+  const button = wrapper.get('[data-action-id="save"]');
+  assert.equal((button.element as HTMLButtonElement).disabled, false, "before refresh");
+  // 移动、最大化、调整尺寸或另一个窗口变动都会刷新 definition 快照。
+  await wrapper.setProps({ definition: { ...definition } });
+  assert.equal((button.element as HTMLButtonElement).disabled, false, "after refresh");
+  await button.trigger('click');
+  assert.deepEqual((wrapper.emitted('resolve')?.[0]?.[0] as any)?.values.entry, {
+    upstreamModel: 'qwen/qwen3-embedding-8b', alias: 'qwen_qwen3_embedding_8b',
+    profile: { embedding: { limits: { maxInputTokens: 32768 } } }
+  });
+  wrapper.unmount();
+});
