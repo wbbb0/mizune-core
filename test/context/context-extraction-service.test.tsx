@@ -853,3 +853,16 @@ test("ContextExtractionService replaces unique same-title memory when replace id
     await harness.cleanup();
   }
 });
+
+test("cancelled extraction cannot commit even when the model ignores abort", async () => {
+  const controller = new AbortController();
+  const harness = await createHarness(() => {
+    controller.abort();
+    return JSON.stringify({ items: [{ action: "create", scope: "session", title: "旧会话", content: "不应回写", kind: "fact", importance: 0.8, confidence: 1 }] });
+  });
+  try {
+    await assert.rejects(harness.service.processTurns({ sessionId: "qqbot:p:user_1", userId: "user_1", turns: [turn("记住这个事实")], abortSignal: controller.signal }));
+    assert.deepEqual(harness.store.listSessionFacts("qqbot:p:user_1"), []);
+    assert.deepEqual(harness.store.listUserFacts("user_1"), []);
+  } finally { await harness.cleanup(); }
+});

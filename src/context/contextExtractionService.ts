@@ -93,7 +93,9 @@ export class ContextExtractionService {
     sessionId: string;
     userId: string;
     turns: ContextExtractionTurn[];
+    abortSignal?: AbortSignal;
   }): Promise<ContextExtractionResult> {
+    input.abortSignal?.throwIfAborted();
     const config = this.config.context.extraction;
     if (!config.enabled || !this.config.llm.summarizer.enabled) {
       return emptyExtractionResult();
@@ -135,6 +137,7 @@ export class ContextExtractionService {
         config.relatedMemoryLimit
       );
       const response = await this.llmClient.generate({
+        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
         modelRefOverride: modelRefs,
         timeoutMsOverride: config.timeoutMs,
         enableThinkingOverride: this.config.llm.summarizer.enableThinking && config.enableThinking,
@@ -148,6 +151,7 @@ export class ContextExtractionService {
           relatedMemories
         })
       });
+      input.abortSignal?.throwIfAborted();
       const parsed = parseExtractionResponse(response.text);
       return this.applyCandidates({
         userId: input.userId,
@@ -158,6 +162,7 @@ export class ContextExtractionService {
         minConfidence: config.minConfidence
       });
     } catch (error) {
+      if (input.abortSignal?.aborted) throw error;
       this.logger.warn({
         sessionId: input.sessionId,
         userId: input.userId,

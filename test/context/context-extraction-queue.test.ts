@@ -233,6 +233,26 @@ test("backlogged extraction drains every accepted turn in FIFO batches", async (
   } finally { release.resolve(); queue.stop(); }
 });
 
+test("session cancellation aborts in-flight extraction and suppresses its observer", async () => {
+  const started = deferred();
+  const release = deferred();
+  let signal: AbortSignal | undefined;
+  let processed = false;
+  const queue = new ContextExtractionQueue(createTestAppConfig({ context: { extraction: {
+    enabled: true, debounceMs: 1, maxDelayMs: 10
+  } } }), { async processTurns(input) {
+    signal = input.abortSignal; started.resolve(); await release.promise;
+    return { created: 0, replaced: 0, ignored: 0, items: [] };
+  } }, pino({ level: "silent" }), { onBatchProcessed() { processed = true; } });
+  try {
+    queue.enqueueTurn(createTurn({ sessionId: "s", userId: "u", text: "memory", receivedAt: 0 }));
+    await Promise.race([started.promise, sleep(1000).then(() => { throw new Error("queue did not start"); })]);
+    assert.deepEqual(queue.cancelSession({ sessionId: "s" }), { cancelledBatchCount: 1, cancelledTurnCount: 1 });
+    assert.equal(signal?.aborted, true);
+    release.resolve(); await sleep(0);
+    assert.equal(processed, false);
+  } finally { release.resolve(); queue.stop(); }
+});
 
 function deferred() {
   let resolve!: () => void;

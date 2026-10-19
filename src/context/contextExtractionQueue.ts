@@ -29,7 +29,7 @@ export interface ContextExtractionQueueObserver {
 
 export class ContextExtractionQueue {
   private readonly pending = new Map<string, PendingExtractionBatch>();
-  private readonly runningSessions = new Set<string>();
+  private readonly runningSessions = new Map<string, { sessionId: string; turns: ContextExtractionTurn[]; controller: AbortController }>();
   private stopped = false;
 
   constructor(
@@ -81,6 +81,7 @@ export class ContextExtractionQueue {
       }
     }
     this.pending.clear();
+    for (const running of this.runningSessions.values()) running.controller.abort();
   }
 
   cancelSession(input: { sessionId: string }): {
@@ -99,6 +100,12 @@ export class ContextExtractionQueue {
       this.pending.delete(queueKey);
       cancelledBatchCount += 1;
       cancelledTurnCount += pending.turns.length;
+    }
+    for (const running of this.runningSessions.values()) {
+      if (running.sessionId !== input.sessionId || running.controller.signal.aborted) continue;
+      running.controller.abort();
+      cancelledBatchCount += 1;
+      cancelledTurnCount += running.turns.length;
     }
     if (cancelledBatchCount > 0) {
       this.logger.info({
@@ -143,17 +150,20 @@ export class ContextExtractionQueue {
     pending.timer = null;
     const turns = pending.turns.splice(0, this.config.context.extraction.maxTurnsPerBatch);
     if (pending.turns.length === 0) this.pending.delete(queueKey);
-    this.runningSessions.add(queueKey);
+    const controller = new AbortController();
+    this.runningSessions.set(queueKey, { sessionId: pending.sessionId, turns, controller });
     try {
       if (turns.length > 0) {
         const result = await this.service.processTurns({
           sessionId: pending.sessionId,
           userId: pending.userId,
-          turns
+          turns,
+          abortSignal: controller.signal
         });
-        this.notifyProcessed(pending, turns, result);
+        if (!controller.signal.aborted) this.notifyProcessed(pending, turns, result);
       }
     } catch (error) {
+      if (controller.signal.aborted) return;
       this.logger.warn({
         sessionId: pending.sessionId,
         userId: pending.userId,
