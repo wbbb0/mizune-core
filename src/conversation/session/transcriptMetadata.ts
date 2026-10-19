@@ -75,6 +75,7 @@ export function buildTranscriptItemPatch(
   previous: InternalTranscriptItem,
   current: InternalTranscriptItem
 ): TranscriptItemPatch | null {
+  if (previous === current) return null;
   const patch: TranscriptItemPatch = {};
   const previousReasoning = "reasoningContent" in previous ? previous.reasoningContent : undefined;
   const currentReasoning = "reasoningContent" in current ? current.reasoningContent : undefined;

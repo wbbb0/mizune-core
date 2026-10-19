@@ -205,7 +205,7 @@ export async function rebuildContextIndex(deps: InternalApiContextDeps, input: {
 
 export function listSessions(deps: InternalApiSessionReadDeps) {
   return {
-    sessions: deps.sessionManager.listSessions().map((session) => buildSessionSummary(session))
+    sessions: deps.sessionManager.listSessionSummaries()
   };
 }
 
@@ -213,17 +213,17 @@ export function getSessionListStream(deps: InternalApiSessionReadDeps): {
   initialEvents: SessionListStreamEvent[];
   subscribe: (listener: (event: SessionListStreamEvent) => void) => () => void;
 } {
-  let previousSessions = deps.sessionManager.listSessions().map((session) => buildSessionSummary(session));
-
+  const summaries = deps.sessionManager.listSessionSummaries();
+  const previous = new Map(summaries.map((session) => [session.id, session]));
   return {
-    initialEvents: buildInitialSessionListStreamEvents(previousSessions),
+    initialEvents: buildInitialSessionListStreamEvents(summaries),
     subscribe(listener) {
-      return deps.sessionManager.subscribeSessions(() => {
-        const currentSessions = deps.sessionManager.listSessions().map((session) => buildSessionSummary(session));
-        for (const event of diffSessionListStreamEvents(previousSessions, currentSessions)) {
-          listener(event);
-        }
-        previousSessions = currentSessions;
+      return deps.sessionManager.subscribeSessions((sessionId) => {
+        const old = previous.get(sessionId);
+        const current = deps.sessionManager.getSessionSummary(sessionId);
+        for (const event of diffSessionListStreamEvents(old ? [old] : [], current ? [current] : [])) listener(event);
+        if (current) previous.set(sessionId, current);
+        else previous.delete(sessionId);
       });
     }
   };

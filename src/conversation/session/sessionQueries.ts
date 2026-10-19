@@ -148,3 +148,13 @@ export function isSessionResponding(session: SessionState): boolean {
     "delivering"
   ].includes(session.phase.kind);
 }
+
+export function getSessionSummary(session: SessionState) {
+  return {
+    id: session.id, type: session.type, source: session.source, modeId: session.modeId,
+    participantRef: { ...session.participantRef }, title: session.title, titleSource: session.titleSource,
+    isGenerating: isSessionGenerating(session), lastActiveAt: session.lastActiveAt
+  };
+}
+
+export type SessionSummary = ReturnType<typeof getSessionSummary>;

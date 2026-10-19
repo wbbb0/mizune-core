@@ -82,7 +82,7 @@ export interface SessionStreamAccess {
   getSession(sessionId: string): SessionState;
   hasActiveResponse(sessionId: string): boolean;
   subscribeSession(sessionId: string, listener: () => void): () => void;
-  subscribeSessions(listener: () => void): () => void;
+  subscribeSessions(listener: (sessionId: string) => void): () => void;
 }
 
 export interface SessionWebStreamState {
@@ -233,12 +233,14 @@ export interface SessionViewSnapshot {
 
 // Read-only admin queries for listing sessions and inspecting snapshots.
 export interface SessionAdminReadAccess {
+  listSessionSummaries(): import("./sessionQueries.ts").SessionSummary[];
+  getSessionSummary(sessionId: string): import("./sessionQueries.ts").SessionSummary | null;
   listSessions(): SessionState[];
   getSessionView(sessionId: string): SessionViewSnapshot;
   getLlmVisibleHistory(sessionId: string): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   getHistoryRevision(sessionId: string): number;
   getMutationEpoch(sessionId: string): number;
-  subscribeSessions(listener: () => void): () => void;
+  subscribeSessions(listener: (sessionId: string) => void): () => void;
 }
 
 // Admin mutations for creating, switching, persisting, and deleting sessions.

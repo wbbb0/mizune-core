@@ -1,3 +1,4 @@
+import { getSessionSummary } from "../../src/conversation/session/sessionQueries.ts";
 import Fastify from "fastify";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -109,7 +110,7 @@ function createShellSession(overrides: Partial<ShellSession> = {}): ShellSession
 
 export function createInternalApiDeps(): InternalApiDeps & { __state: InternalApiFixtureState } {
   const sessionListeners = new Map<string, Set<() => void>>();
-  const allSessionListeners = new Set<() => void>();
+  const allSessionListeners = new Set<(sessionId: string) => void>();
   const notifySessionChanged = (sessionId: string) => {
     const listeners = sessionListeners.get(sessionId);
     if (listeners) {
@@ -118,7 +119,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     }
     for (const listener of allSessionListeners) {
-      listener();
+      listener(sessionId);
     }
   };
   const workspaceRoot = createTempDir("llm-bot-internal-api-workspace");
@@ -424,6 +425,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
     } as unknown as InternalApiDeps["localFileService"],
     sessionManager: {
       __activeResponses: new Map<string, number>(),
+      listSessionSummaries() { return state.sessions.map((session) => getSessionSummary(session as any)); },
+      getSessionSummary(id: string) { const session = state.sessions.find((session) => session.id === id); return session ? getSessionSummary(session as any) : null; },
       listSessions() {
         return state.sessions;
       },
@@ -512,7 +515,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
           }
         };
       },
-      subscribeSessions(listener: () => void) {
+      subscribeSessions(listener: (sessionId: string) => void) {
         allSessionListeners.add(listener);
         return () => {
           allSessionListeners.delete(listener);
@@ -1362,6 +1365,8 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     } as unknown as InternalApiDeps["recentErrorStore"],
     shellRuntime: {
+      listSessionSummaries() { return state.sessions.map((session) => getSessionSummary(session as any)); },
+      getSessionSummary(id: string) { const session = state.sessions.find((session) => session.id === id); return session ? getSessionSummary(session as any) : null; },
       listSessions() {
         return state.shellSessions;
       },

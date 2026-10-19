@@ -1,6 +1,6 @@
 import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
 import type { AppConfig } from "#config/config.ts";
-import { isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
+import { getSessionSummary, isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
 import {
   setSessionPhaseState,
   appendActiveAssistantResponseChunkState,
@@ -98,7 +98,7 @@ export class SessionManager {
   private readonly sentMessageLog = new SessionSentMessageLog();
   private readonly historyService: SessionHistoryService;
   private readonly sessionListeners = new Map<string, Set<() => void>>();
-  private readonly allSessionListeners = new Set<() => void>();
+  private readonly allSessionListeners = new Set<(sessionId: string) => void>();
 
   constructor(config: AppConfig) {
     this.historyService = new SessionHistoryService(config);
@@ -417,6 +417,15 @@ export class SessionManager {
       setSessionPhaseState(session, { kind: "turn_planner_waiting" });
     }
     this.notifySessionChanged(sessionId);
+  }
+
+  listSessionSummaries() {
+    return Array.from(this.sessionStore.values(), getSessionSummary);
+  }
+
+  getSessionSummary(sessionId: string) {
+    const session = this.sessionStore.get(sessionId);
+    return session ? getSessionSummary(session) : null;
   }
 
   listSessions(): SessionState[] {
@@ -1184,7 +1193,7 @@ export class SessionManager {
     };
   }
 
-  subscribeSessions(listener: () => void): () => void {
+  subscribeSessions(listener: (sessionId: string) => void): () => void {
     this.allSessionListeners.add(listener);
     return () => {
       this.allSessionListeners.delete(listener);
@@ -1218,7 +1227,7 @@ export class SessionManager {
     }
     if (this.allSessionListeners.size > 0) {
       for (const listener of this.allSessionListeners) {
-        listener();
+        listener(sessionId);
       }
     }
   }

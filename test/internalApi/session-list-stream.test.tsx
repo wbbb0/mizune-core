@@ -80,10 +80,12 @@ test("session list service emits upsert when subscribed session title changes", 
     ...createSessionSummary({ id: "web:1" }),
     phase: { kind: "idle" }
   }];
-  let listener: (() => void) | null = null;
+  let listener: ((sessionId: string) => void) | null = null;
 
   const stream = getSessionListStream({
     sessionManager: {
+      listSessionSummaries() { return sessions; },
+      getSessionSummary(id: string) { return sessions.find((session) => session.id === id) ?? null; },
       listSessions() {
         return sessions as any;
       },
@@ -99,7 +101,7 @@ test("session list service emits upsert when subscribed session title changes", 
       getMutationEpoch() {
         return 0;
       },
-      subscribeSessions(nextListener: () => void) {
+      subscribeSessions(nextListener: (sessionId: string) => void) {
         listener = nextListener;
         return () => {
           listener = null;
@@ -126,7 +128,7 @@ test("session list service emits upsert when subscribed session title changes", 
   sessions[0]!.phase = { kind: "idle" };
   const activeListener = listener;
   if (activeListener) {
-    (activeListener as () => void)();
+    (activeListener as (sessionId: string) => void)("web:1");
   }
   unsubscribe();
 
@@ -138,4 +140,18 @@ test("session list service emits upsert when subscribed session title changes", 
   }
   assert.equal(upsertEvent.session.title, "仓库排查");
   assert.equal(upsertEvent.session.titleSource, "auto");
+});
+
+test("session list updates never clone or read transcript data", async () => {
+  const { SessionManager } = await import("../../src/conversation/session/sessionManager.ts");
+  const { createTestAppConfig } = await import("../helpers/config-fixtures.tsx");
+  const manager = new SessionManager(createTestAppConfig());
+  manager.ensureSession({ id: "web:cheap", type: "private", source: "web" });
+  Object.defineProperty(manager.getSession("web:cheap"), "internalTranscript", { get() { throw new Error("transcript must not be read"); } });
+  const stream = getSessionListStream({ sessionManager: manager } as any);
+  const events = [...stream.initialEvents];
+  const unsubscribe = stream.subscribe((event) => events.push(event));
+  manager.setSessionPhaseIfEpochMatches("web:cheap", manager.getMutationEpoch("web:cheap"), { kind: "generating" });
+  unsubscribe();
+  assert.deepEqual(events.map((event) => event.type), ["ready", "session_upsert"]);
 });

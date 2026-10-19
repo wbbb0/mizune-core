@@ -151,12 +151,12 @@ export function createAdminMessagingService(input: {
 
     fetchTranscript(params, query) {
       const session = input.sessionManager.getSession(params.sessionId);
-      const transcript = normalizeTranscriptItems(session.internalTranscript);
+      const transcript = session.internalTranscript;
       const totalCount = transcript.length;
       const beforeIndex = query.beforeIndex ?? totalCount;
       const clampedBefore = Math.min(beforeIndex, totalCount);
       const startIndex = Math.max(0, clampedBefore - query.limit);
-      const items = transcript.slice(startIndex, clampedBefore).map((item, offset) => ({
+      const items = normalizeTranscriptItems(transcript.slice(startIndex, clampedBefore)).map((item, offset) => ({
         eventId: item.id ?? `transcript:${session.mutationEpoch}:${startIndex + offset}`,
         index: startIndex + offset,
         item
