@@ -1,3 +1,4 @@
+import { createRoutingPresetEditorFeatures } from "../../../src/internalApi/application/editorValueState.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -145,12 +146,7 @@ function createRoutingPresetModel() {
     key: "llm_routing_preset_catalog",
     kind: "single",
     file: { path: "config/llm.routing-presets.yml" },
-    editorFeatures: {
-      showReferenceBackdrop: false,
-      unsetMode: "reference",
-      unsetActionLabel: "回退到 default",
-      draftEffectiveMode: "routing_preset_catalog"
-    }
+    editorFeatures: createRoutingPresetEditorFeatures()
   });
 }
 
@@ -194,6 +190,7 @@ test("routing preset editor effective values update all preset fields without re
     imageCaptioner: [],
     imageInspector: [],
     audioTranscription: [],
+    imageGenerator: [],
     turnPlanner: [],
     embedding: ["base-embedding"],
     historyWindow: {
@@ -205,4 +202,14 @@ test("routing preset editor effective values update all preset fields without re
       retainTokens: 3000
     }
   });
+});
+
+
+test("routing preset image generation role inherits and clears using host defaults", () => {
+  const model = createRoutingPresetModel();
+  const image = { provider: "images", model: "image-one" };
+  const draft = { default: { imageGenerator: [image] }, inherited: {}, cleared: { imageGenerator: [] } };
+  assert.deepEqual(computeDraftReferenceValue(model, draft).inherited.imageGenerator, [image]);
+  assert.deepEqual(computeDraftEffectiveValue(model, draft).inherited.imageGenerator, [image]);
+  assert.deepEqual(computeDraftEffectiveValue(model, draft).cleared.imageGenerator, []);
 });

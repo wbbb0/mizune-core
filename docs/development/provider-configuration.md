@@ -93,3 +93,11 @@ vertex:
 参考：[Vertex 地址](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/locations)、
 [Gemini 生成参数](https://ai.google.dev/api/generate-content)、
 [LM Studio 请求参数](https://lmstudio.ai/docs/developer/rest/chat)。
+
+## Routing preset 的模型目标选择
+
+路由目标始终是 `{ provider, model }` 复合引用。分组选择器属于 workbench-kit 的通用动态选项组件：切换 Provider 后若没有同名有效模型，只保留本地选择草稿；选定模型时才一次替换完整引用，不向配置写入空数组项或半个目标。
+
+删除模型后，已有路由引用仍保留并提示失效，避免静默改变路由顺序或继承语义；可直接重新选择 Provider 和模型修复。保存、加载或重新加载配置会刷新动态选项目录，组件库统一处理请求复用和过期响应丢弃。供应商及模型目录的业务定义继续由本项目 `/api/editor-options` 提供，组件库不识别 Provider 或模型字段。
+
+路由角色的默认值由后端 `createRoutingPresetEditorFeatures` 从当前路由定义生成，通过通用 `record_inheritance` 契约传给编辑器。组件库不再硬编码角色列表，新增 `imageGenerator` 等字段可自动参与继承与回显。

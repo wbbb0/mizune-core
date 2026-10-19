@@ -40,6 +40,7 @@ import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import {
   createDraftOnlyEditorValueState,
   createEditorFeatures,
+  createRoutingPresetEditorFeatures,
   createRoutingPresetCatalogEditorValueState,
   type EditorFeatures,
   type EditorValueState
@@ -491,11 +492,7 @@ function buildEditorResourceMap(input: {
       editable: true,
       schema: llmRoutingPresetCatalogFileSchema,
       filePath: input.config.configRuntime.llmRoutingPresetCatalogPath,
-      editorFeatures: createEditorFeatures({
-        unsetMode: "reference",
-        unsetActionLabel: "回退到 default",
-        draftEffectiveMode: "routing_preset_catalog"
-      }),
+      editorFeatures: createRoutingPresetEditorFeatures(),
       createValueState: (currentValue) => createRoutingPresetCatalogEditorValueState(
         currentValue as Record<string, never>
       ),

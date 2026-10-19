@@ -8,7 +8,7 @@ import {
 export type EditorDraftEffectiveMode =
   | "draft_only"
   | "merge_reference"
-  | "routing_preset_catalog";
+  | "record_inheritance";
 
 export type EditorUnsetMode =
   | "disabled"
@@ -20,6 +20,7 @@ export interface EditorFeatures {
   unsetMode: EditorUnsetMode;
   unsetActionLabel: string | null;
   draftEffectiveMode: EditorDraftEffectiveMode;
+  recordInheritance?: { sourceKey: string; defaults: Record<string, unknown> };
 }
 
 export interface EditorValueState<TValue = unknown> {
@@ -59,4 +60,16 @@ export function createRoutingPresetCatalogEditorValueState(
     referenceValue: buildRoutingPresetReferenceCatalog(normalizedCurrentValue),
     effectiveValue: buildEffectiveRoutingPresetCatalog(normalizedCurrentValue)
   };
+}
+
+export function createRoutingPresetEditorFeatures(): EditorFeatures {
+  return createEditorFeatures({
+    unsetMode: "reference",
+    unsetActionLabel: "回退到 default",
+    draftEffectiveMode: "record_inheritance",
+    recordInheritance: {
+      sourceKey: "default",
+      defaults: { ...normalizeRoutingPresetCatalog({}).default }
+    }
+  });
 }
