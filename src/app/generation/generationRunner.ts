@@ -137,7 +137,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       rpProfileStore: deps.identity.rpProfileStore,
       setupStore: deps.identity.setupStore,
       scenarioHostStateStore: deps.identity.scenarioHostStateStore,
-      globalProfileReadinessStore: deps.identity.globalProfileReadinessStore
+      globalProfileReadinessStore: deps.identity.globalProfileReadinessStore,
+      conversationAccess: deps.identity.conversationAccess
     },
     toolRuntime: {
       shellRuntime: deps.toolRuntime.shellRuntime,

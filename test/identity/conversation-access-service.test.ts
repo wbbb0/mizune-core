@@ -131,3 +131,11 @@ test("shared group access resolves requester external id before querying onebot"
   assert.equal(visible?.reason, "shared_group");
   assert.deepEqual(groupMemberRequests, [{ groupId: "123456", userId: "2254600711" }]);
 });
+
+test("web private context belongs to its participant rather than the requesting owner role", async () => {
+  const sessionManager = new SessionManager(createTestAppConfig());
+  sessionManager.ensureSession({ id: "web:context", type: "private", source: "web", participantRef: { kind: "user", id: "alice" } });
+  const service = new ConversationAccessService(sessionManager, {} as never, {} as never, {} as never, {} as never, pino({ level: "silent" }));
+  assert.equal((await service.canAccessSession("alice", "web:context"))?.reason, "self_private");
+  assert.equal(await service.canAccessSession("bob", "web:context"), null);
+});

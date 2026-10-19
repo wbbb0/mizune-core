@@ -1,3 +1,4 @@
+import { canReferenceConversation, readConversationContext } from "#conversation/crossConversationContext.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { conversationContextPolicy, keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
@@ -139,12 +140,13 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "get_conversation_context",
-        description: "按 sessionId 读取一个可访问会话的摘要和最近消息。",
+        description: "读取可访问会话的最近聊天。live 包含尚未回复的消息；last_completed_reply 仅返回上次完整回答的发布窗口。不会返回推理或工具执行内容。",
         parameters: {
           type: "object",
           properties: {
             sessionId: { type: "string" },
-            recentCount: { type: "number" }
+            recentCount: { type: "number" },
+            mode: { type: "string", enum: ["live", "last_completed_reply"] }
           },
           required: ["sessionId"],
           additionalProperties: false
@@ -272,7 +274,8 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
   async search_accessible_conversations(_toolCall, args, context) {
     const query = getStringArg(args, "query");
     const sessions = await context.conversationAccess.listAccessibleSessions(context.lastMessage.userId, query);
-    return JSON.stringify(sessions);
+    const target = context.sessionManager.getSession(context.lastMessage.sessionId);
+    return JSON.stringify(sessions.filter((session) => target.type !== "group" || session.type === "group"));
   },
   async get_conversation_context(_toolCall, args, context) {
     const sessionId = getStringArg(args, "sessionId");
@@ -280,20 +283,18 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     if (!sessionId) {
       return JSON.stringify({ error: "sessionId is required" });
     }
-    const visible = await context.conversationAccess.canAccessSession(context.lastMessage.userId, sessionId);
-    if (!visible) {
-      return JSON.stringify({ error: "Conversation is not accessible" });
-    }
-    const view = context.sessionManager.getSessionView(sessionId);
-    return JSON.stringify({
-      id: view.id,
-      type: view.type,
-      title: visible.title,
-      reason: visible.reason,
-      lastActiveAt: view.lastActiveAt,
-      historySummary: view.historySummary,
-      recentMessages: context.sessionManager.getLlmVisibleHistory(sessionId).slice(-recentCount)
+    const mode = getStringArg(args, "mode") || "live";
+    if (mode !== "live" && mode !== "last_completed_reply") return JSON.stringify({ error: "Invalid context mode" });
+    const visible = await canReferenceConversation({
+      reader: context.sessionManager, access: context.conversationAccess,
+      requesterUserId: context.lastMessage.userId,
+      targetSessionId: context.lastMessage.sessionId, sourceSessionId: sessionId
     });
+    if (!visible) return JSON.stringify({ error: "Conversation is not accessible from this chat" });
+    return JSON.stringify(readConversationContext(
+      context.sessionManager.getSession(sessionId), mode, recentCount,
+      context.config.conversation.crossConversation.maxTokens
+    ));
   }
 };
 

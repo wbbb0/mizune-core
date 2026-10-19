@@ -35,6 +35,44 @@ test("DashScope short budgets use native thinking control", () => {
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), 512);
 });
 
+test("OpenRouter planner sends a short budget with reasoning disabled, but preserves mandatory-reasoning budgets", async () => {
+  const config = createLlmTestConfig();
+  config.llm.providers.test!.type = "openrouter";
+  config.llm.turnPlanner.enabled = true;
+  config.llm.turnPlanner.enableThinking = false;
+  assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), 512);
+  const logger = pino({ level: "silent" });
+  const planner = new TurnPlanner(config, new LlmClient(config, logger), { getMany: async () => [] }, {
+    prepareFilesForModel: async () => []
+  }, logger);
+  const text = "reason: 用户要求暂停\ntask_intent: pause_current|task-1|high";
+  await withMockFetch([{
+    assertRequest(body: Record<string, any>) {
+      assert.equal(body.max_tokens, 512);
+      assert.equal(body.reasoning.enabled, false);
+    },
+    payloads: [{ choices: [{ delta: { content: text }, finish_reason: "stop" }] }]
+  }], async () => {
+    const result = await planner.decide({
+      requirements: { modelSelection: false, toolSelection: false, replyGate: false, semanticWait: false, topicSwitch: false, taskIntent: true },
+      sessionId: "budget-test", chatType: "private", relationship: "owner", recentMessages: [],
+      taskContext: { primary: { taskId: "task-1", status: "active", objective: "修复测试" }, parked: [] },
+      batchMessages: [createReplyGateBatchMessage({ text: "先暂停" })]
+    });
+    assert.equal(result.taskIntent?.kind, "pause_current");
+  });
+  config.llm.models.main!.chat!.capabilities.thinkingControllable = false;
+  assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), undefined);
+  config.llm.models.main!.chat!.capabilities.thinkingControllable = true;
+  config.llm.models.fallback = {
+    ...config.llm.models.main!,
+    chat: { ...config.llm.models.main!.chat!, capabilities: { supportsThinking: true, thinkingControllable: false } }
+  };
+  assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main", "fallback"]), undefined);
+  config.llm.turnPlanner.enableThinking = true;
+  assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), undefined);
+});
+
 for (const type of ["google", "openai_responses"] as const) {
   test(`${type} planner preserves the configured output budget when reasoning may remain hidden`, async () => {
     const config = createLlmTestConfig({

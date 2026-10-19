@@ -131,6 +131,10 @@ function applyRuntimeExclusion(
   if (deletedMessageIds.size > 0) {
     session.sentMessages = session.sentMessages.filter((message) => !deletedMessageIds.has(message.messageId));
   }
+  const publishedIds = new Set(session.publishedConversation?.messages.map((message) => message.id));
+  if (affected.some((item) => item.id != null && publishedIds.has(item.id))) {
+    session.publishedConversation = null;
+  }
   session.historyRevision += 1;
   return affected;
 }

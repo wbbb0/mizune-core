@@ -33,14 +33,15 @@ export class ConversationAccessService {
 
   async canAccessSession(requesterUserId: string, sessionId: string): Promise<AccessibleSessionView | null> {
     const parsed = parseChatSessionIdentity(sessionId);
-    if (!parsed) {
-      return null;
-    }
-
     const session = this.sessionCatalog.listSessions().find((item) => item.id === sessionId);
     if (!session) {
       return null;
     }
+
+    if (session.source === "web" && session.type === "private" && session.participantRef.kind === "user") {
+      return session.participantRef.id === requesterUserId ? this.toView(session, session.title ?? session.id, "self_private") : null;
+    }
+    if (!parsed) return null;
 
     if (parsed.kind === "private") {
       const targetInternalUserId = await resolveInternalUserIdForOneBotPrivateUser({

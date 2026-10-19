@@ -133,6 +133,7 @@ export interface GenerationPromptBuilder {
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    crossConversationContext?: (() => string | null) | undefined;
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
@@ -160,6 +161,7 @@ export interface GenerationPromptBuilder {
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    crossConversationContext?: (() => string | null) | undefined;
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
@@ -183,6 +185,7 @@ export interface GenerationPromptBuilder {
     sessionId: string;
     interactionMode: PromptInteractionMode;
     lateSystemMessages?: string[];
+    crossConversationContext?: (() => string | null) | undefined;
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
@@ -1064,6 +1067,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    crossConversationContext?: (() => string | null) | undefined;
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
@@ -1258,7 +1262,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
-      lateSystemMessages: input.lateSystemMessages,
+      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
       persona: input.persona,
@@ -1320,6 +1324,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     visibleToolNames: string[];
     activeToolsets: ToolsetView[];
     lateSystemMessages?: string[];
+    crossConversationContext?: (() => string | null) | undefined;
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"];
@@ -1464,7 +1469,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
-      lateSystemMessages: input.lateSystemMessages,
+      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
       trigger: scheduledTrigger,
@@ -1530,6 +1535,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     sessionId: string;
     interactionMode: PromptInteractionMode;
     lateSystemMessages?: string[];
+    crossConversationContext?: (() => string | null) | undefined;
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
@@ -1593,7 +1599,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const promptMessages = buildSetupPrompt({
       sessionId: input.sessionId,
       interactionMode: input.interactionMode,
-      lateSystemMessages: input.lateSystemMessages,
+      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
       includeBatchMediaCaptions: !mainProfile?.chat?.capabilities.supportsVision,

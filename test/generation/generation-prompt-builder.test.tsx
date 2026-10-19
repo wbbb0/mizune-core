@@ -753,7 +753,9 @@ function createActiveTaskTracker() {
   test("chat prompt builder renders task tracker sections from generation input", async () => {
     const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps());
 
+    let crossContextReads = 0;
     const result = await builder.buildChatPromptMessages({
+      crossConversationContext: () => { crossContextReads++; return "隔壁来源 B：这是最终读取的消息"; },
       sessionId: "qqbot:p:10001",
       interactionMode: "normal",
       mainModelRef: ["main"],
@@ -806,6 +808,8 @@ function createActiveTaskTracker() {
       }]
     });
 
+    assert.equal(crossContextReads, 1);
+    assert.match(JSON.stringify(result.promptMessages), /隔壁来源 B：这是最终读取的消息/);
     const system = readPromptSystemText(result.promptMessages);
     assert.equal(hasPromptSection(system, "task_focus"), true);
     assert.equal(hasPromptSection(system, "active_task_state"), true);

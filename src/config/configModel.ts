@@ -210,6 +210,18 @@ const llmProviderSchema = s.object(llmProviderSchemaShape)
   .default(emptyObject);
 
 const conversationConfigSchema = s.object({
+  crossConversation: s.object({
+    enabled: s.boolean().title("启用跨会话参考").default(false),
+    maxSources: s.number().int().min(1).max(3).title("最大参考会话数").default(2),
+    maxTokens: s.number().int().min(512).max(8192).title("参考内容总 Token 估算上限").default(1500),
+    recentMessages: s.number().int().min(1).max(32).title("每个会话最近消息数").default(12),
+    prepareTimeoutMs: s.number().int().min(50).max(5000).title("访问检查超时毫秒").default(1000),
+    links: s.array(s.object({
+      targetSessionId: s.string().trim().nonempty().title("接收参考的会话"),
+      sourceSessionId: s.string().trim().nonempty().title("被参考会话"),
+      mode: s.enum(["live", "last_completed_reply"]).title("读取模式").default("live")
+    })).title("有方向的会话关联").default([])
+  }).title("跨会话参考").describe("仅在生成回答时读取关联会话；不新增模型调用。群聊不能参考私聊。").default(emptyObject),
   setup: s.object({
     skipPersonaInitialization: s.boolean().title("跳过 Persona 初始化").default(false)
   }).title("初始化").describe("控制是否跳过全局 persona 初始化门槛；用于联调时快速进入其他功能。").default(emptyObject),

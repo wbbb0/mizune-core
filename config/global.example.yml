@@ -86,6 +86,18 @@ llm:
   debugDump:
     enabled: false
 conversation:
+  crossConversation:
+    enabled: false
+    maxSources: 2
+    maxTokens: 1500
+    recentMessages: 12
+    prepareTimeoutMs: 1000
+    # 有方向的关联；sessionId 使用 Sessions 页的真实 ID。群聊不能参考私聊。
+    # links:
+    #   - targetSessionId: "qqbot:g:10001"
+    #     sourceSessionId: "qqbot:g:10002"
+    #     mode: live # 或 last_completed_reply
+    links: []
   setup:
     skipPersonaInitialization: false
   images:

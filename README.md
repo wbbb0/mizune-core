@@ -230,6 +230,7 @@ deploy/       systemd 服务示例
 
 - [快速上手](docs/getting-started.md)
 - [会话与资料模型](docs/architecture/session-and-profile-model.md)
+- [跨会话实时参考与成本边界](docs/architecture/cross-conversation-context.md)
 - [WebUI Workbench 架构](docs/architecture/webui-workbench.md)
 - [记忆架构](docs/memory-architecture.md)
 - [用户上下文检索机制](docs/user-context-retrieval-explained.md)

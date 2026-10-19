@@ -1,3 +1,4 @@
+import { publishedConversationSchema } from "../crossConversationContext.ts";
 import { freezeTranscriptItem, isImmutableTranscriptItem } from "./immutableTranscript.ts";
 import type { InternalTranscriptItem } from "./sessionTypes.ts";
 import { createHash } from "node:crypto";
@@ -140,6 +141,7 @@ export const persistedSessionStateSchema = z.object({
   })).optional(),
   pendingTranscriptGroupId: z.string().min(1).nullable().optional(),
   activeTranscriptGroupId: z.string().min(1).nullable().optional(),
+  publishedConversation: publishedConversationSchema.nullable().optional(),
   historySummary: z.string().nullable(),
   historyBackfillBoundaryMs: z.number().int().nonnegative().optional(),
   taskTracker: sessionTaskTrackerSchema.default(createEmptySessionTaskTracker()),
@@ -241,6 +243,7 @@ export class SessionPersistence {
         active_transcript_group_id,
         history_summary,
         history_backfill_boundary_ms,
+        published_conversation_json,
         task_tracker_json,
         COALESCE((
           SELECT json_group_array(json(ordered_items.item_json))
@@ -304,6 +307,7 @@ export class SessionPersistence {
             active_transcript_group_id,
             history_summary,
             history_backfill_boundary_ms,
+            published_conversation_json,
             task_tracker_json,
             debug_markers_json,
             last_llm_usage_json,
@@ -336,6 +340,7 @@ export class SessionPersistence {
             @activeTranscriptGroupId,
             @historySummary,
             @historyBackfillBoundaryMs,
+            @publishedConversationJson,
             @taskTrackerJson,
             @debugMarkersJson,
             @lastLlmUsageJson,
@@ -368,6 +373,7 @@ export class SessionPersistence {
             active_transcript_group_id = excluded.active_transcript_group_id,
             history_summary = excluded.history_summary,
             history_backfill_boundary_ms = excluded.history_backfill_boundary_ms,
+            published_conversation_json = excluded.published_conversation_json,
             task_tracker_json = excluded.task_tracker_json,
             debug_markers_json = excluded.debug_markers_json,
             last_llm_usage_json = excluded.last_llm_usage_json,
@@ -501,6 +507,7 @@ type PersistedSessionRow = {
   active_transcript_group_id: string | null;
   history_summary: string | null;
   history_backfill_boundary_ms: number | null;
+  published_conversation_json: string | null;
   task_tracker_json: string;
   internal_transcript_json: string;
   debug_markers_json: string;
@@ -574,6 +581,7 @@ function toPersistedSessionParams(session: PersistedSessionState): Record<string
     activeTranscriptGroupId: session.activeTranscriptGroupId ?? null,
     historySummary: session.historySummary,
     historyBackfillBoundaryMs: session.historyBackfillBoundaryMs ?? null,
+    publishedConversationJson: session.publishedConversation ? JSON.stringify(session.publishedConversation) : null,
     taskTrackerJson: JSON.stringify(normalizeTaskTracker(session.taskTracker)),
     debugMarkersJson: JSON.stringify(session.debugMarkers),
     lastLlmUsageJson: session.lastLlmUsage == null ? null : JSON.stringify(session.lastLlmUsage),
@@ -730,6 +738,7 @@ function rowToPersistedSessionState(row: PersistedSessionRow): PersistedSessionS
     ...(row.active_transcript_group_id_is_set === 1
       ? { activeTranscriptGroupId: row.active_transcript_group_id }
       : {}),
+    publishedConversation: row.published_conversation_json ? JSON.parse(row.published_conversation_json) : null,
     historySummary: row.history_summary,
     ...(row.history_backfill_boundary_ms != null ? { historyBackfillBoundaryMs: row.history_backfill_boundary_ms } : {}),
     taskTracker: normalizeTaskTracker(JSON.parse(row.task_tracker_json)),

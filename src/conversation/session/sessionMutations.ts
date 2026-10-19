@@ -293,6 +293,7 @@ export function clearSessionState(session: SessionState): void {
   session.activeTranscriptGroupId = null;
   session.pendingInternalTriggers = [];
   session.pendingInlineTriggers = [];
+  session.publishedConversation = null;
   session.historySummary = null;
   session.historyBackfillBoundaryMs = Date.now();
   session.taskTracker = createEmptySessionTaskTracker();

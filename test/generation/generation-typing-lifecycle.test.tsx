@@ -484,11 +484,13 @@ function createExecutorHarness(options?: {
 
     await waitForEvents(harness.events, 2);
     assert.deepEqual(harness.events, ["typing:start", "send:你好"]);
+    assert.equal(harness.sessionManager.getSession(harness.sessionId).publishedConversation ?? null, null);
 
     harness.resolveDrain();
     await harness.runPromise;
 
     assert.deepEqual(harness.events, ["typing:start", "send:你好", "typing:stop"]);
+    assert.match(JSON.stringify(harness.sessionManager.getSession(harness.sessionId).publishedConversation), /你好/);
   });
 
 test("an explicitly empty toolset boundary never falls back to all builtin tools", async () => {

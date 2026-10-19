@@ -1,3 +1,4 @@
+import { publishConversation } from "#conversation/crossConversationContext.ts";
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
 import { createEmptyUsage, mergeUsage, type LlmUsage } from "#llm/provider/providerTypes.ts";
@@ -232,6 +233,8 @@ export function createGenerationExecutor(
       draftOverlaySink
     } = input;
     let outboundDrainPromise: Promise<void> | null = null;
+    let completedSuccessfully = false;
+    let generationFailed = false;
     let lastResultReasoningContent = "";
     let lastResultAssistantMetadata: Record<string, unknown> | undefined;
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
@@ -966,6 +969,7 @@ export function createGenerationExecutor(
             logger.info({ sessionId, expectedEpoch }, "llm_usage_update_skipped_epoch_mismatch");
           }
         } catch (error: unknown) {
+          generationFailed = true;
           logger.error({ err: error, sessionId }, "generation_failed");
           if (abortController.signal.aborted || responseAbortController.signal.aborted) {
             throw error;
@@ -999,8 +1003,10 @@ export function createGenerationExecutor(
       await draftOverlaySink?.complete();
       outboundDrainPromise = outbound.getDrainPromise();
 
+      completedSuccessfully = !generationFailed;
       persistSession(sessionId, "generation_completed");
     } catch (error: unknown) {
+      completedSuccessfully = false;
       logger.error({ err: error, sessionId }, "generation_failed");
       throw error;
     } finally {
@@ -1036,6 +1042,7 @@ export function createGenerationExecutor(
       try {
         await outboundDrainPromise;
       } catch (error: unknown) {
+        completedSuccessfully = false;
         logger.warn({ err: error, sessionId }, "outbound_drain_failed");
       }
 
@@ -1075,6 +1082,10 @@ export function createGenerationExecutor(
         responseEpoch,
         Date.now()
       );
+      if (finalizedAssistant && completedSuccessfully && !abortController.signal.aborted && !responseAbortController.signal.aborted) {
+        publishConversation(sessionManager.getSession(sessionId), Date.now());
+        persistSession(sessionId, "cross_conversation_reply_published");
+      }
       if (finalizedAssistant) {
         logger.info(
           {

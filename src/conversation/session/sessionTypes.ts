@@ -385,6 +385,7 @@ export type SessionPhase =
   | { kind: "delivering" };
 
 export interface SessionState {
+  publishedConversation?: import("../crossConversationContext.ts").PublishedConversation | null;
   id: string;
   type: "private" | "group";
   source: SessionSource;
@@ -433,6 +434,7 @@ export interface SessionState {
 }
 
 export interface PersistedSessionState {
+  publishedConversation?: import("../crossConversationContext.ts").PublishedConversation | null;
   id: string;
   type: "private" | "group";
   source?: SessionSource;

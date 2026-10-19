@@ -28,7 +28,7 @@ openrouter:
           temperature: 0.7
 ```
 
-`openrouter` 独立管理模型发现及 Images 协议，共用 OpenAI 兼容的聊天和向量传输。当前不配置 OpenRouter 下游供应商选择。
+`openrouter` 独立管理模型发现及 Images 协议，共用 OpenAI 兼容的聊天和向量传输。聊天模型可通过 `chat.defaults.extra.provider` 配置 OpenRouter 下游供应商选择；可选固定端点示例和成本比较见 [OpenRouter 轻量任务选型](openrouter-cost-selection.md)。
 
 ## 模型发现
 

@@ -71,7 +71,9 @@
 
 `sessions.scenario_host_state` 与 `sessions.snapshots` 使用 `block_reset`，不接受版本不匹配时的自动重建。`sessions.persisted_sessions` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
 
-`sessions` 表只保存会话元数据、pending 消息、摘要、用量和已发送消息等快照字段；`internalTranscript` 不再以内嵌大 JSON 字段保存，而是拆为 `session_transcript_items` 竖表，一行对应一条后台记录。保存会话时持久化层按 `item_id` 与内容 hash 增量 upsert/delete transcript 行，避免高频聊天时反复重写整个 transcript。启动恢复时通过 SQLite 子查询按 `item_index` 聚合 `item_json`，再还原为完整 `PersistedSessionState.internalTranscript`。
+`sessions` 表保存会话元数据、pending 消息、摘要、用量、已发送消息，以及 `published_conversation_json` 中有界的上次完整回答聊天窗口。后者随手动存档读档保存，压缩时保留，清空或撤回已发布内容时失效；表组版本 11 通过已有数据模型的增列机制加入可空字段。
+
+`internalTranscript` 不再以内嵌大 JSON 字段保存，而是拆为 `session_transcript_items` 竖表，一行对应一条后台记录。保存会话时持久化层按 `item_id` 与内容 hash 增量 upsert/delete transcript 行，避免高频聊天时反复重写整个 transcript。启动恢复时通过 SQLite 子查询按 `item_index` 聚合 `item_json`，再还原为完整 `PersistedSessionState.internalTranscript`。
 
 `scenario_host_session_states.state_json` 当前 payload 版本为 5，其中 `profile` 保存当前会话的 Scenario 资料，`currentSituation`、`currentLocation`、`player`、`npcs`、`objectives`、`loreEntries`、`entities`、`relations`、`journal`、`mechanics` 等字段保存运行态。玩家与 NPC 的随身穿着和持有物分别保存在角色的 `wornItems` 与 `heldItems` 中；通用 `entities` 只描述地点、阵营、物品、组织等非角色对象。v1/v2/v3/v4 行会在打开数据库时显式迁移为 v5；旧 `inventory` 会按 owner 归并到玩家或 NPC 的 `heldItems`，无法归属到角色的旧物品会迁移为 `entities` 中的 `item`；旧 `worldFacts` 会归并为 `loreEntries`，旧全局 Scenario 资料会在迁移时一次性复制到已有会话状态。
 

@@ -211,6 +211,8 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
   );
   const finalSession = sessionManager.getSession(sessionId);
   const fallbackEvent = finalSession.internalTranscript.find((item) => item.kind === "fallback_event");
+  assert.equal(finalSession.publishedConversation ?? null, null);
+  assert.ok(!persistedReasons.includes("cross_conversation_reply_published"));
   assert.ok(fallbackEvent);
   assert.equal(fallbackEvent?.fallbackType, "generation_failure_reply");
   assert.equal(fallbackEvent?.failureMessage, sentTexts[0]);

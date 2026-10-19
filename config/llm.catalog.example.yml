@@ -133,6 +133,23 @@ openrouter:
   type: openrouter
   apiKey: replace-me
   models:
+    # 可选轻量文本模型；不会自动替换任何路由角色。
+    # 固定实际供应商，避免把聚合最低价误认为 DeepInfra 价格。
+    ling_flash_deepinfra:
+      upstreamModel: inclusionai/ling-3.0-flash
+      chat:
+        capabilities:
+          supportsThinking: true
+          thinkingControllable: true
+          supportsVision: false
+          supportsTools: true
+        defaults:
+          extra:
+            provider:
+              only: [deepinfra/bf16]
+              allow_fallbacks: false
+              require_parameters: true
+        preserveThinking: false
     embedding:
       upstreamModel: qwen/qwen3-embedding-8b
       embedding:

@@ -434,6 +434,7 @@ test("session persistence loads legacy title_generation_event transcript items",
       pendingMessages: [],
       pendingTranscriptGroupId: null,
       activeTranscriptGroupId: null,
+      publishedConversation: null,
       historySummary: null,
       taskTracker: createEmptySessionTaskTracker(),
       internalTranscript: [
@@ -506,6 +507,7 @@ test("session persistence round-trips asset attachments in pending messages and 
       }],
       pendingTranscriptGroupId: null,
       activeTranscriptGroupId: null,
+      publishedConversation: null,
       historySummary: null,
       taskTracker: createEmptySessionTaskTracker(),
       internalTranscript: [{
@@ -567,6 +569,7 @@ test("session persistence handles transcript item index shifts", async () => {
       pendingMessages: [],
       pendingTranscriptGroupId: null,
       activeTranscriptGroupId: null,
+      publishedConversation: null,
       historySummary: null,
       taskTracker: createEmptySessionTaskTracker(),
       internalTranscript: [
@@ -614,6 +617,7 @@ test("restoreSessionState normalizes transcript metadata for loaded sessions", (
     pendingMessages: [],
     pendingTranscriptGroupId: null,
     activeTranscriptGroupId: null,
+    publishedConversation: null,
     historySummary: null,
     internalTranscript: [{
       kind: "assistant_message",
@@ -716,6 +720,7 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
             receivedAt: 1
           }
         ],
+        publishedConversation: null,
         historySummary: null,
         taskTracker: createEmptySessionTaskTracker(),
         internalTranscript: [
@@ -846,6 +851,7 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
         titleSource: "manual",
         replyDelivery: "onebot",
         pendingMessages: [],
+        publishedConversation: null,
         historySummary: null,
         taskTracker: createEmptySessionTaskTracker(),
         internalTranscript: [{
@@ -982,6 +988,7 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
         titleSource: "default",
         replyDelivery: "onebot",
         pendingMessages: [],
+        publishedConversation: null,
         historySummary: null,
         taskTracker: createEmptySessionTaskTracker(),
         internalTranscript: [],
@@ -1030,5 +1037,35 @@ test("transcript snapshots retain immutable entries across metadata edits and sa
     await persistence.save(after);
     const [loaded] = await persistence.loadAll();
     assert.equal(loaded!.internalTranscript[0]!.runtimeExcluded, true);
+  });
+});
+
+test("schema version 10 adds published context without losing existing session data", async () => {
+  await withDataDir("llm-bot-published-context-schema", async (dataDir) => {
+    const logger = pino({ level: "silent" });
+    const sessionsTable = sessionDataDomain.tables.sessions!;
+    const oldDomain = {
+      ...sessionDataDomain,
+      schemaVersion: 10,
+      tables: {
+        ...sessionDataDomain.tables,
+        sessions: { ...sessionsTable, columns: sessionsTable.columns.filter((column) => column.key !== "publishedConversationJson") }
+      }
+    };
+    const handle = await new SqliteService(logger).openDatabase({
+      databaseId: "sessions", dbPath: join(dataDir, "sessions", "sessions.sqlite"),
+      tableGroups: createTableGroupsFromDataDomain(oldDomain)
+    });
+    handle.db.prepare(`INSERT INTO sessions (
+      session_id, type, source, participant_kind, participant_id, title,
+      pending_messages_json, debug_markers_json, sent_messages_json, last_active_at_ms, updated_at_ms
+    ) VALUES (?, 'private', 'web', 'user', 'alice', '保留的会话', '[]', '[]', '[]', 1, 1)`).run("web:existing");
+    handle.close();
+    const persistence = new SessionPersistence(dataDir, logger);
+    await persistence.init();
+    const [loaded] = await persistence.loadAll();
+    assert.equal(loaded?.id, "web:existing");
+    assert.equal(loaded?.title, "保留的会话");
+    assert.equal(loaded?.publishedConversation, null);
   });
 });

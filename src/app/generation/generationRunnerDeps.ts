@@ -177,6 +177,6 @@ export type GenerationSessionOrchestratorDeps =
     sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };
-    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore">;
+    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore" | "conversationAccess">;
     toolRuntime: Pick<GenerationToolRuntimeDeps, "shellRuntime" | "browserService" | "downloadRuntime">;
   };

@@ -1,3 +1,4 @@
+import { prepareCrossConversationContext } from "#conversation/crossConversationContext.ts";
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
 import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, SessionDelivery, SessionReplyTarget } from "#conversation/session/sessionTypes.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
@@ -646,6 +647,14 @@ export function createGenerationSessionOrchestrator(
       });
       let plannedToolsetIds = plannerToolsets.map((item) => item.id);
       let plannerDecision = undefined;
+      const crossConversationPreparation = setupMode ? Promise.resolve(null) : prepareCrossConversationContext({
+        settings: config.conversation.crossConversation,
+        reader: sessionManager,
+        access: identity.conversationAccess,
+        targetSessionId: sessionId,
+        requesterUserId: last.userId,
+        signal: abortController.signal
+      });
 
       if (!(setupMode || options?.skipReplyGate)) {
         const gateResult = await handleGenerationTurnPlanner(
@@ -872,6 +881,7 @@ export function createGenerationSessionOrchestrator(
         scenarioHostStateStore: identity.scenarioHostStateStore
       });
 
+      const crossConversation = setupMode ? null : await crossConversationPreparation;
       const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
             sessionId,
@@ -892,6 +902,7 @@ export function createGenerationSessionOrchestrator(
             contentSafetyAlreadyProjected: true
           })
         : await services.promptBuilder.buildChatPromptMessages({
+            crossConversationContext: crossConversation?.render,
             sessionId,
             modeId: sessionModeId,
             interactionMode,
@@ -1028,6 +1039,14 @@ export function createGenerationSessionOrchestrator(
         ? await userStore.getByUserId(resolvedTargetUserId ?? trigger.targetUserId)
         : null;
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
+      const crossConversationPreparation = currentUser ? prepareCrossConversationContext({
+        settings: config.conversation.crossConversation,
+        reader: sessionManager,
+        access: identity.conversationAccess,
+        targetSessionId: sessionId,
+        requesterUserId: currentUser.userId,
+        signal: abortController.signal
+      }) : Promise.resolve(null);
       const scheduledModelRef = getModelRefsForRole(config, "main_small");
       const session = sessionManager.getSession(sessionId);
       const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
@@ -1110,7 +1129,9 @@ export function createGenerationSessionOrchestrator(
             scenarioHostStateStore: identity.scenarioHostStateStore
           })
         : undefined;
+      const crossConversation = await crossConversationPreparation;
       const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
+        crossConversationContext: crossConversation?.render,
         sessionId,
         modeId: session.modeId,
         interactionMode,
@@ -1232,6 +1253,14 @@ export function createGenerationSessionOrchestrator(
         ? await userStore.getByUserId(resolvedTargetUserId ?? primaryTrigger.targetUserId)
         : null;
       const promptRelationship: Relationship = currentUser?.relationship ?? "known";
+      const crossConversationPreparation = currentUser ? prepareCrossConversationContext({
+        settings: config.conversation.crossConversation,
+        reader: sessionManager,
+        access: identity.conversationAccess,
+        targetSessionId: sessionId,
+        requesterUserId: currentUser.userId,
+        signal: abortController.signal
+      }) : Promise.resolve(null);
       const scheduledModelRef = getModelRefsForRole(config, "main_small");
       const session = sessionManager.getSession(sessionId);
       const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
@@ -1315,7 +1344,9 @@ export function createGenerationSessionOrchestrator(
           })
         : undefined;
       const inlineBatchMessage = renderInlineTriggerBatchMessage(triggers);
+      const crossConversation = await crossConversationPreparation;
       const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
+        crossConversationContext: crossConversation?.render,
         sessionId,
         modeId: session.modeId,
         interactionMode,
