@@ -222,3 +222,7 @@ Scenario 运行态同样是会话级数据，保存在 `scenario_host_session_st
 - 全局 readiness、会话级 profile 与单会话工作态分别建模，不再复用一个字段承担多种职责
 
 如果后续继续扩展模式、身份源或 WebUI 展示，应该沿用上述边界，而不是重新把这些职责混回同一个字段。
+
+### 实时草稿与正式回复
+
+WebUI 的实时 provider 文本是可撤回草稿，通过 `draft_delta` 展示，通过 `draft_reset` 清除。候选失败、回退或完成时清除该候选草稿；只有通过 provider 响应和工具协议验证的内容才进入正式回复与 transcript。OneBot 的不可撤回发送保持在验证之后，不能将草稿直接用于消息投递。

@@ -22,6 +22,7 @@ export function createGenerationSegmentCoordinator(input: {
   draftStateSink?: GenerationDraftStateSink;
 }) {
   let streamBuffer = "";
+  let previewBuffer = "";
   let committedText = "";
   let providerReplayCursor = 0;
 
@@ -133,6 +134,17 @@ export function createGenerationSegmentCoordinator(input: {
   };
 
   return {
+    async onPreviewTextDelta(delta: string): Promise<void> {
+      previewBuffer += delta;
+      await input.draftOverlaySink?.appendDelta(delta);
+      await input.draftStateSink?.replaceDraftText(previewBuffer);
+    },
+    async resetPreview(): Promise<void> {
+      if (!previewBuffer) return;
+      previewBuffer = "";
+      await input.draftOverlaySink?.resetDraft?.();
+      await input.draftStateSink?.clearDraftText();
+    },
     async onTextDelta(delta: string): Promise<void> {
       streamBuffer += delta;
       await input.draftOverlaySink?.appendDelta(delta);

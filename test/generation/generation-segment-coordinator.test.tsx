@@ -282,3 +282,22 @@ test("segment coordinator appends a standalone checkpoint after streamed tool-ca
     "我先检查配置。还有一段未发送说明\n\n已完成配置检查。请确认是否继续。"
   );
 });
+
+test("provider preview is retractable and never reaches the committed sink", async () => {
+  const committed: string[] = [];
+  let draft = "";
+  const coordinator = createGenerationSegmentCoordinator({
+    disableStreamingSplit: false,
+    committedSink: { async enqueueChunk(text) { committed.push(text); return true; }, async flushBufferedOutput() { return ""; } },
+    draftOverlaySink: {
+      appendDelta(delta) { draft += delta; }, resetDraft() { draft = ""; },
+      markCommitted() {}, complete() {}, fail() {}
+    }
+  });
+  await coordinator.onPreviewTextDelta("这是一段尚未确认的输出。\n\n另一段输出。");
+  assert.match(draft, /尚未确认/);
+  assert.deepEqual(committed, []);
+  await coordinator.resetPreview();
+  assert.equal(draft, "");
+  assert.deepEqual(committed, []);
+});

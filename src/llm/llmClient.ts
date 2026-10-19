@@ -245,6 +245,8 @@ export class LlmClient {
         streamed = await this.streamChatCompletion({
           messages: workingMessages,
           tools,
+          ...(params.onPreviewTextDelta ? { onPreviewTextDelta: params.onPreviewTextDelta } : {}),
+          ...(params.onPreviewReset ? { onPreviewReset: params.onPreviewReset } : {}),
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           onTextDelta: (delta) => {
             pendingDeltas.push({ kind: "text", delta });
@@ -625,8 +627,9 @@ export class LlmClient {
           messages: messageProjection.messages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
-          onTextDelta: (delta) => {
+          onTextDelta: async (delta) => {
             candidateDeltas.push({ kind: "text", delta });
+            await params.onPreviewTextDelta?.(delta);
           },
           onReasoningDelta: (delta) => {
             candidateDeltas.push({ kind: "reasoning", delta });
@@ -639,12 +642,14 @@ export class LlmClient {
             : {}),
           ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
         }));
+        await params.onPreviewReset?.();
         await replayValidatedProviderDeltas(candidateDeltas, params);
         return {
           ...result,
           modelRef: providerContext.modelRef
         };
       } catch (error: unknown) {
+        await params.onPreviewReset?.();
         lastError = error;
         const shouldFallback = index < providerContexts.length - 1 && shouldFallbackToNextModel(error);
         const nextProviderContext = shouldFallback ? providerContexts[index + 1] : null;

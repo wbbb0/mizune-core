@@ -855,6 +855,12 @@ export function createGenerationExecutor(
             ...(streamResponse === false
               ? {}
                 : {
+                  onPreviewTextDelta: async (delta: string) => {
+                    assertGenerationCurrent();
+                    sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
+                    await segmentCoordinator.onPreviewTextDelta(delta);
+                  },
+                  onPreviewReset: () => segmentCoordinator.resetPreview(),
                   onReasoningDelta: (_delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "reasoning" });
                     void typingWindow.startIfNeeded();

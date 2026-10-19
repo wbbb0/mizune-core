@@ -75,3 +75,40 @@ for (const delta of [{ refusal: "I cannot assist with that request." }, {}]) {
     });
   });
 }
+
+test("provisional text arrives before completion and resets without committing failed text", async () => {
+  const release = deferred();
+  const previewReceived = deferred();
+  const previews: string[] = [];
+  const committed: string[] = [];
+  let resets = 0;
+  const encoder = new TextEncoder();
+  const response = new Response(new ReadableStream({ async start(controller) {
+    controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"preview"}}]}\n\n'));
+    await release.promise;
+    controller.enqueue(encoder.encode('data: {"error":{"code":500,"message":"failed"}}\n\n'));
+    controller.close();
+  } }), { headers: { "content-type": "text/event-stream" } });
+  await withMockFetch([{ assertRequest() {}, response }], async () => {
+    const running = new LlmClient(createLlmTestConfig(), pino({ level: "silent" })).generate({
+      messages: [{ role: "user", content: "synthetic test" }], skipDebugDump: true,
+      onPreviewTextDelta(delta) { previews.push(delta); previewReceived.resolve(); },
+      onPreviewReset() { resets++; }, onTextDelta(delta) { committed.push(delta); }
+    });
+    const rejected = assert.rejects(running, /500 failed/);
+    try {
+      await Promise.race([previewReceived.promise, new Promise((_, reject) => setTimeout(() => reject(new Error("no live preview")), 1000))]);
+      assert.deepEqual(previews, ["preview"]);
+      assert.deepEqual(committed, []);
+    } finally { release.resolve(); }
+    await rejected;
+    assert.equal(resets, 1);
+    assert.deepEqual(committed, []);
+  });
+});
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}

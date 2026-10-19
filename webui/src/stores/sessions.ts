@@ -634,10 +634,10 @@ export const useSessionsStore = defineStore("sessions", () => {
       } catch { /* ignore */ }
     });
 
-    es.addEventListener("segment_committed", (e: MessageEvent) => {
+    const clearStreamDraft = (e: MessageEvent) => {
       try {
         const event = JSON.parse(e.data) as TurnStreamEvent;
-        if (event.type !== "segment_committed") {
+        if (event.type !== "segment_committed" && event.type !== "draft_reset") {
           return;
         }
         setDraftState((session) => ({
@@ -646,7 +646,9 @@ export const useSessionsStore = defineStore("sessions", () => {
           draftAssistantText: null
         }));
       } catch { /* ignore */ }
-    });
+    };
+    es.addEventListener("segment_committed", clearStreamDraft);
+    es.addEventListener("draft_reset", clearStreamDraft);
 
     const cleanup = () => {
       es.close();

@@ -382,6 +382,11 @@ async function runWebTurnInBackground(input: {
             timestampMs: Date.now()
           });
         },
+        resetDraft() {
+          input.broker.publish(input.turnState, {
+            type: "draft_reset", turnId: input.turnState.turnId, sessionId: input.sessionId, timestampMs: Date.now()
+          });
+        },
         markCommitted() {
           input.broker.publish(input.turnState, {
             type: "segment_committed",
@@ -455,6 +460,11 @@ async function runTranscriptResendInBackground(input: {
             sessionId: input.sessionId,
             delta,
             timestampMs: Date.now()
+          });
+        },
+        resetDraft() {
+          input.broker.publish(input.turnState, {
+            type: "draft_reset", turnId: input.turnState.turnId, sessionId: input.sessionId, timestampMs: Date.now()
           });
         },
         markCommitted() {

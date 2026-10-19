@@ -15,7 +15,7 @@ export type WebTurnStreamEvent =
       timestampMs: number;
     }
   | {
-      type: "segment_committed";
+      type: "segment_committed" | "draft_reset";
       turnId: string;
       sessionId: string;
       timestampMs: number;

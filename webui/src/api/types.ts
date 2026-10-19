@@ -526,7 +526,7 @@ export interface SessionDetailResult {
 export type TurnStreamEvent =
   | { type: "ready";    turnId: string; sessionId: string; timestampMs: number }
   | { type: "draft_delta"; turnId: string; sessionId: string; delta: string; timestampMs: number }
-  | { type: "segment_committed"; turnId: string; sessionId: string; timestampMs: number }
+  | { type: "segment_committed" | "draft_reset"; turnId: string; sessionId: string; timestampMs: number }
   | { type: "complete"; turnId: string; sessionId: string; timestampMs: number }
   | { type: "turn_error"; turnId: string; sessionId: string; message: string; timestampMs: number };
 
