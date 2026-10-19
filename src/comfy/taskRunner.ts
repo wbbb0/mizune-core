@@ -61,15 +61,46 @@ export class ComfyTaskRunner {
       if (tasks.length === 0) {
         return;
       }
-      const queue = await this.input.comfyClient.getQueue();
-      for (const task of tasks) {
-        await this.handleTask(task, queue);
+      for (const task of tasks.filter((task) => task.status === "succeeded")) {
+        await this.tryHandleTask(task);
+      }
+      const generating = tasks.filter((task) => task.status !== "succeeded");
+      if (generating.length > 0) {
+        const queue = await this.input.comfyClient.getQueue();
+        for (const task of generating) await this.tryHandleTask(task, queue);
       }
     } catch (error: unknown) {
       this.input.logger.warn({ error }, "comfy_task_poll_failed");
     } finally {
       this.polling = false;
     }
+  }
+
+  private async tryHandleTask(
+    task: ComfyTaskRecord,
+    queue?: { runningPromptIds: Set<string>; pendingPromptIds: Set<string> }
+  ): Promise<void> {
+    try {
+      if (task.status === "succeeded") {
+        await this.notifySucceededTask(task);
+      } else if (queue) {
+        await this.handleTask(task, queue);
+      }
+    } catch (error) {
+      this.input.logger.warn({ error, taskId: task.id }, "comfy_task_processing_failed");
+    }
+  }
+
+  private async notifySucceededTask(task: ComfyTaskRecord): Promise<void> {
+    const records = await this.input.chatFileStore.getMany(task.resultFileIds);
+    const byId = new Map(records.map((file) => [file.fileId, file]));
+    const files = task.resultFileIds.map((fileId) => {
+      const file = byId.get(fileId);
+      if (!file) throw new Error(`Comfy result asset is missing: ${fileId}`);
+      return { fileId, path: file.chatFilePath };
+    });
+    await this.input.notifyCompletedTask(task, files);
+    await this.input.comfyTaskStore.update({ ...task, status: "notified" });
   }
 
   private async handleTask(
@@ -147,12 +178,12 @@ export class ComfyTaskRunner {
 
     const completed = {
       ...task,
-      status: "notified" as const,
+      status: "succeeded" as const,
       resultFileIds: files.map((item) => item.fileId),
       resultFiles: history.images,
       finishedAtMs: Date.now()
     };
     await this.input.comfyTaskStore.update(completed);
-    await this.input.notifyCompletedTask(completed, files);
+    await this.notifySucceededTask(completed);
   }
 }

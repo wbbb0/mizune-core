@@ -102,7 +102,7 @@ export class ComfyTaskStore {
       SELECT
         ${COMFY_TASK_SELECT}
       FROM comfy_tasks
-      WHERE status IN ('queued', 'running')
+      WHERE status IN ('queued', 'running', 'succeeded')
       ORDER BY updated_at_ms DESC, id ASC
     `).all() as ComfyTaskRow[];
     const results = listResultFilesForTasks(db, rows.map((row) => row.id));
