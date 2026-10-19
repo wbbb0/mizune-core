@@ -128,9 +128,10 @@ export class HistoryCompressor {
       // Use provider-reported input tokens from the last request as a more accurate
       // trigger signal when available, falling back to the heuristic estimate otherwise.
       const lastUsage = this.sessionManager.getLastLlmUsage(sessionId);
+      const requestUsage = lastUsage?.lastRequestUsage ?? lastUsage;
       const reportedInputTokens = resolvePromptBudgetReportedInputTokens({
-        inputTokens: lastUsage?.inputTokens,
-        requestCount: lastUsage?.requestCount
+        inputTokens: requestUsage?.inputTokens,
+        requestCount: requestUsage?.requestCount
       });
       const skipKey = [
         options.expectedHistoryRevision,

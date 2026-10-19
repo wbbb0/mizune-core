@@ -857,3 +857,20 @@ test("topic compression candidates exclude summaries and reset after compaction"
     assert.equal(await compressor.forceCompact("qqbot:p:test", 1), false);
     assert.equal(sessionManager.getSession("qqbot:p:test").historySummary, null);
   });
+
+test("compression uses the last provider request instead of discarding multi-call usage", async () => {
+  const config = createConfig();
+  const manager = new SessionManager(config);
+  const id = "qqbot:p:usage";
+  manager.ensureSession({ id, type: "private" });
+  const requestUsage = { inputTokens: 12345, outputTokens: 1, totalTokens: 12346, cachedTokens: null,
+    reasoningTokens: null, requestCount: 1, providerReported: true, modelRef: "test:main", model: "fake" };
+  manager.setLastLlmUsageIfEpochMatches(id, manager.getMutationEpoch(id), {
+    ...requestUsage, inputTokens: 99999, requestCount: 4, capturedAt: 1, lastRequestUsage: requestUsage
+  });
+  let reported: number | undefined;
+  manager.getHistoryForCompressionByTokens = (_id, _trigger, _retain, tokens) => { reported = tokens; return null; };
+  const compressor = new HistoryCompressor(config, { isConfigured: () => true } as any, manager, {} as any, pino({ level: "silent" }));
+  await compressor.maybeCompress(id);
+  assert.equal(reported, 12345);
+});
