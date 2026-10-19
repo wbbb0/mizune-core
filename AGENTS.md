@@ -54,6 +54,7 @@
 - `requests/`：好友/群申请缓存与审批逻辑
 - `runtime/`：运行时上下文与共享能力
 - `services/`：外部能力与运行时服务封装
+  - `images/`：标准图像生成接口、响应验证与模型路由解析
   - `onebot/`：OneBot 客户端与消息收发
   - `proxy/`：代理相关能力
   - `shell/`：shell、作业、tmux 相关能力

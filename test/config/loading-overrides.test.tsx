@@ -362,6 +362,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
+        imageGenerator: [],
         embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
@@ -740,3 +741,26 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       );
     });
   });
+
+
+test("ComfyUI 实例覆盖继承连接信息并与通用生图开关独立", async () => {
+  await withConfigDir("comfy-instance-overrides", async configDir => {
+    await writeLlmCatalog(configDir);
+    await writeYaml(join(configDir, "global.yml"), {
+      comfy: { enabled: true, apiBaseUrl: "http://comfy.example:8188", templateRoot: "templates/shared" },
+      llm: { imageGeneration: { enabled: false } }
+    });
+    await writeDefaultInstanceYaml(configDir, { comfy: { enabled: false }, llm: { imageGeneration: { enabled: true } } });
+    const config = loadConfig({ CONFIG_DIR: configDir });
+    assert.equal(config.comfy.enabled, false);
+    assert.equal(config.comfy.apiBaseUrl, "http://comfy.example:8188");
+    assert.equal(config.comfy.templateRoot, "templates/shared");
+    assert.equal(config.llm.imageGeneration.enabled, true);
+    await writeDefaultInstanceYaml(configDir, { comfy: { apiBaseUrl: "http://instance.example:8188", templateRoot: "templates/instance" } });
+    const changed = loadConfig({ CONFIG_DIR: configDir });
+    assert.equal(changed.comfy.enabled, true);
+    assert.equal(changed.comfy.apiBaseUrl, "http://instance.example:8188");
+    assert.equal(changed.comfy.templateRoot, "templates/instance");
+    assert.equal(changed.llm.imageGeneration.enabled, false);
+  });
+});

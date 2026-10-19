@@ -33,6 +33,7 @@ export const ROUTING_MODEL_FIELDS = [
   "imageCaptioner",
   "imageInspector",
   "audioTranscription",
+  "imageGenerator",
   "turnPlanner",
   "embedding"
 ] as const satisfies ReadonlyArray<Exclude<keyof LlmRoutingPresetFile, "historyWindow" | "tokenLimits">>;

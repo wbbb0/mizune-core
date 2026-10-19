@@ -291,15 +291,18 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    id: "image_generation",
+    title: "通用图片生成",
+    description: "通过标准图像接口生成新图片，使用生图路由选择的模型。不用于下载已有图片。",
+    plannerSignals: ["生成新图片或文生图"],
+    toolNames: ["generate_image"]
+  },
+  {
     id: "comfy_image",
-    title: "Comfy 图像生成",
-    description: "仅用于生成新图像（文生图）。不用于下载已有文件或图片。",
-    plannerSignals: [
-      "生成新图片或重绘"
-    ],
-    toolNames: [
-      "generate_image_with_comfyui"
-    ]
+    title: "ComfyUI 图片生成",
+    description: "通过已配置的 ComfyUI 工作流模板异步生成图片。不用于下载已有图片。",
+    plannerSignals: ["使用 ComfyUI 或指定工作流生成图片"],
+    toolNames: ["generate_image_with_comfyui"]
   },
   {
     id: "scenario_host_state",

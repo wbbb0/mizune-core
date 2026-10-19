@@ -227,7 +227,7 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     });
 
     assert.equal(
-      requireSessionModeDefinition("assistant").toolsets.some((item) => item.toolsetId === "comfy_image"),
+      requireSessionModeDefinition("assistant").toolsets.some((item) => item.toolsetId === "image_generation"),
       true
     );
     assert.deepEqual(toolsets.map((item) => item.id), [

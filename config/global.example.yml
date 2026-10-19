@@ -54,6 +54,9 @@ llm:
     enabled: true
     timeoutMs: 15000
     enableThinking: false
+  imageGeneration:
+    enabled: false
+    timeoutMs: 300000
   imageCaptioner:
     enabled: true
     timeoutMs: 30000
@@ -213,7 +216,7 @@ assets:
     orphanFileTtlMs: 604800000
     maxTotalBytes: null
     targetTotalBytes: null
-comfy:
+comfy: # 支持实例覆盖；与 llm.imageGeneration.enabled 独立控制
   enabled: false
   apiBaseUrl: http://192.168.0.223:8188
   templateRoot: templates/comfyui

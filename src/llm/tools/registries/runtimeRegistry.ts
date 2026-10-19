@@ -1,3 +1,4 @@
+import { imageGenerationToolDescriptors, imageGenerationToolHandlers } from "../runtime/imageGenerationTools.ts";
 import { temporaryWorkspaceToolDescriptors, temporaryWorkspaceToolHandlers } from "../runtime/temporaryWorkspaceTools.ts";
 import type { AppConfig } from "#config/config.ts";
 import { diceToolDescriptors, diceToolHandlers } from "../runtime/diceTools.ts";
@@ -31,6 +32,7 @@ const runtimeStaticToolDescriptorsRegistry = [
   ...temporaryWorkspaceToolDescriptors,
   ...chatFileToolDescriptors,
   ...imageTransformToolDescriptors,
+  ...imageGenerationToolDescriptors,
   ...assetDocumentToolDescriptors,
   ...selfAccountToolDescriptors,
   ...diceToolDescriptors,
@@ -57,6 +59,7 @@ export const runtimeToolHandlersRegistry = {
   ...temporaryWorkspaceToolHandlers,
   ...chatFileToolHandlers,
   ...imageTransformToolHandlers,
+  ...imageGenerationToolHandlers,
   ...assetDocumentToolHandlers,
   ...selfAccountToolHandlers,
   ...diceToolHandlers,

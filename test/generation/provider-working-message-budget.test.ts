@@ -1,3 +1,6 @@
+import pino from "pino";
+import { LlmClient } from "../../src/llm/llmClient.ts";
+import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../helpers/llm-test-support.tsx";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -272,3 +275,69 @@ function createObservedToolResult(
     }
   };
 }
+
+test("image transport size does not exhaust working message budget or disable tools", () => {
+  const config = createTestAppConfig();
+  const makeMessages = (url: string) => [{
+    role: "user" as const,
+    content: [{ type: "text" as const, text: "请查看图片。" }, { type: "image_url" as const, image_url: { url } }]
+  }];
+  const small = makeMessages("https://example.com/image.png");
+  const large = makeMessages("data:image/png;base64," + "a".repeat(2_400_000));
+  assert.equal(estimateLlmMessagesTokens(small, config), estimateLlmMessagesTokens(large, config));
+  assert.ok(estimateLlmMessagesTokens(large, config) > 1000);
+  const projection = projectProviderWorkingMessagesForBudget({ messages: large, transcript: [], config, triggerTokens: 8000 });
+  assert.equal(projection.toolsDisabled, false);
+  assert.strictEqual(projection.messages, large);
+  const manyImages = Array.from({ length: 10 }, () => large[0]!);
+  assert.equal(projectProviderWorkingMessagesForBudget({ messages: manyImages, transcript: [], config, triggerTokens: 8000 }).toolsDisabled, true);
+});
+
+test("audio transport bytes are not estimated as text tokens", () => {
+  const config = createTestAppConfig();
+  const estimate = (data: string) => estimateLlmMessagesTokens([{
+    role: "user",
+    content: [{ type: "input_audio", input_audio: { data, format: "wav" } }]
+  }], config);
+  assert.equal(estimate("abcd"), estimate("a".repeat(2_400_000)));
+  assert.ok(estimate("abcd") > 0);
+});
+
+test("asset_media_view large image preserves send tool through the next provider call", async () => {
+  const config = createLlmTestConfig({ supportsVision: true });
+  const definitions = [createToolDefinition("asset_media_view"), createToolDefinition("asset_send_to_chat")];
+  let disabled = false;
+  const call = (id: string, name: string) => ({ choices: [{ delta: { tool_calls: [{ index: 0, id, type: "function", function: { name, arguments: "{}" } }] } }] });
+  await withMockFetch([
+    { assertRequest() {}, payloads: [call("view-1", "asset_media_view")] },
+    {
+      assertRequest(body: any) {
+        assert.ok(body.tools.some((tool: any) => tool.function.name === "asset_send_to_chat"));
+        assert.ok(body.messages.some((message: any) => Array.isArray(message.content) && message.content.some((part: any) => part.type === "image_url")));
+        assert.ok(!body.messages.some((message: any) => typeof message.content === "string" && message.content.includes("当前工具链上下文已接近上限")));
+      },
+      payloads: [call("send-1", "asset_send_to_chat")]
+    },
+    { assertRequest() {}, payloads: [{ choices: [{ delta: { content: "已发送。" } }] }] }
+  ], async () => {
+    const result = await new LlmClient(config, pino({ level: "silent" })).generate({
+      messages: [{ role: "user", content: "看图后发送图片。" }],
+      tools: () => disabled ? [] : definitions,
+      projectMessagesBeforeProvider(messages) {
+        const projection = projectProviderWorkingMessagesForBudget({ messages, tools: definitions, transcript: [], config, triggerTokens: 8000 });
+        disabled = projection.toolsDisabled;
+        return projection.messages;
+      },
+      async toolExecutor(tool) {
+        if (tool.function.name !== "asset_media_view") return '{"ok":true}';
+        return {
+          content: '{"ok":true,"attachedCount":1}',
+          supplementalMessages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64," + "a".repeat(2_400_000) } }] }],
+          toString() { return '{"ok":true,"attachedCount":1}'; }
+        };
+      }
+    });
+    assert.equal(result.text, "已发送。");
+    assert.equal(disabled, false);
+  });
+});

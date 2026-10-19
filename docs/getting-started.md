@@ -190,7 +190,7 @@ onebot:
 - `global.yml`：`llm.enabled`、`llm.timeoutMs`、`conversation.*`、`shell.*`、`browser.*`、`search.*`、`scheduler.*`、`comfy.*`
 - `instances/<name>.yml`：`appName`、`dataDir`、`onebot.wsUrl`、`onebot.httpUrl`、`onebot.accessToken`、`internalApi.enabled`、`internalApi.port`、`internalApi.webui.enabled`、`internalApi.webui.port`
 
-一个重要例外：`comfy` 配置只能放在 `global.yml`，放到实例文件里会被忽略。
+`comfy` 与其他运行时配置一样支持全局默认、实例覆盖。可在 WebUI「配置 → 运行时配置 → ComfyUI」设置本实例的启用状态、连接、模板和宽高比；「全局运行时配置」修改共享默认值。
 
 ## 实例选择
 

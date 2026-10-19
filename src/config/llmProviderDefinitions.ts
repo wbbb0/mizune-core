@@ -12,3 +12,8 @@ export const llmProviderDefinitions = {
   lmstudio: { title: "LM Studio", search: "none", googleSafety: false, customFeatures: true },
   anthropic: { title: "Anthropic", search: "none", googleSafety: false, customFeatures: false }
 } as const satisfies Record<LlmProviderType, { title: string; search: "native" | "custom" | "none"; googleSafety: boolean; customFeatures: boolean }>;
+
+/** 标准 Images API 与聊天协议独立，目前由两种 OpenAI 兼容 Provider 提供。 */
+export function supportsStandardImageGeneration(type: LlmProviderType): boolean {
+  return type === "openai" || type === "openai_responses";
+}

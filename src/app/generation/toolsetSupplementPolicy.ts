@@ -20,6 +20,7 @@ const CAPABILITY_TOOLSET_RULES: Array<{
   { capability: "social_admin", toolsetId: "social_admin", reason: "planner_social_admin" },
   { capability: "conversation_navigation", toolsetId: "conversation_navigation", reason: "planner_conversation_navigation" },
   { capability: "chat_delegation", toolsetId: "chat_delegation", reason: "planner_chat_delegation" },
+  { capability: "image_generation", toolsetId: "image_generation", reason: "planner_image_generation" },
   { capability: "image_generation", toolsetId: "comfy_image", reason: "planner_image_generation" }
 ] as const;
 

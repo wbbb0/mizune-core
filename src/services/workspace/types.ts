@@ -90,6 +90,7 @@ export type ChatFileOrigin =
   | "chat_message"
   | "browser_download"
   | "browser_screenshot"
+  | "image_generated"
   | "comfy_generated"
   | "group_file_download"
   | "image_transform"

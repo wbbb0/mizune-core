@@ -126,6 +126,7 @@ const DEFAULT_PROBE_TOOLSET_IDS = [
   "memory_profile",
   "scheduler_admin",
   "social_admin",
+  "image_generation",
   "comfy_image",
   "time_utils"
 ] as const;

@@ -11,3 +11,10 @@ export class LlmInvalidProviderResponseError extends Error {
     this.name = "LlmInvalidProviderResponseError";
   }
 }
+
+export class LlmProviderPolicyError extends Error {
+  constructor(readonly reason: "refusal" | "content_filter", message: string) {
+    super(message);
+    this.name = "LlmProviderPolicyError";
+  }
+}

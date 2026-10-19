@@ -55,9 +55,10 @@ test("添加模型在关闭前写入响应式草稿，保留嵌套配置和期�
 });
 
 test("更新已有模型保留 API 参数；取消不修改草稿", async () => {
-  const h = setup({ new_model: { upstreamModel: entry.upstreamModel, apiParameters: { temperature: 0.2 } } });
+  const h = setup({ new_model: { upstreamModel: entry.upstreamModel, apiParameters: { temperature: 0.2 }, imageParameters: { size: "1024x1024" } } });
   h.action.run({ values: { canSubmit: true, entry } });
   assert.deepEqual((h.state.draftValue.value.provider.models.new_model as any).apiParameters, { temperature: 0.2 });
+  assert.deepEqual((h.state.draftValue.value.provider.models.new_model as any).imageParameters, { size: "1024x1024" });
   h.close();
   await h.pending;
   const cancelled = setup();

@@ -40,11 +40,13 @@ export function splitSseEvents(buffer: string): { events: string[]; remainder: s
 
 // Extracts all data payload lines from a single SSE event block.
 export function extractSseDataLines(event: string): string[] {
-  return event
+  const data = event
     .split("\n")
     .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice(5).trim())
-    .filter((line) => line.length > 0 && line !== "[DONE]");
+    .map((line) => line.slice(5).replace(/^ /, ""))
+    .join("\n")
+    .trim();
+  return data && data !== "[DONE]" ? [data] : [];
 }
 
 // Builds a provider-reported usage snapshot with consistent defaults.

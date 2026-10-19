@@ -18,6 +18,12 @@ const modelProfileCapabilitySchemaShape = {
   supportsSearch: s.boolean().title("允许联网搜索").describe("模型支持联网时启用。已知供应商自动配置原生搜索，无需填写工具名称。").default(false),
   supportsTools: s.boolean().title("支持工具").default(true),
   preserveThinking: s.boolean().title("保留历史思考").default(false),
+  imageParameters: s.object({
+    size: s.string().trim().nonempty().title("图片尺寸").optional(),
+    quality: s.string().trim().nonempty().title("生成质量").optional(),
+    output_format: s.enum(["png", "jpeg", "webp"] as const).title("输出格式").optional(),
+    response_format: s.enum(["b64_json", "url"] as const).title("响应格式（兼容服务）").describe("默认不发送；GPT Image 不支持此参数。").optional()
+  }).title("图像生成参数").describe("仅用于标准 Images API；留空使用此模型的上游默认值，与对话生成参数独立。").optional(),
   apiParameters: modelApiParametersSchema
 };
 
@@ -32,14 +38,16 @@ const catalogModelProfileSchema = s.object({
   ...modelProfileCapabilitySchemaShape
 }).title("模型配置").describe("定义 provider 内局部唯一的模型别名及其上游模型名与能力。").default(emptyObject);
 
-export const modelTargetRefSchema = s.object({
+const createModelTargetRefSchema = (optionKey: string) => s.object({
   provider: createCatalogAliasSchema().title("Provider"),
   model: createCatalogAliasSchema().title("模型")
 })
   .title("模型目标")
   .describe("以 provider 与其局部模型别名共同定位模型。")
   .strict()
-  .dynamicRef("llm_model_targets");
+  .dynamicRef(optionKey);
+
+export const modelTargetRefSchema = createModelTargetRefSchema("llm_model_targets");
 
 const createModelRefListSchema = () => s.oneOrMany(s.string().trim().nonempty().dynamicRef("llm_model_names")).optional();
 const createModelTargetListSchema = () => s.oneOrMany(modelTargetRefSchema).optional();
@@ -64,6 +72,7 @@ const llmRoutingPresetSchema = s.object({
   imageInspector: createModelRefListSchema().title("图片精读"),
   audioTranscription: createModelRefListSchema().title("音频转写"),
   turnPlanner: createModelRefListSchema().title("轮次规划"),
+  imageGenerator: createModelRefListSchema().title("图像生成"),
   embedding: createModelRefListSchema().title("向量模型"),
   historyWindow: routingPresetHistoryWindowSchema.optional(),
   tokenLimits: routingPresetTokenLimitsSchema.optional()
@@ -79,6 +88,7 @@ const llmRoutingPresetFileSchema = s.object({
   imageInspector: createModelTargetListSchema().title("图片精读"),
   audioTranscription: createModelTargetListSchema().title("音频转写"),
   turnPlanner: createModelTargetListSchema().title("轮次规划"),
+  imageGenerator: s.oneOrMany(createModelTargetRefSchema("llm_image_model_targets")).optional().title("图像生成"),
   embedding: createModelTargetListSchema().title("向量模型"),
   historyWindow: routingPresetHistoryWindowSchema.optional(),
   tokenLimits: routingPresetTokenLimitsSchema.optional()
@@ -606,6 +616,10 @@ const llmRuntimeConfigSchema = s.object({
     timeoutMs: s.number().int().positive().title("超时毫秒").default(15000),
     enableThinking: s.boolean().title("启用思考").default(false)
   }).title("会话标题生成").describe("为会话生成简短标题。").default(emptyObject),
+  imageGeneration: s.object({
+    enabled: s.boolean().title("启用").default(false),
+    timeoutMs: s.number().int().positive().title("超时毫秒").default(300000)
+  }).title("图像生成").describe("通过 OpenAI 标准 Images API 文生图，使用 imageGenerator 路由。").default(emptyObject),
   imageCaptioner: llmImageCaptionerConfigSchema,
   imageInspector: llmImageInspectorConfigSchema,
   audioTranscription: llmAudioTranscriptionConfigSchema,

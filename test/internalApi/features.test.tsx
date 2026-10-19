@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -17,6 +18,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       assert.equal(schemaMeta.fields.appName.title, "应用名称");
       assert.equal(schemaMeta.fields.onebot.title, "OneBot");
       assert.equal(schemaMeta.fields.llm.title, "LLM");
+      assert.equal(schemaMeta.fields.comfy.title, "ComfyUI");
+      assert.ok(schemaMeta.fields.comfy.schema.fields.templates);
       assert.equal(schemaMeta.fields.conversation.title, "会话");
       assert.equal(
         schemaMeta.fields.conversation.schema.fields.historyCompression.description,
@@ -456,6 +459,35 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     }
   });
 
+  test("image model picker excludes chat models and non-Images providers", async () => {
+    const deps = createInternalApiDeps();
+    const app = await createInternalApiApp(deps);
+    try {
+      await writeFile(deps.config.configRuntime.llmCatalogPath, `images:
+  type: openai_responses
+  models:
+    chat:
+      upstreamModel: chat
+    image:
+      upstreamModel: image-model
+      modelType: image_generation
+      imageParameters:
+        size: 1024x1024
+other:
+  type: anthropic
+  models:
+    image:
+      upstreamModel: unsupported-image
+      modelType: image_generation
+`, "utf8");
+      const response = await app.inject({ method: "GET", url: "/api/editor-options/llm_image_model_targets" });
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(response.json().groups.map((group: { key: string; options: Array<{ value: unknown }> }) => ({ provider: group.key, targets: group.options.map(option => option.value) })), [{ provider: "images", targets: [{ provider: "images", model: "image" }] }]);
+    } finally {
+      await app.close();
+    }
+  });
+
   test("internal api groups model targets and cascades explicit provider mutations", async () => {
     const deps = createInternalApiDeps();
     const app = await createInternalApiApp(deps);
@@ -718,6 +750,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
           imageInspector: [],
           audioTranscription: [],
           turnPlanner: [],
+          imageGenerator: [],
           embedding: [],
           historyWindow: {
             maxRecentMessages: 50,
@@ -740,6 +773,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
+        imageGenerator: [],
         embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
@@ -763,6 +797,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
+        imageGenerator: [],
         embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
@@ -783,6 +818,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
+        imageGenerator: [],
         embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
@@ -819,6 +855,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
         imageInspector: [],
         audioTranscription: [],
         turnPlanner: [],
+        imageGenerator: [],
         embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
@@ -2414,3 +2451,26 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       await app.close();
     }
   });
+
+
+test("实例编辑器可保存 ComfyUI 覆盖且不改全局默认", async () => {
+  const deps = createInternalApiDeps();
+  const app = await createInternalApiApp(deps);
+  try {
+    await mkdir(dirname(deps.config.configRuntime.instanceConfigPath), { recursive: true });
+    const globalPath = deps.config.configRuntime.globalConfigPath;
+    await writeFile(globalPath, "comfy:\n  enabled: true\n  apiBaseUrl: http://comfy.example:8188\n", "utf8");
+    const response = await app.inject({ method: "POST", url: "/api/editors/config/save", payload: { value: { comfy: { enabled: false }, llm: { imageGeneration: { enabled: true } } } } });
+    assert.equal(response.statusCode, 200, response.body);
+    const loaded = await app.inject({ method: "GET", url: "/api/editors/config" });
+    const editor = loaded.json().editor;
+    assert.equal(editor.currentValue.comfy.enabled, false);
+    assert.equal(editor.effectiveValue.comfy.enabled, false);
+    assert.equal(editor.effectiveValue.comfy.apiBaseUrl, "http://comfy.example:8188");
+    assert.equal(editor.effectiveValue.llm.imageGeneration.enabled, true);
+    assert.equal(editor.referenceValue.comfy.enabled, true);
+    assert.equal(await readFile(globalPath, "utf8"), "comfy:\n  enabled: true\n  apiBaseUrl: http://comfy.example:8188\n");
+  } finally {
+    await app.close();
+  }
+});

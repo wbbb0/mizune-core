@@ -1,3 +1,4 @@
+import { estimateMessageContentTokens } from "#llm/shared/messageContentTokens.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { InternalToolResultItem, InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import { estimateTokens } from "#conversation/session/tokenEstimator.ts";
@@ -97,7 +98,7 @@ export function estimateLlmMessagesTokens(messages: LlmMessage[], config: AppCon
   return messages.reduce((sum, message) => (
     sum
       + estimateTokens(message.role, weights)
-      + estimateTokens(renderMessageContentForTokenEstimate(message.content), weights)
+      + estimateMessageContentTokens(message.content, weights)
       + estimateTokens(message.tool_call_id ?? "", weights)
       + estimateTokens(message.reasoning_content ?? "", weights)
       + estimateToolCallsTokens(message, config)

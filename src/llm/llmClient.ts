@@ -1,3 +1,5 @@
+import { LlmProviderPolicyError } from "./provider/providerProtocolError.ts";
+import { withProviderExchangeDump } from "./provider/providerExchangeDump.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile, normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole, resolveModelRefsForRole } from "#llm/shared/modelRouting.ts";
@@ -619,7 +621,7 @@ export class LlmClient {
       const candidateDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
 
       try {
-        const result = await provider.generate(providerContext, {
+        const result = await withProviderExchangeDump(providerContext, params.skipDebugDump, () => provider.generate(providerContext, {
           messages: messageProjection.messages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
@@ -636,7 +638,7 @@ export class LlmClient {
             ? { preferNativeNoThinkingChatEndpoint: params.preferNativeNoThinkingChatEndpoint }
             : {}),
           ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
-        });
+        }));
         await replayValidatedProviderDeltas(candidateDeltas, params);
         return {
           ...result,
@@ -842,6 +844,7 @@ function narrowActiveModelRefs(activeModelRefs: string[], selectedModelRef: stri
 }
 
 function shouldFallbackToNextModel(error: unknown): boolean {
+  if (error instanceof LlmProviderPolicyError) return true;
   const message = error instanceof Error
     ? `${error.name} ${error.message}`.toLowerCase()
     : String(error).toLowerCase();

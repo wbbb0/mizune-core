@@ -260,7 +260,7 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
     if (triggerKind === "comfy_task_completed") {
       return ["chat_context", "filesystem_io", "asset_io", "comfy_image"];
     }
-    return ["chat_context", "web_research", "shell_runtime", "filesystem_io", "asset_io", "scheduler_admin", "time_utils", "comfy_image", "session_mode_control"];
+    return ["chat_context", "web_research", "shell_runtime", "filesystem_io", "asset_io", "scheduler_admin", "time_utils", "image_generation", "comfy_image", "session_mode_control"];
   }
   if (triggerKind === "scheduled_instruction") {
     return withScenarioHostState(["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "filesystem_io", "asset_io", "scheduler_admin", "time_utils"]);

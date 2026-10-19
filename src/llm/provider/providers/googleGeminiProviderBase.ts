@@ -1,4 +1,5 @@
-import { fetchWithProxy } from "#services/proxy/index.ts";
+import { readProviderSseData } from "../providerSseReader.ts";
+import { fetchProviderResponse } from "../providerExchangeDump.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { buildGeminiGenerationConfigParameters } from "../modelApiParameters.ts";
@@ -15,8 +16,6 @@ import {
 import {
   createProviderStreamAccumulator,
   createReportedUsage,
-  extractSseDataLines,
-  splitSseEvents
 } from "../providerStreamAdapter.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 
@@ -126,7 +125,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
-      const response = await fetchWithProxy(
+      const response = await fetchProviderResponse(
         context.config,
         "llm",
         endpoint,
@@ -155,9 +154,6 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
       const toolCalls = new Map<number, LlmToolCall>();
       const assistantParts: GooglePart[] = [];
       const assistantPartCount = new Map<string, number>();
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       const processChunk = async (chunk: GoogleStreamChunk) => {
         if (chunk.error) {
           if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
@@ -200,43 +196,10 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
         }
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const parsed = splitSseEvents(buffer);
-        buffer = parsed.remainder;
-
-        for (const event of parsed.events) {
-          for (const payload of extractSseDataLines(event)) {
-            const chunk = parseChunk(payload);
-            if (!chunk) {
-              continue;
-            }
-
-            responseChunks.push(chunk);
-            await processChunk(chunk);
-          }
-        }
-      }
-
-      const trailing = buffer.trim();
-      if (trailing.length > 0) {
-        for (const line of trailing.split(/\r?\n/)) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) {
-            continue;
-          }
-          const chunk = parseChunk(trimmed.slice(5).trim());
-          if (!chunk) {
-            continue;
-          }
-          responseChunks.push(chunk);
-          await processChunk(chunk);
-        }
+      for await (const data of readProviderSseData(response)) {
+        const chunk = JSON.parse(data) as GoogleStreamChunk;
+        responseChunks.push(chunk);
+        await processChunk(chunk);
       }
 
       if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
@@ -774,14 +737,6 @@ function mergeGoogleUsage(
     reasoningTokens: usageMetadata ? (numberOrNull(usageMetadata.thoughtsTokenCount) ?? 0) : null,
     providerReported: usageMetadata != null
   });
-}
-
-function parseChunk(payload: string): GoogleStreamChunk | null {
-  try {
-    return JSON.parse(payload) as GoogleStreamChunk;
-  } catch {
-    return null;
-  }
 }
 
 function createGoogleStreamError(

@@ -1,4 +1,5 @@
-import { fetchWithProxy } from "#services/proxy/index.ts";
+import { readProviderSseData, throwIfProviderError } from "../providerSseReader.ts";
+import { fetchProviderResponse } from "../providerExchangeDump.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { buildDashScopeModelApiParameters } from "../modelApiParameters.ts";
@@ -9,9 +10,7 @@ import { createProviderTimeoutController, rethrowProviderAbortReason } from "../
 import {
   createProviderStreamAccumulator,
   createReportedUsage,
-  extractSseDataLines,
   mergeIndexedToolCallDeltas,
-  splitSseEvents
 } from "../providerStreamAdapter.ts";
 import {
   createEmptyUsage,
@@ -28,6 +27,8 @@ import {
 } from "../providerTypes.ts";
 
 interface DashScopeStreamChunk {
+  code?: string;
+  message?: string;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -111,7 +112,7 @@ export class DashScopeProvider implements LlmProvider {
       if (context.config.contentSafety.routes.llmProviderFallback.dashscope.useDataInspectionHeader) {
         headers["X-DashScope-DataInspection"] = JSON.stringify({ input: "cip", output: "cip" });
       }
-      const response = await fetchWithProxy(context.config, "llm", endpoint, {
+      const response = await fetchProviderResponse(context.config, "llm", endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify(requestBody),
@@ -147,9 +148,6 @@ export class DashScopeProvider implements LlmProvider {
         throw new Error("LLM stream body is missing");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf8");
-      let sseBuffer = "";
       const accumulator = createProviderStreamAccumulator({
         modelRef: context.modelRef,
         model: context.model
@@ -157,60 +155,47 @@ export class DashScopeProvider implements LlmProvider {
       const toolCalls = new Map<number, LlmToolCall>();
       const responseChunks: unknown[] = [];
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          break;
+      for await (const data of readProviderSseData(response)) {
+        const payload = JSON.parse(data) as DashScopeStreamChunk;
+        responseChunks.push(payload);
+        throwIfProviderError(payload);
+        if (payload.code && payload.message) throw new Error(`DashScope API error: ${payload.code} ${payload.message}`);
+        if (payload.usage) {
+          const cachedTokens = numberOrNull(payload.usage.prompt_tokens_details?.cached_tokens) ?? 0;
+          const reasoningTokens = numberOrNull(payload.usage.output_tokens_details?.reasoning_tokens) ?? 0;
+          accumulator.replaceUsage(createReportedUsage({
+            modelRef: context.modelRef,
+            model: context.model,
+            inputTokens: numberOrNull(payload.usage.input_tokens),
+            outputTokens: numberOrNull(payload.usage.output_tokens),
+            totalTokens: numberOrNull(payload.usage.total_tokens),
+            cachedTokens,
+            reasoningTokens,
+          }));
         }
 
-        sseBuffer += decoder.decode(value, { stream: true });
-        const parsed = splitSseEvents(sseBuffer);
-        sseBuffer = parsed.remainder;
-
-        for (const event of parsed.events) {
-          const dataLines = extractSseDataLines(event);
-
-          for (const data of dataLines) {
-            const payload = JSON.parse(data) as DashScopeStreamChunk;
-            responseChunks.push(payload);
-            if (payload.usage) {
-              const cachedTokens = numberOrNull(payload.usage.prompt_tokens_details?.cached_tokens) ?? 0;
-              const reasoningTokens = numberOrNull(payload.usage.output_tokens_details?.reasoning_tokens) ?? 0;
-              accumulator.replaceUsage(createReportedUsage({
-                modelRef: context.modelRef,
-                model: context.model,
-                inputTokens: numberOrNull(payload.usage.input_tokens),
-                outputTokens: numberOrNull(payload.usage.output_tokens),
-                totalTokens: numberOrNull(payload.usage.total_tokens),
-                cachedTokens,
-                reasoningTokens,
-              }));
-            }
-
-            const message = payload.output?.choices?.[0]?.message;
-            if (!message) {
-              continue;
-            }
-
-            if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
-              timeoutController.markFirstResponseReceived();
-              timeoutController.markReasoningStarted();
-              accumulator.appendReasoningDelta(message.reasoning_content, params.onReasoningDelta);
-            }
-            const contentDelta = extractDashScopeText(message.content);
-            if (contentDelta.length > 0) {
-              timeoutController.markFirstResponseReceived();
-              timeoutController.markFirstTextReceived();
-              await accumulator.appendTextDelta(contentDelta, params.onTextDelta);
-            }
-            if ((message.tool_calls?.length ?? 0) > 0) {
-              timeoutController.markFirstResponseReceived();
-              timeoutController.markFirstTextReceived();
-            }
-
-            mergeIndexedToolCallDeltas(toolCalls, message.tool_calls ?? []);
-          }
+        const message = payload.output?.choices?.[0]?.message;
+        if (!message) {
+          continue;
         }
+
+        if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
+          timeoutController.markFirstResponseReceived();
+          timeoutController.markReasoningStarted();
+          accumulator.appendReasoningDelta(message.reasoning_content, params.onReasoningDelta);
+        }
+        const contentDelta = extractDashScopeText(message.content);
+        if (contentDelta.length > 0) {
+          timeoutController.markFirstResponseReceived();
+          timeoutController.markFirstTextReceived();
+          await accumulator.appendTextDelta(contentDelta, params.onTextDelta);
+        }
+        if ((message.tool_calls?.length ?? 0) > 0) {
+          timeoutController.markFirstResponseReceived();
+          timeoutController.markFirstTextReceived();
+        }
+
+        mergeIndexedToolCallDeltas(toolCalls, message.tool_calls ?? []);
       }
 
       if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {

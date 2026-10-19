@@ -1,3 +1,4 @@
+import { supportsStandardImageGeneration } from "#config/llmProviderDefinitions.ts";
 import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -160,9 +161,6 @@ export function createEditorService(input: {
       const resource = getRequiredResource(resources, resourceKey);
       const schemaMeta = exportSchemaMeta(resource.schema);
 
-      if (resourceKey === "config" && schemaMeta.kind === "object") {
-        delete schemaMeta.fields.comfy;
-      }
       if (resourceKey === "users" && schemaMeta.kind === "array" && schemaMeta.item.kind === "object") {
         delete schemaMeta.item.fields.memories;
       }
@@ -387,16 +385,18 @@ export function createEditorService(input: {
     },
 
     async getOptions(optionKey) {
-      if (optionKey === "llm_model_targets") {
+      if (optionKey === "llm_model_targets" || optionKey === "llm_image_model_targets") {
         const raw = await readConfigFileRaw(input.config.configRuntime.llmCatalogPath).catch(() => ({}));
         const catalog = parseConfig(llmCatalogFileSchema, raw, { cloneInput: true });
         return {
           groups: Object.entries(catalog)
+            .filter(([, provider]) => optionKey !== "llm_image_model_targets" || supportsStandardImageGeneration(provider.type))
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([provider, providerConfig]) => ({
               key: provider,
               label: provider,
               options: Object.entries(providerConfig.models)
+                .filter(([, profile]) => optionKey !== "llm_image_model_targets" || profile.modelType === "image_generation")
                 .sort(([left], [right]) => left.localeCompare(right))
                 .map(([model, profile]) => ({
                   key: model,

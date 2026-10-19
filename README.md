@@ -270,3 +270,19 @@ npm run deploy:production
 npm run typecheck:all
 npm run test
 ```
+
+标准图像模型通过 `imageGenerator` 路由调用 OpenAI Images API；ComfyUI 保留独立工作流配置，两者分别提供可独立开关的工具集，并共用图片资产体系。配置见 [图像生成](docs/development/image-generation.md)。
+
+### LLM 响应诊断 dump
+
+实例 `dataDir/dump/` 下，`last-request.json` / `last-response.json` 保留供应商解析层诊断；新增的 `last-exchange.json` 保存最近一次模型调用的实际 HTTP 请求体、响应状态、少量诊断响应头和解析前的原始响应体。`last-failed-exchange.json` 单独保留最近一次失败，不会被后续成功调用覆盖。请求与响应放在同一文件，并带调用 ID、模型引用和时间，避免并发调用时误配。
+
+成功调用遵循 `llm.debugDump.enabled`；失败调用即使关闭该开关也保存原始诊断。内部调用显式设置 `skipDebugDump` 时不生成这两种新增文件。适用于各聊天 provider（含 Responses 和 LM Studio），不包括 embedding。标准图片生成使用独立的 `last-image-exchange.json` / `last-failed-image-exchange.json`，保留 API 响应及失败信息，不覆盖聊天 dump。
+
+每条响应最多保留前 1 MiB；`receivedBytes` / `capturedBytes` / `bodyTruncated` 标记大小与截断，`bodyComplete` 表示是否读到 EOF。解析失败或中断时只保存已读内容，不额外读取剩余流；尚未收到 HTTP 响应的网络失败没有状态码和响应体。`error` 保存最终异常，`transportError` 保存网络/读流异常。原始响应保留不等于已经识别所有供应商的流内错误；被解析器忽略的错误仍需从 `rawBody` 检查。
+
+文件不保存请求认证头或响应 Cookie，但请求及响应正文可能含对话和图片数据，应作为实例私有诊断文件保管。
+
+工具链预算按内容类型估算：文本沿用字符权重，图片每个预留 1024 tokens、音频每段预留 2048 tokens，Base64 和资源 URL 不按正文计数。这是本地预算启发式，不代表供应商实际计费；实际媒体 token 数依模型、分辨率和时长而异。这样查看图片不会仅因编码体积触发工具禁用，多个媒体仍会累加预算。
+
+聊天 provider 共用 SSE 分帧读取，保留末尾未带空行的事件并合并多行 `data:`。OpenAI 兼容响应的流内错误、拒绝、`content_filter` 及 HTTP 200 中的 JSON 错误会明确报错，错误前的部分文字不会作为成功回复交付。真正的空响应会附带结束原因、上游 provider、响应 ID 和输出 token 数，原始证据仍保存在 exchange dump。

@@ -115,3 +115,17 @@ vertex:
       supportsSearch: true
       apiParameters:
         maxOutputTokens: 4096
+
+# 标准图像模型复用 Provider 连接信息；ComfyUI 工作流继续单独配置。
+openai_images:
+  type: openai
+  baseUrl: https://api.openai.com/v1
+  apiKey: replace-me
+  models:
+    image:
+      upstreamModel: gpt-image-1
+      modelType: image_generation
+      supportsTools: false
+      imageParameters:
+        size: 1024x1024
+        quality: low

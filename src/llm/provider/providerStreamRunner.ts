@@ -1,9 +1,8 @@
-import { fetchWithProxy } from "#services/proxy/index.ts";
+import { readProviderSseData } from "./providerSseReader.ts";
+import { fetchProviderResponse } from "./providerExchangeDump.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "./providerTimeout.ts";
 import {
   createProviderStreamAccumulator,
-  extractSseDataLines,
-  splitSseEvents,
   type ProviderStreamAccumulator
 } from "./providerStreamAdapter.ts";
 import type {
@@ -43,7 +42,7 @@ export async function runProviderSseStream<TFinalPayload>(input: {
   input.params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
   try {
-    const response = await fetchWithProxy(input.context.config, "llm", input.endpoint, {
+    const response = await fetchProviderResponse(input.context.config, "llm", input.endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -90,72 +89,28 @@ export async function runProviderSseStream<TFinalPayload>(input: {
 
 async function consumeSseStream<TFinalPayload>(input: {
   params: LlmProviderGenerateParams;
-  response: Awaited<ReturnType<typeof fetchWithProxy>>;
+  response: Awaited<ReturnType<typeof fetchProviderResponse>>;
   parseData: (data: string) => ProviderSseSemanticEvent<TFinalPayload>[] | Promise<ProviderSseSemanticEvent<TFinalPayload>[]>;
   markFirstResponseReceived: () => void;
   markReasoningStarted: () => void;
   markFirstTextReceived: () => void;
   accumulator: ProviderStreamAccumulator;
 }): Promise<ProviderSseStreamResult<TFinalPayload>> {
-  const reader = input.response.body!.getReader();
-  const decoder = new TextDecoder("utf8");
-  let sseBuffer = "";
   const finalPayloadRef: { current: TFinalPayload | null } = { current: null };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    sseBuffer += decoder.decode(value, { stream: true });
-    const parsed = splitSseEvents(sseBuffer);
-    sseBuffer = parsed.remainder;
-
-    for (const event of parsed.events) {
-      await processSseEvent({
+  for await (const data of readProviderSseData(input.response)) {
+    const events = await input.parseData(data);
+    for (const event of events) {
+      await applySemanticStreamEvent({
         ...input,
-        event,
-        setFinalPayload: (payload) => {
-          finalPayloadRef.current = payload;
-        }
-      });
+        setFinalPayload: (payload) => { finalPayloadRef.current = payload; }
+      }, event);
     }
-  }
-
-  const trailing = sseBuffer.trim();
-  if (trailing.length > 0) {
-    await processSseEvent({
-      ...input,
-      event: trailing,
-      setFinalPayload: (payload) => {
-        finalPayloadRef.current = payload;
-      }
-    });
   }
 
   return {
     accumulator: input.accumulator,
     finalPayload: finalPayloadRef.current
   };
-}
-
-async function processSseEvent<TFinalPayload>(input: {
-  params: LlmProviderGenerateParams;
-  event: string;
-  parseData: (data: string) => ProviderSseSemanticEvent<TFinalPayload>[] | Promise<ProviderSseSemanticEvent<TFinalPayload>[]>;
-  markFirstResponseReceived: () => void;
-  markReasoningStarted: () => void;
-  markFirstTextReceived: () => void;
-  accumulator: ProviderStreamAccumulator;
-  setFinalPayload: (payload: TFinalPayload) => void;
-}): Promise<void> {
-  for (const data of extractSseDataLines(input.event)) {
-    const events = await input.parseData(data);
-    for (const event of events) {
-      await applySemanticStreamEvent(input, event);
-    }
-  }
 }
 
 async function applySemanticStreamEvent<TFinalPayload>(

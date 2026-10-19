@@ -26,6 +26,9 @@ balanced:
   sessionCaptioner:
     - provider: dashscope
       model: fast
+  imageGenerator:
+    - provider: openai_images
+      model: image
   imageCaptioner:
     - provider: dashscope
       model: vision

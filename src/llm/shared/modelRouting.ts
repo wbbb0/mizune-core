@@ -16,6 +16,7 @@ export type LlmRoutingRole =
   | "image_inspector"
   | "audio_transcription"
   | "turn_planner"
+  | "image_generator"
   | "embedding";
 
 interface RoutingRoleDefinition {
@@ -114,6 +115,12 @@ const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
     presetField: "turnPlanner",
     getModelRefs: (preset) => preset.turnPlanner
   },
+  image_generator: {
+    label: "图像生成",
+    requiredModelType: "image_generation",
+    presetField: "imageGenerator",
+    getModelRefs: (preset) => preset.imageGenerator
+  },
   embedding: {
     label: "向量模型",
     requiredModelType: "embedding",
@@ -164,6 +171,7 @@ export function createEmptyRoutingPreset(): EffectiveLlmRoutingPreset {
     imageInspector: [],
     audioTranscription: [],
     turnPlanner: [],
+    imageGenerator: [],
     embedding: [],
     historyWindow: { ...DEFAULT_ROUTING_PRESET_HISTORY_WINDOW },
     tokenLimits: { ...DEFAULT_ROUTING_PRESET_TOKEN_LIMITS }

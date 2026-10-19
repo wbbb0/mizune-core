@@ -17,6 +17,7 @@ export const assistantModeDefinition: SessionModeDefinition = {
     "filesystem_io",
     "asset_io",
     "scheduler_admin",
+    "image_generation",
     "comfy_image",
     "time_utils"
   ].map((toolsetId) => ({

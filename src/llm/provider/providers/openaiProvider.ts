@@ -1,4 +1,6 @@
-import { fetchWithProxy } from "#services/proxy/index.ts";
+import { LlmProviderPolicyError } from "../providerProtocolError.ts";
+import { readProviderSseData, throwIfProviderError } from "../providerSseReader.ts";
+import { fetchProviderResponse } from "../providerExchangeDump.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { buildOpenAiCompatibleModelApiParameters } from "../modelApiParameters.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
@@ -22,9 +24,7 @@ import {
 import {
   createProviderStreamAccumulator,
   createReportedUsage,
-  extractSseDataLines,
   mergeIndexedToolCallDeltas,
-  splitSseEvents
 } from "../providerStreamAdapter.ts";
 
 interface ChatCompletionChunkPayload {
@@ -39,8 +39,12 @@ interface ChatCompletionChunkPayload {
       reasoning_tokens?: number;
     };
   };
+  id?: string;
+  provider?: string;
   choices?: Array<{
+    finish_reason?: string | null;
     delta?: {
+      refusal?: string;
       content?: string;
       reasoning_content?: string;
       tool_calls?: Array<{
@@ -149,7 +153,7 @@ export class OpenAiProvider implements LlmProvider {
     params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
-      const response = await fetchWithProxy(context.config, "llm", endpoint, {
+      const response = await fetchProviderResponse(context.config, "llm", endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -183,65 +187,60 @@ export class OpenAiProvider implements LlmProvider {
         throw new Error("LLM stream body is missing");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf8");
-      let sseBuffer = "";
       const accumulator = createProviderStreamAccumulator({
         modelRef: context.modelRef,
         model: context.model
       });
       const toolCalls = new Map<number, LlmToolCall>();
       const responseChunks: unknown[] = [];
+      let finishReason: string | null = null;
+      let responseId: string | undefined;
+      let upstreamProvider: string | undefined;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          break;
+      for await (const data of readProviderSseData(response)) {
+        const payload = JSON.parse(data) as ChatCompletionChunkPayload;
+        responseChunks.push(payload);
+        throwIfProviderError(payload);
+        responseId = payload.id ?? responseId;
+        upstreamProvider = payload.provider ?? upstreamProvider;
+        finishReason = payload.choices?.[0]?.finish_reason ?? finishReason;
+        const refusal = payload.choices?.[0]?.delta?.refusal;
+        if (refusal) throw new LlmProviderPolicyError("refusal", `LLM provider refusal: ${refusal}`);
+        if (finishReason === "content_filter") throw new LlmProviderPolicyError("content_filter", "LLM provider finish_reason: content_filter");
+        if (finishReason === "error") {
+          throw new Error(`LLM provider finish_reason: ${finishReason}`);
+        }
+        if (payload.usage) {
+          const cachedTokens = numberOrNull(payload.usage.prompt_tokens_details?.cached_tokens) ?? 0;
+          const reasoningTokens = numberOrNull(payload.usage.completion_tokens_details?.reasoning_tokens) ?? 0;
+          accumulator.replaceUsage(createReportedUsage({
+            modelRef: context.modelRef,
+            model: context.model,
+            inputTokens: numberOrNull(payload.usage.prompt_tokens),
+            outputTokens: numberOrNull(payload.usage.completion_tokens),
+            totalTokens: numberOrNull(payload.usage.total_tokens),
+            cachedTokens,
+            reasoningTokens,
+          }));
         }
 
-        sseBuffer += decoder.decode(value, { stream: true });
-        const parsed = splitSseEvents(sseBuffer);
-        sseBuffer = parsed.remainder;
-
-        for (const event of parsed.events) {
-          const dataLines = extractSseDataLines(event);
-
-          for (const data of dataLines) {
-            const payload = JSON.parse(data) as ChatCompletionChunkPayload;
-            responseChunks.push(payload);
-            if (payload.usage) {
-              const cachedTokens = numberOrNull(payload.usage.prompt_tokens_details?.cached_tokens) ?? 0;
-              const reasoningTokens = numberOrNull(payload.usage.completion_tokens_details?.reasoning_tokens) ?? 0;
-              accumulator.replaceUsage(createReportedUsage({
-                modelRef: context.modelRef,
-                model: context.model,
-                inputTokens: numberOrNull(payload.usage.prompt_tokens),
-                outputTokens: numberOrNull(payload.usage.completion_tokens),
-                totalTokens: numberOrNull(payload.usage.total_tokens),
-                cachedTokens,
-                reasoningTokens,
-              }));
-            }
-
-            const delta = payload.choices?.[0]?.delta;
-            if (typeof delta?.reasoning_content === "string") {
-              timeoutController.markFirstResponseReceived();
-              timeoutController.markReasoningStarted();
-              accumulator.appendReasoningDelta(delta.reasoning_content, params.onReasoningDelta);
-            }
-            if (delta?.content) {
-              timeoutController.markFirstResponseReceived();
-              timeoutController.markFirstTextReceived();
-              await accumulator.appendTextDelta(delta.content, params.onTextDelta);
-            }
-            if ((delta?.tool_calls?.length ?? 0) > 0) {
-              timeoutController.markFirstResponseReceived();
-              timeoutController.markFirstTextReceived();
-            }
-
-            mergeIndexedToolCallDeltas(toolCalls, delta?.tool_calls ?? []);
-          }
+        const delta = payload.choices?.[0]?.delta;
+        if (typeof delta?.reasoning_content === "string") {
+          timeoutController.markFirstResponseReceived();
+          timeoutController.markReasoningStarted();
+          accumulator.appendReasoningDelta(delta.reasoning_content, params.onReasoningDelta);
         }
+        if (delta?.content) {
+          timeoutController.markFirstResponseReceived();
+          timeoutController.markFirstTextReceived();
+          await accumulator.appendTextDelta(delta.content, params.onTextDelta);
+        }
+        if ((delta?.tool_calls?.length ?? 0) > 0) {
+          timeoutController.markFirstResponseReceived();
+          timeoutController.markFirstTextReceived();
+        }
+
+        mergeIndexedToolCallDeltas(toolCalls, delta?.tool_calls ?? []);
       }
 
       if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
@@ -267,7 +266,7 @@ export class OpenAiProvider implements LlmProvider {
       }
 
       if (!accumulator.text.trim() && toolCalls.size === 0) {
-        throw new Error("LLM returned empty content");
+        throw new Error(`LLM returned empty content (finish_reason=${finishReason ?? "unknown"}, provider=${upstreamProvider ?? context.providerName}, response_id=${responseId ?? "unknown"}, output_tokens=${accumulator.usage.outputTokens ?? "unknown"})`);
       }
 
       return {

@@ -218,6 +218,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
             nextModels[entry.alias] = {
               upstreamModel: entry.upstreamModel.trim(),
               ...entry.capabilities,
+              ...(existing?.imageParameters !== undefined ? { imageParameters: existing.imageParameters } : {}),
               ...(existing?.apiParameters !== undefined ? { apiParameters: existing.apiParameters } : {})
             };
             nextProvider.models = nextModels;

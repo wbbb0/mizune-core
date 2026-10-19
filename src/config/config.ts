@@ -77,20 +77,6 @@ function loadYamlFile(filePath: string): Record<string, unknown> {
   }
 }
 
-function stripInstanceOnlyUnsupportedKeys(layer: Record<string, unknown>, sourcePath: string): Record<string, unknown> {
-  if (!("comfy" in layer)) {
-    return layer;
-  }
-
-  process.emitWarning(
-    `Ignoring config key comfy from ${sourcePath}; ComfyUI configuration is global-only and must be placed in global.yml`,
-    "ConfigLoadWarning"
-  );
-  const next = { ...layer };
-  delete next.comfy;
-  return next;
-}
-
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsedEnv = envSchema.parse(env);
   const configDir = parsedEnv.CONFIG_DIR != null
@@ -111,7 +97,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   const globalConfig = sanitizeConfigLayer(loadYamlFile(globalConfigPath), globalConfigPath);
   const instanceConfig = sanitizeConfigLayer(
-    stripInstanceOnlyUnsupportedKeys(loadYamlFile(instanceConfigPath), instanceConfigPath),
+    loadYamlFile(instanceConfigPath),
     instanceConfigPath
   );
   const runtimeConfig = parseConfig(fileConfigSchema, deepMergeAllReplaceArrays([

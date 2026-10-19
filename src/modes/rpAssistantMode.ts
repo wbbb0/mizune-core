@@ -21,6 +21,7 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     "asset_io",
     "social_admin",
     "scheduler_admin",
+    "image_generation",
     "comfy_image",
     "time_utils",
     "debug_owner"

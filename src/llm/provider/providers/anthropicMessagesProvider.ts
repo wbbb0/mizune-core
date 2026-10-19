@@ -1,12 +1,11 @@
+import { readProviderSseData } from "../providerSseReader.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
-import { fetchWithProxy } from "#services/proxy/index.ts";
+import { fetchProviderResponse } from "../providerExchangeDump.ts";
 import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 import {
   createProviderStreamAccumulator,
   createReportedUsage,
-  extractSseDataLines,
-  splitSseEvents
 } from "../providerStreamAdapter.ts";
 import {
   numberOrNull,
@@ -161,7 +160,7 @@ export class AnthropicMessagesProvider implements LlmProvider {
     if (params.abortSignal?.aborted) forwardAbort();
 
     try {
-      const response = await fetchWithProxy(context.config, "llm", endpoint, {
+      const response = await fetchProviderResponse(context.config, "llm", endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -198,9 +197,6 @@ export class AnthropicMessagesProvider implements LlmProvider {
         throw new Error("Anthropic stream body is missing");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf8");
-      let sseBuffer = "";
       const accumulator = createProviderStreamAccumulator({
         modelRef: context.modelRef,
         model: context.model
@@ -211,57 +207,44 @@ export class AnthropicMessagesProvider implements LlmProvider {
       let stopReason: string | undefined;
       let reportedUsage: AnthropicUsage = {};
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          break;
+      for await (const data of readProviderSseData(response)) {
+        const payload = JSON.parse(data) as AnthropicStreamPayload;
+        responseEvents.push(payload);
+        if (payload.type === "message_stop") stopped = true;
+        if (payload.type === "message_delta") stopReason = payload.delta?.stop_reason;
+        reportedUsage = { ...reportedUsage, ...(payload.message?.usage ?? payload.usage) };
+        if (payload.type === "error") {
+          throw new Error(`Anthropic stream error: ${payload.error?.type ?? "unknown"} ${payload.error?.message ?? ""}`.trim());
         }
 
-        sseBuffer += decoder.decode(value, { stream: true });
-        const parsed = splitSseEvents(sseBuffer);
-        sseBuffer = parsed.remainder;
-
-        for (const event of parsed.events) {
-          for (const data of extractSseDataLines(event)) {
-            const payload = JSON.parse(data) as AnthropicStreamPayload;
-            responseEvents.push(payload);
-            if (payload.type === "message_stop") stopped = true;
-            if (payload.type === "message_delta") stopReason = payload.delta?.stop_reason;
-            reportedUsage = { ...reportedUsage, ...(payload.message?.usage ?? payload.usage) };
-            if (payload.type === "error") {
-              throw new Error(`Anthropic stream error: ${payload.error?.type ?? "unknown"} ${payload.error?.message ?? ""}`.trim());
-            }
-
-            mergeAnthropicUsage(context, accumulator, reportedUsage);
-            const block = updateAnthropicBlock(blocks, payload);
-            if (payload.type === "content_block_start") {
-              timeoutController.markFirstResponseReceived();
-              if (block?.type === "thinking") {
-                timeoutController.markReasoningStarted();
-                if (block.thinking) accumulator.appendReasoningDelta(block.thinking, params.onReasoningDelta);
-              } else {
-                timeoutController.markFirstTextReceived();
-              }
-              if (block?.type === "text" && block.text) {
-                await accumulator.appendTextDelta(block.text, params.onTextDelta);
-              }
-            }
-            if (payload.type === "content_block_delta" && block) {
-              if (payload.delta?.type === "text_delta" && payload.delta.text) {
-                timeoutController.markFirstResponseReceived();
-                timeoutController.markFirstTextReceived();
-                await accumulator.appendTextDelta(payload.delta.text, params.onTextDelta);
-              }
-              if (payload.delta?.type === "thinking_delta" && payload.delta.thinking) {
-                timeoutController.markFirstResponseReceived();
-                timeoutController.markReasoningStarted();
-                accumulator.appendReasoningDelta(payload.delta.thinking, params.onReasoningDelta);
-              }
-              if (payload.delta?.type === "input_json_delta" && payload.delta.partial_json) {
-                timeoutController.markFirstResponseReceived();
-                timeoutController.markFirstTextReceived();
-              }
-            }
+        mergeAnthropicUsage(context, accumulator, reportedUsage);
+        const block = updateAnthropicBlock(blocks, payload);
+        if (payload.type === "content_block_start") {
+          timeoutController.markFirstResponseReceived();
+          if (block?.type === "thinking") {
+            timeoutController.markReasoningStarted();
+            if (block.thinking) accumulator.appendReasoningDelta(block.thinking, params.onReasoningDelta);
+          } else {
+            timeoutController.markFirstTextReceived();
+          }
+          if (block?.type === "text" && block.text) {
+            await accumulator.appendTextDelta(block.text, params.onTextDelta);
+          }
+        }
+        if (payload.type === "content_block_delta" && block) {
+          if (payload.delta?.type === "text_delta" && payload.delta.text) {
+            timeoutController.markFirstResponseReceived();
+            timeoutController.markFirstTextReceived();
+            await accumulator.appendTextDelta(payload.delta.text, params.onTextDelta);
+          }
+          if (payload.delta?.type === "thinking_delta" && payload.delta.thinking) {
+            timeoutController.markFirstResponseReceived();
+            timeoutController.markReasoningStarted();
+            accumulator.appendReasoningDelta(payload.delta.thinking, params.onReasoningDelta);
+          }
+          if (payload.delta?.type === "input_json_delta" && payload.delta.partial_json) {
+            timeoutController.markFirstResponseReceived();
+            timeoutController.markFirstTextReceived();
           }
         }
       }

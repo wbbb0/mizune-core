@@ -68,6 +68,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           imageInspector: [],
           audioTranscription: [],
           turnPlanner: [],
+          imageGenerator: [],
           embedding: [],
           historyWindow: {
             maxRecentMessages: 50,

@@ -410,7 +410,7 @@ onMounted(() => {
 
               <div v-if="isUpdating" class="flex items-start gap-2 rounded-md border border-border-subtle bg-surface-muted px-3 py-2 text-small text-text-secondary">
                 <Check class="mt-0.5 size-4 shrink-0 text-success" />
-                此模型已配置，提交后会更新其类型与能力，并保留已有 API 参数。
+                此模型已配置，提交后会更新其类型与能力，并保留已有 API 参数和图像生成参数。
               </div>
             </template>
           </WorkbenchCard>
