@@ -209,3 +209,33 @@ test("ContextExtractionQueue cancels pending batches for a deleted session", asy
   });
   assert.deepEqual(calls, ["qqbot:p:user_b"]);
 });
+
+test("backlogged extraction drains every accepted turn in FIFO batches", async () => {
+  const started = deferred();
+  const release = deferred();
+  const drained = deferred();
+  const calls: string[][] = [];
+  const queue = new ContextExtractionQueue(createTestAppConfig({ context: { extraction: {
+    enabled: true, debounceMs: 1, maxDelayMs: 10, maxTurnsPerBatch: 2
+  } } }), { async processTurns(input) {
+    calls.push(input.turns.map((turn) => turn.userMessages[0]!.text));
+    if (calls.length === 1) { started.resolve(); await release.promise; }
+    if (calls.length === 4) drained.resolve();
+    return { created: 0, replaced: 0, ignored: 0, items: [] };
+  } }, pino({ level: "silent" }));
+  try {
+    queue.enqueueTurn(createTurn({ sessionId: "s", userId: "u", text: "0", receivedAt: 0 }));
+    await Promise.race([started.promise, sleep(1000).then(() => { throw new Error("queue did not start"); })]);
+    for (let i = 1; i <= 5; i++) queue.enqueueTurn(createTurn({ sessionId: "s", userId: "u", text: String(i), receivedAt: i }));
+    release.resolve();
+    await Promise.race([drained.promise, sleep(1000).then(() => { throw new Error("queue did not drain"); })]);
+    assert.deepEqual(calls, [["0"], ["1", "2"], ["3", "4"], ["5"]]);
+  } finally { release.resolve(); queue.stop(); }
+});
+
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}

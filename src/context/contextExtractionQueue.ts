@@ -59,10 +59,11 @@ export class ContextExtractionQueue {
       timer: null,
       turns: []
     };
-    pending.turns.push(turn);
-    if (pending.turns.length > MAX_PENDING_TURNS_PER_SESSION) {
-      pending.turns.splice(0, pending.turns.length - MAX_PENDING_TURNS_PER_SESSION);
+    if (pending.turns.length >= MAX_PENDING_TURNS_PER_SESSION) {
+      this.logger.warn({ sessionId: turn.sessionId, userId: turn.userId }, "context_extraction_queue_full_turn_rejected");
+      return;
     }
+    pending.turns.push(turn);
     this.pending.set(queueKey, pending);
 
     if (pending.turns.length >= this.config.context.extraction.maxTurnsPerBatch) {
@@ -139,9 +140,10 @@ export class ContextExtractionQueue {
     if (pending.timer) {
       clearTimeout(pending.timer);
     }
-    this.pending.delete(queueKey);
+    pending.timer = null;
+    const turns = pending.turns.splice(0, this.config.context.extraction.maxTurnsPerBatch);
+    if (pending.turns.length === 0) this.pending.delete(queueKey);
     this.runningSessions.add(queueKey);
-    const turns = pending.turns.slice(-this.config.context.extraction.maxTurnsPerBatch);
     try {
       if (turns.length > 0) {
         const result = await this.service.processTurns({
@@ -161,7 +163,7 @@ export class ContextExtractionQueue {
     } finally {
       this.runningSessions.delete(queueKey);
       if (this.pending.has(queueKey) && !this.stopped) {
-        this.schedule(queueKey);
+        this.schedule(queueKey, 0);
       }
     }
   }
