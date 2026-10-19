@@ -1720,6 +1720,31 @@ export class ContextStore {
     return rows.map(rowToContextSearchDocument);
   }
 
+  getItemEmbeddingMetadata(
+    itemIds: string[],
+    embeddingProfileId: string,
+    expectedTextHashes?: Map<string, string>
+  ): Map<string, { dimension: number; vectorDigest: string }> {
+    const result = new Map<string, { dimension: number; vectorDigest: string }>();
+    if (!this.db) return result;
+    for (let offset = 0; offset < itemIds.length; offset += 500) {
+      const batch = itemIds.slice(offset, offset + 500);
+      const rows = this.db.prepare(`
+        SELECT item_id, text_hash, dimension, vector_digest
+        FROM context_item_embeddings
+        WHERE embedding_profile_id = ? AND item_id IN (${batch.map(() => "?").join(",")})
+      `).all(embeddingProfileId, ...batch) as Array<{
+        item_id: string; text_hash: string; dimension: number; vector_digest: string;
+      }>;
+      for (const row of rows) {
+        if (!expectedTextHashes || expectedTextHashes.get(row.item_id) === row.text_hash) {
+          result.set(row.item_id, { dimension: row.dimension, vectorDigest: row.vector_digest });
+        }
+      }
+    }
+    return result;
+  }
+
   getItemEmbeddings(
     itemIds: string[],
     embeddingProfileId: string,
@@ -1728,19 +1753,21 @@ export class ContextStore {
     if (!this.db || itemIds.length === 0) {
       return new Map();
     }
-    const rows = this.db.prepare(`
-      SELECT item_id, text_hash, vector
-      FROM context_item_embeddings
-      WHERE embedding_profile_id = ?
-        AND item_id IN (${itemIds.map(() => "?").join(",")})
-    `).all(embeddingProfileId, ...itemIds) as Array<{
-      item_id: string;
-      text_hash: string;
-      vector: Buffer;
-    }>;
-    return new Map(rows
-      .filter((row) => !expectedTextHashes || expectedTextHashes.get(row.item_id) === row.text_hash)
-      .map((row) => [row.item_id, decodeVector(row.vector)]));
+    const result = new Map<string, number[]>();
+    for (let offset = 0; offset < itemIds.length; offset += 500) {
+      const batch = itemIds.slice(offset, offset + 500);
+      const rows = this.db.prepare(`
+        SELECT item_id, text_hash, vector
+        FROM context_item_embeddings
+        WHERE embedding_profile_id = ? AND item_id IN (${batch.map(() => "?").join(",")})
+      `).all(embeddingProfileId, ...batch) as Array<{ item_id: string; text_hash: string; vector: Buffer }>;
+      for (const row of rows) {
+        if (!expectedTextHashes || expectedTextHashes.get(row.item_id) === row.text_hash) {
+          result.set(row.item_id, decodeVector(row.vector));
+        }
+      }
+    }
+    return result;
   }
 
   upsertEmbeddingProfile(profile: ContextEmbeddingProfile): void {
@@ -1776,24 +1803,27 @@ export class ContextStore {
     vector: number[];
   }): void {
     const now = Date.now();
+    const vector = encodeVector(input.vector);
     this.requireDb().prepare(`
       INSERT INTO context_item_embeddings (
-        item_id, embedding_profile_id, text_hash, dimension, vector, created_at, updated_at
+        item_id, embedding_profile_id, text_hash, dimension, vector, vector_digest, created_at, updated_at
       )
       VALUES (
-        @itemId, @embeddingProfileId, @textHash, @dimension, @vector, @createdAt, @updatedAt
+        @itemId, @embeddingProfileId, @textHash, @dimension, @vector, @vectorDigest, @createdAt, @updatedAt
       )
       ON CONFLICT(item_id, embedding_profile_id) DO UPDATE SET
         text_hash = excluded.text_hash,
         dimension = excluded.dimension,
         vector = excluded.vector,
+        vector_digest = excluded.vector_digest,
         updated_at = excluded.updated_at
     `).run({
       itemId: input.itemId,
       embeddingProfileId: input.embeddingProfileId,
       textHash: input.textHash,
       dimension: input.vector.length,
-      vector: encodeVector(input.vector),
+      vector,
+      vectorDigest: createHash("sha256").update(vector).digest("base64url"),
       createdAt: now,
       updatedAt: now
     });
@@ -1995,7 +2025,7 @@ const CONTEXT_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "context.embeddings",
-    schemaVersion: 1,
+    schemaVersion: 2,
     ownedTables: ["context_item_embeddings", "embedding_profiles"],
     ownedIndexes: ["idx_context_embeddings_profile"],
     dependsOn: ["context.items"],
@@ -2242,6 +2272,7 @@ function createContextEmbeddingsSchema(db: SqliteDatabase): void {
       text_hash TEXT NOT NULL DEFAULT '',
       dimension INTEGER NOT NULL,
       vector BLOB NOT NULL,
+      vector_digest TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (item_id, embedding_profile_id),
@@ -2273,6 +2304,7 @@ function validateContextEmbeddingsSchema(db: SqliteDatabase): void {
     text_hash: "TEXT",
     dimension: "INTEGER",
     vector: "BLOB",
+    vector_digest: "TEXT",
     created_at: "INTEGER",
     updated_at: "INTEGER"
   });
@@ -2294,6 +2326,8 @@ function validateContextEmbeddingsSchema(db: SqliteDatabase): void {
 function adoptExistingContextEmbeddingsSchema(db: SqliteDatabase): void {
   createContextEmbeddingsSchema(db);
   addColumnIfMissing(db, "context_item_embeddings", "text_hash", "TEXT NOT NULL DEFAULT ''");
+  addColumnIfMissing(db, "context_item_embeddings", "vector_digest", "TEXT NOT NULL DEFAULT ''");
+  db.exec("DELETE FROM context_item_embeddings WHERE vector_digest = ''");
 }
 
 function createContextMaintenanceSchema(db: SqliteDatabase): void {

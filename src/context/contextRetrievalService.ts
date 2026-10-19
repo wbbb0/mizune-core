@@ -1,10 +1,9 @@
 import type { Logger } from "pino";
-import { createHash } from "node:crypto";
 import type { AppConfig } from "#config/config.ts";
 import { ContextEmbeddingService } from "./contextEmbeddingService.ts";
 import { selectRetrievedUserContext } from "./contextSelectionPolicy.ts";
 import type { ContextStore } from "./contextStore.ts";
-import { OramaContextIndex } from "./oramaContextIndex.ts";
+import { ContextIndexCache } from "./contextIndexCache.ts";
 import type {
   ContextMemoryFactEntry,
   ContextPromptMemoryItem,
@@ -16,7 +15,7 @@ import type {
 } from "./contextTypes.ts";
 
 export class ContextRetrievalService {
-  private readonly userIndexes = new Map<string, OramaContextIndex>();
+  private readonly indexes: ContextIndexCache;
   private lastDebugReport: ContextRetrievalDebugReport | null = null;
   private readonly lastPromptMemoryReports = new Map<string, ContextPromptMemoryReport>();
   private readonly maxPromptMemoryReports = 100;
@@ -26,7 +25,9 @@ export class ContextRetrievalService {
     private readonly contextStore: ContextStore,
     private readonly embeddingService: ContextEmbeddingService,
     private readonly logger: Logger
-  ) { }
+  ) {
+    this.indexes = new ContextIndexCache(contextStore);
+  }
 
   async retrieveUserContext(input: {
     userId: string;
@@ -36,8 +37,9 @@ export class ContextRetrievalService {
   }): Promise<ContextRetrievedItem[]> {
     const queryText = input.queryText.trim();
     const excludeItemIds = new Set(input.excludeItemIds ?? []);
-    const alwaysDocuments = (this.contextStore.listUserAlwaysDocuments?.(input.userId) ?? [])
+    const readAlwaysDocuments = () => (this.contextStore.listUserAlwaysDocuments?.(input.userId) ?? [])
       .filter((item) => !excludeItemIds.has(item.itemId));
+    const alwaysDocuments = readAlwaysDocuments();
     const alwaysItems = alwaysDocuments.map(toAlwaysRetrievedItem);
     if (!queryText) {
       const results = selectRetrievedUserContext({
@@ -80,9 +82,7 @@ export class ContextRetrievalService {
       return results;
     }
     try {
-      const documents = this.contextStore
-        .listUserSearchDocuments(input.userId)
-        .filter((item) => !excludeItemIds.has(item.itemId));
+      let documents = this.contextStore.listUserSearchDocuments(input.userId);
       if (documents.length === 0) {
         const results = selectRetrievedUserContext({
           queryText,
@@ -107,7 +107,8 @@ export class ContextRetrievalService {
       });
       const profile = queryEmbedding.profile;
       this.contextStore.upsertEmbeddingProfile(profile);
-      const storedEmbeddings = this.contextStore.getItemEmbeddings(
+      documents = this.contextStore.listUserSearchDocuments(input.userId);
+      const storedEmbeddings = this.contextStore.getItemEmbeddingMetadata(
         documents.map((item) => item.itemId),
         profile.profileId,
         buildExpectedTextHashMap(documents)
@@ -125,10 +126,12 @@ export class ContextRetrievalService {
         if (embeddedDocuments.profile.profileId !== profile.profileId) {
           throw new Error("Embedding profile changed during context indexing");
         }
+        input.abortSignal?.throwIfAborted();
+        const currentHashes = buildExpectedTextHashMap(this.contextStore.listUserSearchDocuments(input.userId));
         for (let index = 0; index < missingDocuments.length; index += 1) {
           const document = missingDocuments[index];
           const vector = embeddedDocuments.vectors[index];
-          if (!document || !vector) {
+          if (!document || !vector || currentHashes.get(document.itemId) !== document.embeddingTextHash) {
             continue;
           }
           this.contextStore.upsertItemEmbedding({
@@ -137,53 +140,32 @@ export class ContextRetrievalService {
             textHash: document.embeddingTextHash,
             vector
           });
-          storedEmbeddings.set(document.itemId, vector);
         }
       }
 
-      const indexedDocuments = documents
-        .map((document) => {
-          const embedding = storedEmbeddings.get(document.itemId);
-          return embedding ? { ...document, embedding } : null;
-        })
-        .filter((item): item is ContextSearchDocument & { embedding: number[] } => item != null);
-      if (indexedDocuments.length === 0) {
-        const results = selectRetrievedUserContext({
-          queryText,
-          alwaysItems,
-          searchItems: [],
-          maxResults: this.config.context.retrieval.maxResults
-        });
-        this.lastDebugReport = {
-          userId: input.userId,
-          queryText,
-          embeddingProfileId: profile.profileId,
-          candidateCount: alwaysDocuments.length + documents.length,
-          indexedCount: 0,
-          selectedCount: results.length,
-          droppedCount: documents.length + Math.max(0, alwaysItems.length - results.length),
-          createdAt: Date.now()
-        };
-        this.recordRetrievedItems(results);
-        return results;
-      }
-      const index = this.getUserIndex(input.userId);
-      await index.rebuild({
-        signature: buildIndexSignature(profile.profileId, indexedDocuments),
-        documents: indexedDocuments
-      });
+      input.abortSignal?.throwIfAborted();
+      const index = await this.indexes.get(input.userId, profile.profileId);
+      const searchBudget = Math.max(0, this.config.context.retrieval.maxResults - readAlwaysDocuments().length);
       const searchCandidates = await index.search({
         userId: input.userId,
+        excludeItemIds: [...excludeItemIds],
         queryText,
         queryVector: queryEmbedding.vectors[0] ?? [],
-        limit: Math.max(0, this.config.context.retrieval.maxResults - alwaysItems.length),
+        limit: searchBudget,
         candidateMultiplier: this.config.context.retrieval.candidateMultiplier,
         minScore: this.config.context.retrieval.minScore
       });
+      input.abortSignal?.throwIfAborted();
+      // A write may occur while Orama builds/searches; do not return removed or changed entries.
+      const currentDocuments = new Map(this.contextStore.listUserSearchDocuments(input.userId).map((document) => [document.itemId, document]));
+      const currentAlwaysItems = readAlwaysDocuments().map(toAlwaysRetrievedItem);
       const results = selectRetrievedUserContext({
         queryText,
-        alwaysItems,
-        searchItems: searchCandidates,
+        alwaysItems: currentAlwaysItems,
+        searchItems: searchCandidates.filter((item) => {
+          const current = currentDocuments.get(item.itemId);
+          return current && current.text === item.text && current.updatedAt === item.updatedAt;
+        }),
         maxResults: this.config.context.retrieval.maxResults
       });
       this.lastDebugReport = {
@@ -191,14 +173,15 @@ export class ContextRetrievalService {
         queryText,
         embeddingProfileId: profile.profileId,
         candidateCount: alwaysDocuments.length + documents.length,
-        indexedCount: indexedDocuments.length,
+        indexedCount: index.size,
         selectedCount: results.length,
-        droppedCount: Math.max(0, indexedDocuments.length - (results.length - alwaysItems.length)),
+        droppedCount: Math.max(0, index.size - (results.length - alwaysItems.length)),
         createdAt: Date.now()
       };
       this.recordRetrievedItems(results);
       return results;
     } catch (error) {
+      const alwaysItems = readAlwaysDocuments().map(toAlwaysRetrievedItem);
       const results = selectRetrievedUserContext({
         queryText,
         alwaysItems,
@@ -224,16 +207,6 @@ export class ContextRetrievalService {
     }
   }
 
-  private getUserIndex(userId: string): OramaContextIndex {
-    const existing = this.userIndexes.get(userId);
-    if (existing) {
-      return existing;
-    }
-    const index = new OramaContextIndex();
-    this.userIndexes.set(userId, index);
-    return index;
-  }
-
   private recordRetrievedItems(items: readonly ContextRetrievedItem[]): void {
     this.contextStore.recordRetrievedContextItems?.({
       itemIds: items.map((item) => item.itemId)
@@ -243,24 +216,8 @@ export class ContextRetrievalService {
   resetIndexes(input?: { userId?: string }): {
     resetCount: number;
   } {
-    if (input?.userId) {
-      const existing = this.userIndexes.get(input.userId);
-      if (!existing) {
-        return { resetCount: 0 };
-      }
-      existing.reset();
-      this.userIndexes.delete(input.userId);
-      this.logger.info({ userId: input.userId }, "context_user_index_reset");
-      return { resetCount: 1 };
-    }
-    const resetCount = this.userIndexes.size;
-    for (const index of this.userIndexes.values()) {
-      index.reset();
-    }
-    this.userIndexes.clear();
-    if (resetCount > 0) {
-      this.logger.info({ resetCount }, "context_indexes_reset");
-    }
+    const resetCount = this.indexes.reset(input?.userId);
+    if (resetCount > 0) this.logger.info({ userId: input?.userId, resetCount }, "context_indexes_reset");
     return { resetCount };
   }
 
@@ -364,49 +321,22 @@ export class ContextRetrievalService {
         error: reembedReport.error
       };
     }
-    const documents = this.contextStore.listUserSearchDocuments(input.userId);
-    const storedEmbeddings = reembedReport.embeddingProfileId
-      ? this.contextStore.getItemEmbeddings(
-          documents.map((item) => item.itemId),
-          reembedReport.embeddingProfileId,
-          buildExpectedTextHashMap(documents)
-        )
-      : new Map<string, number[]>();
-    const indexedDocuments = documents
-      .map((document) => {
-        const embedding = storedEmbeddings.get(document.itemId);
-        return embedding ? { ...document, embedding } : null;
-      })
-      .filter((item): item is ContextSearchDocument & { embedding: number[] } => item != null);
-    if (indexedDocuments.length === 0) {
-      const existing = this.userIndexes.get(input.userId);
-      existing?.reset();
-      this.userIndexes.delete(input.userId);
-      return {
-        userId: input.userId,
-        ...(reembedReport.embeddingProfileId ? { embeddingProfileId: reembedReport.embeddingProfileId } : {}),
-        embeddedCount: reembedReport.embeddedCount,
-        indexedCount: 0,
-        skippedCount: reembedReport.skippedCount
-      };
-    }
-    const index = this.getUserIndex(input.userId);
-    await index.rebuild({
-      signature: buildIndexSignature(reembedReport.embeddingProfileId!, indexedDocuments),
-      documents: indexedDocuments
-    });
+    input.abortSignal?.throwIfAborted();
+    const index = reembedReport.embeddingProfileId
+      ? await this.indexes.get(input.userId, reembedReport.embeddingProfileId)
+      : null;
     this.logger.info({
       userId: input.userId,
       embeddingProfileId: reembedReport.embeddingProfileId,
       embeddedCount: reembedReport.embeddedCount,
-      indexedCount: indexedDocuments.length,
+      indexedCount: index?.size ?? 0,
       skippedCount: reembedReport.skippedCount
     }, "context_user_index_rebuilt");
     return {
       userId: input.userId,
       ...(reembedReport.embeddingProfileId ? { embeddingProfileId: reembedReport.embeddingProfileId } : {}),
       embeddedCount: reembedReport.embeddedCount,
-      indexedCount: indexedDocuments.length,
+      indexedCount: index?.size ?? 0,
       skippedCount: reembedReport.skippedCount
     };
   }
@@ -485,7 +415,7 @@ export class ContextRetrievalService {
       };
     }
     try {
-      const documents = this.contextStore.listUserSearchDocuments(input.userId);
+      let documents = this.contextStore.listUserSearchDocuments(input.userId);
       if (documents.length === 0) {
         return {
           userId: input.userId,
@@ -498,7 +428,8 @@ export class ContextRetrievalService {
       });
       const profile = profileProbe.profile;
       this.contextStore.upsertEmbeddingProfile(profile);
-      const storedEmbeddings = this.contextStore.getItemEmbeddings(
+      documents = this.contextStore.listUserSearchDocuments(input.userId);
+      const storedEmbeddings = this.contextStore.getItemEmbeddingMetadata(
         documents.map((item) => item.itemId),
         profile.profileId,
         buildExpectedTextHashMap(documents)
@@ -525,11 +456,13 @@ export class ContextRetrievalService {
       if (embeddedDocuments.profile.profileId !== profile.profileId) {
         throw new Error("Embedding profile changed during context re-embed");
       }
+      input.abortSignal?.throwIfAborted();
+      const currentHashes = buildExpectedTextHashMap(this.contextStore.listUserSearchDocuments(input.userId));
       let embeddedCount = 0;
       for (let index = 0; index < batch.length; index += 1) {
         const document = batch[index];
         const vector = embeddedDocuments.vectors[index];
-        if (!document || !vector) {
+        if (!document || !vector || currentHashes.get(document.itemId) !== document.embeddingTextHash) {
           continue;
         }
         this.contextStore.upsertItemEmbedding({
@@ -557,16 +490,6 @@ export class ContextRetrievalService {
       };
     }
   }
-}
-
-function buildIndexSignature(
-  embeddingProfileId: string,
-  documents: Array<ContextSearchDocument & { embedding: number[] }>
-): string {
-  return [
-    embeddingProfileId,
-    ...documents.map((item) => `${item.itemId}:${item.updatedAt}:${hashEmbeddingVector(item.embedding)}`)
-  ].join("|");
 }
 
 function buildExpectedTextHashMap(documents: ContextSearchDocument[]): Map<string, string> {
@@ -635,12 +558,4 @@ function getMatchingDebugReport(
     return null;
   }
   return report;
-}
-
-function hashEmbeddingVector(vector: number[]): string {
-  const hash = createHash("sha256");
-  for (const value of vector) {
-    hash.update(`${value};`);
-  }
-  return `${vector.length}:${hash.digest("base64url")}`;
 }

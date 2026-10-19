@@ -20,28 +20,21 @@ interface IndexedContextDocument extends ContextSearchDocument {
 }
 
 export class OramaContextIndex {
-  private db: unknown = null;
-  private vectorSize: number | null = null;
-  private signature: string | null = null;
+  private constructor(
+    private readonly db: unknown,
+    private readonly vectorSize: number,
+    readonly size: number
+  ) {}
 
-  async rebuild(input: {
-    signature: string;
-    documents: Array<ContextSearchDocument & { embedding: number[] }>;
-  }): Promise<void> {
-    const firstVectorSize = input.documents[0]?.embedding.length ?? 0;
-    if (input.documents.length === 0 || firstVectorSize <= 0) {
-      this.reset();
-      this.signature = input.signature;
-      return;
+  static async build(documents: Array<ContextSearchDocument & { embedding: number[] }>): Promise<OramaContextIndex> {
+    const firstVectorSize = documents[0]?.embedding.length ?? 0;
+    if (documents.length === 0 || firstVectorSize <= 0) {
+      return new OramaContextIndex(null, 0, 0);
     }
-    if (this.signature === input.signature && this.db) {
-      return;
-    }
-
     const db = await create({
       schema: {
         id: "string",
-        item_id: "string",
+        item_id: "enum",
         scope_value: "string",
         layer_value: "string",
         subject_kind: "string",
@@ -59,21 +52,20 @@ export class OramaContextIndex {
         embedding: `vector[${firstVectorSize}]`
       }
     });
-    await insertMultiple(db, input.documents.map(toIndexedDocument));
-    this.db = db;
-    this.vectorSize = firstVectorSize;
-    this.signature = input.signature;
+    await insertMultiple(db, documents.map(toIndexedDocument));
+    return new OramaContextIndex(db, firstVectorSize, documents.length);
   }
 
   async search(input: {
     userId: string;
+    excludeItemIds?: readonly string[];
     queryText: string;
     queryVector: number[];
     limit: number;
     candidateMultiplier: number;
     minScore: number;
   }): Promise<ContextRetrievedItem[]> {
-    if (!this.db || this.vectorSize !== input.queryVector.length) {
+    if (input.limit <= 0 || !this.db || this.vectorSize !== input.queryVector.length) {
       return [];
     }
     const response = await search(this.db as never, {
@@ -85,7 +77,8 @@ export class OramaContextIndex {
       },
       properties: ["title", "text"],
       where: {
-        user_id: input.userId
+        user_id: input.userId,
+        ...(input.excludeItemIds?.length ? { item_id: { nin: input.excludeItemIds } } : {})
       },
       limit: Math.max(input.limit * input.candidateMultiplier, input.limit),
       similarity: 0,
@@ -123,11 +116,6 @@ export class OramaContextIndex {
       .filter((item) => item.score >= input.minScore);
   }
 
-  reset(): void {
-    this.db = null;
-    this.vectorSize = null;
-    this.signature = null;
-  }
 }
 
 function toIndexedDocument(document: ContextSearchDocument & { embedding: number[] }): IndexedContextDocument {

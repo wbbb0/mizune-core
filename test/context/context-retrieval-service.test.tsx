@@ -27,6 +27,12 @@ test("ContextRetrievalService retrieves indexed user context through Orama", asy
       return documents;
     },
     upsertEmbeddingProfile() {},
+    getItemEmbeddingMetadata(itemIds: string[]) {
+      return new Map(itemIds.flatMap((id) => {
+        const vector = embeddings.get(id);
+        return vector ? [[id, { dimension: vector.length, vectorDigest: JSON.stringify(vector) }] as const] : [];
+      }));
+    },
     getItemEmbeddings(itemIds: string[]) {
       return new Map(itemIds.flatMap((itemId) => {
         const vector = embeddings.get(itemId);
@@ -276,6 +282,12 @@ test("ContextRetrievalService limits synchronous document embedding on prompt pa
         return documents;
       },
       upsertEmbeddingProfile() {},
+      getItemEmbeddingMetadata(itemIds: string[]) {
+        return new Map(itemIds.flatMap((id) => {
+          const vector = embeddings.get(id);
+          return vector ? [[id, { dimension: vector.length, vectorDigest: JSON.stringify(vector) }] as const] : [];
+        }));
+      },
       getItemEmbeddings(itemIds: string[]) {
         return new Map(itemIds.flatMap((itemId) => {
           const vector = embeddings.get(itemId);
@@ -328,6 +340,12 @@ test("ContextRetrievalService rebuilds user indexes and batches background embed
         return documents;
       },
       upsertEmbeddingProfile() {},
+      getItemEmbeddingMetadata(itemIds: string[]) {
+        return new Map(itemIds.flatMap((id) => {
+          const vector = embeddings.get(id);
+          return vector ? [[id, { dimension: vector.length, vectorDigest: JSON.stringify(vector) }] as const] : [];
+        }));
+      },
       getItemEmbeddings(itemIds: string[]) {
         return new Map(itemIds.flatMap((itemId) => {
           const vector = embeddings.get(itemId);

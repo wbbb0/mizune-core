@@ -93,12 +93,12 @@ test("ContextStore adopts pre-meta SQLite files without dropping historically mi
     assert.equal(facts.length, 1);
     assert.equal(facts[0]?.id, "mem_legacy_sqlite_1");
     assert.equal(facts[0]?.content, "用户希望被称为小王");
-    assert.equal(store.getContextStats().embeddings, 1);
+    assert.equal(store.getContextStats().embeddings, 0);
     const itemGroup = store.getStatus().tableGroups?.find((group) => group.groupId === "context.items");
     const embeddingGroup = store.getStatus().tableGroups?.find((group) => group.groupId === "context.embeddings");
     assert.equal(itemGroup?.actualSchemaVersion, 2);
     assert.equal(itemGroup?.lastResetReason, undefined);
-    assert.equal(embeddingGroup?.actualSchemaVersion, 1);
+    assert.equal(embeddingGroup?.actualSchemaVersion, 2);
     assert.equal(embeddingGroup?.lastResetReason, undefined);
   } finally {
     store.close();
