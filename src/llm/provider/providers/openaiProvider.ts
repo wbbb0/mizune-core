@@ -1,7 +1,6 @@
 import { LlmProviderPolicyError } from "../providerProtocolError.ts";
 import { readProviderSseData, throwIfProviderError } from "../providerSseReader.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
-import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { buildOpenAiCompatibleModelApiParameters } from "../modelApiParameters.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
@@ -136,14 +135,6 @@ export class OpenAiProvider implements LlmProvider {
       setPropertyByPath(requestBody, nativeSearchEnableKey, true);
     }
 
-    if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-      await dumpProviderRequest(context, {
-        endpoint,
-        requestBody,
-        messages: requestMessages
-      });
-    }
-
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
@@ -167,23 +158,9 @@ export class OpenAiProvider implements LlmProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        await maybeDumpFailedResponse(context, params, {
-          endpoint,
-          requestBody,
-          resolvedEnableThinking,
-          status: response.status,
-          statusText: response.statusText,
-          errorBody: errorText
-        });
         throw new Error(`LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
       }
       if (!response.body) {
-        await maybeDumpFailedResponse(context, params, {
-          endpoint,
-          requestBody,
-          resolvedEnableThinking,
-          error: "LLM stream body is missing"
-        });
         throw new Error("LLM stream body is missing");
       }
 
@@ -192,14 +169,12 @@ export class OpenAiProvider implements LlmProvider {
         model: context.model
       });
       const toolCalls = new Map<number, LlmToolCall>();
-      const responseChunks: unknown[] = [];
       let finishReason: string | null = null;
       let responseId: string | undefined;
       let upstreamProvider: string | undefined;
 
       for await (const data of readProviderSseData(response)) {
         const payload = JSON.parse(data) as ChatCompletionChunkPayload;
-        responseChunks.push(payload);
         throwIfProviderError(payload);
         responseId = payload.id ?? responseId;
         upstreamProvider = payload.provider ?? upstreamProvider;
@@ -241,18 +216,6 @@ export class OpenAiProvider implements LlmProvider {
         }
 
         mergeIndexedToolCallDeltas(toolCalls, delta?.tool_calls ?? []);
-      }
-
-      if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-        await dumpProviderResponse(context, {
-          model: context.model,
-          enableThinking: resolvedEnableThinking,
-          sawReasoningContent: accumulator.sawReasoningContent,
-          chunks: responseChunks,
-          finalText: accumulator.text,
-          reasoningContent: accumulator.reasoningContent,
-          toolCalls: Array.from(toolCalls.values())
-        });
       }
 
       if (!resolvedEnableThinking && accumulator.sawReasoningContent) {
@@ -308,38 +271,6 @@ function buildOpenAiRequestTools(
     tools.push(searchFeature.tool);
   }
   return tools;
-}
-
-async function maybeDumpFailedResponse(
-  context: LlmProviderRequestContext,
-  params: LlmProviderGenerateParams,
-  payload: {
-    endpoint: string;
-    requestBody: unknown;
-    resolvedEnableThinking: boolean;
-    status?: number;
-    statusText?: string;
-    errorBody?: string;
-    error?: string;
-  }
-): Promise<void> {
-  await dumpProviderRequest(context, {
-    endpoint: payload.endpoint,
-    requestBody: payload.requestBody,
-    force: true,
-    messages: buildOpenAiRequestMessages(params.messages)
-  });
-  await dumpProviderResponse(context, {
-    model: context.model,
-    enableThinking: payload.resolvedEnableThinking,
-    endpoint: payload.endpoint,
-    ...(payload.status != null ? { status: payload.status } : {}),
-    ...(payload.statusText ? { statusText: payload.statusText } : {}),
-    ...(payload.errorBody ? { errorBody: payload.errorBody } : {}),
-    ...(payload.error ? { error: payload.error } : {})
-  }, {
-    force: true
-  });
 }
 
 function buildOpenAiRequestMessages(messages: LlmMessage[]): OpenAiRequestMessage[] {

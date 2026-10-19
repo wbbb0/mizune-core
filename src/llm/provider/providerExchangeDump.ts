@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Response } from "undici";
 import { fetchWithProxy } from "#services/proxy/index.ts";
@@ -108,21 +108,27 @@ export async function withProviderExchangeDump<T>(
   const exchanges: Exchange[] = [];
   const id = randomUUID();
   const startedAt = new Date().toISOString();
+  let result: T | undefined;
   let failure: { name: string; message: string } | undefined;
   return activeExchanges.run(exchanges, async () => {
     try {
-      return await run();
+      result = await run();
+      return result;
     } catch (error) {
       failure = describeError(error);
       throw error;
     } finally {
       if (failure || context.config.llm.debugDump.enabled) {
         try {
+          const parsed = kind === "chat" && result !== undefined ? JSON.stringify(result) : undefined;
+          const parsedTruncated = parsed !== undefined && Buffer.byteLength(parsed) > BODY_LIMIT;
           const payload = {
             id, startedAt, dumpedAt: new Date().toISOString(),
             modelRef: context.modelRef, model: context.model,
             outcome: failure ? "error" : "success", error: failure ?? null,
             bodyLimitBytes: BODY_LIMIT,
+            parsedResponse: parsed && !parsedTruncated ? JSON.parse(parsed) : null,
+            parsedResponseOmitted: parsedTruncated,
             exchanges: exchanges.map(({ body, ...exchange }) => ({
               ...exchange,
               rawBody: Buffer.concat(body).toString("utf8"),
@@ -134,11 +140,16 @@ export async function withProviderExchangeDump<T>(
           const directory = resolve(dataDir, "dump");
           await mkdir(directory, { recursive: true });
           const prefix = kind === "image" ? "image-" : "";
+          const serialized = JSON.stringify(payload, null, 2) + "\n";
           for (const name of [`last-${prefix}exchange.json`, ...(failure ? [`last-failed-${prefix}exchange.json`] : [])]) {
             const target = join(directory, name);
             const temporary = `${target}.${id}.tmp`;
-            await writeFile(temporary, JSON.stringify(payload, null, 2) + "\n", { mode: 0o600 });
-            await rename(temporary, target);
+            try {
+              await writeFile(temporary, serialized, { mode: 0o600 });
+              await rename(temporary, target);
+            } finally {
+              await rm(temporary, { force: true });
+            }
           }
         } catch (error) {
           context.logger?.warn({ err: error }, "Failed to write provider exchange dump");

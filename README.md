@@ -275,7 +275,7 @@ npm run test
 
 ### LLM 响应诊断 dump
 
-实例 `dataDir/dump/` 下，`last-request.json` / `last-response.json` 保留供应商解析层诊断；新增的 `last-exchange.json` 保存最近一次模型调用的实际 HTTP 请求体、响应状态、少量诊断响应头和解析前的原始响应体。`last-failed-exchange.json` 单独保留最近一次失败，不会被后续成功调用覆盖。请求与响应放在同一文件，并带调用 ID、模型引用和时间，避免并发调用时误配。
+实例 `dataDir/dump/` 下，`last-exchange.json` 统一保存解析后的成功结果，以及最近一次模型调用的实际 HTTP 请求体、响应状态、少量诊断响应头和解析前的原始响应体。`last-failed-exchange.json` 单独保留最近一次失败，不会被后续成功调用覆盖。不再生成旧的 `last-request.json` / `last-response.json`，也不额外缓存流事件数组。解析结果超过 1 MiB 时省略，并标记 `parsedResponseOmitted`；写入失败不会改变调用结果。请求与响应放在同一文件，并带调用 ID、模型引用和时间，避免并发调用时误配。
 
 成功调用遵循 `llm.debugDump.enabled`；失败调用即使关闭该开关也保存原始诊断。内部调用显式设置 `skipDebugDump` 时不生成这两种新增文件。适用于各聊天 provider（含 Responses 和 LM Studio），不包括 embedding。标准图片生成使用独立的 `last-image-exchange.json` / `last-failed-image-exchange.json`，保留 API 响应及失败信息，不覆盖聊天 dump。
 

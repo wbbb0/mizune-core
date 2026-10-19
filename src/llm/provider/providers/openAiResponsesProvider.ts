@@ -1,4 +1,4 @@
-import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
+
 import { buildOpenAiResponsesModelApiParameters } from "../modelApiParameters.ts";
 import { getNativeSearchEnableKey } from "../nativeSearch.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
@@ -77,15 +77,6 @@ export class OpenAiResponsesProvider implements LlmProvider {
     const resolvedEnableThinking = params.enableThinkingOverride ?? false;
     const requestInput = buildOpenAiResponsesInput(params.messages);
     const requestBody = buildOpenAiResponsesRequestBody(context, params, requestInput, resolvedEnableThinking);
-    const responseEvents: unknown[] = [];
-
-    if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-      await dumpProviderRequest(context, {
-        endpoint,
-        requestBody,
-        messages: requestInput
-      });
-    }
 
     try {
       const stream = await runProviderSseStream<OpenAiResponseObject>({
@@ -97,7 +88,6 @@ export class OpenAiResponsesProvider implements LlmProvider {
         errorPrefix: "OpenAI Responses API error",
         parseData: (data) => {
           const payload = JSON.parse(data) as OpenAiResponsesStreamPayload;
-          responseEvents.push(payload);
           return parseOpenAiResponsesStreamPayload(context, payload);
         }
       });
@@ -123,18 +113,6 @@ export class OpenAiResponsesProvider implements LlmProvider {
         );
       }
 
-      if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-        await dumpProviderResponse(context, {
-          model: context.model,
-          enableThinking: resolvedEnableThinking,
-          events: responseEvents,
-          response,
-          finalText,
-          reasoningContent,
-          toolCalls
-        });
-      }
-
       return {
         text: finalText,
         reasoningContent,
@@ -147,14 +125,6 @@ export class OpenAiResponsesProvider implements LlmProvider {
         }
       };
     } catch (error) {
-      if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-        await dumpProviderResponse(context, {
-          model: context.model,
-          enableThinking: resolvedEnableThinking,
-          events: responseEvents,
-          error: serializeError(error)
-        });
-      }
       const details = serializeError(error);
       context.logger.error({ error: details }, "llm_request_failed");
       throw error;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
@@ -35,19 +35,20 @@ import { createLlmTestConfig, createSseResponse, createToolDefinition } from "..
         /LLM API error: 400 Bad Request/
       );
 
-      const requestDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-request.json"), "utf8"));
-      const responseDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-response.json"), "utf8"));
+      const dump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-failed-exchange.json"), "utf8"));
+      const responseDump = dump.exchanges[0];
+      const requestDump = { endpoint: responseDump.endpoint, requestBody: JSON.parse(responseDump.requestBody) };
 
       assert.equal(requestDump.endpoint, "https://example.com/v1/chat/completions");
       assert.equal(requestDump.requestBody.model, "fake-model");
       assert.equal(requestDump.requestBody.stream, true);
       assert.equal(Array.isArray(requestDump.requestBody.tools), true);
-      assert.equal(requestDump.messages[0].role, "user");
+      assert.equal(requestDump.requestBody.messages[0].role, "user");
 
       assert.equal(responseDump.status, 400);
       assert.equal(responseDump.statusText, "Bad Request");
       assert.equal(responseDump.endpoint, "https://example.com/v1/chat/completions");
-      assert.match(responseDump.errorBody, /bad tool schema/);
+      assert.match(responseDump.rawBody, /bad tool schema/);
     } finally {
       setFetchImplementationForTests(null);
       await rm(dumpDir, { recursive: true, force: true });
@@ -91,19 +92,18 @@ import { createLlmTestConfig, createSseResponse, createToolDefinition } from "..
         /LLM returned empty content/
       );
 
-      const requestDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-request.json"), "utf8"));
-      const responseDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-response.json"), "utf8"));
+      const dump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-failed-exchange.json"), "utf8"));
+      const responseDump = dump.exchanges[0];
+      const requestDump = { endpoint: responseDump.endpoint, requestBody: JSON.parse(responseDump.requestBody) };
 
       assert.equal(requestDump.endpoint, "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation");
       assert.equal(requestDump.requestBody.model, "fake-model");
       assert.equal(requestDump.requestBody.parameters.incremental_output, true);
-      assert.equal(requestDump.messages[0].role, "user");
 
-      assert.equal(responseDump.model, "fake-model");
-      assert.equal(responseDump.enableThinking, false);
-      assert.equal(responseDump.finalText, "");
-      assert.equal(responseDump.chunks[0].usage.input_tokens, 7);
-      assert.deepEqual(responseDump.toolCalls, []);
+
+      assert.equal(dump.outcome, "error");
+      assert.match(dump.error.message, /empty content/);
+      assert.match(responseDump.rawBody, /"input_tokens":7/);
     } finally {
       setFetchImplementationForTests(null);
       await rm(dumpDir, { recursive: true, force: true });
@@ -138,18 +138,17 @@ import { createLlmTestConfig, createSseResponse, createToolDefinition } from "..
         /Google AI Studio API stream error: Resource has been exhausted/
       );
 
-      const requestDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-request.json"), "utf8"));
-      const responseDump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-response.json"), "utf8"));
+      const dump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-failed-exchange.json"), "utf8"));
+      const responseDump = dump.exchanges[0];
+      const requestDump = { endpoint: responseDump.endpoint, requestBody: JSON.parse(responseDump.requestBody) };
 
       assert.equal(requestDump.endpoint, "https://example.com/v1/models/fake-model:streamGenerateContent?alt=sse");
       assert.equal(requestDump.requestBody.contents[0].role, "user");
       assert.equal(requestDump.requestBody.contents[0].parts[0].text, "ping");
-      assert.equal(requestDump.messages[0].role, "user");
 
-      assert.equal(responseDump.model, "fake-model");
-      assert.equal(responseDump.finalText, "");
-      assert.equal(responseDump.error.message, "Resource has been exhausted");
-      assert.equal(responseDump.chunks[0].error.code, "invalid_request");
+
+      assert.match(dump.error.message, /Resource has been exhausted/);
+      assert.match(responseDump.rawBody, /invalid_request/);
     } finally {
       setFetchImplementationForTests(null);
       await rm(dumpDir, { recursive: true, force: true });
@@ -189,7 +188,12 @@ for (const scenario of [
       setFetchImplementationForTests(async () => createSseResponse([{ choices: [{ delta: { content: "ok" } }] }]));
       await client.generate({ messages: [{ role: "user", content: "ping" }] });
       assert.equal(await readFile(join(directory, "dump/last-failed-exchange.json"), "utf8"), failed);
-      assert.equal(JSON.parse(await readFile(join(directory, "dump/last-exchange.json"), "utf8")).outcome, "success");
+      const success = JSON.parse(await readFile(join(directory, "dump/last-exchange.json"), "utf8"));
+      assert.equal(success.outcome, "success");
+      assert.equal(success.parsedResponse.text, "ok");
+      assert.equal(success.parsedResponseOmitted, false);
+      await assert.rejects(readFile(join(directory, "dump/last-request.json")), { code: "ENOENT" });
+      await assert.rejects(readFile(join(directory, "dump/last-response.json")), { code: "ENOENT" });
     } finally {
       setFetchImplementationForTests(null);
       await rm(directory, { recursive: true, force: true });
@@ -265,6 +269,24 @@ test("skipDebugDump suppresses raw exchange files for internal calls", async () 
     await assert.rejects(client.generate({ messages: [{ role: "user", content: "ping" }], skipDebugDump: true }));
     await assert.rejects(readFile(join(directory, "dump/last-exchange.json")), { code: "ENOENT" });
     await assert.rejects(readFile(join(directory, "dump/last-failed-exchange.json")), { code: "ENOENT" });
+  } finally {
+    setFetchImplementationForTests(null);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("dump write errors cannot replace a provider success or failure", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "llm-dump-unwritable-"));
+  const config = createLlmTestConfig();
+  config.dataDir = directory;
+  config.llm.debugDump.enabled = true;
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  try {
+    await writeFile(join(directory, "dump"), "not a directory");
+    setFetchImplementationForTests(async () => createSseResponse([{ choices: [{ delta: { content: "ok" } }] }]));
+    assert.equal((await client.generate({ messages: [{ role: "user", content: "ping" }] })).text, "ok");
+    setFetchImplementationForTests(async () => new Response("original failure", { status: 400 }));
+    await assert.rejects(client.generate({ messages: [{ role: "user", content: "ping" }] }), /original failure/);
   } finally {
     setFetchImplementationForTests(null);
     await rm(directory, { recursive: true, force: true });

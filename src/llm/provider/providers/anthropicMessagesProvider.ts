@@ -1,7 +1,6 @@
 import { readProviderSseData } from "../providerSseReader.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
-import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 import {
   createProviderStreamAccumulator,
@@ -142,14 +141,6 @@ export class AnthropicMessagesProvider implements LlmProvider {
     const requestMessages = buildAnthropicRequestMessages(params.messages);
     const requestBody = buildAnthropicRequestBody(context, params, requestMessages, resolvedEnableThinking);
 
-    if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-      await dumpProviderRequest(context, {
-        endpoint,
-        requestBody,
-        messages: requestMessages
-      });
-    }
-
     const timeoutController = createProviderTimeoutController({
       totalTimeoutMs: resolvedTimeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
@@ -175,25 +166,9 @@ export class AnthropicMessagesProvider implements LlmProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        await dumpAnthropicFailedResponse(context, {
-          endpoint,
-          requestBody,
-          requestMessages,
-          resolvedEnableThinking,
-          status: response.status,
-          statusText: response.statusText,
-          errorBody: errorText
-        });
         throw new Error(`Anthropic API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
       }
       if (!response.body) {
-        await dumpAnthropicFailedResponse(context, {
-          endpoint,
-          requestBody,
-          requestMessages,
-          resolvedEnableThinking,
-          error: "Anthropic stream body is missing"
-        });
         throw new Error("Anthropic stream body is missing");
       }
 
@@ -202,14 +177,12 @@ export class AnthropicMessagesProvider implements LlmProvider {
         model: context.model
       });
       const blocks = new Map<number, AnthropicStreamBlockState>();
-      const responseEvents: unknown[] = [];
       let stopped = false;
       let stopReason: string | undefined;
       let reportedUsage: AnthropicUsage = {};
 
       for await (const data of readProviderSseData(response)) {
         const payload = JSON.parse(data) as AnthropicStreamPayload;
-        responseEvents.push(payload);
         if (payload.type === "message_stop") stopped = true;
         if (payload.type === "message_delta") stopReason = payload.delta?.stop_reason;
         reportedUsage = { ...reportedUsage, ...(payload.message?.usage ?? payload.usage) };
@@ -260,19 +233,6 @@ export class AnthropicMessagesProvider implements LlmProvider {
         .filter((block): block is AnthropicToolUseBlock => block.type === "tool_use")
         .map(convertAnthropicToolUseToLlmToolCall);
 
-      if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-        await dumpProviderResponse(context, {
-          model: context.model,
-          enableThinking: resolvedEnableThinking,
-          sawReasoningContent: accumulator.sawReasoningContent,
-          events: responseEvents,
-          finalText: accumulator.text,
-          reasoningContent: accumulator.reasoningContent,
-          toolCalls,
-          usage: accumulator.usage
-        });
-      }
-
       if (!accumulator.text.trim() && toolCalls.length === 0) {
         throw new Error("LLM returned empty content");
       }
@@ -301,38 +261,6 @@ export class AnthropicMessagesProvider implements LlmProvider {
       params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
-}
-
-async function dumpAnthropicFailedResponse(
-  context: LlmProviderRequestContext,
-  payload: {
-    endpoint: string;
-    requestBody: unknown;
-    requestMessages: unknown;
-    resolvedEnableThinking: boolean;
-    status?: number;
-    statusText?: string;
-    errorBody?: string;
-    error?: string;
-  }
-): Promise<void> {
-  await dumpProviderRequest(context, {
-    endpoint: payload.endpoint,
-    requestBody: payload.requestBody,
-    force: true,
-    messages: payload.requestMessages
-  });
-  await dumpProviderResponse(context, {
-    model: context.model,
-    enableThinking: payload.resolvedEnableThinking,
-    endpoint: payload.endpoint,
-    ...(payload.status != null ? { status: payload.status } : {}),
-    ...(payload.statusText ? { statusText: payload.statusText } : {}),
-    ...(payload.errorBody ? { errorBody: payload.errorBody } : {}),
-    ...(payload.error ? { error: payload.error } : {})
-  }, {
-    force: true
-  });
 }
 
 function buildAnthropicRequestBody(

@@ -1,6 +1,5 @@
 import { readProviderSseData } from "../providerSseReader.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
-import { dumpProviderRequest, dumpProviderResponse } from "../providerDebugDump.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { buildGeminiGenerationConfigParameters } from "../modelApiParameters.ts";
 import {
@@ -107,13 +106,6 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
   ): Promise<LlmProviderGenerateResult> {
     const endpoint = this.buildStreamEndpoint(context);
     const requestBody = buildRequestBody(context, params);
-    if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-      await dumpProviderRequest(context, {
-        endpoint,
-        requestBody,
-        messages: params.messages
-      });
-    }
 
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
     const timeoutController = createProviderTimeoutController({
@@ -150,23 +142,11 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
         modelRef: context.modelRef,
         model: context.model
       });
-      const responseChunks: GoogleStreamChunk[] = [];
       const toolCalls = new Map<number, LlmToolCall>();
       const assistantParts: GooglePart[] = [];
       const assistantPartCount = new Map<string, number>();
       const processChunk = async (chunk: GoogleStreamChunk) => {
         if (chunk.error) {
-          if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-            await dumpProviderResponse(context, {
-              model: context.model,
-              chunks: responseChunks,
-              finalText: accumulator.text,
-              reasoningContent: accumulator.reasoningContent,
-              toolCalls: Array.from(toolCalls.values()),
-              googleParts: assistantParts,
-              error: chunk.error
-            });
-          }
           throw createGoogleStreamError(this.providerLabel, chunk.error);
         }
 
@@ -198,19 +178,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
 
       for await (const data of readProviderSseData(response)) {
         const chunk = JSON.parse(data) as GoogleStreamChunk;
-        responseChunks.push(chunk);
         await processChunk(chunk);
-      }
-
-      if (context.config.llm.debugDump.enabled && !params.skipDebugDump) {
-        await dumpProviderResponse(context, {
-          model: context.model,
-          chunks: responseChunks,
-          finalText: accumulator.text,
-          reasoningContent: accumulator.reasoningContent,
-          toolCalls: Array.from(toolCalls.values()),
-          googleParts: assistantParts
-        });
       }
 
       if (!accumulator.text.trim() && toolCalls.size === 0) {
