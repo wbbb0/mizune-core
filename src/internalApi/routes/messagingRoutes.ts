@@ -1,3 +1,4 @@
+import { getDirectCommandCompletions } from "#app/messaging/directCommands.ts";
 import type { FastifyInstance } from "fastify";
 import {
   createAdminMessagingService
@@ -19,6 +20,13 @@ import type { InternalApiServices } from "../types.ts";
 
 export function registerMessagingRoutes(app: FastifyInstance, services: InternalApiServices["messagingRoutes"]): void {
   const messaging = createAdminMessagingService(services);
+
+  app.get("/api/command-completions", async () => ({ commands: getDirectCommandCompletions() }));
+  app.get("/api/command-completions/sticker-ids", async () => {
+    if (!services.config.stickers.enabled || !services.config.chatFiles.enabled) return { values: [] };
+    await services.stickerService.init();
+    return { values: services.stickerService.store.list().map((sticker) => sticker.id) };
+  });
 
   app.post("/api/sessions/:sessionId/web-turn", async (request, reply) => {
     const params = parseSessionParams(request.params);

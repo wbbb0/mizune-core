@@ -1,3 +1,4 @@
+import type { CommandCompletionDefinition } from "#types/commandCompletion.ts";
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { Logger } from "pino";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
@@ -139,6 +140,7 @@ interface DirectCommandDescriptor {
   name: DirectCommandName;
   scope?: "universal" | string;
   help: string;
+  completion: CommandCompletionDefinition;
   dispatch?: {
     requireTextOnly?: boolean;
   };
@@ -434,6 +436,7 @@ async function syncSelfAccountNicknameFromPersona(
 const directCommandDescriptors: DirectCommandDescriptor[] = [
   {
     name: "sticker",
+    completion: { name: "sticker", parameters: [{ name: "操作", values: ["lock", "unlock"] }, { name: "表情ID", source: "stickerIds" }] },
     help: ".sticker lock|unlock <表情ID> 锁定或解锁表情（仅 owner）",
     dispatch: { requireTextOnly: true },
     routing: { allowInPrivate: true, allowInOwnerMentionedGroup: true },
@@ -463,6 +466,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "help",
+    completion: { name: "help", parameters: [] },
     help: ".help 查看帮助",
     dispatch: {
       requireTextOnly: true
@@ -486,6 +490,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "error",
+    completion: { name: "error", parameters: [{ name: "数量" }] },
     help: ".error [数量] 查看最近报错（最多 50 条）",
     dispatch: {
       requireTextOnly: true
@@ -520,6 +525,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "status",
+    completion: { name: "status", parameters: [] },
     help: ".status 查看当前会话状态",
     dispatch: {
       requireTextOnly: true
@@ -554,6 +560,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "context",
+    completion: { name: "context", parameters: [] },
     help: ".context 查看上一次模型请求的 token 统计",
     dispatch: {
       requireTextOnly: true
@@ -594,6 +601,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "stop",
+    completion: { name: "stop", parameters: [] },
     help: ".stop 强行停止当前回答生成",
     dispatch: {
       requireTextOnly: true
@@ -616,6 +624,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "clear",
+    completion: { name: "clear", parameters: [] },
     help: ".clear 清空当前会话上下文",
     dispatch: {
       requireTextOnly: true
@@ -639,6 +648,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "remember",
+    completion: { name: "remember", parameters: [{ name: "内容", rest: true }] },
     help: ".remember <内容> 将内容记入当前用户长期记忆",
     dispatch: {
       requireTextOnly: true
@@ -667,6 +677,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "forget",
+    completion: { name: "forget", parameters: [{ name: "memoryId或文本", rest: true }] },
     help: ".forget <memoryId|文本> 删除当前用户一条长期记忆；传文本时只在唯一高置信匹配时删除",
     dispatch: {
       requireTextOnly: true
@@ -695,6 +706,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "replaceMemory",
+    completion: { name: "replace-memory", parameters: [{ name: "旧文本", rest: true, separator: "=>" }, { name: "新内容", rest: true }] },
     help: ".replace-memory <旧文本> => <新内容> 替换当前用户一条长期记忆；歧义时只返回候选",
     dispatch: {
       requireTextOnly: true
@@ -725,6 +737,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "compact",
+    completion: { name: "compact", parameters: [{ name: "保留条数" }] },
     help: ".compact [保留条数] 强制压缩当前会话历史；不带参数时使用默认保留长度",
     dispatch: {
       requireTextOnly: true
@@ -758,6 +771,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "retract",
+    completion: { name: "retract", parameters: [{ name: "数量" }] },
     help: ".retract [数量] 撤回最近发出的消息",
     dispatch: {
       requireTextOnly: true
@@ -802,6 +816,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "own",
+    completion: { name: "own", parameters: [{ name: "userId" }] },
     help: ".own [userId] 在初始化阶段绑定 owner；不带参数时绑定自己",
     dispatch: {
       requireTextOnly: true
@@ -839,6 +854,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "debug",
+    completion: { name: "debug", parameters: [{ name: "模式", values: ["on", "off", "once", "status"] }, { name: "文本", rest: true, when: { index: 0, value: "once" } }] },
     help: ".debug [on|off|once [文本]|status] 切换或查看当前会话调试模式",
     dispatch: {
       requireTextOnly: true
@@ -908,6 +924,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "setup",
+    completion: { name: "setup", parameters: [{ name: "配置", values: ["persona", "rp", "scenario"] }] },
     help: ".setup [persona|rp|scenario] 从空白草稿重新开始配置",
     dispatch: {
       requireTextOnly: true
@@ -934,6 +951,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "config",
+    completion: { name: "config", parameters: [{ name: "配置", values: ["persona", "rp", "scenario"] }] },
     help: ".config [persona|rp|scenario] 基于当前配置进入编辑",
     dispatch: {
       requireTextOnly: true
@@ -960,6 +978,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "reset",
+    completion: { name: "reset", parameters: [] },
     scope: "scenario_host",
     help: ".reset 重置场景状态并清空会话历史（仅 scenario_host 模式）",
     dispatch: {
@@ -990,6 +1009,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "confirm",
+    completion: { name: "confirm", parameters: [] },
     help: ".confirm 保存当前草稿并退出配置流程",
     dispatch: {
       requireTextOnly: true
@@ -1028,6 +1048,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "cancel",
+    completion: { name: "cancel", parameters: [] },
     help: ".cancel 放弃当前草稿并退出配置流程",
     dispatch: {
       requireTextOnly: true
@@ -1284,4 +1305,8 @@ export function createDirectCommandHandler(
 
     await descriptor.execute(context as never, params.command as never);
   };
+}
+
+export function getDirectCommandCompletions(): CommandCompletionDefinition[] {
+  return directCommandDescriptors.map((descriptor) => descriptor.completion);
 }

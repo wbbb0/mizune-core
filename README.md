@@ -127,6 +127,8 @@ CONFIG_INSTANCE_FILE=config/instances/acc1.yml npm run dev
 
 ## 运行模式
 
+WebUI 会话输入框支持以 `.` 或 `。` 开头的指令补全：方向键选择，Tab / Enter 填入，Esc 收起；完整指令继续用 Enter 发送，Shift + Enter 换行。枚举参数和表情 ID 提供候选，自由参数只提示名称。表情 ID 在进入对应参数时读取当前实例收藏清单；补全不改变指令原有的权限和会话限制。
+
 ### WebUI-only
 
 适合先验证模型调用、会话流程和 WebUI，不接 OneBot：

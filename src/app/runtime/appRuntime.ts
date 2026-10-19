@@ -261,6 +261,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     upsertFromEvent: oneBotStartupIngressGate.handleRequestEvent
   });
   const internalApiServices = createInternalApiServices({
+    stickerService: services.stickerService,
     config,
     logger,
     oneBotClient,

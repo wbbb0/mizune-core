@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onUnmounted, type Component } from "vue";
+import { computed, ref, watch, nextTick, onUnmounted, useId, type Component } from "vue";
 import {
   Send,
   Paperclip,
@@ -25,6 +25,8 @@ import { formatSendErrorMessage, formatUploadErrorMessage } from "./composerErro
 import { COMPOSER_FILE_ACCEPT, COMPOSER_IMAGE_ACCEPT, filterComposerFiles } from "./composerAcceptedFiles";
 import { filesFromClipboardData, filesFromDataTransfer, filesFromFileList } from "./composerFileSources";
 import { fingerprintComposerFiles, selectUniqueComposerFiles } from "./composerFileFingerprints";
+
+import { useCommandCompletion } from "./useCommandCompletion";
 
 const props = defineProps<{
   sessionType: "private" | "group";
@@ -55,6 +57,12 @@ watch(userId, (value) => {
   emit("userIdChange", value.trim());
 }, { immediate: true });
 const textareaRef  = ref<HTMLTextAreaElement | null>(null);
+const completion = useCommandCompletion(text, textareaRef);
+const completionListId = useId();
+const completionListRef = ref<HTMLElement | null>(null);
+watch([completion.selected, completion.values], () => nextTick(() => {
+  completionListRef.value?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+}));
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const imageInputRef = ref<HTMLInputElement | null>(null);
 type ComposerAttachment = UploadedFile & { preview?: string; uploadFingerprint?: string };
@@ -121,6 +129,7 @@ function send() {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  if (completion.keydown(e)) return;
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     send();
@@ -202,6 +211,7 @@ function ensureFocusedFieldVisible() {
 }
 
 function onTextareaFocus() {
+  void completion.focus();
   if (isIosWebKit()) {
     startIosRootScrollGuard();
     return;
@@ -210,6 +220,7 @@ function onTextareaFocus() {
 }
 
 function onTextareaBlur() {
+  completion.blur();
   stopIosRootScrollGuard();
 }
 
@@ -457,6 +468,18 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <div v-if="completion.values.value.length || completion.hint.value" class="mb-1.5 rounded border border-border-default bg-surface-input text-small">
+      <div v-if="completion.hint.value" class="px-2.5 py-1 font-mono text-text-muted">
+        {{ completion.hint.value }}<span v-if="completion.loadError.value" class="ml-2 font-ui">候选加载失败</span>
+      </div>
+      <ul v-if="completion.values.value.length" :id="completionListId" ref="completionListRef" role="listbox" aria-label="指令补全" class="max-h-40 overflow-y-auto py-1">
+        <li v-for="(value, index) in completion.values.value" :id="`${completionListId}-${index}`" :key="value" role="option" :aria-selected="index === completion.selected.value"
+          class="cursor-pointer px-2.5 py-1 font-mono text-text-primary hover:bg-surface-selected"
+          :class="{ 'bg-surface-selected': index === completion.selected.value }"
+          @mousedown.prevent @click="completion.accept(index)">{{ value }}</li>
+      </ul>
+    </div>
+
     <!-- Input row -->
     <div class="flex items-end gap-1.5">
       <!-- Hidden file inputs -->
@@ -513,6 +536,13 @@ onUnmounted(() => {
         :disabled="disabled"
         @focus="onTextareaFocus"
         @blur="onTextareaBlur"
+        aria-autocomplete="list"
+        :aria-controls="completion.values.value.length ? completionListId : undefined"
+        :aria-activedescendant="completion.values.value.length ? `${completionListId}-${completion.selected.value}` : undefined"
+        @input="completion.syncCaret"
+        @click="completion.syncCaret"
+        @select="completion.syncCaret"
+        @keyup="completion.syncCaret"
         @keydown="onKeydown"
         @paste="onPaste"
       />

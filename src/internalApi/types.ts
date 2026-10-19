@@ -1,3 +1,4 @@
+import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
@@ -174,6 +175,7 @@ export interface InternalApiOperationsDeps {
 }
 
 export interface InternalApiMessagingDeps {
+  stickerService: Pick<StickerService, "init" | "store">;
   config: AppConfig;
   oneBotClient: OneBotClient;
   sessionManager: SessionStreamAccess & Pick<SessionAdminMutationAccess, "excludeTranscriptItem" | "excludeTranscriptGroup" | "excludeTranscriptItemsAfter" | "reactivateTranscriptUserBatch">;
@@ -214,6 +216,7 @@ export interface InternalApiWorkspaceDeps {
 }
 
 export interface InternalApiDeps {
+  stickerService: Pick<StickerService, "init" | "store">;
   config: AppConfig;
   logger: Logger;
   oneBotClient: OneBotClient;
@@ -365,6 +368,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
       }
     },
     messagingRoutes: {
+      stickerService: deps.stickerService,
       config: deps.config,
       oneBotClient: deps.oneBotClient,
       sessionManager: deps.sessionManager,

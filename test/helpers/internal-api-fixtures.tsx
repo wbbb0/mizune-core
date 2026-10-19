@@ -211,6 +211,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
   writeFileSync(join(state.workspaceRoot, "workspace", "media", "file_image_1.png"), Buffer.from("fixture-image"));
 
   const deps: InternalApiDeps = {
+    stickerService: { init: async () => {}, store: { list: () => [] } } as unknown as InternalApiDeps["stickerService"],
     config: createTestAppConfig({
       internalApi: {
         enabled: true,
