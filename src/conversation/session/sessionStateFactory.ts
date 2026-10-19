@@ -271,7 +271,7 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     historySummary: session.historySummary,
     historyBackfillBoundaryMs: session.historyBackfillBoundaryMs,
     taskTracker: normalizeTaskTracker(session.taskTracker),
-    internalTranscript: session.internalTranscript.map((item) => ({ ...item })),
+    internalTranscript: session.internalTranscript.slice(),
     debugMarkers: [...session.debugMarkers],
     lastLlmUsage: session.lastLlmUsage,
     sentMessages: [...session.sentMessages],

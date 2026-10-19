@@ -1,3 +1,5 @@
+import { freezeTranscriptItem, isImmutableTranscriptItem } from "./immutableTranscript.ts";
+import type { InternalTranscriptItem } from "./sessionTypes.ts";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -273,7 +275,8 @@ export class SessionPersistence {
   }
 
   async save(session: PersistedSessionState): Promise<void> {
-    const validated = persistedSessionStateSchema.parse(session) as PersistedSessionState;
+    const validated = persistedSessionStateSchema.parse({ ...session, internalTranscript: [] }) as PersistedSessionState;
+    validated.internalTranscript = session.internalTranscript.map(validateTranscriptItem);
     await this.enqueueWrite(session.id, async () => {
       const db = await this.getReadyDb();
       const write = db.transaction(() => {
@@ -593,8 +596,7 @@ function syncSessionTranscriptItems(db: SqliteDatabase, session: PersistedSessio
   const nextIds = new Set<string>();
   const updatedAtMs = Date.now();
   const nextRows = session.internalTranscript.map((item, itemIndex) => {
-    const itemJson = JSON.stringify(item);
-    const itemHash = hashTranscriptItem(itemJson);
+    const { itemJson, itemHash } = serializeTranscriptItem(item);
     const itemId = item.id ?? `transcript:${itemIndex}:${itemHash.slice(0, 24)}`;
     const groupId = item.groupId ?? itemId;
     nextIds.add(itemId);
@@ -750,3 +752,23 @@ function parseQueuedGroupReplyTargets(value: string): Pick<PersistedSessionState
 }
 
 const SESSION_TABLE_GROUPS = createTableGroupsFromDataDomain(sessionDataDomain);
+
+const validatedTranscriptItems = new WeakMap<InternalTranscriptItem, InternalTranscriptItem>();
+const serializedTranscriptItems = new WeakMap<InternalTranscriptItem, { itemJson: string; itemHash: string }>();
+
+function validateTranscriptItem(item: InternalTranscriptItem): InternalTranscriptItem {
+  const cached = isImmutableTranscriptItem(item) ? validatedTranscriptItems.get(item) : undefined;
+  if (cached) return cached;
+  const validated = freezeTranscriptItem(internalTranscriptItemSchema.parse(item));
+  if (isImmutableTranscriptItem(item)) validatedTranscriptItems.set(item, validated);
+  return validated;
+}
+
+function serializeTranscriptItem(item: InternalTranscriptItem): { itemJson: string; itemHash: string } {
+  const cached = serializedTranscriptItems.get(item);
+  if (cached) return cached;
+  const itemJson = JSON.stringify(item);
+  const result = { itemJson, itemHash: hashTranscriptItem(itemJson) };
+  serializedTranscriptItems.set(item, result);
+  return result;
+}

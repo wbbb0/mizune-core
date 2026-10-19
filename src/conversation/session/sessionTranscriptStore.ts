@@ -1,3 +1,4 @@
+import { freezeTranscriptItem } from "./immutableTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
 import {
   projectCompressionHistorySnapshot,
@@ -114,10 +115,9 @@ function applyRuntimeExclusion(
     if (!predicate(item, index) || item.runtimeExcluded === true) {
       continue;
     }
-    item.runtimeExcluded = true;
-    item.runtimeExcludedAt = timestampMs;
-    item.runtimeExclusionReason = reason;
-    affected.push(item);
+    const updated = freezeTranscriptItem({ ...item, runtimeExcluded: true, runtimeExcludedAt: timestampMs, runtimeExclusionReason: reason });
+    session.internalTranscript[index] = updated;
+    affected.push(updated);
     const messageId = getTranscriptDeleteMessageId(item);
     if (messageId != null) {
       deletedMessageIds.add(messageId);

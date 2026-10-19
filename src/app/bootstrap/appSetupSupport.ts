@@ -36,12 +36,25 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     userStore
   } = deps;
 
-  // Persists a session snapshot asynchronously without blocking the hot path.
+  // Collapse synchronous mutations into one snapshot. Persistence still serializes
+  // writes per session; no timer delays or cross-session ordering are introduced.
+  const pendingPersistence = new Map<string, string>();
   const persistSession = (sessionId: string, reason: string) => {
-    void sessionPersistence.save(sessionManager.getPersistedSession(sessionId)).then(() => {
-      logger.debug({ sessionId, reason }, "session_persisted");
-    }).catch((error: unknown) => {
-      logger.error({ error, sessionId, reason }, "session_persist_failed");
+    const alreadyPending = pendingPersistence.has(sessionId);
+    pendingPersistence.set(sessionId, reason);
+    if (alreadyPending) return;
+    queueMicrotask(() => {
+      const latestReason = pendingPersistence.get(sessionId);
+      pendingPersistence.delete(sessionId);
+      try {
+        void sessionPersistence.save(sessionManager.getPersistedSession(sessionId)).then(() => {
+          logger.debug({ sessionId, reason: latestReason }, "session_persisted");
+        }).catch((error: unknown) => {
+          logger.error({ error, sessionId, reason: latestReason }, "session_persist_failed");
+        });
+      } catch (error) {
+        logger.error({ error, sessionId, reason: latestReason }, "session_persist_failed");
+      }
     });
   };
 

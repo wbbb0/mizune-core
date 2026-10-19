@@ -1,3 +1,4 @@
+import { freezeTranscriptItem, isImmutableTranscriptItem } from "./immutableTranscript.ts";
 import { randomUUID } from "node:crypto";
 import type {
   InternalTranscriptItem,
@@ -48,7 +49,10 @@ export function normalizeTranscriptItem(
   item: InternalTranscriptItem,
   groupId: string
 ): NormalizedInternalTranscriptItem {
-  return {
+  if (isImmutableTranscriptItem(item) && item.id && item.groupId && typeof item.runtimeExcluded === "boolean") {
+    return item as NormalizedInternalTranscriptItem;
+  }
+  return freezeTranscriptItem({
     ...item,
     id: item.id ?? createTranscriptItemId(),
     groupId: item.groupId ?? groupId,
@@ -56,7 +60,7 @@ export function normalizeTranscriptItem(
     ...(item.runtimeExcludedAt != null ? { runtimeExcludedAt: item.runtimeExcludedAt } : {}),
     ...(item.runtimeExclusionReason ? { runtimeExclusionReason: item.runtimeExclusionReason } : {}),
     ...(item.deliveryRef ? { deliveryRef: item.deliveryRef } : {})
-  };
+  });
 }
 
 export function normalizeTranscriptItems(items: InternalTranscriptItem[]): NormalizedInternalTranscriptItem[] {

@@ -1006,3 +1006,29 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
       }]);
     });
   });
+
+test("transcript snapshots retain immutable entries across metadata edits and saves", async () => {
+  const { SessionManager } = await import("../../src/conversation/session/sessionManager.ts");
+  const { createTestAppConfig } = await import("../helpers/config-fixtures.tsx");
+  const manager = new SessionManager(createTestAppConfig());
+  manager.ensureSession({ id: "web:immutable", type: "private", source: "web" });
+  manager.appendInternalTranscript("web:immutable", { kind: "assistant_message", role: "assistant", llmVisible: true, chatType: "private", userId: "owner", senderName: "助手", text: "answer", timestampMs: 1 });
+  const before = manager.getPersistedSession("web:immutable");
+  const unchanged = manager.getPersistedSession("web:immutable");
+  assert.equal(before.internalTranscript[0], unchanged.internalTranscript[0]);
+  assert.equal(Object.isFrozen(before.internalTranscript[0]), true);
+  const itemId = before.internalTranscript[0]!.id!;
+  manager.excludeTranscriptItem("web:immutable", itemId, "manual_single");
+  const after = manager.getPersistedSession("web:immutable");
+  assert.notEqual(before.internalTranscript[0], after.internalTranscript[0]);
+  assert.equal(before.internalTranscript[0]!.runtimeExcluded, false);
+  assert.equal(after.internalTranscript[0]!.runtimeExcluded, true);
+  await withDataDir("llm-bot-immutable-saves", async (dataDir) => {
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.save(before);
+    await persistence.save(unchanged);
+    await persistence.save(after);
+    const [loaded] = await persistence.loadAll();
+    assert.equal(loaded!.internalTranscript[0]!.runtimeExcluded, true);
+  });
+});

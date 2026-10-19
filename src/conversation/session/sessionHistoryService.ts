@@ -1,3 +1,4 @@
+import { freezeTranscriptItem } from "./immutableTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
 import {
   appendInternalTranscriptState,
@@ -212,7 +213,7 @@ export class SessionHistoryService {
       this.config
     );
     const insertIndex = findTranscriptInsertIndex(session.internalTranscript, timestampMs);
-    session.internalTranscript.splice(insertIndex, 0, item);
+    session.internalTranscript.splice(insertIndex, 0, freezeTranscriptItem(item));
     session.historyRevision += 1;
     return true;
   }
@@ -372,7 +373,7 @@ export class SessionHistoryService {
       if (transcriptIndex == null || !item) {
         continue;
       }
-      session.internalTranscript[transcriptIndex] = item;
+      session.internalTranscript[transcriptIndex] = freezeTranscriptItem(item);
     }
     session.historyRevision += 1;
     return true;

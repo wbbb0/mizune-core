@@ -1,3 +1,4 @@
+import { freezeTranscriptItem } from "./immutableTranscript.ts";
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import type {
   ActiveAssistantResponse,
@@ -20,7 +21,7 @@ import {
   createNormalSessionOperationMode,
   type SessionOperationMode
 } from "./sessionOperationMode.ts";
-import { createTranscriptGroupId } from "./transcriptMetadata.ts";
+import { createTranscriptGroupId, normalizeTranscriptItem } from "./transcriptMetadata.ts";
 import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import {
   clearSessionBotProfileFields,
@@ -235,14 +236,14 @@ export function applyCompressedHistoryState(
 }
 
 export function appendInternalTranscriptState(session: SessionState, item: InternalTranscriptItem): void {
-  session.internalTranscript.push(item);
+  session.internalTranscript.push(normalizeTranscriptItem(item, item.groupId ?? createTranscriptGroupId()));
 }
 
 export function setLastAssistantMessageReasoningState(session: SessionState, reasoningContent: string): boolean {
   for (let i = session.internalTranscript.length - 1; i >= 0; i--) {
     const item = session.internalTranscript[i];
     if (item?.kind === "assistant_message") {
-      item.reasoningContent = reasoningContent;
+      session.internalTranscript[i] = freezeTranscriptItem({ ...item, reasoningContent });
       return true;
     }
   }
@@ -256,7 +257,7 @@ export function setLastAssistantMessageProviderMetadataState(
   for (let i = session.internalTranscript.length - 1; i >= 0; i--) {
     const item = session.internalTranscript[i];
     if (item?.kind === "assistant_message") {
-      item.providerMetadata = structuredClone(providerMetadata);
+      session.internalTranscript[i] = freezeTranscriptItem({ ...item, providerMetadata: structuredClone(providerMetadata) });
       return true;
     }
   }
