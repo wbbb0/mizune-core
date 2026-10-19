@@ -470,15 +470,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       upstreamModel: chat
     image:
       upstreamModel: image-model
-      modelType: image_generation
-      imageParameters:
-        size: 1024x1024
+      image:
+        defaults:
+          size: 1024x1024
 other:
   type: anthropic
   models:
     image:
       upstreamModel: unsupported-image
-      modelType: image_generation
+      image: {}
 `, "utf8");
       const response = await app.inject({ method: "GET", url: "/api/editor-options/llm_image_model_targets" });
       assert.equal(response.statusCode, 200);
@@ -497,7 +497,7 @@ other:
       type: "openai",
       models: {
         shared: {
-          upstreamModel: "vendor-shared-model"
+          upstreamModel: "vendor-shared-model", chat: {}
         }
       }
     };
@@ -508,11 +508,13 @@ other:
         "  type: openai",
         "  models:",
         "    shared:",
+        "      chat: {}",
         "      upstreamModel: vendor-shared-model",
         "beta:",
         "  type: deepseek",
         "  models:",
         "    shared:",
+        "      chat: {}",
         "      upstreamModel: deepseek-shared-model"
       ].join("\n"), "utf8");
       await writeFile(routingPath, [
@@ -751,7 +753,6 @@ other:
           audioTranscription: [],
           turnPlanner: [],
           imageGenerator: [],
-          embedding: [],
           historyWindow: {
             maxRecentMessages: 50,
             maxImageReferences: 5
@@ -774,7 +775,6 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
-        embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5
@@ -798,7 +798,6 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
-        embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5
@@ -819,7 +818,6 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
-        embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5
@@ -856,7 +854,6 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
-        embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5

@@ -18,6 +18,7 @@ export const modelApiParametersSchema = s.object(parameterFields()).title("ç”Ÿæˆ
 export type ModelApiParameters = Infer<typeof modelApiParametersSchema>;
 type SamplingKey = Exclude<keyof ModelApiParameters, "extra" | "maxOutputTokens">;
 const samplingKeys: Record<LlmProviderType, readonly SamplingKey[]> = {
+  openrouter: ["temperature", "top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty"],
   openai: ["temperature", "top_p", "top_k", "min_p", "presence_penalty", "repetition_penalty"],
   openai_responses: ["temperature", "top_p"],
   deepseek: ["temperature", "top_p"],

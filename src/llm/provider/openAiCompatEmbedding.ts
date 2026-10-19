@@ -1,3 +1,4 @@
+import { estimateTokens } from "#conversation/session/tokenEstimator.ts";
 import { fetchWithProxy } from "#services/proxy/index.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "./providerTimeout.ts";
 import {
@@ -27,6 +28,16 @@ export async function requestOpenAiCompatibleEmbeddings(
     apiKey?: string;
   }
 ): Promise<LlmEmbeddingResult> {
+  const settings = context.modelProfile.embedding;
+  if (!settings) throw new Error("模型未配置向量用途");
+  params.abortSignal?.throwIfAborted();
+  const purpose = params.purpose ?? "document";
+  const texts = settings.inputMode === "qwen3" && purpose === "query"
+    ? params.texts.map((text) => `Instruct: ${settings.queryInstruction}\nQuery: ${text}`)
+    : params.texts;
+  if (settings.limits.maxInputTokens && texts.some(text => estimateTokens(text, context.config.conversation.historyCompression.tokenEstimation) > settings.limits.maxInputTokens!)) {
+    throw new Error("向量输入的估算 token 数超过模型输入上限，请调整分块长度");
+  }
   const endpointBaseUrl = options?.endpointBaseUrl ?? context.baseUrl;
   const endpoint = `${endpointBaseUrl.replace(/\/$/, "")}/embeddings`;
   const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.context.embedding.timeoutMs;
@@ -47,7 +58,10 @@ export async function requestOpenAiCompatibleEmbeddings(
       },
       body: JSON.stringify({
         model: context.model,
-        input: params.texts
+        input: texts,
+        encoding_format: "float",
+        ...(settings.dimensions ? { dimensions: settings.dimensions } : {}),
+        ...(settings.inputMode === "input_type" ? { input_type: purpose === "query" ? "search_query" : "search_document" } : {})
       }),
       signal: timeoutController.controller.signal
     }, {
@@ -61,6 +75,7 @@ export async function requestOpenAiCompatibleEmbeddings(
 
     const payload = await response.json() as OpenAiEmbeddingResponse;
     const vectors = normalizeEmbeddingVectors(payload, params.texts.length);
+    if (settings.dimensions && vectors[0]?.length !== settings.dimensions) throw new Error("Embedding API 未返回请求的向量维度");
     return {
       vectors,
       usage: {
@@ -80,21 +95,24 @@ export async function requestOpenAiCompatibleEmbeddings(
   }
 }
 
-function normalizeEmbeddingVectors(payload: OpenAiEmbeddingResponse, expectedCount: number): number[][] {
-  const rows = [...(payload.data ?? [])].sort((left, right) => (left.index ?? 0) - (right.index ?? 0));
-  if (rows.length !== expectedCount) {
-    throw new Error(`Embedding API returned ${rows.length} vectors, expected ${expectedCount}`);
+export function normalizeEmbeddingVectors(payload: OpenAiEmbeddingResponse, expectedCount: number): number[][] {
+  const rows = payload.data;
+  if (!Array.isArray(rows) || rows.length !== expectedCount) {
+    throw new Error(`Embedding API returned ${rows?.length ?? 0} vectors, expected ${expectedCount}`);
   }
-  return rows.map((row, index) => {
-    if (!Array.isArray(row.embedding) || row.embedding.length === 0) {
-      throw new Error(`Embedding API returned empty vector at index ${index}`);
+  const vectors: number[][] = new Array(expectedCount);
+  let dimension: number | undefined;
+  for (const row of rows) {
+    const index = row.index;
+    if (!Number.isInteger(index) || index! < 0 || index! >= expectedCount || vectors[index!]) {
+      throw new Error("Embedding API returned invalid or duplicate vector indices");
     }
-    return row.embedding.map((value) => {
-      const numberValue = Number(value);
-      if (!Number.isFinite(numberValue)) {
-        throw new Error(`Embedding API returned non-numeric vector value at index ${index}`);
-      }
-      return numberValue;
-    });
-  });
+    if (!Array.isArray(row.embedding) || row.embedding.length === 0 || row.embedding.some((value) => typeof value !== "number" || !Number.isFinite(value))) {
+      throw new Error(`Embedding API returned invalid vector at index ${index}`);
+    }
+    dimension ??= row.embedding.length;
+    if (row.embedding.length !== dimension) throw new Error("Embedding API returned inconsistent vector dimensions");
+    vectors[index!] = row.embedding;
+  }
+  return vectors;
 }

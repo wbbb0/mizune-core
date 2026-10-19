@@ -25,7 +25,7 @@ export function getVisionInputModelRefs(
 
   for (const modelRef of resolved.acceptedModelRefs) {
     const profile = config.llm.models[modelRef];
-    if (profile?.supportsVision === true) {
+    if (profile?.chat?.capabilities.supportsVision === true) {
       modelRefs.push(modelRef);
       continue;
     }

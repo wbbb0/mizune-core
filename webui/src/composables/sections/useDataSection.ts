@@ -780,7 +780,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
           forceReembed,
           embeddingBatchSize: 64
         }),
-        (result) => `已处理 ${result.userCount} 个用户，写入 ${result.embeddedCount} 条 embedding，索引 ${result.indexedCount} 条`
+        (result) => result.unavailableReason ? "向量配置不可用，未执行补齐"
+          : `已处理 ${result.userCount} 个用户，写入 ${result.embeddedCount} 条向量，覆盖 ${result.indexedCount}/${result.totalCount} 条，待补齐 ${result.remainingCount} 条${result.errors.length ? `；失败 ${result.errors.length} 个用户：${result.errors.map(item => item.error).join("；")}` : ""}`
       );
     }
 

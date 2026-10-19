@@ -1,3 +1,4 @@
+import { deepMergeReplaceArrays } from "#data/schema/helpers.ts";
 import assert from "node:assert/strict";
 import { createTestAppConfig } from "./config-fixtures.tsx";
 import { setFetchImplementationForTests } from "../../src/services/proxy/index.ts";
@@ -7,26 +8,15 @@ export function createLlmTestConfig(modelOverrides: any = {}) {
   const baseModel = {
     provider: "test",
     model: "fake-model",
-    supportsThinking: true,
-    thinkingControllable: true,
-    supportsVision: false,
-    supportsSearch: false,
-    supportsTools: true,
-    preserveThinking: false
+    chat: { capabilities: { supportsThinking: true, thinkingControllable: true, supportsVision: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
   };
   const fallbackModels = Array.isArray(modelOverrides)
     ? Object.fromEntries(modelOverrides.map((override, index) => [
         index === 0 ? "main" : `candidate_${index + 1}`,
-        {
-          ...baseModel,
-          ...override
-        }
+        deepMergeReplaceArrays(baseModel, override)
       ]))
     : {
-        main: {
-          ...baseModel,
-          ...modelOverrides
-        }
+      main: deepMergeReplaceArrays(baseModel, modelOverrides)
       };
 
   return createTestAppConfig({

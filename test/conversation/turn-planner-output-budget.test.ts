@@ -8,11 +8,16 @@ import { createLlmTestConfig, withMockFetch } from "../helpers/llm-test-support.
 import { createReplyGateBatchMessage } from "../helpers/reply-gate-fixtures.tsx";
 
 test("short planner budgets require every fallback to actually disable thinking", () => {
-  const config = createLlmTestConfig({ supportsThinking: false });
+  const config = createLlmTestConfig({
+    chat: { capabilities: { supportsThinking: false } }
+  });
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), 512);
-  config.llm.models.fallback = { ...config.llm.models.main!, supportsThinking: true, thinkingControllable: false };
+  config.llm.models.fallback = {
+    ...config.llm.models.main!,
+    chat: { ...config.llm.models.main!.chat!, capabilities: { supportsThinking: true, thinkingControllable: false } }
+  };
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main", "fallback"]), undefined);
-  config.llm.models.main!.supportsThinking = true;
+  config.llm.models.main!.chat!.capabilities.supportsThinking = true;
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), undefined);
   config.llm.providers.test!.features.thinking = { type: "flag", path: "enable_thinking" };
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), 512);
@@ -21,7 +26,9 @@ test("short planner budgets require every fallback to actually disable thinking"
 });
 
 test("DashScope short budgets use native thinking control", () => {
-  const config = createLlmTestConfig({ supportsThinking: true });
+  const config = createLlmTestConfig({
+    chat: { capabilities: { supportsThinking: true } }
+  });
   config.llm.providers.test!.type = "dashscope";
   assert.equal(resolveTurnPlannerOutputTokenLimit(config, ["main"]), 512);
   config.llm.providers.test!.features.thinking = { type: "flag", path: "enable_thinking" };
@@ -31,9 +38,7 @@ test("DashScope short budgets use native thinking control", () => {
 for (const type of ["google", "openai_responses"] as const) {
   test(`${type} planner preserves the configured output budget when reasoning may remain hidden`, async () => {
     const config = createLlmTestConfig({
-      supportsThinking: true,
-      thinkingControllable: type === "google",
-      apiParameters: { extra: type === "google" ? { maxOutputTokens: 8192 } : { max_output_tokens: 8192 } }
+      chat: { capabilities: { supportsThinking: true, thinkingControllable: type === "google" }, defaults: { extra: type === "google" ? { maxOutputTokens: 8192 } : { max_output_tokens: 8192 } } }
     });
     config.llm.providers.test!.type = type;
     config.llm.turnPlanner.enabled = true;
@@ -55,10 +60,12 @@ for (const type of ["google", "openai_responses"] as const) {
       },
       payloads: type === "google"
         ? [{ candidates: [{ content: { parts: [{ text }] } }] }]
-        : [{ type: "response.completed", response: {
+        : [{
+          type: "response.completed", response: {
             id: "planner-budget", status: "completed",
             output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text, annotations: [] }] }]
-          } }]
+          }
+        }]
     }], async () => {
       const result = await planner.decide({
         requirements: { modelSelection: false, toolSelection: false, replyGate: false, semanticWait: false, topicSwitch: false, taskIntent: true },

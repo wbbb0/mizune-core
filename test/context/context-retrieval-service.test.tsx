@@ -403,6 +403,8 @@ test("ContextRetrievalService skips all rebuild work while embedding is unavaila
 
   assert.deepEqual(await service.rebuildUserIndexes(), {
     userCount: 0,
+    totalCount: 0,
+    remainingCount: 0,
     embeddedCount: 0,
     indexedCount: 0,
     skippedCount: 0,

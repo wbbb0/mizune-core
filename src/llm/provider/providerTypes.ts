@@ -59,6 +59,7 @@ export interface LlmMessage {
 }
 
 export interface LlmGenerateParams {
+  operation?: "chat" | "transcription";
   messages: LlmMessage[];
   abortSignal?: AbortSignal;
   tools?: LlmToolDefinition[] | (() => LlmToolDefinition[]);
@@ -128,6 +129,7 @@ export type LlmGenerateFinishReason =
     };
 
 export interface LlmEmbeddingParams {
+  purpose?: "query" | "document";
   texts: string[];
   abortSignal?: AbortSignal;
   timeoutMsOverride?: number;
@@ -179,6 +181,7 @@ export interface LlmFallbackEvent {
 }
 
 export interface LlmProviderRequestContext {
+  operation?: "chat" | "transcription";
   config: AppConfig;
   logger: Logger;
   modelRef: string;

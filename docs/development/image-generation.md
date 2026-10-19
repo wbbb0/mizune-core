@@ -5,9 +5,9 @@
 | 职责 | 标准图像模型 | ComfyUI |
 | --- | --- | --- |
 | 连接与凭据 | `llm.catalog.yml` 的 Provider | `comfy.apiBaseUrl` 等现有配置 |
-| 可选目标 | Provider 内 `modelType: image_generation` 的模型 | `comfy.templates` 工作流模板 |
+| 可选目标 | Provider 内 `image` 子树 的模型 | `comfy.templates` 工作流模板 |
 | 默认选择 | 当前路由预设的 `imageGenerator` | 工具调用指定已启用的模板 |
-| 尺寸、质量等参数 | 模型的 `imageParameters` | 模板参数绑定、`comfy.aspectRatios` |
+| 尺寸、质量等参数 | 模型的 `image.defaults` | 模板参数绑定、`comfy.aspectRatios` |
 | 生命周期 | 请求内等待，支持取消及超时 | 持久化异步任务、完成后触发会话 |
 | 工具 | `generate_image` | `generate_image_with_comfyui` |
 
@@ -32,15 +32,14 @@ images_provider:
   models:
     image:
       upstreamModel: gpt-image-1
-      modelType: image_generation
-      supportsTools: false
-      imageParameters:
-        size: 1024x1024
-        quality: low
-        output_format: png
+      image:
+        defaults:
+          size: 1024x1024
+          quality: low
+          output_format: png
 ```
 
-`imageParameters` 仅用于 Images API，模型的对话 `apiParameters` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size` 可覆盖模型默认尺寸。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，GPT Image 不支持该参数。
+`image.defaults` 仅用于 Images API，模型的对话 `chat.defaults` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size` 可覆盖模型默认尺寸。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，GPT Image 不支持该参数。
 
 在 `llm.routing-presets.yml` 为所用预设指定目标（或在 `default` 中设置，由其他预设继承）：
 
@@ -72,3 +71,7 @@ chatFiles:
 ## 手动真实接口验证
 
 默认测试不访问模型服务。配置完成后可运行 `npm run smoke:llm:image -- --instance acc1 --config-dir /path/to/config`；此命令会实际生成一张图片，只在临时目录导入资产并将样图复制至本地 `.superpowers/image-generation-smoke/`，不读写实例正式数据。
+
+## OpenRouter
+
+`type: openrouter` 使用 `/images`，从独立图像清单发现模型和参数范围。默认参数使用 `image.defaults.resolution`、`aspect_ratio`、`quality`、`output_format` 等；不发送标准 Images 的 `size`/`response_format`。已知枚举范围会在请求前校验。当前工具仅生成单张非流式图片，不提供参考图编辑；清单中的参考图/流式能力仅作为元信息保存。

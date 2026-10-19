@@ -1,3 +1,5 @@
+import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
+import { readEmbeddingConfigLayers, mutateEmbeddingConfigReference } from "#config/embeddingConfigReferences.ts";
 import { supportsStandardImageGeneration } from "#config/llmProviderDefinitions.ts";
 import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -26,7 +28,6 @@ import {
   readStructuredFileRaw,
   writeConfigFile
 } from "#data/schema/file.ts";
-import { deepMergeAllReplaceArrays } from "#data/schema/helpers.ts";
 import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
 import {
@@ -204,13 +205,13 @@ export function createEditorService(input: {
         value: await readOptionalConfigLayer(layer.path)
       })));
       const writableLayer = layers.find((layer) => layer.key === resource.writableLayerKey);
-      const baseValue = deepMergeAllReplaceArrays(
+      const baseValue = mergeConfigLayers(
         layers
           .filter((layer) => layer.key !== resource.writableLayerKey)
           .map((layer) => layer.value)
       );
       const currentValue = writableLayer?.value ?? {};
-      const effectiveValue = parseConfig(resource.schema, deepMergeAllReplaceArrays([
+      const effectiveValue = parseConfig(resource.schema, mergeConfigLayers([
         baseValue,
         currentValue
       ]));
@@ -257,7 +258,7 @@ export function createEditorService(input: {
           .filter((layer) => layer.key !== resource.writableLayerKey)
           .map(async (layer) => readOptionalConfigLayer(layer.path))
       );
-      const parsed = parseConfig(resource.schema, deepMergeAllReplaceArrays([
+      const parsed = parseConfig(resource.schema, mergeConfigLayers([
         ...readonlyLayers,
         value as Record<string, unknown>
       ]), {
@@ -269,7 +270,7 @@ export function createEditorService(input: {
         ok: true as const,
         parsed,
         currentValue: current,
-        referenceValue: deepMergeAllReplaceArrays(readonlyLayers),
+        referenceValue: mergeConfigLayers(readonlyLayers),
         effective: parsed
       };
     },
@@ -329,7 +330,7 @@ export function createEditorService(input: {
           .filter((layer) => layer.key !== resource.writableLayerKey)
           .map(async (layer) => readOptionalConfigLayer(layer.path))
       );
-      const parsed = parseConfig(resource.schema, deepMergeAllReplaceArrays([
+      const parsed = parseConfig(resource.schema, mergeConfigLayers([
         ...readonlyLayers,
         value as Record<string, unknown>
       ]), {
@@ -351,12 +352,16 @@ export function createEditorService(input: {
       ]);
       const catalog = parseConfig(llmCatalogFileSchema, catalogRaw, { cloneInput: true });
       const routingPresets = parseConfig(llmRoutingPresetCatalogFileSchema, routingRaw, { cloneInput: true });
-      return summarizeLlmProviderMutationImpact(catalog, routingPresets, provider);
+      const impact = summarizeLlmProviderMutationImpact(catalog, routingPresets, provider);
+      const layers = await readEmbeddingConfigLayers(input.config.configRuntime);
+      impact.embeddingReferences = layers.filter(layer => layer.value.context?.embedding?.model?.provider === provider).map(layer => layer.path);
+      impact.referenceCount += impact.embeddingReferences.length;
+      return impact;
     },
 
     async listProviderModels(providerDraft) {
       const provider = parseConfig(llmCatalogProviderFileSchema, providerDraft, { cloneInput: true });
-      return listProviderModelSlots({ provider, config: input.config });
+      return listProviderModelSlots({ provider, config: input.config, existingModels: (providerDraft as { models?: Record<string, Record<string, unknown>> }).models ?? {} });
     },
 
     async normalizeDraft(resourceKey, value) {
@@ -386,7 +391,7 @@ export function createEditorService(input: {
     },
 
     async getOptions(optionKey) {
-      if (optionKey === "llm_model_targets" || optionKey === "llm_image_model_targets") {
+      if (["llm_model_targets", "llm_image_model_targets", "llm_embedding_model_targets", "llm_transcription_model_targets"].includes(optionKey)) {
         const raw = await readConfigFileRaw(input.config.configRuntime.llmCatalogPath).catch(() => ({}));
         const catalog = parseConfig(llmCatalogFileSchema, raw, { cloneInput: true });
         return {
@@ -397,7 +402,9 @@ export function createEditorService(input: {
               key: provider,
               label: provider,
               options: Object.entries(providerConfig.models)
-                .filter(([, profile]) => optionKey !== "llm_image_model_targets" || profile.modelType === "image_generation")
+                .filter(([, profile]) => optionKey === "llm_image_model_targets" ? !!profile.image
+                  : optionKey === "llm_embedding_model_targets" ? !!profile.embedding
+                  : optionKey === "llm_transcription_model_targets" ? !!profile.transcription : !!profile.chat)
                 .sort(([left], [right]) => left.localeCompare(right))
                 .map(([model, profile]) => ({
                   key: model,
@@ -576,7 +583,9 @@ async function assertLlmRevision(configRuntime: ConfigRuntime, expectedRevision:
 
 async function computeLlmConfigRevision(configRuntime: ConfigRuntime): Promise<string> {
   const hash = createHash("sha256");
-  for (const filePath of [configRuntime.llmCatalogPath, configRuntime.llmRoutingPresetCatalogPath]) {
+  const layers = await readEmbeddingConfigLayers(configRuntime);
+  for (const filePath of [configRuntime.llmCatalogPath, configRuntime.llmRoutingPresetCatalogPath, ...layers.map(layer => layer.path)]) {
+    hash.update(filePath);
     try {
       const content = await readFile(filePath);
       hash.update(String(content.length));
@@ -671,22 +680,25 @@ async function saveLlmCatalogDraft(input: {
     validateLlmCatalogProviderMutations(previousCatalog, nextCatalog, input.mutations);
     const nextRouting = applyLlmCatalogProviderMutations(previousRouting, input.mutations);
 
-    await writeConfigFile(input.configRuntime.llmCatalogPath, nextCatalog);
-    if (input.mutations.length === 0) {
-      return;
-    }
-
+    const layers = input.mutations.length ? await readEmbeddingConfigLayers(input.configRuntime) : [];
+    const writes = [
+      { path: input.configRuntime.llmCatalogPath, previous: previousCatalogRaw, next: nextCatalog },
+      ...(input.mutations.length ? [{ path: input.configRuntime.llmRoutingPresetCatalogPath, previous: previousRoutingRaw, next: nextRouting }] : []),
+      ...layers.map(layer => ({ path: layer.path, previous: layer.value, next: mutateEmbeddingConfigReference(layer.value, input.mutations) }))
+        .filter(layer => JSON.stringify(layer.previous) !== JSON.stringify(layer.next))
+    ];
+    const completed: typeof writes = [];
     try {
-      await writeConfigFile(input.configRuntime.llmRoutingPresetCatalogPath, nextRouting);
-    } catch (error) {
-      try {
-        await writeConfigFile(input.configRuntime.llmCatalogPath, previousCatalog);
-      } catch (rollbackError) {
-        throw new AggregateError(
-          [error, rollbackError],
-          "Failed to update LLM routing after catalog mutation and failed to restore the catalog"
-        );
+      for (const write of writes) {
+        await writeConfigFile(write.path, write.next);
+        completed.push(write);
       }
+    } catch (error) {
+      const errors: unknown[] = [error];
+      for (const write of completed.reverse()) {
+        try { await writeConfigFile(write.path, write.previous); } catch (rollbackError) { errors.push(rollbackError); }
+      }
+      if (errors.length > 1) throw new AggregateError(errors, "配置引用更新失败，部分文件回滚失败");
       throw error;
     }
   });

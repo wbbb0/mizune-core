@@ -65,6 +65,10 @@ export interface ContextStatus {
     }>;
   };
   embedding: {
+    health: "untested" | "healthy" | "failed";
+    lastCheckedAt?: number;
+    lastError?: string;
+    dimension?: number;
     available: boolean;
     modelRefs: string[];
     unavailableReason?: "llm_disabled" | "model_not_configured" | "model_configuration_invalid" | "model_unavailable";
@@ -158,6 +162,8 @@ export const contextApi = {
   },
   rebuildIndex(input: { userId?: string; forceReembed?: boolean; embeddingBatchSize?: number } = {}): Promise<{
     userCount: number;
+    totalCount: number;
+    remainingCount: number;
     embeddedCount: number;
     indexedCount: number;
     skippedCount: number;
@@ -167,3 +173,7 @@ export const contextApi = {
     return api.post("/api/context/maintenance/rebuild-index", input);
   }
 };
+
+export function testEmbeddingConnection(): Promise<{ ok: true; dimension: number; profileId: string }> {
+  return api.post("/api/context/embedding/test", {});
+}

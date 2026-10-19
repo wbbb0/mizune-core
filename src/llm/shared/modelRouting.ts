@@ -1,3 +1,4 @@
+import { getModelInputBudget } from "./requestTokenBudget.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { LlmRoutingPreset, ModelProfile } from "#config/configModel.ts";
 import {
@@ -16,8 +17,7 @@ export type LlmRoutingRole =
   | "image_inspector"
   | "audio_transcription"
   | "turn_planner"
-  | "image_generator"
-  | "embedding";
+  | "image_generator";
 
 interface RoutingRoleDefinition {
   label: string;
@@ -117,16 +117,11 @@ const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
   },
   image_generator: {
     label: "图像生成",
-    requiredModelType: "image_generation",
+    requiredModelType: "image",
     presetField: "imageGenerator",
     getModelRefs: (preset) => preset.imageGenerator
   },
-  embedding: {
-    label: "向量模型",
-    requiredModelType: "embedding",
-    presetField: "embedding",
-    getModelRefs: (preset) => preset.embedding
-  }
+
 };
 
 const ROUTING_PRESET_FIELDS = Object.values(routingRoleDefinitions)
@@ -172,7 +167,6 @@ export function createEmptyRoutingPreset(): EffectiveLlmRoutingPreset {
     audioTranscription: [],
     turnPlanner: [],
     imageGenerator: [],
-    embedding: [],
     historyWindow: { ...DEFAULT_ROUTING_PRESET_HISTORY_WINDOW },
     tokenLimits: { ...DEFAULT_ROUTING_PRESET_TOKEN_LIMITS }
   };
@@ -313,11 +307,13 @@ export function getRoutingPresetHistoryWindow(config: AppConfig): RoutingPresetH
 }
 
 export function getRoutingPresetTokenLimits(config: AppConfig): RoutingPresetTokenLimits {
-  const activePreset = getEffectiveRoutingPreset(config);
-  if (activePreset) {
-    return activePreset.tokenLimits;
-  }
-  return getDefaultRoutingPreset(config).tokenLimits;
+  const preset = getEffectiveRoutingPreset(config) ?? getDefaultRoutingPreset(config);
+  const budgets = [preset.mainSmall[0], preset.mainLarge[0]].flatMap(ref => {
+    const profile = ref ? config.llm.models[ref] : undefined;
+    return profile?.chat ? [getModelInputBudget(profile)] : [];
+  });
+  const triggerTokens = Math.min(preset.tokenLimits.triggerTokens, ...budgets);
+  return { triggerTokens, retainTokens: Math.min(preset.tokenLimits.retainTokens, triggerTokens) };
 }
 
 export function getModelRefsForRole(config: AppConfig, role: LlmRoutingRole): string[] {
@@ -378,7 +374,7 @@ export function getValidatedRoutingPreset(config: AppConfig): RoutingPresetValid
         continue;
       }
       warnings.push(
-        `routing preset ${presetName} 的角色 ${roleDefinition.label} 引用了模型 ${rejected.modelRef}，其模型类型为 ${rejected.actualModelType ?? "unknown"}，期望 ${roleDefinition.requiredModelType}，该模型已忽略。`
+        `routing preset ${presetName} 的角色 ${roleDefinition.label} 引用了模型 ${rejected.modelRef}，其模型类型为 ${rejected.actualModelTypes?.join(", ") ?? "unknown"}，期望 ${roleDefinition.requiredModelType}，该模型已忽略。`
       );
     }
   }

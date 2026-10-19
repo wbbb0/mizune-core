@@ -1,3 +1,4 @@
+import { getGenerationSettings } from "../generationSettings.ts";
 import { readProviderSseData } from "../providerSseReader.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
@@ -290,7 +291,7 @@ function buildGenerationConfig(
     ...(params.maxOutputTokensOverride ? { maxOutputTokens: params.maxOutputTokensOverride } : {})
   };
 
-  if (context.modelProfile.supportsThinking) {
+  if (getGenerationSettings(context)?.capabilities.supportsThinking) {
     generationConfig.thinkingConfig = {
       includeThoughts: params.enableThinkingOverride ?? false
     };

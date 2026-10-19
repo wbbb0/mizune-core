@@ -17,12 +17,20 @@ import { withTempDir } from "../helpers/config-test-support.tsx";
 import pino from "pino";
 
 function config() {
-  return createTestAppConfig({ llm: {
+  return createTestAppConfig({
+    llm: {
     enabled: true, imageGeneration: { enabled: true }, routingPreset: "test",
     providers: { images: { type: "openai_responses", baseUrl: "https://images.example/v1/", apiKey: "test-only" } },
-    models: { image: { provider: "images", model: "upstream-image", modelType: "image_generation", imageParameters: { size: "1024x1024", quality: "low" }, apiParameters: { temperature: 0.8 } } },
+    models: {
+      image: {
+        provider: "images",
+        model: "upstream-image",
+        image: { defaults: { size: "1024x1024", quality: "low" } }
+      }
+    },
     routingPresets: { test: { imageGenerator: ["image"] } }
-  }, chatFiles: { enabled: true, maxUploadBytes: 1024 * 1024 } });
+  }, chatFiles: { enabled: true, maxUploadBytes: 1024 * 1024 }
+});
 }
 const png = await sharp({ create: { width: 8, height: 6, channels: 3, background: "orange" } }).png().toBuffer();
 afterEach(() => setFetchImplementationForTests(null));
@@ -77,9 +85,10 @@ test("生图路由保留复合模型身份、继承默认且过滤错误模型�
   c.llm.routingPresets = { default: { imageGenerator: ["image"] }, test: {} };
   assert.deepEqual(resolveModelRefsForRole(c, "image_generator").acceptedModelRefs, ["image"]);
   assert.equal(isImageGenerationAvailable(c), true);
-  c.llm.models.image!.modelType = "chat";
+  const imageSettings = c.llm.models.image!.image;
+  delete c.llm.models.image!.image;
   assert.equal(isImageGenerationAvailable(c), false);
-  c.llm.models.image!.modelType = "image_generation";
+  c.llm.models.image!.image = imageSettings!;
   c.llm.routingPresets.test = { imageGenerator: [] };
   assert.equal(isImageGenerationAvailable(c), false);
 });
@@ -143,4 +152,23 @@ test("生图 HTTP 错误保留响应详情和独立失败 dump", async () => {
     assert.equal(dump.exchanges[0].rawBody, raw);
     assert.equal(dump.exchanges[0].status, 400);
   });
+});
+
+test("OpenRouter 图像端点使用专属参数并在请求前校验范围", async () => {
+  const value = config();
+  value.llm.providers.images!.type = "openrouter";
+  value.llm.models.image!.image!.defaults = { resolution: "1K", aspect_ratio: "1:1" };
+  value.llm.models.image!.image!.constraints = { resolutions: ["1K", "2K"], aspectRatios: ["1:1"] };
+  let requests = 0;
+  setFetchImplementationForTests(async (url, init) => {
+    requests++;
+    assert.equal(url, "https://images.example/v1/images");
+    assert.deepEqual(JSON.parse(String(init?.body)), { model: "upstream-image", prompt: "测试", n: 1, resolution: "1K", aspect_ratio: "1:1" });
+    return Response.json({ data: [{ b64_json: png.toString("base64"), media_type: "image/png" }] });
+  });
+  await generateConfiguredImage(value, { prompt: "测试" });
+  await assert.rejects(generateConfiguredImage(value, { prompt: "测试", size: "1024x1024" }), /不使用 size/);
+  value.llm.models.image!.image!.defaults.resolution = "invalid";
+  await assert.rejects(generateConfiguredImage(value, { prompt: "测试" }), /不在模型声明/);
+  assert.equal(requests, 1);
 });

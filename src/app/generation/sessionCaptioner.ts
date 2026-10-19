@@ -108,7 +108,7 @@ export class SessionCaptioner {
   }
 
   private async preparePromptInput(input: SessionCaptionerInput, modelRefs: string[]): Promise<SessionCaptionerInput> {
-    if (getPrimaryModelProfile(this.config, modelRefs)?.supportsVision === true || !this.mediaCaptionService) {
+    if (getPrimaryModelProfile(this.config, modelRefs)?.chat?.capabilities.supportsVision === true || !this.mediaCaptionService) {
       return input;
     }
 

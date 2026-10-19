@@ -414,7 +414,6 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
       }]
     }];
     const projection = getProviderTranscriptProjector("openai_responses").project({
-      preserveThinking: true,
       transcript: [{
         kind: "assistant_message",
         role: "assistant",
@@ -429,7 +428,8 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
           }
         },
         timestampMs: 1
-      }]
+      }],
+      preserveThinking: true
     });
 
     assert.deepEqual(projection.replayMessages, [{

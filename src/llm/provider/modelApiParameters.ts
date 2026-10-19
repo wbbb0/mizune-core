@@ -1,3 +1,4 @@
+import { getGenerationSettings } from "./generationSettings.ts";
 import type { LlmProviderRequestContext } from "./providerTypes.ts";
 
 type KnownModelApiParameter =
@@ -78,7 +79,7 @@ function buildMappedParameters(
   context: LlmProviderRequestContext,
   keyMap: Partial<Record<KnownModelApiParameter, string>>
 ): Record<string, unknown> {
-  const source = context.modelProfile.apiParameters;
+  const source = getGenerationSettings(context)?.defaults;
   if (!source) {
     return {};
   }

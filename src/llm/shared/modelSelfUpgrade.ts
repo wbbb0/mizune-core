@@ -37,8 +37,8 @@ export function resolveModelSelfUpgradePlan(input: {
   const profiles = allModelRefs.map((modelRef) => input.config.llm.models[modelRef]);
   if (profiles.some((profile) => (
     profile == null
-    || profile.modelType !== "chat"
-    || profile.supportsTools !== true
+    || !profile.chat
+    || profile.chat?.capabilities.supportsTools !== true
   ))) {
     return null;
   }

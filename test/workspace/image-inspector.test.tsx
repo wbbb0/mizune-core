@@ -20,22 +20,12 @@ function createInspectorConfig() {
         primary: {
           provider: "vision",
           model: "primary-vision",
-          supportsThinking: false,
-          supportsVision: true,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: false,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, supportsVision: true, supportsAudioInput: false, supportsTools: false, supportsSearch: false }, preserveThinking: false }
         },
         secondary: {
           provider: "vision",
           model: "secondary-vision",
-          supportsThinking: false,
-          supportsVision: true,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: false,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, supportsVision: true, supportsAudioInput: false, supportsTools: false, supportsSearch: false }, preserveThinking: false }
         }
       },
       routingPresets: {
@@ -76,22 +66,12 @@ function createMixedVisionInspectorConfig() {
         textOnly: {
           provider: "vision",
           model: "text-only-model",
-          supportsThinking: false,
-          supportsVision: false,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: false,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, supportsVision: false, supportsAudioInput: false, supportsTools: false, supportsSearch: false }, preserveThinking: false }
         },
         visual: {
           provider: "vision",
           model: "visual-model",
-          supportsThinking: false,
-          supportsVision: true,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: false,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, supportsVision: true, supportsAudioInput: false, supportsTools: false, supportsSearch: false }, preserveThinking: false }
         }
       },
       routingPresets: {

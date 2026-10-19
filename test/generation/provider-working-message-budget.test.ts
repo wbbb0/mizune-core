@@ -304,7 +304,9 @@ test("audio transport bytes are not estimated as text tokens", () => {
 });
 
 test("asset_media_view large image preserves send tool through the next provider call", async () => {
-  const config = createLlmTestConfig({ supportsVision: true });
+  const config = createLlmTestConfig({
+    chat: { capabilities: { supportsVision: true } }
+  });
   const definitions = [createToolDefinition("asset_media_view"), createToolDefinition("asset_send_to_chat")];
   let disabled = false;
   const call = (id: string, name: string) => ({ choices: [{ delta: { tool_calls: [{ index: 0, id, type: "function", function: { name, arguments: "{}" } }] } }] });

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { DatabaseZap, Download, Filter, Layers, RefreshCw, Trash2, Upload } from "lucide-vue-next";
+import { testEmbeddingConnection } from "@/api/context";
 import type { ContextItemFilters, ContextStatus } from "@/api/context";
 
 const props = defineProps<{
@@ -22,6 +23,16 @@ const props = defineProps<{
 }>();
 
 const applying = ref(false);
+const testingEmbedding = ref(false);
+const testResult = ref("");
+async function testEmbedding() {
+  testingEmbedding.value = true;
+  try {
+    const result = await testEmbeddingConnection();
+    testResult.value = `连接成功，向量维度 ${result.dimension}`;
+  } catch (error) { testResult.value = error instanceof Error ? error.message : String(error); }
+  finally { testingEmbedding.value = false; await props.refreshContextItems(); }
+}
 const filters = reactive({
   userId: "",
   scope: "" as ContextItemFilters["scope"],
@@ -77,6 +88,13 @@ syncFiltersFromState();
 
 <template>
   <div class="flex flex-col gap-4">
+    <section class="flex flex-col gap-2 text-small text-text-secondary">
+      <p>向量模型：{{ status?.embedding.modelRefs.join('、') || '未配置' }}</p>
+      <p>状态：{{ !embeddingAvailable ? '配置不可用' : status?.embedding.health === 'healthy' ? '最近请求成功' : status?.embedding.health === 'failed' ? '最近请求失败' : '已配置，尚未验证' }}</p>
+      <p v-if="status?.embedding.lastError" class="text-danger">{{ status.embedding.lastError }}</p>
+      <button class="btn-secondary" :disabled="actionBusy || testingEmbedding || !embeddingAvailable" @click="testEmbedding">{{ testingEmbedding ? '正在测试…' : '使用合成文本测试连接' }}</button>
+      <p v-if="testResult">{{ testResult }}</p>
+    </section>
     <section class="flex flex-col gap-3">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2 text-small font-medium text-text-primary">

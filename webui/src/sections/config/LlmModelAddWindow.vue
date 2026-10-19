@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModelOperationEditor from "./ModelOperationEditor.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { AlertCircle, Check, DownloadCloud, RefreshCw, Search } from "lucide-vue-next";
 import {
@@ -13,7 +14,6 @@ import {
   WorkbenchTabStrip,
   WorkbenchTextInput,
   type WorkbenchDataTableColumn,
-  type WorkbenchMultiSelectOption,
   type WorkbenchTabStripItem
 } from "@workbench-kit/vue";
 import {
@@ -36,34 +36,17 @@ interface ModelDraft {
   upstreamModel: string;
   alias: string;
   aliasTouched: boolean;
-  capabilities: Record<string, string | boolean>;
+  profile: Record<string, unknown>;
 }
 
 const props = defineProps<LlmModelAddWindowProps>();
-
-/** 与后端 createProviderModelCapabilityDraft 保持一致的能力默认值；修改时同步两侧。 */
-function defaultCapabilitiesForProviderType(providerType: unknown): Record<string, string | boolean> {
-  const capabilities: Record<string, string | boolean> = {
-    modelType: "chat",
-    supportsThinking: false,
-    thinkingControllable: true,
-    supportsVision: false,
-    supportsAudioInput: false,
-    supportsTools: true,
-    preserveThinking: false
-  };
-  if (providerType !== "lmstudio" && providerType !== "anthropic") {
-    capabilities.supportsSearch = false;
-  }
-  return capabilities;
-}
 
 function createEmptyDraft(): ModelDraft {
   return {
     upstreamModel: "",
     alias: "",
     aliasTouched: false,
-    capabilities: defaultCapabilitiesForProviderType(props.provider.type)
+    profile: {}
   };
 }
 
@@ -92,19 +75,9 @@ const MODE_TABS: WorkbenchTabStripItem[] = [
 const MODEL_TYPE_OPTIONS = [
   { value: "chat", label: "对话" },
   { value: "transcription", label: "转写" },
-  { value: "image_generation", label: "生图" },
+  { value: "image", label: "生图" },
   { value: "embedding", label: "向量" }
 ];
-
-const CAPABILITY_OPTIONS: Record<string, { label: string; description: string }> = {
-  supportsThinking: { label: "思考", description: "模型可以生成思考内容" },
-  thinkingControllable: { label: "思考可控", description: "请求可以控制是否启用思考" },
-  supportsVision: { label: "视觉", description: "模型可以接收图片输入" },
-  supportsAudioInput: { label: "音频输入", description: "模型可以接收音频输入" },
-  supportsTools: { label: "工具调用", description: "模型可以发起工具调用" },
-  supportsSearch: { label: "联网搜索", description: "模型支持供应商原生搜索" },
-  preserveThinking: { label: "保留思考", description: "在后续请求中保留思考内容" }
-};
 
 const MODEL_COLUMNS: WorkbenchDataTableColumn<ProviderModelSlot>[] = [
   { key: "upstreamModel", title: "模型", width: "minmax(10rem, 1fr)", cellClass: "font-mono text-text-secondary" },
@@ -126,10 +99,11 @@ const query = ref("");
 const fetchedModels = computed(() => fetched.value?.models ?? []);
 const filteredModels = computed(() => {
   const normalizedQuery = query.value.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return fetchedModels.value;
-  }
-  return fetchedModels.value.filter(slot => (
+  return fetchedModels.value.filter(slot => {
+    const known = MODEL_TYPE_OPTIONS.filter(option => slot.profile[option.value] !== undefined).map(option => option.value);
+    return (operationFilter.value === "all" || known.length === 0 || known.includes(operationFilter.value))
+      && (operationFilter.value !== "unknown" || known.length === 0);
+  }).filter(slot => (
     slot.upstreamModel.toLowerCase().includes(normalizedQuery)
     || slot.alias.toLowerCase().includes(normalizedQuery)
   ));
@@ -142,7 +116,7 @@ function selectModel(slot: ProviderModelSlot) {
     upstreamModel: slot.upstreamModel,
     alias: slot.alias,
     aliasTouched: false,
-    capabilities: { ...slot.capabilities }
+    profile: JSON.parse(JSON.stringify(slot.profile))
   };
 }
 
@@ -160,7 +134,7 @@ async function fetchModels() {
     fetched.value = result;
     const nextSelection = result.models.find(slot => slot.upstreamModel === previousSelection) ?? result.models[0];
     if (nextSelection) {
-      selectModel(nextSelection);
+      if (nextSelection.upstreamModel !== previousSelection) selectModel(nextSelection);
     } else {
       catalogDraft.value = createEmptyDraft();
     }
@@ -181,23 +155,11 @@ function findExistingModel(upstreamModel: string): { alias: string; profile: Rec
   return null;
 }
 
-function capabilitiesFromProfile(profile: Record<string, unknown>): Record<string, string | boolean> {
-  const capabilities = defaultCapabilitiesForProviderType(props.provider.type);
-  for (const key of Object.keys(capabilities)) {
-    const value = profile[key];
-    if (typeof value === "string" || typeof value === "boolean") {
-      capabilities[key] = value;
-    }
-  }
-  return capabilities;
-}
-
 function updateManualUpstreamModel(value: string) {
   const existing = findExistingModel(value.trim());
   manualDraft.value.upstreamModel = value;
-  manualDraft.value.capabilities = existing
-    ? capabilitiesFromProfile(existing.profile)
-    : defaultCapabilitiesForProviderType(props.provider.type);
+  manualDraft.value.profile = existing ? JSON.parse(JSON.stringify(existing.profile)) : {};
+  delete manualDraft.value.profile.upstreamModel;
   if (existing) {
     manualDraft.value.alias = existing.alias;
     manualDraft.value.aliasTouched = false;
@@ -237,26 +199,40 @@ const aliasError = computed(() => {
   return "";
 });
 
-const capabilityOptions = computed<WorkbenchMultiSelectOption[]>(() => (
-  Object.keys(activeDraft.value.capabilities)
-    .filter(key => key !== "modelType")
-    .map(key => ({ value: key, ...(CAPABILITY_OPTIONS[key] ?? { label: key, description: "" }) }))
-));
-const selectedCapabilities = computed({
-  get: () => Object.entries(activeDraft.value.capabilities)
-    .filter(([key, value]) => key !== "modelType" && value === true)
-    .map(([key]) => key),
+const selectedOperations = computed({
+  get: () => MODEL_TYPE_OPTIONS.filter(option => activeDraft.value.profile[option.value] !== undefined).map(option => option.value),
   set: (selected: string[]) => {
-    const selectedSet = new Set(selected);
-    for (const key of Object.keys(activeDraft.value.capabilities)) {
-      if (key !== "modelType" && typeof activeDraft.value.capabilities[key] === "boolean") {
-        activeDraft.value.capabilities[key] = selectedSet.has(key);
-      }
+    for (const { value } of MODEL_TYPE_OPTIONS) {
+      if (selected.includes(value)) activeDraft.value.profile[value] ??= {};
+      else delete activeDraft.value.profile[value];
     }
   }
 });
+const operationFilter = ref("all");
+const filterOptions = [{ value: "all", label: "全部用途" }, ...MODEL_TYPE_OPTIONS, { value: "unknown", label: "用途未知" }];
+const selectedSlot = computed(() => fetchedModels.value.find(slot => slot.upstreamModel === activeDraft.value.upstreamModel));
+interface SuggestedChange { path: string[]; current: unknown; suggested: unknown }
+const suggestedChanges = computed(() => {
+  const changes: SuggestedChange[] = [];
+  function visit(current: Record<string, unknown>, suggestion: Record<string, unknown>, path: string[]) {
+    for (const [key, value] of Object.entries(suggestion)) {
+      const existing = current[key];
+      if (value && typeof value === "object" && !Array.isArray(value) && existing && typeof existing === "object" && !Array.isArray(existing)) {
+        visit(existing as Record<string, unknown>, value as Record<string, unknown>, [...path, key]);
+      } else if (JSON.stringify(existing) !== JSON.stringify(value)) changes.push({ path: [...path, key], current: existing, suggested: value });
+    }
+  }
+  if (selectedSlot.value) visit(activeDraft.value.profile, selectedSlot.value.suggested, []);
+  return changes;
+});
+function applySuggestion(change: SuggestedChange) {
+  let target = activeDraft.value.profile;
+  for (const key of change.path.slice(0, -1)) target = target[key] as Record<string, unknown>;
+  target[change.path.at(-1)!] = JSON.parse(JSON.stringify(change.suggested));
+}
 const canSubmit = computed(() => (
   activeDraft.value.upstreamModel.trim().length > 0
+  && selectedOperations.value.length > 0
   && aliasValid.value
   && !aliasCollidesWithExisting.value
 ));
@@ -269,7 +245,7 @@ watch(
       ? {
           upstreamModel: activeDraft.value.upstreamModel.trim(),
           alias: activeDraft.value.alias.trim(),
-          capabilities: { ...activeDraft.value.capabilities }
+          profile: JSON.parse(JSON.stringify(activeDraft.value.profile))
         } satisfies LlmModelAddEntry
       : undefined;
     props.values.canSubmit = canSubmit.value;
@@ -315,6 +291,8 @@ onMounted(() => {
             <WorkbenchButton :icon="RefreshCw" :label="fetching ? '正在刷新' : '刷新'" :disabled="fetching" :class="fetching ? '[&_svg]:animate-spin' : ''" @click="fetchModels" />
           </div>
 
+          <WorkbenchSelect v-model="operationFilter" :options="filterOptions" />
+          <p v-for="warning in fetched?.warnings ?? []" :key="warning" class="text-small text-danger">{{ warning }}</p>
           <div v-if="fetched" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-small text-text-subtle">
             <span>共 {{ fetchedModels.length }} 个</span>
             <span class="text-success">{{ newModelCount }} 个可添加</span>
@@ -331,7 +309,7 @@ onMounted(() => {
               <RefreshCw class="size-4 animate-spin" />
               正在读取供应商模型清单…
             </div>
-            <div v-else-if="fetchError" class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <div v-else-if="fetchError && !fetched" class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
               <AlertCircle class="size-6 text-danger" />
               <div>
                 <p class="text-text-secondary">无法读取模型清单</p>
@@ -400,17 +378,21 @@ onMounted(() => {
                 </div>
               </WorkbenchFormField>
 
-              <WorkbenchFormField label="模型类型" for-id="model-type">
-                <WorkbenchSelect id="model-type" v-model="activeDraft.capabilities.modelType as string" :options="MODEL_TYPE_OPTIONS" />
+              <WorkbenchFormField label="模型用途" hint="可同时选择多种用途。清单未声明用途时，请按实际接口能力选择。" required>
+                <WorkbenchMultiSelect v-model="selectedOperations" :options="MODEL_TYPE_OPTIONS" placeholder="选择用途" />
               </WorkbenchFormField>
-
-              <WorkbenchFormField label="模型能力" hint="决定模型可接收的输入及可用功能，之后仍可在目录表单中调整。">
-                <WorkbenchMultiSelect v-model="selectedCapabilities" :options="capabilityOptions" placeholder="选择模型能力" search-placeholder="搜索能力" empty-message="没有可配置的能力" />
-              </WorkbenchFormField>
-
+              <p v-if="mode === 'catalog' && selectedSlot" class="break-all text-small text-text-subtle">发现来源：{{ selectedSlot.sources.join(' · ') }}</p>
+              <details v-if="suggestedChanges.length" class="text-small text-text-secondary">
+                <summary>清单与当前设置有 {{ suggestedChanges.length }} 处差异（逐项选择应用）</summary>
+                <div v-for="change in suggestedChanges" :key="change.path.join('.')" class="my-2 flex flex-wrap items-center gap-2">
+                  <span class="break-all">{{ change.path.join('.') }}：{{ JSON.stringify(change.current) ?? '未设置' }} → {{ JSON.stringify(change.suggested) }}</span>
+                  <WorkbenchButton label="应用此项" @click="applySuggestion(change)" />
+                </div>
+              </details>
+              <ModelOperationEditor v-model="activeDraft.profile" :operations="selectedOperations" />
               <div v-if="isUpdating" class="flex items-start gap-2 rounded-md border border-border-subtle bg-surface-muted px-3 py-2 text-small text-text-secondary">
                 <Check class="mt-0.5 size-4 shrink-0 text-success" />
-                此模型已配置，提交后会更新其类型与能力，并保留已有 API 参数和图像生成参数。
+                此模型已配置；发现结果仅填充缺失字段，已有设置保持不变。
               </div>
             </template>
           </WorkbenchCard>

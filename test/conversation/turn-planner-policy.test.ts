@@ -61,7 +61,7 @@ test("route equivalence ignores aliases but preserves parameters, providers and 
   value.llm.routingPresets.test!.mainLarge = ["alias"];
   assert.equal(areMainModelRoutesEquivalent(value), true);
   assert.equal(resolveModelSelfUpgradePlan({ config: value, currentModelRefs: ["main"], enabled: true }), null);
-  value.llm.models.alias.apiParameters = { temperature: 0.3 };
+  value.llm.models.alias.chat!.defaults = { temperature: 0.3 };
   assert.equal(areMainModelRoutesEquivalent(value), false);
   assert.ok(resolveModelSelfUpgradePlan({ config: value, currentModelRefs: ["main"], enabled: true }));
   value.llm.models.alias = structuredClone(value.llm.models.main!);

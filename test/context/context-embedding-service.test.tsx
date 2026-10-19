@@ -14,21 +14,12 @@ test("ContextEmbeddingService reports routing and provider availability without 
   );
   assert.deepEqual(disabled.getAvailability(), {
     available: false,
-    modelRefs: ["embedding"],
+    modelRefs: ["test/embedding"],
     reason: "llm_disabled"
   });
 
   const notConfigured = new ContextEmbeddingService(
-    createTestAppConfig({
-      llm: {
-        enabled: true,
-        routingPresets: {
-          test: {
-            embedding: []
-          }
-        }
-      }
-    }),
+    createTestAppConfig({ llm: { enabled: true }, context: { embedding: { model: null } } }),
     { isEmbeddingConfigured: () => true } as any,
     logger
   );
@@ -39,22 +30,13 @@ test("ContextEmbeddingService reports routing and provider availability without 
   });
 
   const invalidModel = new ContextEmbeddingService(
-    createTestAppConfig({
-      llm: {
-        enabled: true,
-        routingPresets: {
-          test: {
-            embedding: ["missing"]
-          }
-        }
-      }
-    }),
+    createTestAppConfig({ llm: { enabled: true }, context: { embedding: { model: { provider: "test", model: "missing" } } } }),
     { isEmbeddingConfigured: () => true } as any,
     logger
   );
   assert.deepEqual(invalidModel.getAvailability(), {
     available: false,
-    modelRefs: ["missing"],
+    modelRefs: ["test/missing"],
     reason: "model_configuration_invalid"
   });
 
@@ -65,7 +47,7 @@ test("ContextEmbeddingService reports routing and provider availability without 
   );
   assert.deepEqual(unavailable.getAvailability(), {
     available: false,
-    modelRefs: ["embedding"],
+    modelRefs: ["test/embedding"],
     reason: "model_unavailable"
   });
 
@@ -76,22 +58,13 @@ test("ContextEmbeddingService reports routing and provider availability without 
   );
   assert.deepEqual(available.getAvailability(), {
     available: true,
-    modelRefs: ["embedding"]
+    modelRefs: ["test/embedding"]
   });
 });
 
 test("ContextEmbeddingService rejects embedding calls while unavailable", async () => {
   const service = new ContextEmbeddingService(
-    createTestAppConfig({
-      llm: {
-        enabled: true,
-        routingPresets: {
-          test: {
-            embedding: []
-          }
-        }
-      }
-    }),
+    createTestAppConfig({ llm: { enabled: true }, context: { embedding: { model: null } } }),
     {
       isEmbeddingConfigured: () => false,
       async embedTexts() {

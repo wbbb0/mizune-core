@@ -1,3 +1,4 @@
+import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import YAML from "yaml";
@@ -13,7 +14,7 @@ import {
   type FileConfig,
   type LlmCatalogConfig
 } from "#config/configModel.ts";
-import { deepMergeAllReplaceArrays, parseConfig } from "#data/schema/index.ts";
+import { parseConfig } from "#data/schema/index.ts";
 import type { BaseSchema } from "#data/schema/base.ts";
 import { ObjectSchema, resolveShapeEntrySchema } from "#data/schema/composites.ts";
 import { isPlainObject } from "#data/schema/helpers.ts";
@@ -100,7 +101,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     loadYamlFile(instanceConfigPath),
     instanceConfigPath
   );
-  const runtimeConfig = parseConfig(fileConfigSchema, deepMergeAllReplaceArrays([
+  const runtimeConfig = parseConfig(fileConfigSchema, mergeConfigLayers([
     globalConfig,
     instanceConfig
   ]));

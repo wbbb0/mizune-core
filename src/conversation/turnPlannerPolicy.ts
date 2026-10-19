@@ -50,8 +50,8 @@ export function resolveTurnPlannerOutputTokenLimit(config: AppConfig, modelRefs:
     const model = config.llm.models[ref];
     const provider = model && config.llm.providers[model.provider];
     if (!model || !provider) return false;
-    if (!model.supportsThinking) return true;
-    if (!model.thinkingControllable) return false;
+    if (!model.chat?.capabilities.supportsThinking) return true;
+    if (!model.chat?.capabilities.thinkingControllable) return false;
     switch (provider.type) {
       case "anthropic":
       case "deepseek":

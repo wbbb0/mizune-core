@@ -1,3 +1,4 @@
+import { OpenRouterProvider } from "./providers/openRouterProvider.ts";
 import type { LlmProvider, LlmProviderRequestContext } from "./providerTypes.ts";
 import { AnthropicProvider } from "./providers/anthropicProvider.ts";
 import { DashScopeProvider } from "./providers/dashScopeProvider.ts";
@@ -10,6 +11,7 @@ import { VertexAiProvider } from "./providers/vertexAiProvider.ts";
 import { VertexExpressProvider } from "./providers/vertexExpressProvider.ts";
 
 const providers = new Map<string, LlmProvider>([
+  ["openrouter", new OpenRouterProvider()],
   ["openai", new OpenAiProvider()],
   ["openai_responses", new OpenAiResponsesProvider()],
   ["deepseek", new DeepSeekProvider()],
@@ -33,4 +35,8 @@ export function getLlmProvider(context: LlmProviderRequestContext): LlmProvider 
     );
   }
   return provider;
+}
+
+export function resolveProviderBaseUrl(config: LlmProviderRequestContext["providerConfig"]): string | null {
+  return providers.get(config.type)?.resolveBaseUrl(config) ?? null;
 }

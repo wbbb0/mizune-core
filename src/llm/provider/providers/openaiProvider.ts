@@ -1,8 +1,10 @@
+import { OpenRouterReasoning } from "../openRouterReasoning.ts";
+import { getGenerationSettings } from "../generationSettings.ts";
 import { LlmProviderPolicyError } from "../providerProtocolError.ts";
 import { readProviderSseData, throwIfProviderError } from "../providerSseReader.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
 import { buildOpenAiCompatibleModelApiParameters } from "../modelApiParameters.ts";
-import { getNativeSearchEnableKey } from "../nativeSearch.ts";
+import { getNativeSearchEnableKeyFromContext } from "../nativeSearch.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
@@ -46,6 +48,8 @@ interface ChatCompletionChunkPayload {
       refusal?: string;
       content?: string;
       reasoning_content?: string;
+      reasoning?: string;
+      reasoning_details?: unknown[];
       tool_calls?: Array<{
         index?: number;
         id?: string;
@@ -106,8 +110,8 @@ export class OpenAiProvider implements LlmProvider {
     const endpoint = `${context.baseUrl.replace(/\/$/, "")}/chat/completions`;
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
     const resolvedEnableThinking = params.enableThinkingOverride ?? false;
-    const nativeSearchEnableKey = getNativeSearchEnableKey(context.config, context.modelRef);
-    const requestMessages = buildOpenAiRequestMessages(params.messages);
+    const nativeSearchEnableKey = getNativeSearchEnableKeyFromContext(context);
+    const requestMessages = buildOpenAiRequestMessages(params.messages, context.providerConfig.type === "openrouter");
     const requestTools = buildOpenAiRequestTools(context, params.tools ?? []);
     const requestBody: Record<string, unknown> = {
       model: context.model,
@@ -117,12 +121,15 @@ export class OpenAiProvider implements LlmProvider {
         include_usage: true
       },
       ...buildOpenAiCompatibleModelApiParameters(context),
-      ...(params.maxOutputTokensOverride ? { max_completion_tokens: params.maxOutputTokensOverride } : {}),
+
       ...(requestTools.length > 0 ? { tools: requestTools } : {})
     };
 
     if (params.maxOutputTokensOverride) {
       delete requestBody.max_tokens;
+      delete requestBody.max_completion_tokens;
+      const outputField = context.providerConfig.type === "openai" ? context.providerConfig.maxOutputTokenField : "max_tokens";
+      requestBody[outputField] = params.maxOutputTokensOverride;
     }
     const thinkingFeature = getProviderFeatureFromContext(context, "thinking");
     if (thinkingFeature?.type === "flag") {
@@ -169,6 +176,7 @@ export class OpenAiProvider implements LlmProvider {
         model: context.model
       });
       const toolCalls = new Map<number, LlmToolCall>();
+      const reasoning = new OpenRouterReasoning();
       let finishReason: string | null = null;
       let responseId: string | undefined;
       let upstreamProvider: string | undefined;
@@ -200,10 +208,15 @@ export class OpenAiProvider implements LlmProvider {
         }
 
         const delta = payload.choices?.[0]?.delta;
-        if (typeof delta?.reasoning_content === "string") {
+        if (context.providerConfig.type === "openrouter" && reasoning.append(delta?.reasoning_details)) {
           timeoutController.markFirstResponseReceived();
           timeoutController.markReasoningStarted();
-          accumulator.appendReasoningDelta(delta.reasoning_content, params.onReasoningDelta);
+        }
+        const reasoningDelta = context.providerConfig.type === "openrouter" ? delta?.reasoning ?? delta?.reasoning_content : delta?.reasoning_content;
+        if (typeof reasoningDelta === "string" && reasoningDelta) {
+          timeoutController.markFirstResponseReceived();
+          timeoutController.markReasoningStarted();
+          accumulator.appendReasoningDelta(reasoningDelta, params.onReasoningDelta);
         }
         if (delta?.content) {
           timeoutController.markFirstResponseReceived();
@@ -236,7 +249,8 @@ export class OpenAiProvider implements LlmProvider {
         text: accumulator.text.trim(),
         reasoningContent: accumulator.reasoningContent,
         toolCalls: Array.from(toolCalls.values()),
-        usage: accumulator.usage
+        usage: accumulator.usage,
+        ...(reasoning.details.length ? { assistantMetadata: { openRouterReasoningDetails: reasoning.details } } : {})
       };
     } catch (error) {
       if (timeoutController.controller.signal.aborted) {
@@ -273,13 +287,14 @@ function buildOpenAiRequestTools(
   return tools;
 }
 
-function buildOpenAiRequestMessages(messages: LlmMessage[]): OpenAiRequestMessage[] {
+function buildOpenAiRequestMessages(messages: LlmMessage[], openrouter = false): OpenAiRequestMessage[] {
   return messages.map((message) => ({
     role: message.role,
     content: convertOpenAiMessageContent(message),
     ...(message.tool_calls ? { tool_calls: message.tool_calls } : {}),
     ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
-    ...(typeof message.reasoning_content === "string" ? { reasoning_content: message.reasoning_content } : {})
+    ...(typeof message.reasoning_content === "string" ? openrouter ? { reasoning: message.reasoning_content } : { reasoning_content: message.reasoning_content } : {}),
+    ...(openrouter && Array.isArray(message.providerMetadata?.openRouterReasoningDetails) ? { reasoning_details: message.providerMetadata.openRouterReasoningDetails } : {})
   }));
 }
 
@@ -337,7 +352,7 @@ function shouldSendLmStudioPreserveThinking(
   if (context.providerConfig.type !== "lmstudio") {
     return false;
   }
-  if (!enableThinking || context.modelProfile.preserveThinking !== true) {
+  if (!enableThinking || getGenerationSettings(context)?.preserveThinking !== true) {
     return false;
   }
 

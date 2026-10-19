@@ -65,7 +65,7 @@ function selectBuiltinToolDescriptors(options: BuiltinToolSelectionOptions) {
   const hideExternalSearchTool = shouldHideExternalSearchTool(options.config, options.modelRef);
   const modelSupportsTools = !options.config || !options.modelRef
     ? true
-    : (getPrimaryModelProfile(options.config, options.modelRef)?.supportsTools ?? true);
+    : (getPrimaryModelProfile(options.config, options.modelRef)?.chat?.capabilities.supportsTools ?? true);
 
   return modelSupportsTools
     ? descriptors

@@ -21,12 +21,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
           main: {
             provider: "googleTest",
             model: "gemini-test",
-            supportsThinking: true,
-            supportsVision: false,
-            supportsAudioInput: false,
-            supportsSearch: false,
-            supportsTools: true,
-            preserveThinking: false
+            chat: { capabilities: { supportsThinking: true, supportsVision: false, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
           }
         }
       }
@@ -82,12 +77,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
           main: {
             provider: "googleTest",
             model: "gemini-test",
-            supportsThinking: true,
-            supportsVision: false,
-            supportsAudioInput: false,
-            supportsSearch: false,
-            supportsTools: true,
-            preserveThinking: false
+            chat: { capabilities: { supportsThinking: true, supportsVision: false, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
           }
         }
       }
@@ -129,14 +119,12 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
       {
         provider: "test",
         model: "primary-model",
-        supportsThinking: true,
-        supportsTools: true
+        chat: { capabilities: { supportsThinking: true, supportsTools: true } }
       },
       {
         provider: "test",
         model: "fallback-model",
-        supportsThinking: true,
-        supportsTools: true
+        chat: { capabilities: { supportsThinking: true, supportsTools: true } }
       }
     ]), pino({ level: "silent" }));
 
@@ -321,22 +309,12 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
           main: {
             provider: "googleTest",
             model: "gemini-test",
-            supportsThinking: true,
-            supportsVision: false,
-            supportsAudioInput: false,
-            supportsSearch: false,
-            supportsTools: true,
-            preserveThinking: false
+            chat: { capabilities: { supportsThinking: true, supportsVision: false, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
           },
           fallback: {
             provider: "fallbackTest",
             model: "fallback-model",
-            supportsThinking: true,
-            supportsVision: false,
-            supportsAudioInput: false,
-            supportsSearch: false,
-            supportsTools: true,
-            preserveThinking: false
+            chat: { capabilities: { supportsThinking: true, supportsVision: false, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
           }
         }
       }

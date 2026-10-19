@@ -1,7 +1,7 @@
-import { estimateMessageContentTokens } from "#llm/shared/messageContentTokens.ts";
+import { estimateLlmMessagesTokens, estimateLlmToolsTokens } from "#llm/shared/requestTokenBudget.ts";
+export { estimateLlmMessagesTokens, estimateLlmToolsTokens } from "#llm/shared/requestTokenBudget.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { InternalToolResultItem, InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
-import { estimateTokens } from "#conversation/session/tokenEstimator.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
 import type { LlmToolDefinition } from "#llm/provider/providerTypes.ts";
 import { shouldUseToolResultReplayContent } from "./toolResultReplayPolicy.ts";
@@ -91,38 +91,6 @@ export function projectProviderWorkingMessagesForBudget(input: {
     compactedToolResults,
     toolsDisabled
   };
-}
-
-export function estimateLlmMessagesTokens(messages: LlmMessage[], config: AppConfig): number {
-  const weights = config.conversation.historyCompression.tokenEstimation;
-  return messages.reduce((sum, message) => (
-    sum
-      + estimateTokens(message.role, weights)
-      + estimateMessageContentTokens(message.content, weights)
-      + estimateTokens(message.tool_call_id ?? "", weights)
-      + estimateTokens(message.reasoning_content ?? "", weights)
-      + estimateToolCallsTokens(message, config)
-  ), 0);
-}
-
-export function estimateLlmToolsTokens(tools: LlmToolDefinition[], config: AppConfig): number {
-  if (tools.length === 0) {
-    return 0;
-  }
-  return estimateTokens(
-    JSON.stringify(tools),
-    config.conversation.historyCompression.tokenEstimation
-  );
-}
-
-function estimateToolCallsTokens(message: LlmMessage, config: AppConfig): number {
-  const weights = config.conversation.historyCompression.tokenEstimation;
-  return (message.tool_calls ?? []).reduce((sum, toolCall) => (
-    sum
-      + estimateTokens(toolCall.id, weights)
-      + estimateTokens(toolCall.function.name, weights)
-      + estimateTokens(toolCall.function.arguments, weights)
-  ), 0);
 }
 
 function renderMessageContentForTokenEstimate(content: LlmMessage["content"]): string {

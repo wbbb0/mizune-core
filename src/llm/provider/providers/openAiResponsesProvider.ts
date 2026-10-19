@@ -1,6 +1,7 @@
+import { getGenerationSettings } from "../generationSettings.ts";
 
 import { buildOpenAiResponsesModelApiParameters } from "../modelApiParameters.ts";
-import { getNativeSearchEnableKey } from "../nativeSearch.ts";
+import { getNativeSearchEnableKeyFromContext } from "../nativeSearch.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { requestOpenAiCompatibleEmbeddings } from "../openAiCompatEmbedding.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
@@ -164,7 +165,7 @@ function buildOpenAiResponsesRequestBody(
     setPropertyByPath(requestBody, thinkingFeature.path, enableThinking);
   } else if (
     enableThinking
-    && context.modelProfile.supportsThinking
+    && getGenerationSettings(context)?.capabilities.supportsThinking
   ) {
     const configuredReasoning = isRecord(requestBody.reasoning) ? requestBody.reasoning : {};
     requestBody.reasoning = {
@@ -173,8 +174,8 @@ function buildOpenAiResponsesRequestBody(
     };
   } else if (
     !enableThinking
-    && context.modelProfile.supportsThinking
-    && context.modelProfile.thinkingControllable
+    && getGenerationSettings(context)?.capabilities.supportsThinking
+    && getGenerationSettings(context)?.capabilities.thinkingControllable
   ) {
     const configuredReasoning = isRecord(requestBody.reasoning) ? requestBody.reasoning : {};
     requestBody.reasoning = {
@@ -183,7 +184,7 @@ function buildOpenAiResponsesRequestBody(
     };
   }
 
-  const nativeSearchEnableKey = getNativeSearchEnableKey(context.config, context.modelRef);
+  const nativeSearchEnableKey = getNativeSearchEnableKeyFromContext(context);
   if (nativeSearchEnableKey) {
     setPropertyByPath(requestBody, nativeSearchEnableKey, true);
   }

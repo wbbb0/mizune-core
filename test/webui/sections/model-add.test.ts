@@ -19,6 +19,7 @@ const createResourceEditorState = () => harness.state;
 const useWorkbenchWindows = () => harness.windows;
 const useWorkbenchToasts = () => ({ push: value => harness.errors.push(value) });
 const editorApi = {}, LlmModelAddWindow = {};
+const window = { innerWidth: 1280, innerHeight: 800 };
 const clearEditorMutations = () => {};
 export function setup(value) { harness = value; return useConfigSection(); }
 ${moduleSource}`)}`);
@@ -27,27 +28,47 @@ function setup(models: Record<string, unknown> = {}) {
   let definition: any;
   let resolveWindow: (value: unknown) => void = () => {};
   const errors: unknown[] = [];
+  let maximize: any;
   const state = {
     selectedKey: ref("llm_catalog"), model: ref(null), loading: ref(false), saving: ref(false), validating: ref(false),
     draftValue: ref({ provider: { models } }),
     updateDraft(value: any) { state.draftValue.value = value; }
   };
-  const section = factory.setup({ state, errors, windows: { open(value: any) {
-    definition = value;
-    return new Promise(resolve => { resolveWindow = resolve; });
-  } } });
+  const section = factory.setup({
+    state, errors, windows: {
+      setMaximized(_id: string, bounds: any) { maximize = bounds; },
+      openSync(value: any) {
+        definition = value;
+        return { id: "test-window" };
+      }
+    }
+  });
   const pending = section.beforeRecordMutation({ kind: "add", path: ["provider", "models"] });
-  return { state, errors, pending, action: definition.actions[0], close: () => resolveWindow({ reason: "close" }) };
+  return { state, errors, pending, maximize, action: definition.actions[0], close: () => resolveWindow({ reason: "close" }) };
 }
 
-const entry = { alias: "new_model", upstreamModel: "vendor/model", capabilities: { modelType: "chat", supportsTools: true } };
+const entry = {
+  alias: "new_model", upstreamModel: "vendor/model", profile: {
+    chat: { capabilities: { supportsTools: true } }
+  }
+};
 
 test("添加模型在关闭前写入响应式草稿，保留嵌套配置和期间的编辑", async () => {
-  const h = setup({ old: { upstreamModel: "old", apiParameters: reactive({ temperature: 0.5 }) } });
+  const h = setup({
+    old: {
+      upstreamModel: "old",
+      chat: { defaults: reactive({ temperature: 0.5 }) }
+    }
+  });
+  assert.equal(h.maximize.maximized, true);
+  assert.deepEqual(h.maximize.restoreBounds.position, { x: 0, y: 0 });
   h.state.draftValue.value.provider.models.another = { upstreamModel: "another" };
   h.action.run({ values: { canSubmit: true, entry } });
-  assert.deepEqual(h.state.draftValue.value.provider.models.new_model, { upstreamModel: entry.upstreamModel, ...entry.capabilities });
-  assert.deepEqual(h.state.draftValue.value.provider.models.old, { upstreamModel: "old", apiParameters: { temperature: 0.5 } });
+  assert.deepEqual(h.state.draftValue.value.provider.models.new_model, { upstreamModel: entry.upstreamModel, ...entry.profile });
+  assert.deepEqual(h.state.draftValue.value.provider.models.old, {
+    upstreamModel: "old",
+    chat: { defaults: { temperature: 0.5 } }
+  });
   assert.ok(h.state.draftValue.value.provider.models.another);
   assert.deepEqual(h.errors, []);
   h.close();
@@ -55,10 +76,14 @@ test("添加模型在关闭前写入响应式草稿，保留嵌套配置和期�
 });
 
 test("更新已有模型保留 API 参数；取消不修改草稿", async () => {
-  const h = setup({ new_model: { upstreamModel: entry.upstreamModel, apiParameters: { temperature: 0.2 }, imageParameters: { size: "1024x1024" } } });
-  h.action.run({ values: { canSubmit: true, entry } });
-  assert.deepEqual((h.state.draftValue.value.provider.models.new_model as any).apiParameters, { temperature: 0.2 });
-  assert.deepEqual((h.state.draftValue.value.provider.models.new_model as any).imageParameters, { size: "1024x1024" });
+  const h = setup({
+    new_model: {
+      upstreamModel: entry.upstreamModel,
+      chat: { defaults: { temperature: 0.2 } }
+    }
+  });
+  h.action.run({ values: { canSubmit: true, entry: { ...entry, profile: { chat: { defaults: { temperature: 0.2 } } } } } });
+  assert.deepEqual((h.state.draftValue.value.provider.models.new_model as any).chat.defaults, { temperature: 0.2 });
   h.close();
   await h.pending;
   const cancelled = setup();

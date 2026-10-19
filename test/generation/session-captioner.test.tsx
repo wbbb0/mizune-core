@@ -68,7 +68,7 @@ function createDeferred<T>() {
         enabled: true,
         models: {
           sessionCaptioner: {
-            supportsVision: false
+            chat: { capabilities: { supportsVision: false } }
           }
         },
         sessionCaptioner: {

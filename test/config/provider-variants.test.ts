@@ -22,14 +22,23 @@ test("provider catalog exports discriminated options and only applicable control
 
 test("known provider native search requires only model permission", () => {
   for (const type of ["deepseek", "google", "vertex", "vertex_express", "dashscope", "openai_responses"] as const) {
-    const catalog = llmCatalogFileSchema.parseFromObject({ demo: { type, ...(type === "vertex" ? { projectId: "test-project" } : {}), models: { flash: { upstreamModel: "flash", supportsSearch: true } } } });
+    const catalog = llmCatalogFileSchema.parseFromObject({
+      demo: {
+        type, ...(type === "vertex" ? { projectId: "test-project" } : {}), models: {
+          flash: {
+            upstreamModel: "flash",
+            chat: { capabilities: { supportsSearch: true }, searchEnabled: true }
+          }
+        }
+      }
+    });
     const normalized = normalizeLlmCatalog(catalog);
     const config = createLlmTestConfig();
     const context = { config, modelRef: "demo/flash", providerConfig: normalized.providers.demo!, modelProfile: normalized.models["demo/flash"]! } as any;
     const feature = getProviderFeatureFromContext(context, "search");
     assert.ok(feature, type);
     if (type === "deepseek") assert.deepEqual(feature, { type: "builtin_tool", tool: { type: "web_search_20250305", name: "web_search", max_uses: 3 } });
-    context.modelProfile.supportsSearch = false;
+    context.modelProfile.chat!.capabilities.supportsSearch = false;
     assert.equal(getProviderFeatureFromContext(context, "search"), null);
   }
 });
@@ -42,7 +51,7 @@ test("provider catalog validates search settings and preserves shared model iden
   assert.equal(result.providers.ds!.apiKey, "key");
   assert.equal(result.providers.ds!.search.maxUses, 7);
   assert.equal(result.models["ds/flash"]!.provider, "ds");
-  assert.equal(result.models["ds/flash"]!.supportsSearch, false);
+  assert.equal(result.models["ds/flash"]!.chat, undefined);
 });
 
 test("Google safety thresholds stay provider-specific and survive normalization", () => {

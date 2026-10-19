@@ -65,29 +65,17 @@ function createMediaToolVisibilityConfig(options: {
       },
       models: {
         main: {
-          supportsVision: options.mainSupportsVision ?? false
+          chat: { capabilities: { supportsVision: options.mainSupportsVision ?? false } }
         },
         visualFallback: {
           provider: "test",
           model: "fake-visual-fallback",
-          supportsThinking: false,
-          thinkingControllable: true,
-          supportsVision: true,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: true,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, thinkingControllable: true, supportsVision: true, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
         },
         inspector: {
           provider: "test",
           model: "fake-inspector",
-          supportsThinking: false,
-          thinkingControllable: true,
-          supportsVision: options.inspectorSupportsVision ?? true,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: false,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, thinkingControllable: true, supportsVision: options.inspectorSupportsVision ?? true, supportsAudioInput: false, supportsTools: false, supportsSearch: false }, preserveThinking: false }
         }
       },
       routingPresets: {
@@ -459,7 +447,8 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         type: "web_search_preview"
       }
     };
-    mainModel.supportsSearch = true;
+    mainModel.chat!.capabilities.supportsSearch = true;
+    mainModel.chat!.searchEnabled = true;
 
     const names = getBuiltinTools("owner", config, undefined, {
       modelRef: "main"
@@ -2738,7 +2727,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       assert.match(result.matches[0].snippet, /semantic answer/);
       const firstEmbeddingIndex = JSON.parse(await readFile(join(cacheDir, "embeddings.json"), "utf8"));
       assert.equal(firstEmbeddingIndex.embeddingProfileId, "embedding:test");
-      assert.match(firstEmbeddingIndex.cacheProfileId, /embedding-test/);
+      assert.match(firstEmbeddingIndex.cacheProfileId, /embedding:test/);
 
       const changedProfileContext = {
         ...context,
@@ -2780,7 +2769,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       assert.equal(rebuilt.embedding_cache_hit, false);
       const rebuiltEmbeddingIndex = JSON.parse(await readFile(join(cacheDir, "embeddings.json"), "utf8"));
       assert.equal(rebuiltEmbeddingIndex.embeddingProfileId, "embedding:next");
-      assert.match(rebuiltEmbeddingIndex.cacheProfileId, /embedding-next/);
+      assert.match(rebuiltEmbeddingIndex.cacheProfileId, /embedding:next/);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

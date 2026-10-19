@@ -69,7 +69,6 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           audioTranscription: [],
           turnPlanner: [],
           imageGenerator: [],
-          embedding: [],
           historyWindow: {
             maxRecentMessages: 50,
             maxImageReferences: 5
@@ -193,12 +192,12 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         models: {
           main: {
             provider: "test",
-            model: "gpt-test"
+            model: "gpt-test", chat: {}
           },
           transcription: {
             provider: "test",
             model: "gpt-test-transcription",
-            modelType: "transcription"
+            transcription: {}
           }
         },
         routingPresets: {
@@ -242,10 +241,10 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.equal(config.llm.models["test/main"]?.supportsAudioInput, false);
-      assert.equal(config.llm.models["test/main"]?.supportsSearch, false);
-      assert.equal(config.llm.models["test/main"]?.thinkingControllable, true);
-      assert.equal(config.llm.models["test/main"]?.preserveThinking, false);
+    assert.equal(config.llm.models["test/main"]?.chat?.capabilities.supportsAudioInput, undefined);
+    assert.equal(config.llm.models["test/main"]?.chat?.capabilities.supportsSearch, undefined);
+    assert.equal(config.llm.models["test/main"]?.chat?.capabilities.thinkingControllable, undefined);
+    assert.equal(config.llm.models["test/main"]?.chat?.preserveThinking, false);
       assert.equal(config.llm.providers.test?.harmBlockThreshold, "BLOCK_NONE");
       assert.deepEqual(config.llm.providers.test?.features, {});
     });
@@ -277,14 +276,12 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           main: {
             provider: "test",
             model: "gpt-test",
-            thinkingControllable: false,
-            supportsAudioInput: true,
-            supportsSearch: true
+            chat: { capabilities: { thinkingControllable: false, supportsAudioInput: true, supportsSearch: true } }
           },
           transcription: {
             provider: "test",
             model: "gpt-test-transcription",
-            modelType: "transcription"
+            transcription: {}
           }
         },
         routingPresets: {
@@ -341,9 +338,9 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           }
         }
       });
-      assert.equal(config.llm.models["test/main"]?.supportsAudioInput, true);
-      assert.equal(config.llm.models["test/main"]?.supportsSearch, true);
-      assert.equal(config.llm.models["test/main"]?.thinkingControllable, false);
+      assert.equal(config.llm.models["test/main"]?.chat?.capabilities.supportsAudioInput, true);
+      assert.equal(config.llm.models["test/main"]?.chat?.capabilities.supportsSearch, true);
+      assert.equal(config.llm.models["test/main"]?.chat?.capabilities.thinkingControllable, false);
     });
   });
 

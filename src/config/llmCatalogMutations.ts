@@ -20,6 +20,7 @@ export interface LlmProviderMutationImpact {
   exists: boolean;
   modelCount: number;
   referenceCount: number;
+  embeddingReferences: string[];
   references: LlmProviderReferenceImpact[];
   emptiedRoles: Array<{ preset: string; role: RoutingModelField }>;
 }
@@ -34,8 +35,7 @@ export const ROUTING_MODEL_FIELDS = [
   "imageInspector",
   "audioTranscription",
   "imageGenerator",
-  "turnPlanner",
-  "embedding"
+  "turnPlanner"
 ] as const satisfies ReadonlyArray<Exclude<keyof LlmRoutingPresetFile, "historyWindow" | "tokenLimits">>;
 
 export type RoutingModelField = typeof ROUTING_MODEL_FIELDS[number];
@@ -77,6 +77,7 @@ export function summarizeLlmProviderMutationImpact(
     exists: provider in catalog,
     modelCount: Object.keys(catalog[provider]?.models ?? {}).length,
     referenceCount,
+    embeddingReferences: [],
     references,
     emptiedRoles
   };

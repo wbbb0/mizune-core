@@ -26,7 +26,7 @@ export function getProviderFeatureFromContext(
   context: LlmProviderRequestContext,
   featureName: ProviderFeatureName
 ): ProviderFeatureConfig | null {
-  if (!isFeatureSupportedByModel(context.modelProfile, featureName)) {
+  if (!isFeatureSupportedByModel(context.modelProfile, featureName, context.operation)) {
     return null;
   }
   return resolveProviderFeature(context.providerConfig, featureName);
@@ -39,11 +39,12 @@ export function hasNativeSearchFeature(
   return getProviderFeature(config, modelRef, "search") != null;
 }
 
-function isFeatureSupportedByModel(modelProfile: ModelProfile, featureName: ProviderFeatureName): boolean {
+function isFeatureSupportedByModel(modelProfile: ModelProfile, featureName: ProviderFeatureName, operation: "chat" | "transcription" = "chat"): boolean {
+  const settings = modelProfile[operation];
   if (featureName === "thinking") {
-    return modelProfile.supportsThinking && modelProfile.thinkingControllable;
+    return settings?.capabilities.supportsThinking === true && settings.capabilities.thinkingControllable === true;
   }
-  return modelProfile.supportsSearch;
+  return settings?.capabilities.supportsSearch === true && settings.searchEnabled;
 }
 
 /** 用户只声明模型是否允许搜索；协议工具名称和字段由 provider 负责。 */
@@ -53,6 +54,7 @@ function resolveProviderFeature(provider: LlmProviderConfig, feature: ProviderFe
     if (override) return override;
   }
   if (feature === "thinking") {
+    if (provider.type === "openrouter") return { type: "flag", path: "reasoning.enabled" };
     return provider.type === "dashscope" ? { type: "flag", path: "enable_thinking" } : null;
   }
   switch (provider.type) {

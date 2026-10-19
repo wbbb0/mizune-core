@@ -5,7 +5,6 @@ default:
   tokenLimits:
     triggerTokens: 150000
     retainTokens: 7000
-
 balanced:
   mainSmall:
     - provider: dashscope
@@ -41,6 +40,3 @@ balanced:
   turnPlanner:
     - provider: dashscope
       model: fast
-  embedding:
-    - provider: dashscope
-      model: embedding

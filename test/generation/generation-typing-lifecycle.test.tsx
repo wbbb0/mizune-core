@@ -841,14 +841,12 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
             main: {
               provider: "test",
               model: "small-model",
-              modelType: "chat",
-              supportsTools: true
+              chat: { capabilities: { supportsTools: true } }
             },
             large: {
               provider: "test",
               model: "large-model",
-              modelType: "chat",
-              supportsTools: true
+              chat: { capabilities: { supportsTools: true } }
             }
           },
           routingPresets: {

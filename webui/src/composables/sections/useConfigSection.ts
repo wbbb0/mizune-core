@@ -124,8 +124,8 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     }
 
     const referenceSummary = impact.referenceCount > 0
-      ? `另有 ${impact.referenceCount} 条路由引用会${event.kind === "rename" ? "同步改名" : "一并移除"}。`
-      : "当前没有路由引用。";
+      ? `另有 ${impact.referenceCount} 条模型引用（含向量配置）会${event.kind === "rename" ? "同步改名" : "一并移除"}。`
+      : "当前没有模型引用。";
     const emptyRoleSummary = event.kind === "remove" && impact.emptiedRoles.length > 0
       ? `删除后将有 ${impact.emptiedRoles.length} 个路由角色变为空清单。`
       : "";
@@ -174,7 +174,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     const providerRecord = provider as Record<string, unknown>;
     const existingModels = (providerRecord.models as Record<string, unknown> | undefined) ?? {};
 
-    await windows.open<LlmModelAddDialogValues, void>({
+    const modelWindow = windows.openSync<LlmModelAddDialogValues, void>({
       kind: "dialog",
       title: `添加模型 · ${providerName}`,
       description: "从供应商清单选择，或手动填写模型；确认别名与能力后写入目录。",
@@ -217,9 +217,7 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
             }
             nextModels[entry.alias] = {
               upstreamModel: entry.upstreamModel.trim(),
-              ...entry.capabilities,
-              ...(existing?.imageParameters !== undefined ? { imageParameters: existing.imageParameters } : {}),
-              ...(existing?.apiParameters !== undefined ? { apiParameters: existing.apiParameters } : {})
+              ...cloneValue(entry.profile)
             };
             nextProvider.models = nextModels;
             state.updateDraft(nextDraft);
@@ -231,6 +229,15 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
       }]
     });
 
+    const width = window.innerWidth, height = window.innerHeight;
+    windows.setMaximized(modelWindow.id, {
+      maximized: true,
+      bounds: { position: { x: 0, y: 0 }, sizePx: { width, height } },
+      restoreBounds: {
+        position: { x: 0, y: 0 },
+        sizePx: { width: Math.min(960, width), height: Math.min(720, height) }
+      }
+    });
     return false;
   }
 

@@ -1159,9 +1159,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       safetyProjected.batchMessages,
       mediaContext.captionMap,
       {
-        supportsAudioInput: mainProfile?.supportsAudioInput,
-        supportsVision: mainProfile?.supportsVision,
-        shouldTranscribeAudio: !mainProfile?.supportsAudioInput,
+        supportsAudioInput: mainProfile?.chat?.capabilities.supportsAudioInput,
+        supportsVision: mainProfile?.chat?.capabilities.supportsVision,
+        shouldTranscribeAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
         visibleToolNames: input.visibleToolNames,
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }
@@ -1566,9 +1566,9 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       safetyProjected.batchMessages,
       mediaContext.captionMap,
       {
-        supportsAudioInput: mainProfile?.supportsAudioInput,
-        supportsVision: mainProfile?.supportsVision,
-        shouldTranscribeAudio: !mainProfile?.supportsAudioInput,
+        supportsAudioInput: mainProfile?.chat?.capabilities.supportsAudioInput,
+        supportsVision: mainProfile?.chat?.capabilities.supportsVision,
+        shouldTranscribeAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
         visibleToolNames: [],
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       }
@@ -1596,7 +1596,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       lateSystemMessages: input.lateSystemMessages,
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
-      includeBatchMediaCaptions: !mainProfile?.supportsVision,
+      includeBatchMediaCaptions: !mainProfile?.chat?.capabilities.supportsVision,
       persona: input.persona,
       phase: input.phase,
       missingFields: deps.setupStore.describeMissingFields(input.persona).map((item) => item.key),

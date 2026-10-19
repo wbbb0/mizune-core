@@ -103,6 +103,7 @@ export class ContextRetrievalService {
         return results;
       }
       const queryEmbedding = await this.embeddingService.embedTexts([queryText], {
+        purpose: "query",
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       });
       const profile = queryEmbedding.profile;
@@ -348,6 +349,8 @@ export class ContextRetrievalService {
     abortSignal?: AbortSignal;
   } = {}): Promise<{
     userCount: number;
+    totalCount: number;
+    remainingCount: number;
     embeddedCount: number;
     indexedCount: number;
     skippedCount: number;
@@ -357,6 +360,8 @@ export class ContextRetrievalService {
     if (!this.embeddingService.isAvailable()) {
       return {
         userCount: 0,
+        totalCount: 0,
+        remainingCount: 0,
         embeddedCount: 0,
         indexedCount: 0,
         skippedCount: 0,
@@ -367,6 +372,7 @@ export class ContextRetrievalService {
     const userIds = input.userId
       ? [input.userId]
       : this.contextStore.listUserIdsWithSearchDocuments();
+    let totalCount = 0;
     let embeddedCount = 0;
     let indexedCount = 0;
     let skippedCount = 0;
@@ -378,6 +384,7 @@ export class ContextRetrievalService {
         ...(input.embeddingBatchSize !== undefined ? { embeddingBatchSize: input.embeddingBatchSize } : {}),
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
       });
+      totalCount += this.contextStore.listUserSearchDocuments(userId).length;
       embeddedCount += result.embeddedCount;
       indexedCount += result.indexedCount;
       skippedCount += result.skippedCount;
@@ -387,6 +394,8 @@ export class ContextRetrievalService {
     }
     return {
       userCount: userIds.length,
+      totalCount,
+      remainingCount: Math.max(0, totalCount - indexedCount),
       embeddedCount,
       indexedCount,
       skippedCount,
@@ -477,7 +486,7 @@ export class ContextRetrievalService {
         userId: input.userId,
         embeddingProfileId: profile.profileId,
         embeddedCount,
-        skippedCount: Math.max(0, targetDocuments.length - batch.length)
+        skippedCount: Math.max(0, targetDocuments.length - embeddedCount)
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

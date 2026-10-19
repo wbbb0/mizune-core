@@ -5,7 +5,10 @@ import { LlmClient } from "../../../src/llm/llmClient.ts";
 import { createLlmTestConfig, createToolDefinition, withMockFetch } from "../../helpers/llm-test-support.tsx";
 
 function config(search = false) {
-  const c = createLlmTestConfig({ model: "deepseek-flash", supportsThinking: true, supportsSearch: search, preserveThinking: true });
+  const c = createLlmTestConfig({
+    model: "deepseek-flash",
+    chat: { capabilities: { supportsThinking: true, supportsSearch: search }, preserveThinking: true, searchEnabled: search }
+  });
   c.llm.providers.test!.type = "deepseek";
   delete c.llm.providers.test!.baseUrl;
   c.llm.providers.test!.search.maxUses = 2;
@@ -23,8 +26,9 @@ const answer = events([{ type: "text", text: "回答" }]);
 
 test("deepseek uses Anthropic endpoint, authentication, thinking and model parameters", async () => {
   const c = config();
-  c.llm.models.main!.apiParameters = { temperature: 0.65, maxOutputTokens: 2048 };
-  await withMockFetch([{ assertRequest(body: any, _: number, init: RequestInit, url: string) {
+  c.llm.models.main!.chat!.defaults = { temperature: 0.65, maxOutputTokens: 2048 };
+  await withMockFetch([{
+    assertRequest(body: any, _: number, init: RequestInit, url: string) {
     assert.equal(url, "https://api.deepseek.com/anthropic/v1/messages");
     assert.equal((init.headers as Record<string, string>)["x-api-key"], "test-key");
     assert.deepEqual(body.thinking, { type: "enabled" });
@@ -33,7 +37,8 @@ test("deepseek uses Anthropic endpoint, authentication, thinking and model param
     assert.equal(body.temperature, 0.65);
     assert.equal(body.system, "中文系统指令");
     assert.equal(body.stream_options, undefined);
-  }, payloads: answer }], async () => {
+  }, payloads: answer
+}], async () => {
     const r = await new LlmClient(c, pino({ level: "silent" })).generate({ messages: [{ role: "system", content: "中文系统指令" }, { role: "user", content: "你好" }], enableThinkingOverride: true });
     assert.equal(r.text, "回答");
     assert.equal(r.usage.outputTokens, 7);
@@ -50,16 +55,20 @@ test("deepseek search results survive ordinary tool continuation without becomin
   const first = events([server, result, { type: "tool_use", id: "call-1", name: "lookup", input: {} }]);
   let calls = 0;
   await withMockFetch([
-    { assertRequest(body: any) {
+    {
+      assertRequest(body: any) {
       assert.ok(body.tools.some((t: any) => t.type === "web_search_20250305"));
       assert.ok(body.tools.some((t: any) => t.name === "lookup" && t.input_schema));
-    }, payloads: first },
-    { assertRequest(body: any) {
+    }, payloads: first
+  },
+  {
+    assertRequest(body: any) {
       const assistant = body.messages.find((m: any) => m.role === "assistant");
       assert.deepEqual(assistant.content.slice(0, 2), [server, result]);
       assert.equal(body.messages.at(-1).content[0].type, "tool_result");
       assert.equal(body.messages.at(-1).content[0].tool_use_id, "call-1");
-    }, payloads: answer }
+    }, payloads: answer
+  }
   ], async () => {
     const r = await new LlmClient(c, pino({ level: "silent" })).generate({ messages: [{ role: "user", content: "查询" }], tools: [createToolDefinition("lookup")], toolExecutor: async () => { calls++; return "完成"; } });
     assert.equal(r.text, "回答");
@@ -68,11 +77,13 @@ test("deepseek search results survive ordinary tool continuation without becomin
 });
 
 test("deepseek disabled search omits server tool and disabled thinking omits effort", async () => {
-  await withMockFetch([{ assertRequest(body: any) {
+  await withMockFetch([{
+    assertRequest(body: any) {
     assert.equal(body.tools, undefined);
     assert.deepEqual(body.thinking, { type: "disabled" });
     assert.equal(body.output_config, undefined);
-  }, payloads: answer }], async () => {
+  }, payloads: answer
+}], async () => {
     await new LlmClient(config(), pino({ level: "silent" })).generate({ messages: [{ role: "user", content: "你好" }], enableThinkingOverride: false });
   });
 });
@@ -118,10 +129,12 @@ for (const type of ["deepseek", "anthropic"] as const) {
   test(`${type} preserves planner output limit override`, async () => {
     const c = config();
     c.llm.providers.test!.type = type;
-    c.llm.models.main!.apiParameters = { maxOutputTokens: 8192 };
-    await withMockFetch([{ assertRequest(body: any) {
+    c.llm.models.main!.chat!.defaults = { maxOutputTokens: 8192 };
+    await withMockFetch([{
+      assertRequest(body: any) {
       assert.equal(body.max_tokens, 512);
-    }, payloads: answer }], async () => {
+    }, payloads: answer
+  }], async () => {
       await new LlmClient(c, pino({ level: "silent" })).generate({
         messages: [{ role: "user", content: "你好" }], enableThinkingOverride: false, maxOutputTokensOverride: 512
       });

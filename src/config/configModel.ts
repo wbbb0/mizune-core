@@ -1,4 +1,4 @@
-import { modelApiParametersSchema, createModelApiParametersSchema } from "./modelApiParameterSchema.ts";
+import { createModelOperationShape } from "./modelOperations.ts";
 import { llmProviderTypes, llmProviderDefinitions, type LlmProviderType } from "./llmProviderDefinitions.ts";
 import { createSchemaTemplate, parseConfig, s, type Infer } from "#data/schema/index.ts";
 
@@ -9,33 +9,15 @@ const createCatalogAliasSchema = () => s.string()
   .nonempty()
   .refine((value) => !value.includes("/"), "must not contain '/'");
 
-const modelProfileCapabilitySchemaShape = {
-  modelType: s.enum(["chat", "transcription", "image_generation", "embedding"] as const).title("模型类型").default("chat"),
-  supportsThinking: s.boolean().title("支持思考").default(false),
-  thinkingControllable: s.boolean().title("可控制思考").default(true),
-  supportsVision: s.boolean().title("支持视觉").default(false),
-  supportsAudioInput: s.boolean().title("支持音频输入").default(false),
-  supportsSearch: s.boolean().title("允许联网搜索").describe("模型支持联网时启用。已知供应商自动配置原生搜索，无需填写工具名称。").default(false),
-  supportsTools: s.boolean().title("支持工具").default(true),
-  preserveThinking: s.boolean().title("保留历史思考").default(false),
-  imageParameters: s.object({
-    size: s.string().trim().nonempty().title("图片尺寸").optional(),
-    quality: s.string().trim().nonempty().title("生成质量").optional(),
-    output_format: s.enum(["png", "jpeg", "webp"] as const).title("输出格式").optional(),
-    response_format: s.enum(["b64_json", "url"] as const).title("响应格式（兼容服务）").describe("默认不发送；GPT Image 不支持此参数。").optional()
-  }).title("图像生成参数").describe("仅用于标准 Images API；留空使用此模型的上游默认值，与对话生成参数独立。").optional(),
-  apiParameters: modelApiParametersSchema
-};
-
 const modelProfileSchema = s.object({
   provider: s.string().trim().nonempty().dynamicRef("llm_provider_names").title("Provider"),
   model: s.string().trim().nonempty().title("模型名"),
-  ...modelProfileCapabilitySchemaShape
+  ...createModelOperationShape()
 }).title("模型配置").describe("定义一个模型别名对应的 provider 能力与特性。").default(emptyObject);
 
 const catalogModelProfileSchema = s.object({
   upstreamModel: s.string().trim().nonempty().title("上游模型名"),
-  ...modelProfileCapabilitySchemaShape
+  ...createModelOperationShape()
 }).title("模型配置").describe("定义 provider 内局部唯一的模型别名及其上游模型名与能力。").default(emptyObject);
 
 const createModelTargetRefSchema = (optionKey: string) => s.object({
@@ -73,7 +55,6 @@ const llmRoutingPresetSchema = s.object({
   audioTranscription: createModelRefListSchema().title("音频转写"),
   turnPlanner: createModelRefListSchema().title("轮次规划"),
   imageGenerator: createModelRefListSchema().title("图像生成"),
-  embedding: createModelRefListSchema().title("向量模型"),
   historyWindow: routingPresetHistoryWindowSchema.optional(),
   tokenLimits: routingPresetTokenLimitsSchema.optional()
 }).title("模型路由预设").describe("为各个模型角色提供统一的模型引用列表。");
@@ -86,10 +67,9 @@ const llmRoutingPresetFileSchema = s.object({
   sessionCaptioner: createModelTargetListSchema().title("会话标题生成"),
   imageCaptioner: createModelTargetListSchema().title("图片描述"),
   imageInspector: createModelTargetListSchema().title("图片精读"),
-  audioTranscription: createModelTargetListSchema().title("音频转写"),
+  audioTranscription: s.oneOrMany(createModelTargetRefSchema("llm_transcription_model_targets")).optional().title("音频转写"),
   turnPlanner: createModelTargetListSchema().title("轮次规划"),
   imageGenerator: s.oneOrMany(createModelTargetRefSchema("llm_image_model_targets")).optional().title("图像生成"),
-  embedding: createModelTargetListSchema().title("向量模型"),
   historyWindow: routingPresetHistoryWindowSchema.optional(),
   tokenLimits: routingPresetTokenLimitsSchema.optional()
 }).title("模型路由预设").describe("以 provider 与局部模型别名为各模型角色配置候选目标。");
@@ -269,6 +249,7 @@ const conversationConfigSchema = s.object({
 
 const contextConfigSchema = s.object({
   embedding: s.object({
+    model: s.union([createModelTargetRefSchema("llm_embedding_model_targets"), s.literal(null)] as const).title("向量模型").describe("完整选择供应商与模型；null 禁用并阻断全局继承。").optional(),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(30000),
     textPreprocessVersion: s.string().trim().nonempty().title("文本预处理版本").default("v1"),
     chunkerVersion: s.string().trim().nonempty().title("切分版本").default("user-facts-v1")
@@ -645,7 +626,6 @@ export const llmRoutingPresetCatalogSchema = s.record(
 
 function createProviderCatalogVariant<T extends LlmProviderType>(type: T) {
   const definition = llmProviderDefinitions[type];
-  const { supportsSearch, ...baseCapabilities } = modelProfileCapabilitySchemaShape;
   return s.object({
     type: s.literal(type).title("供应商类型").default(type),
     baseUrl: s.string().url().nonempty().title("接口地址（可选覆盖）")
@@ -662,9 +642,7 @@ function createProviderCatalogVariant<T extends LlmProviderType>(type: T) {
     ...(type === "deepseek" ? { search: llmProviderSchemaShape.search } : {}),
     models: s.record(createCatalogAliasSchema(), s.object({
       upstreamModel: s.string().trim().nonempty().title("上游模型名"),
-      ...baseCapabilities,
-      apiParameters: createModelApiParametersSchema(type),
-      ...(definition.search !== "none" ? { supportsSearch } : {})
+      ...createModelOperationShape(type)
     }).title("模型配置").default(emptyObject)).title("模型清单").default({})
   }).title(definition.title)
     .refine(value => type !== "vertex" || Boolean(value.baseUrl || value.projectId), "Vertex 需要填写项目 ID 或自定义接口地址");

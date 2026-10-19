@@ -54,7 +54,7 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
 
   test("same-round reasoning relay remains enabled even when preserveThinking is disabled", async () => {
     const client = new LlmClient(createLlmTestConfig({
-      preserveThinking: false
+      chat: { preserveThinking: false }
     }), pino({ level: "silent" }));
 
     await withMockFetch([
@@ -138,7 +138,7 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
 
   test("incoming assistant reasoning_content is stripped when preserveThinking is disabled", async () => {
     const client = new LlmClient(createLlmTestConfig({
-      preserveThinking: false
+      chat: { preserveThinking: false }
     }), pino({ level: "silent" }));
 
     await withMockFetch([
@@ -176,7 +176,7 @@ import { createLlmTestConfig, createToolCallPayload, createToolDefinition, withM
 
   test("incoming assistant reasoning_content is preserved when preserveThinking is enabled", async () => {
     const client = new LlmClient(createLlmTestConfig({
-      preserveThinking: true
+      chat: { preserveThinking: true }
     }), pino({ level: "silent" }));
 
     await withMockFetch([

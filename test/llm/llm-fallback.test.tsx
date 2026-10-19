@@ -38,18 +38,12 @@ function createConfig() {
         blocked_model: {
           provider: "blocked_provider",
           model: "blocked-model",
-          supportsThinking: false,
-          supportsVision: false,
-          supportsSearch: false,
-          supportsTools: false
+          chat: { capabilities: { supportsThinking: false, supportsVision: false, supportsTools: false, supportsSearch: false } }
         },
         fallback_model: {
           provider: "fallback_provider",
           model: "fallback-model",
-          supportsThinking: false,
-          supportsVision: false,
-          supportsSearch: false,
-          supportsTools: false
+          chat: { capabilities: { supportsThinking: false, supportsVision: false, supportsTools: false, supportsSearch: false } }
         }
       }
     },

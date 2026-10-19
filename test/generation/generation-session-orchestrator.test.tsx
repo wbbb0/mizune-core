@@ -556,14 +556,7 @@ test("normal prompt provider replay excludes the active input batch", async () =
         main: {
           provider: "google",
           model: "fake",
-          modelType: "chat",
-          supportsThinking: false,
-          thinkingControllable: true,
-          supportsVision: false,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: true,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, thinkingControllable: true, supportsVision: false, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
         }
       }
     }

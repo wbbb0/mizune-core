@@ -12,21 +12,20 @@ function createOpenAiResponsesConfig(modelOverrides: Record<string, unknown> = {
   const config = createLlmTestConfig({
     provider: "test",
     model: "gpt-5.6",
-    supportsThinking: true,
-    thinkingControllable: true,
-    supportsVision: true,
-    supportsSearch: true,
-    supportsTools: true,
+    chat: { capabilities: { supportsThinking: true, thinkingControllable: true, supportsVision: true, supportsTools: true, supportsSearch: true }, searchEnabled: true },
     ...modelOverrides
   });
   config.llm.providers.test!.type = "openai_responses";
   delete config.llm.providers.test!.baseUrl;
+  config.llm.models.main!.chat!.searchEnabled = true;
+  config.llm.models.main!.chat!.capabilities.supportsSearch = true;
   return config;
 }
 
 test("openai responses provider maps request content, tools, parameters, and streamed output", async () => {
   const config = createOpenAiResponsesConfig({
-    apiParameters: {
+    chat: {
+      defaults: {
       temperature: 0.4,
       top_p: 0.8,
       top_k: 20,
@@ -34,6 +33,7 @@ test("openai responses provider maps request content, tools, parameters, and str
       extra: {
         max_output_tokens: 512,
         store: true
+      }
       }
     }
   });
@@ -404,7 +404,9 @@ test("openai responses provider replays final response output items on the next 
 
 test("openai responses provider synthesizes response items for foreign tool history", async () => {
   const client = new LlmClient(
-    createOpenAiResponsesConfig({ supportsThinking: false, thinkingControllable: false }),
+    createOpenAiResponsesConfig({
+      chat: { capabilities: { supportsThinking: false, thinkingControllable: false } }
+    }),
     pino({ level: "silent" })
   );
 

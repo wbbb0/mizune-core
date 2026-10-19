@@ -15,7 +15,7 @@ test("turn planner injects image captions for non-vision planner models", async 
       },
       models: {
         main: {
-          supportsVision: false
+          chat: { capabilities: { supportsVision: false } }
         }
       }
     }

@@ -753,7 +753,7 @@ export function createGenerationSessionOrchestrator(
             sessionId,
             resolvedModelRef,
             relationship,
-            supportsTools: getPrimaryModelProfile(config, resolvedModelRef)?.supportsTools ?? null
+            supportsTools: getPrimaryModelProfile(config, resolvedModelRef)?.chat?.capabilities.supportsTools ?? null
           }, "turn_planner_available_toolsets_empty_after_routing");
         }
       } else {
@@ -841,7 +841,7 @@ export function createGenerationSessionOrchestrator(
         })
       }).project({
         transcript: replayTranscriptItems,
-        preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.preserveThinking === true,
+        preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.chat?.preserveThinking === true,
         requireThoughtSignatures: config.llm.mainRouting.enableThinking,
         tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
       });
@@ -1090,7 +1090,7 @@ export function createGenerationSessionOrchestrator(
         })
       }).project({
         transcript: transcriptStore.runtimeItems(),
-        preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true,
+        preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.chat?.preserveThinking === true,
         requireThoughtSignatures: config.llm.mainRouting.enableThinking,
         tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
       });
@@ -1294,7 +1294,7 @@ export function createGenerationSessionOrchestrator(
         })
       }).project({
         transcript: transcriptStore.runtimeItems(),
-        preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.preserveThinking === true,
+        preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.chat?.preserveThinking === true,
         requireThoughtSignatures: config.llm.mainRouting.enableThinking,
         tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
       });

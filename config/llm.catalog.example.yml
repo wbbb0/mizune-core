@@ -1,5 +1,4 @@
-# Provider 是一级目录；每个 provider 内维护自己的局部模型别名。
-# 不同 provider 可以复用同一个模型别名，例如下面的 main，切换供应商时无需改名。
+# 模型可同时配置 chat / embedding / image / transcription 多种用途；未提供的能力表示未知。
 dashscope:
   type: dashscope
   apiKey: replace-me
@@ -7,35 +6,38 @@ dashscope:
   models:
     main:
       upstreamModel: qwen3.5-plus
-      modelType: chat
-      supportsThinking: true
-      supportsVision: true
-      supportsTools: true
-      supportsSearch: true
-      apiParameters:
-        temperature: 0.7
-        top_p: 0.9
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsVision: true
+          supportsTools: true
+          supportsSearch: true
+        defaults:
+          temperature: 0.7
+          top_p: 0.9
+        searchEnabled: true
     fast:
       upstreamModel: qwen3.5-flash
-      modelType: chat
-      supportsThinking: true
-      supportsTools: true
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsTools: true
     vision:
       upstreamModel: qwen3.5-35b-a3b
-      modelType: chat
-      supportsThinking: true
-      supportsVision: true
-      supportsTools: true
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsVision: true
+          supportsTools: true
     transcription:
       upstreamModel: qwen3-asr-flash
-      modelType: transcription
-      supportsAudioInput: true
-      supportsTools: false
+      transcription:
+        capabilities:
+          supportsAudioInput: true
+          supportsTools: false
     embedding:
       upstreamModel: text-embedding-v4
-      modelType: embedding
-      supportsTools: false
-
+      embedding: {}
 deepseek:
   type: deepseek
   baseUrl: https://api.deepseek.com/anthropic
@@ -46,12 +48,13 @@ deepseek:
   models:
     main:
       upstreamModel: deepseek-flash
-      supportsSearch: true
-      modelType: chat
-      supportsThinking: true
-      preserveThinking: true
-      supportsTools: true
-
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsTools: true
+          supportsSearch: true
+        preserveThinking: true
+        searchEnabled: true
 anthropic:
   type: anthropic
   baseUrl: https://api.anthropic.com
@@ -60,15 +63,14 @@ anthropic:
   models:
     main:
       upstreamModel: claude-sonnet-4-5-20250929
-      modelType: chat
-      supportsThinking: true
-      preserveThinking: true
-      supportsVision: true
-      supportsTools: true
-      apiParameters:
-        maxOutputTokens: 4096
-
-# OpenAI Responses API 与 type=openai 的 Chat Completions 兼容协议分开配置。
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsVision: true
+          supportsTools: true
+        defaults:
+          maxOutputTokens: 4096
+        preserveThinking: true
 openai_responses:
   type: openai_responses
   baseUrl: https://api.openai.com/v1
@@ -77,31 +79,29 @@ openai_responses:
   models:
     main:
       upstreamModel: gpt-5.6
-      modelType: chat
-      supportsThinking: true
-      preserveThinking: true
-      supportsVision: true
-      supportsTools: true
-      apiParameters:
-        maxOutputTokens: 4096
-        extra:
-          reasoning:
-            effort: medium
-            summary: auto
-
-# LM Studio 本地服务的 apiKey 可省略；baseUrl 默认是 http://localhost:1234/v1。
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsVision: true
+          supportsTools: true
+        defaults:
+          maxOutputTokens: 4096
+          extra:
+            reasoning:
+              effort: medium
+              summary: auto
+        preserveThinking: true
 lmstudio_local:
   type: lmstudio
   models:
     main:
       upstreamModel: qwen3.6-35b-a3b
-      modelType: chat
-      supportsThinking: true
-      preserveThinking: true
-      supportsVision: true
-      supportsTools: true
-
-# Vertex 自动拼接项目与区域地址；apiKey 填写现有访问令牌。
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsVision: true
+          supportsTools: true
+        preserveThinking: true
 vertex:
   type: vertex
   projectId: your-google-cloud-project
@@ -110,13 +110,14 @@ vertex:
   models:
     main:
       upstreamModel: gemini-2.5-flash
-      supportsThinking: true
-      supportsVision: true
-      supportsSearch: true
-      apiParameters:
-        maxOutputTokens: 4096
-
-# 标准图像模型复用 Provider 连接信息；ComfyUI 工作流继续单独配置。
+      chat:
+        capabilities:
+          supportsThinking: true
+          supportsVision: true
+          supportsSearch: true
+        defaults:
+          maxOutputTokens: 4096
+        searchEnabled: true
 openai_images:
   type: openai
   baseUrl: https://api.openai.com/v1
@@ -124,8 +125,16 @@ openai_images:
   models:
     image:
       upstreamModel: gpt-image-1
-      modelType: image_generation
-      supportsTools: false
-      imageParameters:
-        size: 1024x1024
-        quality: low
+      image:
+        defaults:
+          size: 1024x1024
+          quality: low
+openrouter:
+  type: openrouter
+  apiKey: replace-me
+  models:
+    embedding:
+      upstreamModel: qwen/qwen3-embedding-8b
+      embedding:
+        inputMode: qwen3
+        queryInstruction: 根据查询检索相关的资料和记忆。

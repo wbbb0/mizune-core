@@ -1,6 +1,6 @@
 import type { AppConfig } from "#config/config.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
-import { getProviderFeature } from "./providerFeatures.ts";
+import { getProviderFeature, getProviderFeatureFromContext } from "./providerFeatures.ts";
 
 export function getNativeSearchEnableKey(
   config: AppConfig,
@@ -11,4 +11,9 @@ export function getNativeSearchEnableKey(
     return null;
   }
   return searchFeature.path;
+}
+
+export function getNativeSearchEnableKeyFromContext(context: import("./providerTypes.ts").LlmProviderRequestContext): string | null {
+  const feature = getProviderFeatureFromContext(context, "search");
+  return feature?.type === "flag" ? feature.path : null;
 }

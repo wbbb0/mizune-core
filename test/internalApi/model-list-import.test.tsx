@@ -42,8 +42,7 @@ test("internal api lists provider models from the OpenAI-compatible endpoint", a
       body.models.map((slot: { upstreamModel: string; alias: string }) => [slot.upstreamModel, slot.alias]),
       [["gpt-4o", "gpt_4o"], ["gpt-5.6", "gpt_5_6"]]
     );
-    assert.equal(body.models[0].capabilities.modelType, "chat");
-    assert.equal(body.models[0].capabilities.supportsSearch, false);
+    assert.deepEqual(body.models[0].profile, {});
   } finally {
     setFetchImplementationForTests(null);
     await app.close();
@@ -123,7 +122,7 @@ test("internal api rejects malformed list payloads with a clear error", async ()
       }
     });
     assert.equal(response.statusCode, 400);
-    assert.match(response.json().error, /缺少 data 数组/);
+    assert.match(response.json().error, /缺少模型数组/);
   } finally {
     setFetchImplementationForTests(null);
     await app.close();

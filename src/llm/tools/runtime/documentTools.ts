@@ -1345,13 +1345,14 @@ async function searchDocumentChunks(input: {
     if (chunks.length === 0) {
       return { mode: "hybrid", matches: [], total_matches: 0, truncated: false, embedding_profile_id: input.text.fingerprint.embeddingProfileId };
     }
+    const queryEmbedding = await embeddingService.embedTexts([input.query], { purpose: "query" });
     const embeddingIndex = await loadOrCreateDocumentEmbeddingIndex({
       chunks,
-      fingerprint: input.text.fingerprint,
+      fingerprint: { ...input.text.fingerprint, embeddingProfileId: queryEmbedding.profile.profileId },
       context: input.context,
       embeddingService
     });
-    const queryEmbedding = await embeddingService.embedTexts([input.query]);
+    if (embeddingIndex.index.embeddingProfileId !== queryEmbedding.profile.profileId) throw new Error("文档与查询的向量空间不一致");
     const queryVector = queryEmbedding.vectors[0] ?? [];
     const terms = extractSearchTerms(input.query);
     const maxKeywordScore = Math.max(1, ...chunks.map((chunk) => scoreInspectionChunk(chunk.indexText, terms)));
@@ -1447,6 +1448,7 @@ async function loadOrCreateDocumentEmbeddingIndex(input: {
     const persisted = await readPersistedDocumentEmbeddingIndex(input.fingerprint.fileId, input.fingerprint, input.chunks, input.context);
     if (persisted) return { index: persisted, cacheHit: true };
     const batch = await input.embeddingService.embedTexts(input.chunks.map((chunk) => chunk.indexText));
+    if (batch.profile.profileId !== input.fingerprint.embeddingProfileId) throw new Error("文档向量化期间模型配置发生变化");
     const index: PersistedDocumentEmbeddingIndex = {
       version: DOCUMENT_EMBEDDING_INDEX_VERSION,
       cacheProfileId: input.fingerprint.embeddingProfileId,
@@ -1480,6 +1482,7 @@ async function readPersistedDocumentEmbeddingIndex(
     const parsed = JSON.parse(await readFile(join(cacheDir, DOCUMENT_EMBEDDINGS_FILE), "utf8")) as PersistedDocumentEmbeddingIndex;
     if (parsed.version !== DOCUMENT_EMBEDDING_INDEX_VERSION
       || parsed.cacheProfileId !== fingerprint.embeddingProfileId
+      || parsed.embeddingProfileId !== fingerprint.embeddingProfileId
       || parsed.sourceHash !== fingerprint.sourceHash
       || parsed.parserVersion !== fingerprint.parserVersion
       || parsed.chunkerVersion !== fingerprint.chunkerVersion
@@ -1686,7 +1689,8 @@ function buildHybridSearchSnippet(text: string, terms: string[]): string {
 }
 
 function cosineSimilarity(left: number[], right: number[]): number {
-  const length = Math.min(left.length, right.length);
+  if (left.length !== right.length || [...left, ...right].some((value) => !Number.isFinite(value))) throw new Error("向量维度或数值无效");
+  const length = left.length;
   if (length === 0) return 0;
   let dot = 0;
   let leftNorm = 0;

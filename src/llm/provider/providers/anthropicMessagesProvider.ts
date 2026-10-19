@@ -1,3 +1,5 @@
+import { ModelRequestBudgetError } from "../../shared/requestTokenBudget.ts";
+import { getGenerationSettings } from "../generationSettings.ts";
 import { readProviderSseData } from "../providerSseReader.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
@@ -273,6 +275,9 @@ function buildAnthropicRequestBody(
   const maxTokens = params.maxOutputTokensOverride ?? (context.providerConfig.type === "deepseek"
     ? numberOrNull(apiParameters.max_tokens) ?? DEFAULT_MAX_TOKENS
     : resolveMaxTokens(apiParameters, enableThinking));
+  if (context.providerConfig.type === "anthropic" && enableThinking && getGenerationSettings(context)?.capabilities.supportsThinking && maxTokens <= 1024) {
+    throw new ModelRequestBudgetError("Anthropic 思考模式至少需要 1024 思考 token 及额外输出预算");
+  }
   const body: Record<string, unknown> = {
     model: context.model,
     stream: true,
@@ -295,7 +300,7 @@ function buildAnthropicRequestBody(
   if (tools.length > 0) {
     body.tools = tools;
   }
-  if (context.modelProfile.supportsThinking) {
+  if (getGenerationSettings(context)?.capabilities.supportsThinking) {
     body.thinking = context.providerConfig.type === "deepseek"
       ? { type: enableThinking ? "enabled" : "disabled" }
       : buildAnthropicThinkingConfig(maxTokens, enableThinking);
@@ -307,7 +312,7 @@ function buildAnthropicRequestBody(
 }
 
 function buildAnthropicModelApiParameters(context: LlmProviderRequestContext): Record<string, unknown> {
-  const source = context.modelProfile.apiParameters;
+  const source = getGenerationSettings(context)?.defaults;
   if (!source) {
     return {};
   }

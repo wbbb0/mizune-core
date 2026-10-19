@@ -17,7 +17,7 @@ export function createForwardFeatureConfig() {
       },
       models: {
         main: {
-          supportsVision: true
+          chat: { capabilities: { supportsVision: true } }
         }
       }
     },

@@ -9,7 +9,7 @@ function createConfig() {
     llm: {
       models: {
         main: {
-          supportsAudioInput: true
+          chat: { capabilities: { supportsAudioInput: true } }
         }
       }
     }

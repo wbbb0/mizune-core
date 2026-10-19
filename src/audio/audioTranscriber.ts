@@ -128,6 +128,7 @@ export class AudioTranscriber {
       }
 
       const result = await this.llmClient.generate({
+        operation: "transcription",
         modelRefOverride: modelRefs,
         timeoutMsOverride: this.config.llm.audioTranscription.timeoutMs,
         enableThinkingOverride: this.config.llm.audioTranscription.enableThinking,

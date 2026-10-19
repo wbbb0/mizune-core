@@ -22,6 +22,7 @@ type TestAppConfigOverrides = DeepPartial<FileConfig> & {
 };
 
 const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
+  context: { embedding: { model: { provider: "test", model: "embedding" } } },
   appName: "llm-bot-test",
   nodeEnv: "test",
   logLevel: "silent",
@@ -204,50 +205,22 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
     main: {
       provider: "test",
       model: "fake",
-      modelType: "chat",
-      supportsThinking: false,
-      thinkingControllable: true,
-      supportsVision: false,
-      supportsAudioInput: false,
-      supportsSearch: false,
-      supportsTools: true,
-      preserveThinking: false
+      chat: { capabilities: { supportsThinking: false, thinkingControllable: true, supportsVision: false, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
     },
     sessionCaptioner: {
       provider: "test",
       model: "fake-captain",
-      modelType: "chat",
-      supportsThinking: true,
-      thinkingControllable: true,
-      supportsVision: false,
-      supportsAudioInput: false,
-      supportsSearch: false,
-      supportsTools: true,
-      preserveThinking: false
+      chat: { capabilities: { supportsThinking: true, thinkingControllable: true, supportsVision: false, supportsAudioInput: false, supportsTools: true, supportsSearch: false }, preserveThinking: false }
     },
     transcription: {
       provider: "test",
       model: "fake-transcription",
-      modelType: "transcription",
-      supportsThinking: false,
-      thinkingControllable: true,
-      supportsVision: false,
-      supportsAudioInput: true,
-      supportsSearch: false,
-      supportsTools: false,
-      preserveThinking: false
+      transcription: { capabilities: { supportsThinking: false, thinkingControllable: true, supportsVision: false, supportsAudioInput: true, supportsTools: false, supportsSearch: false }, preserveThinking: false }
     },
-    embedding: {
+    "test/embedding": {
       provider: "test",
       model: "fake-embedding",
-      modelType: "embedding",
-      supportsThinking: false,
-      thinkingControllable: true,
-      supportsVision: false,
-      supportsAudioInput: false,
-      supportsSearch: false,
-      supportsTools: false,
-      preserveThinking: false
+      embedding: {}
     }
   },
   routingPresets: {
@@ -271,7 +244,7 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
       imageInspector: ["main"],
       audioTranscription: ["transcription"],
       turnPlanner: ["main"],
-      embedding: ["embedding"]
+
     }
   }
 };

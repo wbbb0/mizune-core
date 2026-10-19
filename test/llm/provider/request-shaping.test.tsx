@@ -45,22 +45,26 @@ function createUnterminatedSseResponse(payload: any) {
 }
 
 test("per-request output limit overrides chat model limits without mutating the profile", async () => {
-  const config = createLlmTestConfig({ apiParameters: { extra: { max_tokens: 9000, max_completion_tokens: 8000 } } });
+  const config = createLlmTestConfig({
+    chat: { defaults: { extra: { max_tokens: 9000, max_completion_tokens: 8000 } } }
+  });
   const client = new LlmClient(config, pino({ level: "silent" }));
   await withMockFetch([{
     assertRequest(body: any) {
-      assert.equal(body.max_completion_tokens, 512);
-      assert.equal(body.max_tokens, undefined);
+      assert.equal(body.max_tokens, 512);
+      assert.equal(body.max_completion_tokens, undefined);
     },
     payloads: [{ choices: [{ delta: { content: "完成" } }] }]
   }], async () => {
     await client.generate({ messages: [{ role: "user", content: "判断本轮意图" }], maxOutputTokensOverride: 512 });
   });
-  assert.deepEqual(config.llm.models.main!.apiParameters.extra, { max_tokens: 9000, max_completion_tokens: 8000 });
+  assert.deepEqual(config.llm.models.main!.chat!.defaults.extra, { max_tokens: 9000, max_completion_tokens: 8000 });
 });
 
   test("native search injects provider flag into request body", async () => {
-    const config = createLlmTestConfig({ supportsSearch: true });
+    const config = createLlmTestConfig({
+      chat: { capabilities: { supportsSearch: true }, searchEnabled: true }
+    });
     config.llm.providers.test!.features.search = {
       type: "flag",
       path: "extra_body.enable_search"
@@ -95,7 +99,9 @@ test("per-request output limit overrides chat model limits without mutating the 
   });
 
   test("openai-compatible providers append builtin search tools from feature config", async () => {
-    const config = createLlmTestConfig({ supportsSearch: true });
+    const config = createLlmTestConfig({
+      chat: { capabilities: { supportsSearch: true }, searchEnabled: true }
+    });
     config.llm.providers.test!.features.search = {
       type: "builtin_tool",
       tool: {
@@ -132,7 +138,8 @@ test("per-request output limit overrides chat model limits without mutating the 
 
   test("openai-compatible providers include configured model api parameters", async () => {
     const config = createLlmTestConfig({
-      apiParameters: {
+      chat: {
+        defaults: {
         temperature: 0.7,
         top_p: 0.9,
         top_k: 40,
@@ -141,6 +148,7 @@ test("per-request output limit overrides chat model limits without mutating the 
         repetition_penalty: 1.05,
         extra: {
           max_tokens: 256
+        }
         }
       }
     });
@@ -178,10 +186,8 @@ test("anthropic provider maps messages, tools, vision, and thinking internally",
     const config = createLlmTestConfig({
       provider: "test",
       model: "claude-test",
-      supportsThinking: true,
-      supportsVision: true,
-      supportsTools: true,
-      apiParameters: {
+      chat: {
+        capabilities: { supportsThinking: true, supportsVision: true, supportsTools: true }, defaults: {
         temperature: 0.5,
         top_p: 0.8,
         top_k: 40,
@@ -189,6 +195,7 @@ test("anthropic provider maps messages, tools, vision, and thinking internally",
         extra: {
           max_tokens: 2048,
           ignored_vendor_flag: true
+        }
         }
       }
     });
@@ -318,8 +325,7 @@ test("anthropic provider maps messages, tools, vision, and thinking internally",
   test("anthropic provider maps assistant tool use and tool results", async () => {
     const config = createLlmTestConfig({
       provider: "test",
-      supportsThinking: false,
-      supportsTools: true
+      chat: { capabilities: { supportsThinking: false, supportsTools: true } }
     });
     config.llm.providers.test!.type = "anthropic";
     const client = new LlmClient(config, pino({ level: "silent" }));
@@ -423,8 +429,7 @@ test("anthropic provider maps messages, tools, vision, and thinking internally",
   test("anthropic provider replays normalized assistant tool-call content metadata", async () => {
     const config = createLlmTestConfig({
       provider: "test",
-      supportsThinking: false,
-      supportsTools: true
+      chat: { capabilities: { supportsThinking: false, supportsTools: true } }
     });
     config.llm.providers.test!.type = "anthropic";
     const client = new LlmClient(config, pino({ level: "silent" }));
@@ -512,7 +517,7 @@ test("anthropic provider maps messages, tools, vision, and thinking internally",
   test("dashscope sends preserve_thinking when preserveThinking is enabled and assistant reasoning exists", async () => {
     const config = createLlmTestConfig({
       provider: "test",
-      preserveThinking: true
+      chat: { preserveThinking: true }
     });
     config.llm.providers.test!.type = "dashscope";
     config.llm.providers.test!.features.thinking = {
@@ -567,7 +572,7 @@ test("anthropic provider maps messages, tools, vision, and thinking internally",
   test("dashscope omits preserve_thinking when no assistant reasoning is present", async () => {
     const config = createLlmTestConfig({
       provider: "test",
-      preserveThinking: true
+      chat: { preserveThinking: true }
     });
     config.llm.providers.test!.type = "dashscope";
     config.llm.providers.test!.features.thinking = {
@@ -610,7 +615,8 @@ test("anthropic provider maps messages, tools, vision, and thinking internally",
 test("dashscope sends configured model api parameters under parameters", async () => {
     const config = createLlmTestConfig({
       provider: "test",
-      apiParameters: {
+      chat: {
+        defaults: {
         temperature: 0.6,
         top_p: 0.85,
         top_k: 20,
@@ -619,6 +625,7 @@ test("dashscope sends configured model api parameters under parameters", async (
         repetition_penalty: 1.1,
         extra: {
           max_tokens: 128
+        }
         }
       }
     });
@@ -701,7 +708,7 @@ test("dashscope sends configured model api parameters under parameters", async (
 
   test("lmstudio sends preserve_thinking on openai-compatible chat completions when assistant reasoning exists", async () => {
     const config = createLlmTestConfig({
-      preserveThinking: true
+      chat: { preserveThinking: true }
     });
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -747,8 +754,8 @@ test("dashscope sends configured model api parameters under parameters", async (
 test("lmstudio uses native chat endpoint when tools are absent and thinking is disabled", async () => {
     const config = createLlmTestConfig({
       provider: "test",
-      supportsVision: true,
-      apiParameters: {
+      chat: {
+        capabilities: { supportsVision: true }, defaults: {
         temperature: 0.55,
         top_p: 0.75,
         top_k: 20,
@@ -759,6 +766,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
           max_output_tokens: 96,
           store: true,
           previous_response_id: "resp_previous"
+        }
         }
       }
     });
@@ -936,7 +944,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
 
   test("lmstudio keeps openai-compatible chat completions when model thinking is not controllable", async () => {
     const config = createLlmTestConfig({
-      thinkingControllable: false
+      chat: { capabilities: { thinkingControllable: false } }
     });
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -969,7 +977,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
 
   test("lmstudio flattens text-only content parts for openai-compatible chat completions", async () => {
     const config = createLlmTestConfig({
-      thinkingControllable: false
+      chat: { capabilities: { thinkingControllable: false } }
     });
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -1007,7 +1015,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
 
   test("lmstudio preserves structured prompt tags for openai-compatible chat completions", async () => {
     const config = createLlmTestConfig({
-      thinkingControllable: false
+      chat: { capabilities: { thinkingControllable: false } }
     });
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -1047,7 +1055,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
 
   test("lmstudio retries without tools when template reports no user query", async () => {
     const config = createLlmTestConfig({
-      thinkingControllable: false
+      chat: { capabilities: { thinkingControllable: false } }
     });
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -1097,7 +1105,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
 
   test("lmstudio injects placeholder user when first non-system message is assistant", async () => {
     const config = createLlmTestConfig({
-      thinkingControllable: false
+      chat: { capabilities: { thinkingControllable: false } }
     });
     config.llm.providers.test!.type = "lmstudio";
     config.llm.providers.test!.baseUrl = "http://localhost:1234/v1";
@@ -1235,7 +1243,8 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
 
 test("google ai studio maps configured model api parameters to generation config", async () => {
     const config = createLlmTestConfig({
-      apiParameters: {
+      chat: {
+        defaults: {
         temperature: 0.4,
         top_p: 0.8,
         top_k: 16,
@@ -1245,6 +1254,7 @@ test("google ai studio maps configured model api parameters to generation config
         extra: {
           maxOutputTokens: 64,
           frequencyPenalty: 0.3
+        }
         }
       }
     });
@@ -1769,8 +1779,7 @@ test("google ai studio maps configured model api parameters to generation config
 
   test("openai-compatible requests explicitly convert multimodal content parts", async () => {
     const client = new LlmClient(createLlmTestConfig({
-      supportsVision: true,
-      supportsAudioInput: true
+      chat: { capabilities: { supportsVision: true, supportsAudioInput: true } }
     }), pino({ level: "silent" }));
 
     await withMockFetch([

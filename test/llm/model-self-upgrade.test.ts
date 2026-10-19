@@ -58,7 +58,7 @@ test("model self-upgrade is hidden when disabled, already on large, equivalent r
   }), null);
 
   config.llm.models.large!.model = "large-model";
-  config.llm.models.small_fallback!.supportsTools = false;
+  config.llm.models.small_fallback!.chat!.capabilities.supportsTools = false;
   assert.equal(resolveModelSelfUpgradePlan({
     config,
     currentModelRefs: ["small", "small_fallback"],
@@ -105,14 +105,7 @@ test("model self-upgrade descriptor separates model capability from missing reso
 function createUpgradeConfig(): AppConfig {
   const chatProfile = {
     provider: "test",
-    modelType: "chat" as const,
-    supportsThinking: true,
-    thinkingControllable: true,
-    supportsVision: false,
-    supportsAudioInput: false,
-    supportsSearch: false,
-    supportsTools: true,
-    preserveThinking: false
+    chat: { capabilities: { supportsThinking: true, thinkingControllable: true, supportsVision: false, supportsAudioInput: false, supportsSearch: false, supportsTools: true }, preserveThinking: false }
   };
   return createTestAppConfig({
     llm: {

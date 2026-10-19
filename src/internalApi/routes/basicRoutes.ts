@@ -570,6 +570,14 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
   });
 
+  app.post("/api/context/embedding/test", async (_request, reply) => {
+    try {
+      return await services.config.contextEmbeddingService.testConnection();
+    } catch (error) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   app.post("/api/context/maintenance/clear-embeddings", async (request, reply) => {
     try {
       return clearContextEmbeddings(services.config, parseContextFilterBody(request.body));

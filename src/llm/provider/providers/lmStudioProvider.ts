@@ -1,3 +1,4 @@
+import { getGenerationSettings } from "../generationSettings.ts";
 import { buildTag } from "#utils/structuredEnvelope.ts";
 import { buildLmStudioNativeModelApiParameters } from "../modelApiParameters.ts";
 import { createReportedUsage } from "../providerStreamAdapter.ts";
@@ -79,8 +80,8 @@ export class LmStudioProvider implements LlmProvider {
     const features = context.providerConfig.features;
     const defaultThinking =
       features.thinking == null
-      && context.modelProfile.supportsThinking
-      && context.modelProfile.thinkingControllable
+      && getGenerationSettings(context)?.capabilities.supportsThinking
+      && getGenerationSettings(context)?.capabilities.thinkingControllable
         ? DEFAULT_THINKING_FEATURE
         : undefined;
 
@@ -181,7 +182,7 @@ function shouldUseNativeNoThinkingEndpoint(
   if (resolvedEnableThinking) {
     return false;
   }
-  if (!context.modelProfile.supportsThinking || !context.modelProfile.thinkingControllable) {
+  if (!getGenerationSettings(context)?.capabilities.supportsThinking || !getGenerationSettings(context)?.capabilities.thinkingControllable) {
     return false;
   }
   if ((params.tools?.length ?? 0) > 0) {

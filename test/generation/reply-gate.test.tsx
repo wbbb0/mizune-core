@@ -18,7 +18,7 @@ function createConfig() {
       enabled: true,
       models: {
         main: {
-          supportsTools: false
+          chat: { capabilities: { supportsTools: false } }
         }
       },
       turnPlanner: {

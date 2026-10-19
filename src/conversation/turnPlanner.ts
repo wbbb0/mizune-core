@@ -158,8 +158,8 @@ export class TurnPlanner {
     const recentMessages = input.recentMessages.slice(-this.config.llm.turnPlanner.recentMessageCount);
     const batchAnalysis = analyzeTurnPlannerBatch(input.batchMessages);
     const plannerProfile = getPrimaryModelProfile(this.config, plannerModelRefs);
-    const captionContext = await this.prepareCaptionContext(input, recentMessages, plannerProfile?.supportsVision === true);
-    const emojiImageIds = plannerProfile?.supportsVision
+    const captionContext = await this.prepareCaptionContext(input, recentMessages, plannerProfile?.chat?.capabilities.supportsVision === true);
+    const emojiImageIds = plannerProfile?.chat?.capabilities.supportsVision
       ? Array.from(new Set(input.batchMessages.flatMap((message) => (
         message.attachments
           ?.filter((item) => item.semanticKind === "emoji" && (item.kind === "image" || item.kind === "animated_image"))

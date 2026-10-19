@@ -107,7 +107,7 @@ function createActiveTaskTracker() {
           enabled: true,
           models: {
             main: {
-              supportsVision: true
+              chat: { capabilities: { supportsVision: true } }
             }
           }
         }
@@ -423,10 +423,12 @@ function createActiveTaskTracker() {
           };
         }
       } as any,
-      temporaryWorkspaceService: { list(actor: { sessionId: string; userId: string }) {
+      temporaryWorkspaceService: {
+        list(actor: { sessionId: string; userId: string }) {
         assert.equal(actor.userId, "10001");
         return [{ resource_id: "ws_prompt", name: "临时源码", status: "active", createdAtMs: 1, expiresAtMs: 86400001 }];
-      } } as any,
+      }
+    } as any,
       localFileService: {} as any,
       chatFileStore: {} as any,
       downloadRuntime: { list() { return []; } } as any,
@@ -1375,7 +1377,11 @@ function createActiveTaskTracker() {
       config: createTestAppConfig({
         llm: {
           enabled: true,
-          models: { main: { supportsVision: false } }
+          models: {
+            main: {
+              chat: { capabilities: { supportsVision: false } }
+            }
+          }
         }
       }),
       oneBotClient: {} as any,

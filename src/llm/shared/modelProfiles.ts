@@ -1,14 +1,15 @@
 import type { AppConfig } from "#config/config.ts";
 import type { ModelProfile } from "#config/configModel.ts";
 
-export type SupportedModelType = ModelProfile["modelType"];
+import type { ModelOperation } from "#config/modelOperations.ts";
+export type SupportedModelType = ModelOperation;
 
 export interface ResolvedModelRefsForType {
   acceptedModelRefs: string[];
   rejectedModelRefs: Array<{
     modelRef: string;
     reason: "unknown_model" | "unsupported_model_type";
-    actualModelType?: SupportedModelType;
+    actualModelTypes?: SupportedModelType[];
   }>;
   primaryProfile: ModelProfile | undefined;
 }
@@ -55,11 +56,11 @@ export function resolveModelRefsForType(
       });
       continue;
     }
-    if (profile.modelType !== requiredModelType) {
+    if (!profile[requiredModelType]) {
       rejectedModelRefs.push({
         modelRef: ref,
         reason: "unsupported_model_type",
-        actualModelType: profile.modelType
+        actualModelTypes: (["chat", "embedding", "image", "transcription"] as const).filter((operation) => profile[operation] !== undefined)
       });
       continue;
     }

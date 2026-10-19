@@ -26,12 +26,12 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
           main: {
             provider: "test",
             model: "gpt-test",
-            supportsTools: true
+            chat: { capabilities: { supportsTools: true } }
           },
           transcription: {
             provider: "test",
             model: "gpt-test-transcription",
-            modelType: "transcription"
+            transcription: {}
           }
         },
         routingPresets: {
@@ -224,17 +224,17 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
           main: {
             provider: "test",
             model: "gpt-test",
-            supportsTools: true
+            chat: { capabilities: { supportsTools: true } }
           },
           alternate: {
             provider: "test",
             model: "gpt-test-alt",
-            supportsTools: true
+            chat: { capabilities: { supportsTools: true } }
           },
           transcription: {
             provider: "test",
             model: "gpt-test-transcription",
-            modelType: "transcription"
+            transcription: {}
           }
         },
         routingPresets: {
@@ -407,8 +407,10 @@ for (const path of ["editor", "transaction"] as const) {
       await manager.start(); manager.stop();
       const app = Fastify();
       let closed = false;
-      const editor = createEditorService({ config, configManager: manager,
-        whitelistStore: { async reloadFromDisk() {} } as any, scheduler: { async reloadFromStore() {} } });
+      const editor = createEditorService({
+        config, configManager: manager,
+        whitelistStore: { async reloadFromDisk() { } } as any, scheduler: { async reloadFromStore() { } }
+      });
       app.post("/save", async () => {
         if (path === "editor") return editor.saveDraft("global_config", { appName: "after" });
         await manager.runWriteTransaction(() => writeYaml(join(configDir, "global.yml"), { appName: "after" }));

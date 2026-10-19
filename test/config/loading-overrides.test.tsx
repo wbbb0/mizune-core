@@ -1,3 +1,4 @@
+import { getEmbeddingModelRefs } from "#llm/shared/embeddingTarget.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -179,7 +180,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           transcription: {
             provider: "dashscope",
             model: "qwen-audio-asr",
-            modelType: "transcription"
+            transcription: {}
           }
         },
         routingPresets: {
@@ -264,12 +265,12 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           transcription: {
             provider: "test",
             model: "default-transcription",
-            modelType: "transcription"
+            transcription: {}
           },
           defaultEmbedding: {
             provider: "test",
             model: "default-embedding",
-            modelType: "embedding"
+            embedding: {}
           },
           devMain: {
             provider: "test",
@@ -324,7 +325,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
       assert.deepEqual(getModelRefsForRole(config, "image_inspector"), ["test/defaultSummary"]);
       assert.deepEqual(getModelRefsForRole(config, "audio_transcription"), []);
       assert.deepEqual(getModelRefsForRole(config, "turn_planner"), ["test/defaultPlan"]);
-      assert.deepEqual(getModelRefsForRole(config, "embedding"), []);
+      assert.deepEqual(getEmbeddingModelRefs(config), []);
       assert.deepEqual(getRoutingPresetHistoryWindow(config), {
         maxRecentMessages: 24,
         maxImageReferences: 3
@@ -363,7 +364,6 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
-        embedding: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5
@@ -444,7 +444,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           transcription: {
             provider: "catalogProvider",
             model: "catalog-transcription",
-            modelType: "transcription"
+            transcription: {}
           }
         },
         routingPresets: {

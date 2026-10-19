@@ -1,3 +1,6 @@
+import { ModelRequestBudgetError, resolveRequestOutputBudget } from "./shared/requestTokenBudget.ts";
+import { getEmbeddingModelRefs } from "./shared/embeddingTarget.ts";
+import { resolveModelRefsForType } from "./shared/modelProfiles.ts";
 import { LlmProviderPolicyError } from "./provider/providerProtocolError.ts";
 import { withProviderExchangeDump } from "./provider/providerExchangeDump.ts";
 import type { AppConfig } from "#config/config.ts";
@@ -69,11 +72,11 @@ export class LlmClient {
     return this.config.llm.enabled && this.resolveProviderContexts(modelRef).length > 0;
   }
 
-  isEmbeddingConfigured(modelRef: string | string[] = getModelRefsForRole(this.config, "embedding")): boolean {
+  isEmbeddingConfigured(modelRef: string | string[] = getEmbeddingModelRefs(this.config)): boolean {
     if (!this.config.llm.enabled) {
       return false;
     }
-    const acceptedModelRefs = resolveModelRefsForRole(this.config, "embedding").acceptedModelRefs;
+    const acceptedModelRefs = resolveModelRefsForType(this.config, getEmbeddingModelRefs(this.config), "embedding").acceptedModelRefs;
     const requestedRefs = normalizeModelRefs(modelRef).filter((ref) => acceptedModelRefs.includes(ref));
     return this.resolveProviderContexts(requestedRefs).some((context) => {
       const provider = getLlmProvider(context);
@@ -90,6 +93,7 @@ export class LlmClient {
     abortSignal?: AbortSignal;
     modelRefOverride?: string | string[];
     timeoutMsOverride?: number;
+    purpose?: "query" | "document";
   }): Promise<LlmEmbeddingResult & {
     modelRef: string;
     providerName: string;
@@ -98,8 +102,8 @@ export class LlmClient {
     if (!this.config.llm.enabled) {
       throw new Error("LLM 功能未启用");
     }
-    const requestedModelRefs = normalizeModelRefs(input.modelRefOverride ?? getModelRefsForRole(this.config, "embedding"));
-    const acceptedEmbeddingRefs = resolveModelRefsForRole(this.config, "embedding").acceptedModelRefs;
+    const requestedModelRefs = normalizeModelRefs(input.modelRefOverride ?? getEmbeddingModelRefs(this.config));
+    const acceptedEmbeddingRefs = resolveModelRefsForType(this.config, requestedModelRefs, "embedding").acceptedModelRefs;
     const embeddingModelRefs = requestedModelRefs.filter((ref) => acceptedEmbeddingRefs.includes(ref));
     const providerContexts = this.resolveProviderContexts(embeddingModelRefs);
     if (providerContexts.length === 0) {
@@ -125,6 +129,7 @@ export class LlmClient {
       try {
         const result = await provider.embed(providerContext, {
           texts: input.texts,
+          purpose: input.purpose ?? "document",
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
           ...(input.timeoutMsOverride ? { timeoutMsOverride: input.timeoutMsOverride } : {})
         });
@@ -169,7 +174,7 @@ export class LlmClient {
       return true;
     };
     const shouldPreserveThinking = (): boolean => (
-      getPrimaryModelProfile(this.config, activeModelRefs)?.preserveThinking ?? false
+      getPrimaryModelProfile(this.config, activeModelRefs)?.[params.operation ?? "chat"]?.preserveThinking ?? false
     );
     const workingMessages = cloneMessagesForRequest(
       params.messages,
@@ -243,6 +248,7 @@ export class LlmClient {
       let streamed: LlmProviderGenerateResult & { modelRef: string | null };
       try {
         streamed = await this.streamChatCompletion({
+          ...(params.operation ? { operation: params.operation } : {}),
           messages: workingMessages,
           tools,
           ...(params.onPreviewTextDelta ? { onPreviewTextDelta: params.onPreviewTextDelta } : {}),
@@ -616,6 +622,7 @@ export class LlmClient {
         continue;
       }
 
+      providerContext.operation = params.operation ?? "chat";
       const provider = getLlmProvider(providerContext);
       const resolvedTools = typeof params.tools === "function"
         ? params.tools()
@@ -623,6 +630,7 @@ export class LlmClient {
       const candidateDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
 
       try {
+        const maxOutputTokens = resolveRequestOutputBudget(providerContext, messageProjection.messages, resolvedTools ?? [], params.maxOutputTokensOverride);
         const result = await withProviderExchangeDump(providerContext, params.skipDebugDump, () => provider.generate(providerContext, {
           messages: messageProjection.messages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
@@ -635,7 +643,7 @@ export class LlmClient {
             candidateDeltas.push({ kind: "reasoning", delta });
           },
           ...(params.timeoutMsOverride ? { timeoutMsOverride: params.timeoutMsOverride } : {}),
-          ...(params.maxOutputTokensOverride ? { maxOutputTokensOverride: params.maxOutputTokensOverride } : {}),
+          ...(maxOutputTokens ? { maxOutputTokensOverride: maxOutputTokens } : {}),
           ...(params.enableThinkingOverride != null ? { enableThinkingOverride: params.enableThinkingOverride } : {}),
           ...(params.preferNativeNoThinkingChatEndpoint != null
             ? { preferNativeNoThinkingChatEndpoint: params.preferNativeNoThinkingChatEndpoint }
@@ -849,7 +857,7 @@ function narrowActiveModelRefs(activeModelRefs: string[], selectedModelRef: stri
 }
 
 function shouldFallbackToNextModel(error: unknown): boolean {
-  if (error instanceof LlmProviderPolicyError) return true;
+  if (error instanceof LlmProviderPolicyError || error instanceof ModelRequestBudgetError) return true;
   const message = error instanceof Error
     ? `${error.name} ${error.message}`.toLowerCase()
     : String(error).toLowerCase();

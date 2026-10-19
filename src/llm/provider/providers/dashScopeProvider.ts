@@ -1,6 +1,7 @@
+import { getGenerationSettings } from "../generationSettings.ts";
 import { readProviderSseData, throwIfProviderError } from "../providerSseReader.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
-import { getNativeSearchEnableKey } from "../nativeSearch.ts";
+import { getNativeSearchEnableKeyFromContext } from "../nativeSearch.ts";
 import { buildDashScopeModelApiParameters } from "../modelApiParameters.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { requestOpenAiCompatibleEmbeddings } from "../openAiCompatEmbedding.ts";
@@ -226,8 +227,8 @@ function buildDashScopeEndpoint(context: LlmProviderRequestContext): string {
   if (/\/generation$/.test(trimmed)) {
     return trimmed;
   }
-  return context.modelProfile.supportsVision
-    || context.modelProfile.supportsAudioInput
+  return getGenerationSettings(context)?.capabilities.supportsVision
+    || getGenerationSettings(context)?.capabilities.supportsAudioInput
     ? `${trimmed}/services/aigc/multimodal-generation/generation`
     : `${trimmed}/services/aigc/text-generation/generation`;
 }
@@ -255,7 +256,7 @@ function buildDashScopeRequestBody(
   if (params.tools && params.tools.length > 0) {
     parameters.tools = params.tools;
   }
-  if (getNativeSearchEnableKey(context.config, context.modelRef)) {
+  if (getNativeSearchEnableKeyFromContext(context)) {
     parameters.enable_search = true;
   }
 
@@ -274,7 +275,7 @@ function buildDashScopeRequestMessages(
 ): DashScopeRequestMessage[] {
   return messages.map((message) => convertMessageForDashScope(
     message,
-    context.modelProfile.supportsVision || context.modelProfile.supportsAudioInput
+    getGenerationSettings(context)?.capabilities.supportsVision === true || getGenerationSettings(context)?.capabilities.supportsAudioInput === true
   ));
 }
 
@@ -339,7 +340,7 @@ function shouldSendPreserveThinking(
   messages: LlmMessage[],
   enableThinking: boolean
 ): boolean {
-  if (!enableThinking || context.modelProfile.preserveThinking !== true) {
+  if (!enableThinking || getGenerationSettings(context)?.preserveThinking !== true) {
     return false;
   }
 

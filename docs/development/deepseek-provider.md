@@ -28,12 +28,14 @@ deepseek:
   models:
     flash:
       upstreamModel: deepseek-flash
-      modelType: chat
-      supportsThinking: true
-      thinkingControllable: true
-      preserveThinking: true
-      supportsSearch: true
-      supportsTools: true
+      chat:
+        capabilities:
+          supportsThinking: true
+          thinkingControllable: true
+          supportsSearch: true
+          supportsTools: true
+        preserveThinking: true
+        searchEnabled: true
 ```
 
 搜索由模型自动选择，普通函数工具可以同时存在。不要用 `enable_search` 布尔参数，

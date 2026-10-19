@@ -20,8 +20,7 @@ const ROUTING_MODEL_FIELDS = [
   "imageInspector",
   "audioTranscription",
   "imageGenerator",
-  "turnPlanner",
-  "embedding"
+  "turnPlanner"
 ] as const satisfies ReadonlyArray<Exclude<keyof LlmRoutingPresetFile, "historyWindow" | "tokenLimits">>;
 
 function assertModelTargetAlias(value: string, label: "provider" | "model"): void {
@@ -70,7 +69,6 @@ export function normalizeLlmCatalog(catalog: LlmCatalogFile): Pick<LlmCatalogCon
       });
       models[canonicalRef] = {
         ...profile,
-        supportsSearch: profile.supportsSearch ?? false,
         provider: providerAlias,
         model: upstreamModel
       };

@@ -416,6 +416,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
 
 const projectors = new Map<string, ProviderTranscriptProjector>([
   ["openai", createOpenAiStyleProjector("openai")],
+  ["openrouter", createOpenAiStyleProjector("openrouter")],
   ["openai_responses", createOpenAiStyleProjector("openai_responses")],
   ["dashscope", createOpenAiStyleProjector("dashscope")],
   ["deepseek", createOpenAiStyleProjector("deepseek")],

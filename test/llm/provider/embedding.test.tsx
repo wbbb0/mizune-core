@@ -18,16 +18,15 @@ test("LlmClient sends embedding requests through embedding model routing", async
         }
       },
       models: {
-        embedding: {
+        "test/embedding": {
           provider: "test",
           model: "text-embedding-test",
-          modelType: "embedding",
-          supportsTools: false
+          embedding: {}
         }
       },
       routingPresets: {
         test: {
-          embedding: ["embedding"]
+
         }
       }
     }
@@ -61,7 +60,7 @@ test("LlmClient sends embedding requests through embedding model routing", async
       texts: ["hello", "world"]
     });
 
-    assert.equal(result.modelRef, "embedding");
+    assert.equal(result.modelRef, "test/embedding");
     assert.equal(result.model, "text-embedding-test");
     assert.deepEqual(result.vectors, [[1, 0], [0, 1]]);
     assert.equal(result.usage.inputTokens, 2);

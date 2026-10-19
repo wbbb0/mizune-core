@@ -1,3 +1,4 @@
+import { buildImageRequestParameters } from "./imageRequestParameters.ts";
 import { fetchProviderResponse, withProviderExchangeDump } from "#llm/provider/providerExchangeDump.ts";
 import { supportsStandardImageGeneration } from "#config/llmProviderDefinitions.ts";
 import sharp from "sharp";
@@ -40,14 +41,14 @@ export async function generateConfiguredImage(config: AppConfig, input: {
   return withProviderExchangeDump({ config, modelRef: target.modelRef, model: target.profile.model }, false, async () => {
     const prompt = input.prompt.trim();
     if (!prompt) throw new Error("图片描述不能为空");
-    const settings = target.profile.imageParameters ?? {};
+    const settings = buildImageRequestParameters(target.profile, target.provider, input.size?.trim());
     const signal = AbortSignal.any([
       AbortSignal.timeout(config.llm.imageGeneration.timeoutMs),
       ...(input.abortSignal ? [input.abortSignal] : [])
     ]);
     signal.throwIfAborted();
-    const baseUrl = (target.provider.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
-    const response = await fetchProviderResponse(config, "llm", `${baseUrl}/images/generations`, {
+    const baseUrl = (target.provider.baseUrl ?? (target.provider.type === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1")).replace(/\/+$/, "");
+    const response = await fetchProviderResponse(config, "llm", `${baseUrl}${target.provider.type === "openrouter" ? "/images" : "/images/generations"}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -57,8 +58,7 @@ export async function generateConfiguredImage(config: AppConfig, input: {
         model: target.profile.model,
         prompt,
         n: 1,
-        ...settings,
-        ...(input.size?.trim() ? { size: input.size.trim() } : {})
+        ...settings
       }),
       signal
     }, { modelRef: target.modelRef });

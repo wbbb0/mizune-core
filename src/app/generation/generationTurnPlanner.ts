@@ -96,7 +96,7 @@ export async function handleGenerationTurnPlanner(
   const hasEmojiWithoutGateVision = (
     input.batchMessages.some((message) => message.emojiIds.some((fileId) => !isPendingChatAttachmentId(fileId)))
     || input.batchMessages.some((message) => collectVisualAttachmentFileIds(message.attachments, "emoji").length > 0)
-  ) && !plannerProfile?.supportsVision;
+  ) && !plannerProfile?.chat?.capabilities.supportsVision;
   if (hasEmojiWithoutGateVision) {
     logger.info(
       { sessionId: input.sessionId },

@@ -14,14 +14,7 @@ function createTextInspectorConfig(options: { dedicated?: boolean } = {}) {
         textInspector: {
           provider: "test",
           model: "fake-text-inspector",
-          modelType: "chat",
-          supportsThinking: false,
-          thinkingControllable: true,
-          supportsVision: false,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: false,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, thinkingControllable: true, supportsVision: false, supportsAudioInput: false, supportsTools: false, supportsSearch: false }, preserveThinking: false }
         }
       },
       routingPresets: {
@@ -35,7 +28,7 @@ function createTextInspectorConfig(options: { dedicated?: boolean } = {}) {
           imageInspector: ["main"],
           audioTranscription: ["transcription"],
           turnPlanner: ["main"],
-          embedding: ["embedding"]
+
         }
       },
       textInspector: {
@@ -76,7 +69,7 @@ test("document summary service caps model output lengths", async () => {
             imageInspector: ["main"],
             audioTranscription: ["transcription"],
             turnPlanner: ["main"],
-            embedding: ["embedding"]
+
           }
         }
       }

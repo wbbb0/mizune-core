@@ -18,18 +18,12 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     llm: {
       models: {
         main: {
-          supportsVision: options.mainSupportsVision
+          chat: { capabilities: { supportsVision: options.mainSupportsVision } }
         },
         inspector: {
           provider: "test",
           model: "fake-inspector",
-          supportsThinking: false,
-          thinkingControllable: true,
-          supportsVision: true,
-          supportsAudioInput: false,
-          supportsSearch: false,
-          supportsTools: false,
-          preserveThinking: false
+          chat: { capabilities: { supportsThinking: false, thinkingControllable: true, supportsVision: true, supportsAudioInput: false, supportsTools: false, supportsSearch: false }, preserveThinking: false }
         }
       },
       routingPresets: {

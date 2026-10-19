@@ -21,6 +21,7 @@ export interface LlmProviderMutationImpact {
   exists: boolean;
   modelCount: number;
   referenceCount: number;
+  embeddingReferences: string[];
   references: Array<{ preset: string; role: string; indexes: number[] }>;
   emptiedRoles: Array<{ preset: string; role: string }>;
 }
@@ -133,18 +134,20 @@ export interface ProviderModelSlot {
   upstreamModel: string;
   alias: string;
   exists: boolean;
-  capabilities: Record<string, string | boolean>;
+  suggested: Record<string, unknown>;
+  sources: string[];
+  profile: Record<string, unknown>;
 }
 
 export type ProviderModelListResult =
-  | { kind: "ok"; providerType: string; endpoint: string | null; models: ProviderModelSlot[] }
+  | { kind: "ok"; providerType: string; endpoint: string | null; models: ProviderModelSlot[]; warnings: string[] }
   | { kind: "unsupported"; providerType: string; reason: string };
 
 /** 新增模型弹窗提交的条目，写入 provider.models[alias]。 */
 export interface LlmModelAddEntry {
   upstreamModel: string;
   alias: string;
-  capabilities: Record<string, string | boolean>;
+  profile: Record<string, unknown>;
 }
 
 /** 按供应商草稿的连接信息拉取其模型清单并生成为可导入槽位。 */

@@ -114,6 +114,8 @@ conversation:
       asciiTokens: 0.25
 context:
   embedding:
+    # 独立于聊天路由；null 禁用，或填写 { provider: openrouter, model: embedding }
+    model: null
     timeoutMs: 30000
     textPreprocessVersion: v1
     chunkerVersion: user-facts-v1
