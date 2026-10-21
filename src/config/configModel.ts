@@ -212,7 +212,7 @@ const llmProviderSchema = s.object(llmProviderSchemaShape)
 const conversationConfigSchema = s.object({
   interruptionMode: s.enum(["immediate", "after_tool"])
     .title("新消息打断方式")
-    .describe("immediate：立即取消当前回复，再按会话聚合等待设置处理新消息；after_tool：保留当前请求和工具，在下一次模型请求前插入新消息。若没有后续工具调用或已进入发送阶段，则在本轮结束后处理。仅影响原本允许打断的消息；停止命令始终立即生效。")
+    .describe("immediate：立即取消当前回复，再按会话聚合等待设置处理新消息；after_tool：立即作废未发送的旧回复，保留当前请求和工具，在下一次模型请求前插入新消息。若没有后续工具调用或已进入发送阶段，则在本轮结束后处理。仅影响原本允许打断的消息；停止命令始终立即生效。")
     .default("after_tool"),
   crossConversation: s.object({
     enabled: s.boolean().title("启用跨会话参考").default(false),

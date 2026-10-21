@@ -192,6 +192,10 @@ export function consumeSteerMessagesState(session: SessionState): SessionMessage
   }
   const messages = [...session.pendingSteerMessages];
   session.pendingSteerMessages = [];
+  // 只有消费了插话，后续模型输出才允许发送；旧队列仍持有已取消的信号。
+  if (session.outboundAbortController?.signal.aborted) {
+    session.outboundAbortController = new AbortController();
+  }
   // 已注入的用户消息成为普通历史，下一轮不能再把它们当作待处理输入排除。
   if (session.pendingMessages.length === 0) {
     session.pendingTranscriptGroupId = null;
@@ -313,6 +317,7 @@ export function clearSessionState(session: SessionState): void {
   session.smoothedGapMs = null;
   session.generationAbortController = null;
   session.responseAbortController = null;
+  session.outboundAbortController = null;
   session.activeAssistantResponse = null;
   session.activeAssistantDraftResponse = null;
 }

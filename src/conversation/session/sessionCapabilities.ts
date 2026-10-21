@@ -540,6 +540,7 @@ export interface SessionGenerationQueueAccess {
 }
 
 export interface SessionGenerationOutboundAccess {
+  getOutboundAbortSignal(sessionId: string): AbortSignal | undefined;
   getPacingPreferences(sessionId: string): SessionState["pacingPreferences"];
   appendActiveAssistantResponseChunkIfResponseEpochMatches(
     sessionId: string,

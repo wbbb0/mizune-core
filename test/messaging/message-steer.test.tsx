@@ -127,6 +127,7 @@ for (const scenario of ["immediate", "consume", "promote", "delivering", "switch
     if (scenario !== "immediate") {
       assert.equal(started.abortController.signal.aborted, false);
       assert.equal(started.responseAbortController.signal.aborted, false);
+      assert.equal(sessionManager.getOutboundAbortSignal(session.id)?.aborted, true);
       assert.equal(sessionManager.getMutationEpoch(session.id), oldMutationEpoch);
       assert.equal(sessionManager.hasActiveResponse(session.id), true);
       assert.equal(debounceScheduled, 0);
@@ -154,6 +155,7 @@ for (const scenario of ["immediate", "consume", "promote", "delivering", "switch
       } else if (scenario === "consume") {
         const consumed = sessionManager.consumeSteerMessages(session.id);
         assert.equal(consumed.length, 2);
+        assert.equal(sessionManager.getOutboundAbortSignal(session.id)?.aborted, false);
         assert.equal(sessionManager.consumeSteerMessages(session.id).length, 0);
         assert.equal(current.pendingTranscriptGroupId, null);
         assert.equal(store.projectRuntimeHistory().length, 2);

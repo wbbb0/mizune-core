@@ -296,33 +296,6 @@ export function createGenerationExecutor(
         persistSession(sessionId, "internal_transcript_updated");
       }
     };
-    // 在模型请求边界消费新消息，保留上一轮工具结果与当前回复生命周期。
-    const consumeSteerMessages = async (): Promise<LlmMessage[]> => {
-      const steerMessages = sessionManager.consumeSteerMessages(sessionId);
-      if (steerMessages.length === 0) {
-        return [];
-      }
-      return steerMessages.map((message) => ({
-        role: "user" as const,
-        content: projectTranscriptMessageItemToHistoryMessage(createUserTranscriptMessageItem({
-          chatType: message.chatType,
-          userId: message.userId,
-          senderName: message.senderName,
-          text: message.text,
-          ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
-          ...(message.imageIds.length > 0 ? { imageIds: message.imageIds } : {}),
-          ...(message.emojiIds.length > 0 ? { emojiIds: message.emojiIds } : {}),
-          ...(message.attachments && message.attachments.length > 0 ? { attachments: message.attachments } : {}),
-          ...(message.audioSources.length > 0 ? { audioCount: message.audioSources.length } : {}),
-          ...(message.forwardIds.length > 0 ? { forwardIds: message.forwardIds } : {}),
-          ...(message.replyMessageId ? { replyMessageId: message.replyMessageId } : {}),
-          ...(message.mentionUserIds.length > 0 ? { mentionUserIds: message.mentionUserIds } : {}),
-          ...(message.mentionedAll ? { mentionedAll: true } : {}),
-          ...(message.isAtMentioned ? { mentionedSelf: true } : {}),
-          timestampMs: message.receivedAt
-        })).content
-      }));
-    };
     const consumeInlineTriggers = async (): Promise<LlmMessage[]> => {
       const triggers = sessionManager.drainInlineTriggers(sessionId);
       if (triggers.length === 0) {
@@ -381,6 +354,7 @@ export function createGenerationExecutor(
       const segmentCoordinator = createGenerationSegmentCoordinator({
         disableStreamingSplit,
         committedSink: outbound,
+        isOutputSuppressed: () => sessionManager.getOutboundAbortSignal(sessionId)?.aborted === true,
         ...(draftOverlaySink ? {
           draftOverlaySink,
           draftStateSink: {
@@ -413,6 +387,34 @@ export function createGenerationExecutor(
           }
         } : {})
       });
+      // 在模型请求边界消费新消息，保留上一轮工具结果与当前回复生命周期。
+      const consumeSteerMessages = async (): Promise<LlmMessage[]> => {
+        const steerMessages = sessionManager.consumeSteerMessages(sessionId);
+        if (steerMessages.length === 0) {
+          return [];
+        }
+        await segmentCoordinator.discardPendingOutput();
+        return steerMessages.map((message) => ({
+          role: "user" as const,
+          content: projectTranscriptMessageItemToHistoryMessage(createUserTranscriptMessageItem({
+            chatType: message.chatType,
+            userId: message.userId,
+            senderName: message.senderName,
+            text: message.text,
+            ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
+            ...(message.imageIds.length > 0 ? { imageIds: message.imageIds } : {}),
+            ...(message.emojiIds.length > 0 ? { emojiIds: message.emojiIds } : {}),
+            ...(message.attachments && message.attachments.length > 0 ? { attachments: message.attachments } : {}),
+            ...(message.audioSources.length > 0 ? { audioCount: message.audioSources.length } : {}),
+            ...(message.forwardIds.length > 0 ? { forwardIds: message.forwardIds } : {}),
+            ...(message.replyMessageId ? { replyMessageId: message.replyMessageId } : {}),
+            ...(message.mentionUserIds.length > 0 ? { mentionUserIds: message.mentionUserIds } : {}),
+            ...(message.mentionedAll ? { mentionedAll: true } : {}),
+            ...(message.isAtMentioned ? { mentionedSelf: true } : {}),
+            timestampMs: message.receivedAt
+          })).content
+        }));
+      };
       const hasToolsetBoundary = !setupMode && Array.isArray(availableToolsets);
       const isPlannerToolsetMode = hasToolsetBoundary && config.llm.turnPlanner.toolSelection === "planned";
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
@@ -969,7 +971,7 @@ export function createGenerationExecutor(
             });
             const committed = await segmentCoordinator.appendStandalone(checkpointText);
             assertGenerationCurrent();
-            if (committed === false) {
+            if (committed === false && !sessionManager.getOutboundAbortSignal(sessionId)?.aborted) {
               throw new Error("任务检查点未能提交到当前回复。");
             }
             const nextTracker = sessionManager.updateTaskTrackerIfEpochMatches(
@@ -1126,7 +1128,7 @@ export function createGenerationExecutor(
         responseEpoch,
         Date.now()
       );
-      if (finalizedAssistant && completedSuccessfully && !abortController.signal.aborted && !responseAbortController.signal.aborted) {
+      if (finalizedAssistant && completedSuccessfully && !abortController.signal.aborted && !responseAbortController.signal.aborted && !sessionManager.getOutboundAbortSignal(sessionId)?.aborted) {
         publishConversation(sessionManager.getSession(sessionId), Date.now());
         persistSession(sessionId, "cross_conversation_reply_published");
       }

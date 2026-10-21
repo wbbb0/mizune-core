@@ -322,6 +322,10 @@ export class SessionManager {
     return cancelled;
   }
 
+  getOutboundAbortSignal(sessionId: string): AbortSignal | undefined {
+    return this.requireSession(sessionId).outboundAbortController?.signal;
+  }
+
   // Aborts the outbound message queue for a session without cancelling generation.
   // Queued messages that have not been sent yet will be skipped.
   // Generation and tool execution continue running.

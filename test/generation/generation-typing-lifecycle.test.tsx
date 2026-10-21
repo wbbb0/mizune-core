@@ -111,6 +111,7 @@ function createExecutorHarness(options?: {
   modelSelfUpgradePlan?: NonNullable<import("../../src/app/generation/generationExecutor.ts").RunGenerationInput["modelSelfUpgradePlan"]>;
   customGenerate?: (input: {
     messages?: Array<{ role: string; content: unknown }>;
+    consumeSteerMessages?: () => Promise<LlmMessage[]>;
     onReasoningDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
     onProviderResponseComplete?: (event: {
@@ -1917,4 +1918,39 @@ test("默认all全集且无planner需求时只提供短目录，无技能正文"
   await harness.runPromise;
   assert.equal(checked, true);
   assert.deepEqual(getSessionSkillsView(harness.config, harness.sessionId).loaded, []);
+});
+
+
+test("插话只暂停旧输出，工具可以完成并在消费补充后恢复发送", { timeout: 3000 }, async () => {
+  let resolveWaiting!: () => void;
+    const waiting = { promise: new Promise<void>(resolve => { resolveWaiting = resolve; }), resolve: () => resolveWaiting() };
+  let resolveResume!: () => void;
+    const resume = { promise: new Promise<void>(resolve => { resolveResume = resolve; }), resolve: () => resolveResume() };
+  const harness = createExecutorHarness({
+    configOverrides: { skills: { enabled: false } },
+    availableToolNames: ["get_current_time"],
+    customGenerate: async (input) => {
+      await input.onTextDelta?.("未发送的旧缓冲");
+      waiting.resolve();
+      await resume.promise;
+      assert.equal(input.abortSignal?.aborted, false);
+      const result = await input.toolExecutor!(timeToolCall);
+      assert.doesNotMatch(typeof result === "string" ? result : result.content, /error|取消|打断/);
+      await input.onTextDelta?.("旧请求剩余文本");
+      const messages = await input.consumeSteerMessages!();
+      assert.equal(messages.length, 1);
+      assert.match(JSON.stringify(messages), /按新要求回答/);
+      await input.onTextDelta?.("新回答");
+      return { text: "新回答", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await waiting.promise;
+  harness.sessionManager.interruptOutbound(harness.sessionId);
+  harness.sessionManager.appendSteerMessage(harness.sessionId, { ...createBatchMessage(), text: "按新要求回答" });
+  resume.resolve();
+  await harness.runPromise;
+  assert.deepEqual(harness.sendTextCalls.map(call => call.text), ["新回答"]);
+  assert.equal(harness.started.abortController.signal.aborted, false);
+  assert.equal(harness.started.responseAbortController.signal.aborted, false);
 });
