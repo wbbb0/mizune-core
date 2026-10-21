@@ -113,7 +113,7 @@ export async function processIncomingMessage(
     return;
   }
 
-  const triggerDecision = deps.inboundDelivery === "web"
+  const initialTriggerDecision = deps.inboundDelivery === "web"
     ? {
         groupMatched: false,
         userMatched: true,
@@ -129,6 +129,13 @@ export async function processIncomingMessage(
         { config, whitelistStore, conversationAccess, sessionManager },
         context
       );
+  const triggerDecision = {
+    ...initialTriggerDecision,
+    interruptPolicy: initialTriggerDecision.interruptPolicy === "soft_interrupt"
+      && config.conversation.interruptionMode === "after_tool"
+      ? "steer" as const
+      : initialTriggerDecision.interruptPolicy
+  };
   const hasActiveResponseAtAdmission = sessionManager.hasActiveResponse(context.session.id);
   let activeResponseAlreadyInterrupted = false;
   if (

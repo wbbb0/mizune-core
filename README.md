@@ -129,6 +129,9 @@ CONFIG_INSTANCE_FILE=config/instances/acc1.yml npm run dev
 
 WebUI 会话输入框支持以 `.` 或 `。` 开头的指令补全：方向键选择，Tab / Enter 填入，Esc 收起；完整指令继续用 Enter 发送，Shift + Enter 换行。枚举参数和表情 ID 提供候选，自由参数只提示名称。表情 ID 在进入对应参数时读取当前实例收藏清单；补全不改变指令原有的权限和会话限制。
 
+运行中新消息的处理方式可在 WebUI 配置编辑器「会话 → 新消息打断方式」切换，对应 `conversation.interruptionMode`：`immediate` 取消当前生成和剩余发送，再按会话的消息聚合等待设置开始下一轮；默认 `after_tool` 保留当前请求和工具，在下一次模型请求前注入补充消息。若本轮没有后续工具调用、已达工具轮次上限或已进入发送阶段，则在本轮结束后处理。WebUI 与 OneBot 共用此策略；群聊其他用户仍按原规则排队，停止命令仍立即取消。详见[新消息打断与插入](docs/architecture/message-interruption.md)。
+
+
 ### WebUI-only
 
 适合先验证模型调用、会话流程和 WebUI，不接 OneBot：

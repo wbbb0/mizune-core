@@ -86,6 +86,8 @@ llm:
   debugDump:
     enabled: false
 conversation:
+  # immediate：直接打断；after_tool：工具调用后插入（无后续工具时在本轮结束后处理）
+  interruptionMode: after_tool
   crossConversation:
     enabled: false
     maxSources: 2

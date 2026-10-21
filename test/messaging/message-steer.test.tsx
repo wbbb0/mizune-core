@@ -3,11 +3,14 @@ import assert from "node:assert/strict";
 import pino from "pino";
 import { processIncomingMessage } from "../../src/app/messaging/messageEventHandler.ts";
 import { resolveTriggerDecision } from "../../src/app/messaging/messageTriggerFlow.ts";
+import { createSessionTranscriptStore } from "../../src/conversation/session/sessionTranscriptStore.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-  test("active natural messages interrupt the current generation and queue the next turn", async () => {
+for (const scenario of ["immediate", "consume", "promote", "delivering", "switch"] as const) {
+  test(`active natural input uses configured interruption mode: ${scenario}`, async () => {
     const config = createTestAppConfig({
+      ...(scenario === "immediate" ? { conversation: { interruptionMode: "immediate" as const } } : {}),
       whitelist: {
         enabled: false
       }
@@ -31,7 +34,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     let debounceScheduled = 0;
     let flushCalled = 0;
 
-    await processIncomingMessage({
+    if (scenario === "delivering") {
+      sessionManager.finishGeneration(session.id, started.abortController);
+    }
+    const deps = {
       inboundDelivery: "web",
       services: {
         config,
@@ -96,7 +102,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       flushSession: () => {
         flushCalled += 1;
       }
-    }, {
+    } satisfies Parameters<typeof processIncomingMessage>[0];
+    const incoming = {
       chatType: "private",
       userId: "10001",
       senderName: "tester",
@@ -113,9 +120,55 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
       mentionUserIds: [],
       mentionedAll: false,
       isAtMentioned: false
-    });
+    } satisfies Parameters<typeof processIncomingMessage>[1];
+    await processIncomingMessage(deps, incoming);
 
     const current = sessionManager.getSession(session.id);
+    if (scenario !== "immediate") {
+      assert.equal(started.abortController.signal.aborted, false);
+      assert.equal(started.responseAbortController.signal.aborted, false);
+      assert.equal(sessionManager.getMutationEpoch(session.id), oldMutationEpoch);
+      assert.equal(sessionManager.hasActiveResponse(session.id), true);
+      assert.equal(debounceScheduled, 0);
+      if (scenario === "delivering") {
+        assert.equal(current.pendingMessages.length, 1);
+        assert.equal(current.pendingSteerMessages.length, 0);
+        return;
+      }
+      await processIncomingMessage(deps, { ...incoming, text: "第二条补充" });
+      assert.equal(current.pendingMessages.length, 0);
+      assert.deepEqual(current.pendingSteerMessages.map((message) => message.text), ["这是插入消息", "第二条补充"]);
+      const store = createSessionTranscriptStore(current, config);
+      assert.equal(store.projectVisibleMessages().length, 2);
+      assert.equal(store.projectRuntimeHistory().length, 0);
+      assert.equal(store.runtimeItems().length, 0);
+      if (scenario === "switch") {
+        config.conversation.interruptionMode = "immediate";
+        await processIncomingMessage(deps, { ...incoming, text: "现在直接打断" });
+        assert.equal(started.abortController.signal.aborted, true);
+        assert.equal(current.pendingSteerMessages.length, 0);
+        assert.deepEqual(current.pendingMessages.map((message) => message.text), ["这是插入消息", "第二条补充", "现在直接打断"]);
+        assert.equal(debounceScheduled, 1);
+        sessionManager.beginGeneration(session.id);
+        assert.equal(store.projectRuntimeHistoryForPrompt({ excludeGroupId: current.activeTranscriptGroupId }).filter((item) => item.role === "user").length, 0);
+      } else if (scenario === "consume") {
+        const consumed = sessionManager.consumeSteerMessages(session.id);
+        assert.equal(consumed.length, 2);
+        assert.equal(sessionManager.consumeSteerMessages(session.id).length, 0);
+        assert.equal(current.pendingTranscriptGroupId, null);
+        assert.equal(store.projectRuntimeHistory().length, 2);
+        assert.equal(sessionManager.promoteSteerMessagesToPending(session.id), 0);
+      } else {
+        sessionManager.finishGeneration(session.id, started.abortController);
+        assert.equal(sessionManager.promoteSteerMessagesToPending(session.id), 2);
+        assert.equal(sessionManager.promoteSteerMessagesToPending(session.id), 0);
+        sessionManager.completeResponse(session.id, started.responseEpoch);
+        const next = sessionManager.beginGeneration(session.id);
+        assert.deepEqual(next.messages.map((message) => message.text), ["这是插入消息", "第二条补充"]);
+        assert.equal(store.projectRuntimeHistoryForPrompt({ excludeGroupId: current.activeTranscriptGroupId }).length, 0);
+      }
+      return;
+    }
     // Natural user input interrupts the active answer instead of steering the old turn.
     assert.equal(started.abortController.signal.aborted, true);
     assert.equal(started.responseAbortController.signal.aborted, true);
@@ -152,6 +205,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(flushCalled, 0);
     assert.equal(sessionManager.getReplyDelivery(session.id), "web");
   });
+
+}
 
   test("group replies to bot without an explicit mention stay monitored", async () => {
     const config = createTestAppConfig({
@@ -333,8 +388,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(decision.reason, "群聊明确 @ bot");
   });
 
-  test("group mention from another user is queued without interrupting an active response", async () => {
+for (const mode of ["immediate", "after_tool"] as const) {
+  test(`group mention from another user is queued without interrupting an active response: ${mode}`, async () => {
     const config = createTestAppConfig({
+      conversation: { interruptionMode: mode },
       whitelist: {
         enabled: false
       }
@@ -454,6 +511,8 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(debounceScheduled, 0);
     assert.ok(persistedReasons.includes("group_message_queued_next_thread"));
   });
+
+}
 
   test("existing queued group targets keep priority over new group mentions", async () => {
     const config = createTestAppConfig();
@@ -688,8 +747,10 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.equal(decision.threadAction, "reply_now");
   });
 
-  test("same directly addressed user soft-interrupts an active group response", async () => {
+for (const mode of ["immediate", "after_tool"] as const) {
+  test(`same directly addressed user soft-interrupts an active group response: ${mode}`, async () => {
     const config = createTestAppConfig({
+      conversation: { interruptionMode: mode },
       whitelist: {
         enabled: false
       }
@@ -798,13 +859,16 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     });
 
     const current = sessionManager.getSession(session.id);
-    assert.equal(started.abortController.signal.aborted, true);
-    assert.equal(started.responseAbortController.signal.aborted, true);
-    assert.equal(sessionManager.hasActiveResponse(session.id), false);
-    assert.equal(current.pendingMessages.length, 1);
-    assert.equal(debounceScheduled, 1);
-    assert.ok(persistedReasons.includes("user_message_interrupted_active_response"));
+    assert.equal(started.abortController.signal.aborted, mode === "immediate");
+    assert.equal(started.responseAbortController.signal.aborted, mode === "immediate");
+    assert.equal(sessionManager.hasActiveResponse(session.id), mode === "after_tool");
+    assert.equal(current.pendingMessages.length, mode === "immediate" ? 1 : 0);
+    assert.equal(current.pendingSteerMessages.length, mode === "after_tool" ? 1 : 0);
+    assert.equal(debounceScheduled, mode === "immediate" ? 1 : 0);
+    assert.ok(persistedReasons.includes(mode === "immediate" ? "user_message_interrupted_active_response" : "user_message_queued_for_tool_boundary"));
   });
+
+}
 
   test("group mention trigger updates the session reply delivery flag", async () => {
     const config = createTestAppConfig({

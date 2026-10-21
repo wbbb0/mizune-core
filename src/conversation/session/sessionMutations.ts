@@ -192,6 +192,10 @@ export function consumeSteerMessagesState(session: SessionState): SessionMessage
   }
   const messages = [...session.pendingSteerMessages];
   session.pendingSteerMessages = [];
+  // 已注入的用户消息成为普通历史，下一轮不能再把它们当作待处理输入排除。
+  if (session.pendingMessages.length === 0) {
+    session.pendingTranscriptGroupId = null;
+  }
   session.lastActiveAt = Date.now();
   return messages;
 }

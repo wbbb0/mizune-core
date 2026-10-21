@@ -288,9 +288,7 @@ export function createGenerationExecutor(
         persistSession(sessionId, "internal_transcript_updated");
       }
     };
-    // 消费 steer 消息，注入到当前 tool iteration 的 prompt 上下文中。
-    // 如果仅注入用户消息效果不够明显（模型没有及时收尾），
-    // 可以在这里额外附加一条 system 提示，告知模型"用户发了新消息，请尽快结束当前工具链"。
+    // 在模型请求边界消费新消息，保留上一轮工具结果与当前回复生命周期。
     const consumeSteerMessages = async (): Promise<LlmMessage[]> => {
       const steerMessages = sessionManager.consumeSteerMessages(sessionId);
       if (steerMessages.length === 0) {

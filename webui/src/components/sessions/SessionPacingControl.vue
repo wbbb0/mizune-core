@@ -57,6 +57,9 @@ function updateToolLoopOutput(event: Event) {
       <h3 class="text-ui font-medium text-text-primary">会话调度与回复输出</h3>
       <p class="mt-1 text-small leading-5 text-text-subtle">控制用户消息的聚合等待、OneBot 投递节奏以及模型回复的输出方式。</p>
     </div>
+    <p class="mb-4 text-small leading-5 text-text-subtle">
+      运行中发送的新消息按全局配置「会话 → 新消息打断方式」处理：直接打断会取消当前回复；工具调用后插入会保留当前工具，并在下一次模型请求前加入新消息。若无后续工具调用，则在本轮结束后处理。停止命令始终立即生效。
+    </p>
     <div class="flex flex-col gap-4">
       <label class="grid gap-1.5 text-small text-text-secondary">
         <span>用户消息聚合等待</span>
