@@ -688,6 +688,7 @@ export const fileConfigSchema = s.object({
   appName: s.string().trim().nonempty().title("应用名称").default("llm-bot"),
   nodeEnv: s.string().trim().nonempty().title("运行环境").default("development"),
   logLevel: s.string().trim().nonempty().title("日志级别").default("info"),
+  logIncludeConversationContent: s.boolean().title("在日志中包含对话内容").describe("默认关闭，仅记录允许的事件和诊断元数据。开启后允许输出对话正文、工具参数与结果及错误详情；不影响 dump。支持热更新。").default(false),
   dataDir: s.string().trim().nonempty().title("数据目录").default("data"),
   proxy: proxyConfigSchema,
   onebot: onebotConfigSchema,
@@ -776,6 +777,7 @@ export interface ConfigSummary {
   runtimeNodeEnv: string;
   configuredNodeEnv: string;
   logLevel: string;
+  logIncludeConversationContent: boolean;
   oneBotEnabled: boolean;
   oneBotWsUrl: string;
   oneBotHttpUrl: string;

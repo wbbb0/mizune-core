@@ -281,6 +281,16 @@ npm run test
 
 标准图像模型通过 `imageGenerator` 路由调用 OpenAI Images API；ComfyUI 保留独立工作流配置，两者分别提供可独立开关的工具集，并共用图片资产体系。配置见 [图像生成](docs/development/image-generation.md)。
 
+### 日志聊天内容过滤
+
+`logIncludeConversationContent` 控制是否在服务日志中包含对话内容，默认 `false`（不包含）。需要记录正文时，可在 `config/global.yml` 或实例配置中设置 `logIncludeConversationContent: true`。支持配置热更新，WebUI 配置编辑器中显示为“在日志中包含对话内容”。
+
+关闭时，日志出口仅保留登记的固定事件名、会话/请求/模型标识、计数、耗时和状态等允许的元数据。聊天正文、消息段、prompt、工具参数与结果、文件名/路径/URL、自由文本原因、未知字段及嵌套对象均不输出。异常堆栈与上游错误正文也会隐藏；已识别的超时、HTTP 错误状态和网络错误码仍可用于排查。未登记的日志消息统一显示 `[日志内容已过滤]`。这不是匿名化开关：会话、用户和群 ID 仍会保留。
+
+终端/journal 与 WebUI 最近错误使用同一过滤结果；开关只作用于新写出的日志，不删除历史日志或已保存的最近错误。会话数据、WebUI 对话展示和下述 dump 均不受影响，dump 仍按原有规则保存完整诊断。
+
+过滤策略集中在 `src/logging/logContentFilter.ts`，固定事件许可清单位于 `src/logging/safeLogEvents.ts`。新增日志字段默认隐藏；只有确认是诊断元数据时才加入许可清单，禁止将自由文本或正文放入标识字段。新增固定事件可登记到事件清单，禁止登记运行时生成的文本。
+
 ### LLM 响应诊断 dump
 
 实例 `dataDir/dump/` 下，`last-exchange.json` 统一保存解析后的成功结果，以及最近一次模型调用的实际 HTTP 请求体、响应状态、少量诊断响应头和解析前的原始响应体。`last-failed-exchange.json` 单独保留最近一次失败，不会被后续成功调用覆盖。不再生成旧的 `last-request.json` / `last-response.json`，也不额外缓存流事件数组。解析结果超过 1 MiB 时省略，并标记 `parsedResponseOmitted`；写入失败不会改变调用结果。请求与响应放在同一文件，并带调用 ID、模型引用和时间，避免并发调用时误配。

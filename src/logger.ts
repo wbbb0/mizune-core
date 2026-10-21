@@ -2,9 +2,11 @@ import pino from "pino";
 import pretty from "pino-pretty";
 import type { AppConfig } from "./config/config.ts";
 import type { RecentErrorLogInput } from "#runtime/recentErrorStore.ts";
+import { filterLogContent } from "./logging/logContentFilter.ts";
 
 export interface LoggerOptions {
   recentErrorSink?: (input: RecentErrorLogInput) => void;
+  destination?: pino.DestinationStream;
 }
 
 function formatLogTimestamp(value: unknown, timeZone: string): string {
@@ -37,7 +39,7 @@ function formatLogTimestamp(value: unknown, timeZone: string): string {
 
 export function createLogger(config: AppConfig, options: LoggerOptions = {}) {
   const logTimeZone = config.scheduler.defaultTimezone;
-  const stream = pretty({
+  const stream = options.destination ?? pretty({
     colorize: true,
     singleLine: true,
     ignore: "pid,hostname,app,name",
@@ -64,11 +66,12 @@ export function createLogger(config: AppConfig, options: LoggerOptions = {}) {
     name: config.appName,
     level: config.logLevel,
     hooks: {
-      logMethod(args, method, level) {
-        method.apply(this, args);
-        if (level >= 50) {
-          captureRecentErrorLog(args, level, options.recentErrorSink);
-        }
+      streamWrite(serialized) {
+        if (config.logIncludeConversationContent && !options.recentErrorSink) return serialized;
+        const record = JSON.parse(serialized) as Record<string, unknown>;
+        const output = config.logIncludeConversationContent ? record : filterLogContent(record);
+        captureRecentErrorLog(output, options.recentErrorSink);
+        return config.logIncludeConversationContent ? serialized : JSON.stringify(output) + "\n";
       }
     },
     serializers: {
@@ -83,23 +86,16 @@ export function createLogger(config: AppConfig, options: LoggerOptions = {}) {
 }
 
 function captureRecentErrorLog(
-  args: Parameters<pino.LogFn>,
-  level: number,
+  fields: Record<string, unknown>,
   sink: LoggerOptions["recentErrorSink"]
 ): void {
-  if (!sink) {
+  const level = typeof fields.level === "number" ? fields.level : 30;
+  if (!sink || level < 50) {
     return;
   }
   try {
-    const first = args[0];
-    const second = args[1];
-    const fields = isPlainObject(first) ? first : {};
-    const event = typeof second === "string"
-      ? second
-      : typeof first === "string"
-        ? first
-        : "";
-    const errorDetails = normalizeErrorDetails(fields.err ?? fields.error ?? (first instanceof Error ? first : null));
+    const event = typeof fields.msg === "string" ? fields.msg : "";
+    const errorDetails = normalizeErrorDetails(fields.err ?? fields.error);
     const context = pickRecentErrorContext(fields);
     sink({
       level: level >= 60 ? "fatal" : "error",
@@ -124,7 +120,7 @@ function normalizeErrorDetails(error: unknown): { name?: string; message: string
     };
   }
   if (isPlainObject(error)) {
-    const name = typeof error.name === "string" ? error.name : undefined;
+    const name = typeof error.name === "string" ? error.name : typeof error.type === "string" ? error.type : undefined;
     const message = typeof error.message === "string"
       ? error.message
       : stringifyUnknown(error);

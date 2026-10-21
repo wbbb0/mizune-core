@@ -91,7 +91,7 @@ test("RecentErrorCapture buffers logger errors until store is bound", async () =
   const harness = await createHarness();
   try {
     const capture = new RecentErrorCapture();
-    const logger = createLogger(createTestAppConfig({ logLevel: "error" }), {
+    const logger = createLogger(createTestAppConfig({ logLevel: "error", logIncludeConversationContent: true }), {
       recentErrorSink: (input) => capture.record(input)
     });
 
@@ -112,7 +112,7 @@ test("RecentErrorCapture buffers logger errors until store is bound", async () =
 
 test("logger hook captures fatal logs and does not throw when sink fails", async () => {
   const capture = new RecentErrorCapture();
-  const logger = createLogger(createTestAppConfig({ logLevel: "fatal" }), {
+  const logger = createLogger(createTestAppConfig({ logLevel: "fatal", logIncludeConversationContent: true }), {
     recentErrorSink: () => {
       throw new Error("sink failed");
     }
@@ -124,7 +124,7 @@ test("logger hook captures fatal logs and does not throw when sink fails", async
 
   const harness = await createHarness();
   try {
-    const fatalLogger = createLogger(createTestAppConfig({ logLevel: "fatal" }), {
+    const fatalLogger = createLogger(createTestAppConfig({ logLevel: "fatal", logIncludeConversationContent: true }), {
       recentErrorSink: (input) => capture.record(input)
     });
     fatalLogger.fatal({ error: new Error("fatal boom") }, "startup_failed");
