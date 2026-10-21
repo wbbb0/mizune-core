@@ -706,6 +706,15 @@ export const fileConfigSchema = s.object({
     enabled: s.boolean().default(true),
     maxCount: s.number().int().min(1).max(200).default(25)
   }).title("精选表情库").describe("实例共享；达到上限时必须明确替换旧表情。降额不自动删除已有收藏。").default(emptyObject),
+  skills: s.object({
+    enabled: s.boolean().title("启用技能库").default(true),
+    modelMaintenanceEnabled: s.boolean().title("模型自主维护").default(true),
+    plannerSelectionEnabled: s.boolean().title("规划器选择技能").default(true),
+    maxCount: s.number().int().min(1).max(200).title("技能数量上限").default(40),
+    maxActiveSkills: s.number().int().min(1).max(10).title("任务活跃技能上限").default(3),
+    maxBodyTokens: s.number().int().min(128).max(32000).title("技能正文总预算").default(4000),
+    maxResourceTokens: s.number().int().min(128).max(32000).title("单次引用读取预算").default(4000)
+  }).title("实例技能库").default(emptyObject),
   assets: assetsConfigSchema,
   comfy: comfyConfigSchema,
   contentSafety: contentSafetyConfigSchema,

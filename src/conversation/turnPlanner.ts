@@ -47,6 +47,7 @@ export type TurnPlannerFollowupMode = "none" | "elliptical" | "explicit_referenc
 
 export interface TurnPlannerInput {
   requirements: TurnPlannerRequirements;
+  availableSkills?: Array<{ id: string; name: string; description: string }>;
   sessionId: string;
   chatType: "private" | "group";
   relationship: Relationship;
@@ -84,6 +85,8 @@ export interface TurnPlannerResult {
   recentDomainReuse: string[];
   followupMode: TurnPlannerFollowupMode;
   toolsetIds: string[];
+  skillIds?: string[];
+  topicDecisionEvaluated?: boolean;
   taskIntent?: TaskPlannerIntent | undefined;
   reasoningContent?: string;
   metrics?: TurnPlannerMetrics;
@@ -382,10 +385,12 @@ export class TurnPlanner {
         || (parsed.replyDecision === "reply_large" && !needs.modelSelection)
         ? "reply_small" : parsed.replyDecision,
       topicDecision: needs.topicSwitch ? parsed.topicDecision : "continue_topic",
+      topicDecisionEvaluated: needs.topicSwitch,
       requiredCapabilities: needs.toolSelection ? parsed.requiredCapabilities : [],
       contextDependencies: needs.toolSelection ? parsed.contextDependencies : [],
       recentDomainReuse: needs.toolSelection ? parsed.recentDomainReuse : [],
       followupMode: needs.toolSelection ? parsed.followupMode : "none",
+      skillIds: needs.skillSelection && this.config.skills.plannerSelectionEnabled ? (parsed.skillIds ?? []).filter(id => input.availableSkills?.some(skill => skill.id === id)) : [],
       toolsetIds: needs.toolSelection ? parsed.toolsetIds : []
     };
     const allowedToolsetIds = new Set((input.availableToolsets ?? []).map((item) => item.id));
@@ -528,6 +533,7 @@ function parseStructuredPlannerResult(raw: string): TurnPlannerResult | null {
     recentDomainReuse: parseStringList(fieldMap.get("recent_domain_reuse")),
     followupMode: normalizeFollowupMode(fieldMap.get("followup_mode")),
     toolsetIds: parseToolsetIds(fieldMap.get("toolset_ids") ?? ""),
+    skillIds: parseToolsetIds(fieldMap.get("skill_ids") ?? ""),
     ...(taskIntent ? { taskIntent } : {})
   };
 }

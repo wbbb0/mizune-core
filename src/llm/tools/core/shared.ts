@@ -1,3 +1,4 @@
+import type { SkillAccess } from '../../../skills/skillRuntime.ts';
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
@@ -164,6 +165,7 @@ export interface BuiltinToolContext extends
   BuiltinToolCommunicationDeps,
   BuiltinToolStoreDeps,
   BuiltinToolRuntimeDeps {
+  skillAccess?: SkillAccess;
   toolsetAccess?: {
     listAvailableToolsets: () => {
       available_toolsets: Array<{

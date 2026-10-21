@@ -1,5 +1,6 @@
 import { defineWorkbenchView, type WorkbenchView } from "@workbench-kit/vue";
 import { workbenchNavItems } from "@/sections/navigation";
+import { skillsView } from "@/sections/skills";
 import { sessionsView } from "@/sections/sessions";
 import { configView } from "@/sections/config";
 import { dataView } from "@/sections/data";
@@ -39,6 +40,7 @@ export const workbenchViews: readonly WorkbenchView[] = Object.freeze(
   workbenchNavItems.map(({ id, title }) => {
     if (id === "sessions") return sessionsView;
     if (id === "config") return configView;
+    if (id === "skills") return skillsView;
     if (id === "data") return dataView;
     if (id === "files") return workspaceView;
     if (id === "resources") return resourcesView;

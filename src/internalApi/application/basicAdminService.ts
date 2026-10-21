@@ -1,3 +1,4 @@
+import { getSessionSkillsView } from '../../skills/skillRuntime.ts';
 import type {
   InternalApiConfigSummaryDeps,
   InternalApiContextDeps,
@@ -268,6 +269,7 @@ export async function getSessionDetail(
   return {
     session: {
       ...sessionView,
+      ...(deps.config ? { skills: getSessionSkillsView(deps.config, sessionId) } : {}),
       participantRef: existing.participantRef,
       title: existing.title,
       titleSource: existing.titleSource,

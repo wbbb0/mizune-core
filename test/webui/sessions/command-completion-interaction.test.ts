@@ -82,3 +82,36 @@ test("dynamic IDs reload on reentry, ignore stale results, and failures leave te
     assert.equal(draft.value, ".sticker lock ");
   } finally { scope.stop(); globalThis.fetch = previousFetch; }
 });
+
+test("skill ID completion uses its own endpoint, rejects stale responses, and remains usable after failure", async () => {
+  const previousFetch = globalThis.fetch;
+  const pending: Array<(response: Response) => void> = [];
+  const paths: string[] = [];
+  globalThis.fetch = async (url) => {
+    paths.push(String(url));
+    return String(url).endsWith("skill-ids")
+      ? new Promise<Response>((resolve) => pending.push(resolve))
+      : new Response(JSON.stringify({ commands: [{ name: "config", parameters: [{ name: "目标", values: ["skill"] }, { name: "技能", source: "skillIds", when: { index: 0, value: "skill" } }] }] }));
+  };
+  const scope = effectScope();
+  try {
+    const draft = ref(".config skill ");
+    const field = { selectionStart: draft.value.length, selectionEnd: draft.value.length } as HTMLTextAreaElement;
+    const controller = scope.run(() => useCommandCompletion(computed({ get: () => draft.value, set: (value) => { draft.value = value; } }), ref(field)))!;
+    await controller.focus(); await nextTick();
+    controller.blur(); await nextTick();
+    await controller.focus(); await nextTick();
+    pending[1]!(new Response(JSON.stringify({ values: ["current"] })));
+    await new Promise((resolve) => setImmediate(resolve));
+    pending[0]!(new Response(JSON.stringify({ values: ["outdated"] })));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(controller.values.value, ["current"]);
+    assert.equal(paths.filter((path) => path === "/api/command-completions/skill-ids").length, 2);
+    controller.blur(); await nextTick(); await controller.focus(); await nextTick();
+    pending[2]!(new Response("unavailable", { status: 503 }));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(controller.loadError.value, true);
+    assert.equal(controller.keydown(key("Enter")), false);
+    assert.equal(draft.value, ".config skill ");
+  } finally { scope.stop(); globalThis.fetch = previousFetch; }
+});

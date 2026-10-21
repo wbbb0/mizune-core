@@ -5,6 +5,7 @@ import { applyCommandCompletion, resolveCommandCompletion, type CommandCompletio
 export function useCommandCompletion(text: WritableComputedRef<string>, textarea: Ref<HTMLTextAreaElement | null>) {
   const commands = ref<CommandCompletionDefinition[]>([]);
   const stickerIds = ref<string[]>([]);
+  const skillIds = ref<string[]>([]);
   const focused = ref(false);
   const dismissed = ref(false);
   const caret = ref(0);
@@ -14,7 +15,7 @@ export function useCommandCompletion(text: WritableComputedRef<string>, textarea
   let catalogLoading = false;
   let generation = 0;
   const completion = computed(() => focused.value && !dismissed.value && !hasSelection.value
-    ? resolveCommandCompletion(text.value, caret.value, commands.value, stickerIds.value) : null);
+    ? resolveCommandCompletion(text.value, caret.value, commands.value, stickerIds.value, skillIds.value) : null);
   const values = computed(() => completion.value?.values ?? []);
   const hint = computed(() => completion.value?.hint);
 
@@ -29,11 +30,15 @@ export function useCommandCompletion(text: WritableComputedRef<string>, textarea
   watch(() => completion.value?.source, async (source) => {
     const current = ++generation;
     stickerIds.value = [];
+    skillIds.value = [];
     loadError.value = false;
-    if (source !== "stickerIds") return;
+    if (source !== "stickerIds" && source !== "skillIds") return;
     try {
-      const result = await api.get<{ values: string[] }>("/api/command-completions/sticker-ids");
-      if (current === generation) stickerIds.value = result.values;
+      const result = await api.get<{ values: string[] }>(source === "skillIds" ? "/api/command-completions/skill-ids" : "/api/command-completions/sticker-ids");
+      if (current === generation) {
+        if (source === "skillIds") skillIds.value = result.values;
+        else stickerIds.value = result.values;
+      }
     } catch {
       if (current === generation) loadError.value = true;
     }

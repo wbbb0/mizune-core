@@ -1,3 +1,9 @@
+import { resolveSkillTaskId } from "../../skills/skillTaskIdentity.ts";
+import { skillObservation, projectSkillObservations } from "../../skills/skillObservation.ts";
+import { beginSkillTask, readPreviousSkillTaskId } from '../../skills/skillRuntime.ts';
+import { readSkillDraft } from '../../skills/skillDrafts.ts';
+import { SKILL_TOOL_NAMES, projectSkillForModel } from '../../llm/tools/runtime/skillTools.ts';
+import type { TurnPlannerResult } from '../../conversation/turnPlanner.ts';
 import { publishConversation } from "#conversation/crossConversationContext.ts";
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
@@ -43,6 +49,7 @@ import {
   resolveToolNamesFromToolsets,
   TURN_PLANNER_ALWAYS_TOOL_NAMES
 } from "#llm/tools/toolsets.ts";
+import { TOOLSET_DEFINITIONS } from "../../llm/tools/toolsetCatalog.ts";
 import { getBuiltinToolDescriptorByName } from "#llm/tools/toolRegistry.ts";
 import { analyzeBuiltinToolConcurrency } from "#llm/tools/toolConcurrency.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
@@ -128,6 +135,7 @@ export interface RunGenerationInput {
   debugSnapshot: PromptDebugSnapshot;
   availableToolNames?: string[] | undefined;
   plannedToolsetIds?: string[] | undefined;
+  skillPlannerDecision?: TurnPlannerResult | undefined;
   availableToolsets?: ToolsetView[] | undefined;
   setupMode?: boolean | undefined;
   setupCompletionSignal?: SetupCompletionSignal | undefined;
@@ -410,6 +418,22 @@ export function createGenerationExecutor(
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
         availableToolsets?.some((item) => item.id === id) ?? false
       )));
+      const taskSession = sessionManager.getSession(sessionId);
+      const previousSkillTaskId = config.skills.enabled ? readPreviousSkillTaskId(config, sessionId) : null;
+      const planner = input.skillPlannerDecision;
+      const activeTask = taskSession.taskTracker.primary;
+      const explicitContinuation = batchMessages.length === 0 && activeInternalTrigger?.kind !== "scheduled_instruction";
+      const skillTaskId = resolveSkillTaskId({
+        sessionId, primary: activeTask, previousTaskId: previousSkillTaskId, planner,
+        explicitContinuation, startedAt: batchMessages[0]?.receivedAt ?? Date.now()
+      });
+      const skills = beginSkillTask(config, sessionId, skillTaskId, taskSession.taskTracker.parked.map(task => task.taskId));
+      if (config.skills.enabled && config.skills.plannerSelectionEnabled && planner) {
+        for (const id of planner.skillIds ?? []) skills.load(id, "规划器选择");
+        // 只有规划器真正选择的工具集是需求信号；all/默认全集永远不参与。
+        if (config.llm.turnPlanner.toolSelection === "planned") skills.loadBound(planner.toolsetIds, "规划器明确工具需求");
+      }
+      let providerSeenSkillIds = new Set<string>();
       let toolsetUpgradeUsed = false;
       let modelUpgradeUsed = false;
       let activeGenerationModelRefs = [...resolvedModelRef];
@@ -417,18 +441,22 @@ export function createGenerationExecutor(
       const isModelSelfUpgradeAvailable = (): boolean => modelSelfUpgradePlan != null && !modelUpgradeUsed;
 
       const resolveDynamicAllowedToolNames = (): string[] | undefined => {
+        if (hasToolsetBoundary && availableToolsets!.length === 0) return [];
+        if (!hasToolsetBoundary && availableToolNames?.length === 0) return [];
         const baseToolNames = hasToolsetBoundary
           ? [
               ...resolveToolNamesFromToolsets(availableToolsets!, isPlannerToolsetMode
                 ? Array.from(activeToolsetIds)
                 : availableToolsets!.map((item) => item.id)),
-              ...(isPlannerToolsetMode ? TURN_PLANNER_ALWAYS_TOOL_NAMES : [])
+              ...TURN_PLANNER_ALWAYS_TOOL_NAMES,
+              ...SKILL_TOOL_NAMES
             ]
           : availableToolNames;
         if (baseToolNames === undefined) {
           return undefined;
         }
         return Array.from(new Set([
+          ...(setupMode ? SKILL_TOOL_NAMES : []),
           ...baseToolNames.filter((name) => name !== MODEL_SELF_UPGRADE_TOOL_NAME),
           ...(isModelSelfUpgradeAvailable() ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]));
@@ -510,7 +538,7 @@ export function createGenerationExecutor(
           }
         : undefined;
 
-      const toolsetAccess = isPlannerToolsetMode
+      const toolsetAccess = hasToolsetBoundary
         ? {
             listAvailableToolsets: () => ({
               available_toolsets: availableToolsets!.map((toolset) => ({
@@ -550,6 +578,7 @@ export function createGenerationExecutor(
               const allowedIds = new Set(availableToolsets!.map((item) => item.id));
               const approved = requested.filter((id) => allowedIds.has(id));
               const rejected = requested.filter((id) => !allowedIds.has(id));
+              skills.loadBound(approved, "模型显式申请工具集");
               for (const id of approved) {
                 activeToolsetIds.add(id);
               }
@@ -617,6 +646,7 @@ export function createGenerationExecutor(
         conversationAccess,
         npcDirectory,
         userIdentityStore: lifecycle.userIdentityStore,
+        skillAccess: skills,
         ...(toolsetAccess ? { toolsetAccess } : {}),
         ...(modelRoutingAccess ? { modelRoutingAccess } : {}),
         debugSnapshot,
@@ -647,6 +677,13 @@ export function createGenerationExecutor(
         });
         let toolResult: string | LlmToolExecutionResult;
         try {
+          if (resolveAllowedTools().some(tool => tool.function.name === toolCall.function.name) && !SKILL_TOOL_NAMES.includes(toolCall.function.name) && toolCall.function.name !== "request_toolset") {
+            const requiredToolsets = (availableToolsets ?? TOOLSET_DEFINITIONS).filter(toolset => toolset.toolNames.includes(toolCall.function.name));
+            const loaded = skills.loadBound(requiredToolsets.map(toolset => toolset.id), `实际工具需求：${toolCall.function.name}`);
+            if (loaded.some(skill => !providerSeenSkillIds.has(`${skill.id}:${skill.revision}`))) {
+              return skillObservation("deferred", loaded, { deferred: true, executed: false, message: "已加载相关技能。请先阅读下面方法，重新计划后再次调用；本次工具尚未执行。", skills: loaded.map(projectSkillForModel) });
+            }
+          }
           const rawToolExecutor = createBuiltinToolExecutor(
             builtinToolContext,
             buildToolSelectionOptions({ forExecution: true })
@@ -691,8 +728,17 @@ export function createGenerationExecutor(
             consumeInlineTriggers,
             projectMessagesBeforeProvider: async (messages) => {
               assertGenerationCurrent();
+              const skillDraft = sessionManager.getOperationMode(sessionId).kind === "skill_config" ? readSkillDraft(config, sessionId) : null;
+              const skillInstructions = [skills.catalog(), skills.documents(), ...(skillDraft ? [
+                `当前在技能 ${skillDraft.id} 的临时草稿编辑流程。用 get_skill 查看、save_skill 更新完整草稿和绑定；明确展示草稿，等待用户 .confirm 发布或 .cancel 放弃。当前草稿：${JSON.stringify(skillDraft)}`
+              ] : [])].filter(Boolean).join("\n\n");
+              const cleanMessages = projectSkillObservations(config, messages).filter(message => !(message.role === "system" && typeof message.content === "string" && message.content.startsWith("[实例技能上下文]")));
+              const currentMessages: LlmMessage[] = skillInstructions
+                ? [...cleanMessages.slice(0, 1), { role: "system", content: `[实例技能上下文]\n${skillInstructions}` }, ...cleanMessages.slice(1)]
+                : cleanMessages;
+              providerSeenSkillIds = new Set(skills.view().loaded.map(skill => `${skill.id}:${skill.revision}`));
               const projectedMessages = await projectProviderPreflightMessages({
-                messages,
+                messages: currentMessages,
                 project: async (projectableMessages) => (
                   (await promptBuilder.contentSafetyService?.projectLlmMessages({
                     sessionId,

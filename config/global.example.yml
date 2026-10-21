@@ -227,6 +227,16 @@ stickers:
   enabled: true
   maxCount: 25
 
+# 实例共享的方法库；技能仅指导已有工具，不授予额外权限。
+skills:
+  enabled: true # 总开关；关闭后停止技能目录、加载及模型技能工具。
+  modelMaintenanceEnabled: true # 允许 owner 会话内的模型自主新增、编辑和暂停；不能解除用户禁用/锁定。
+  plannerSelectionEnabled: true # 独立控制 Planner 选择技能；不依赖 llm.turnPlanner.toolSelection。
+  maxCount: 40 # 技能数量上限，1–200；降低上限不会自动删除已有技能。
+  maxActiveSkills: 3 # 单个任务最多加载的技能数，1–10。
+  maxBodyTokens: 4000 # 任务内已加载 SKILL.md 的估算 token 总预算，128–32000。
+  maxResourceTokens: 4000 # 单次 references 文档读取的估算 token 预算，128–32000。
+
 chatFiles:
   enabled: true
   root: chat-files

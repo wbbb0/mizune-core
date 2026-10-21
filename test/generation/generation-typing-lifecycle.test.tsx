@@ -1,3 +1,5 @@
+import { getSkillStore } from "../../src/skills/skillStore.ts";
+import { getSessionSkillsView } from "../../src/skills/skillRuntime.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
@@ -86,6 +88,8 @@ async function waitForCondition(predicate: () => boolean, message: string): Prom
 }
 
 function createExecutorHarness(options?: {
+  prepareConfig?: (config: ReturnType<typeof createTestAppConfig>) => void;
+  skillPlannerDecision?: import("../../src/conversation/turnPlanner.ts").TurnPlannerResult;
   failAfterReasoning?: boolean;
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
   configOverrides?: Parameters<typeof createTestAppConfig>[0];
@@ -168,6 +172,7 @@ function createExecutorHarness(options?: {
     },
     ...(options?.configOverrides ?? {})
   });
+  options?.prepareConfig?.(config);
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
   const sessionId = options?.sessionId ?? "qqbot:p:owner";
@@ -406,6 +411,7 @@ function createExecutorHarness(options?: {
       content: "你好"
     }],
     resolvedModelRef: ["main"],
+    ...(options?.skillPlannerDecision ? { skillPlannerDecision: options.skillPlannerDecision } : {}),
     ...(options?.modelSelfUpgradePlan ? { modelSelfUpgradePlan: options.modelSelfUpgradePlan } : {}),
     debugSnapshot: {
       sessionId,
@@ -1827,3 +1833,88 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     assert.equal(primary?.objective, "你好");
     assert.equal(primary?.status, "waiting_user");
   });
+
+
+function seedTimeSkill(config: ReturnType<typeof createTestAppConfig>): void {
+  getSkillStore(config).write("time-guide", {
+    expectedRevision: null,
+    document: "---\nname: time-guide\ndescription: 解释时区与当前时间。\n---\n查询时间前先确认用户要求的时区。",
+    resources: {}, toolsetIds: ["time_utils"], userPolicy: "auto", modelEditable: true, modelPaused: false
+  }, "user");
+}
+const timeToolset = { id: "time_utils", title: "时间", description: "查询时间", toolNames: ["get_current_time"] };
+const timeToolCall = { id: "time-call", type: "function" as const, function: { name: "get_current_time", arguments: "{}" } };
+function toolPayload(result: string | { content: string }): Record<string, unknown> {
+  return JSON.parse(typeof result === "string" ? result : result.content) as Record<string, unknown>;
+}
+for (const toolSelection of ["all", "planned"] as const) {
+  test(`技能执行前加载：${toolSelection}模式关闭planner选择仍按真实需求加载，同批工具均延迟`, async () => {
+    let reached = false;
+    const harness = createExecutorHarness({
+      prepareConfig: seedTimeSkill,
+      configOverrides: { skills: { plannerSelectionEnabled: false }, llm: { turnPlanner: { toolSelection } } },
+      availableToolsets: [timeToolset],
+      skillPlannerDecision: { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "测试", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none", toolsetIds: ["time_utils"], skillIds: ["time-guide"] },
+      customGenerate: async input => {
+        reached = true;
+        const first = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }, { role: "user", content: "查询时间" }]);
+        assert.doesNotMatch(JSON.stringify(first), /查询时间前先确认用户要求的时区/);
+        if (toolSelection === "planned") {
+          await input.toolExecutor!({ id: "request", type: "function", function: { name: "request_toolset", arguments: JSON.stringify({ toolset_ids: ["time_utils"], reason: "查询时间" }) } });
+        }
+        const deferred = await Promise.all([input.toolExecutor!(timeToolCall), input.toolExecutor!({ ...timeToolCall, id: "time-call-2" })]);
+        assert.ok(deferred.every(result => toolPayload(result).executed === false));
+        const second = await input.projectMessagesBeforeProvider!(first);
+        assert.match(JSON.stringify(second), /查询时间前先确认用户要求的时区/);
+        assert.equal(second.filter(message => typeof message.content === "string" && message.content.startsWith("[实例技能上下文]")).length, 1);
+        if (toolSelection === "planned") {
+          await input.toolExecutor!({ id: "request", type: "function", function: { name: "request_toolset", arguments: JSON.stringify({ toolset_ids: ["time_utils"], reason: "查询时间" }) } });
+        }
+        const result = toolPayload(await input.toolExecutor!(timeToolCall));
+        assert.notEqual(result.executed, false);
+        assert.equal(result.error, undefined);
+        return { text: "时间已查", usage: createUsage() };
+      }
+    });
+    harness.resolveDrain();
+    await harness.runPromise;
+    assert.equal(reached, true);
+    assert.equal(getSessionSkillsView(harness.config, harness.sessionId).loaded[0]?.id, "time-guide");
+  });
+}
+for (const toolSelection of ["all", "planned"] as const) {
+test(`${toolSelection}模式planner skillIds与toolSelection独立`, async () => {
+  let firstLoaded = false;
+  const harness = createExecutorHarness({
+    prepareConfig: seedTimeSkill,
+    configOverrides: { llm: { turnPlanner: { toolSelection } } },
+    availableToolsets: [timeToolset],
+    skillPlannerDecision: { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "时间方法", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none", toolsetIds: [], skillIds: ["time-guide"] },
+    customGenerate: async input => {
+      const messages = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
+      firstLoaded = JSON.stringify(messages).includes("查询时间前先确认用户要求的时区");
+      return { text: "完成", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await harness.runPromise;
+  assert.equal(firstLoaded, true);
+});
+}
+test("默认all全集且无planner需求时只提供短目录，无技能正文", async () => {
+  let checked = false;
+  const harness = createExecutorHarness({
+    prepareConfig: seedTimeSkill, availableToolsets: [timeToolset],
+    customGenerate: async input => {
+      const messages = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
+      assert.match(JSON.stringify(messages), /time-guide/);
+      assert.doesNotMatch(JSON.stringify(messages), /查询时间前先确认用户要求的时区/);
+      checked = true;
+      return { text: "完成", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await harness.runPromise;
+  assert.equal(checked, true);
+  assert.deepEqual(getSessionSkillsView(harness.config, harness.sessionId).loaded, []);
+});

@@ -1,3 +1,4 @@
+import { getSkillStore } from '../../skills/skillStore.ts';
 import { getDirectCommandCompletions } from "#app/messaging/directCommands.ts";
 import type { FastifyInstance } from "fastify";
 import {
@@ -21,6 +22,7 @@ import type { InternalApiServices } from "../types.ts";
 export function registerMessagingRoutes(app: FastifyInstance, services: InternalApiServices["messagingRoutes"]): void {
   const messaging = createAdminMessagingService(services);
 
+  app.get("/api/command-completions/skill-ids", async () => ({ values: getSkillStore(services.config).list().map(skill => skill.id) }));
   app.get("/api/command-completions", async () => ({ commands: getDirectCommandCompletions() }));
   app.get("/api/command-completions/sticker-ids", async () => {
     if (!services.config.stickers.enabled || !services.config.chatFiles.enabled) return { values: [] };

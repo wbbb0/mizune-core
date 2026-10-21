@@ -954,6 +954,7 @@ export function createGenerationSessionOrchestrator(
         participantProfiles,
         promptMessages: promptBuildResult.promptMessages,
         resolvedModelRef,
+        skillPlannerDecision: plannerDecision,
         ...(modelSelfUpgradePlan ? { modelSelfUpgradePlan } : {}),
         debugSnapshot: promptBuildResult.debugSnapshot,
         ...(setupMode

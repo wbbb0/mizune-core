@@ -21,6 +21,7 @@ import type { TurnPlannerRequirements } from "#conversation/turnPlannerPolicy.ts
 
 export function buildTurnPlannerPrompt(input: {
   requirements: TurnPlannerRequirements;
+  availableSkills?: Array<{ id: string; name: string; description: string }>;
   sessionId: string;
   chatType: "private" | "group";
   relationship: string;
@@ -89,6 +90,7 @@ export function buildTurnPlannerPrompt(input: {
   ];
   const outputFields = [
     "reason: <中文理由，不超过12字>",
+    ...(needs.skillSelection ? ["skill_ids: <逗号分隔技能 ID；无则填 none>"] : []),
     ...((needs.modelSelection || needs.semanticWait || needs.replyGate) ? [`reply_decision: <${replyOptions.join("|")}>`] : []),
     ...(needs.topicSwitch ? ["topic_decision: <continue_topic|new_topic>"] : []),
     ...(hasTaskContext ? ["task_intent: <none|continue_current|modify_current|pause_current|cancel_current|confirm_completed|switch_topic|start_unrelated_task|restore_parked|unknown>|<target_task_id_or_none>|<low|medium|high>"] : []),
@@ -107,6 +109,7 @@ export function buildTurnPlannerPrompt(input: {
       "已明确需要复杂推理、多约束权衡、形式化验证或高风险决策时，选择 reply_large。",
       "否则选择 reply_small；不要仅因需要工具、执行步骤多、原因未知，或难度取决于尚未读取的代码、日志和工具结果而选择 reply_large。"
     ]) : null,
+    ...(needs.skillSelection ? [renderPromptSection("planner_skill_selection", ["只按当前任务需要，从给定技能目录选出最多三个技能。技能选择与工具可用性分离；无需技能时填 none。", ...(input.availableSkills ?? []).map(skill => `${skill.id} | ${skill.name} | ${skill.description}`)])] : []),
     renderPromptSection("planner_rules", [
       `严格输出以下 ${outputFields.length} 行，不得添加解释、空行或代码块：`,
       ...outputFields,

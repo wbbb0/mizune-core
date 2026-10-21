@@ -1,3 +1,4 @@
+import { registerSkillRoutes } from './routes/skillRoutes.ts';
 import { registerTemporaryWorkspaceRoutes } from "./routes/temporaryWorkspaceRoutes.ts";
 import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
@@ -53,6 +54,7 @@ function resolveWebuiAssetsPath(distPath: string): string {
 
 function registerInternalApiRoutes(app: FastifyInstance, services: InternalApiServices): void {
   registerBasicRoutes(app, services.basicRoutes);
+  registerSkillRoutes(app, services.basicRoutes.config.config);
   registerBrowserRoutes(app, services.browserRoutes);
   registerShellRoutes(app, services.shellRoutes);
   registerDownloadRoutes(app, services.downloadRoutes);
