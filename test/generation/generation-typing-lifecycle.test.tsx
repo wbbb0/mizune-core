@@ -108,6 +108,8 @@ function createExecutorHarness(options?: {
   availableToolsets?: ToolsetView[];
   initialTaskTracker?: SessionTaskTracker;
   availableToolNames?: string[];
+  statefulRpStateStore?: unknown;
+  statefulRpPostTurnMaintainer?: unknown;
   modelSelfUpgradePlan?: NonNullable<import("../../src/app/generation/generationExecutor.ts").RunGenerationInput["modelSelfUpgradePlan"]>;
   customGenerate?: (input: {
     messages?: Array<{ role: string; content: unknown }>;
@@ -362,6 +364,8 @@ function createExecutorHarness(options?: {
       globalRuleStore: {} as never,
       toolsetRuleStore: {} as never,
       scenarioHostStateStore: {} as never,
+      ...(options?.statefulRpStateStore ? { statefulRpStateStore: options.statefulRpStateStore } : {}),
+      ...(options?.statefulRpPostTurnMaintainer ? { statefulRpPostTurnMaintainer: options.statefulRpPostTurnMaintainer } : {}),
       setupStore: {
         async isReady() {
           return false;
@@ -1953,4 +1957,64 @@ test("插话只暂停旧输出，工具可以完成并在消费补充后恢复�
   assert.deepEqual(harness.sendTextCalls.map(call => call.text), ["新回答"]);
   assert.equal(harness.started.abortController.signal.aborted, false);
   assert.equal(harness.started.responseAbortController.signal.aborted, false);
+});
+
+test("stateful_rp 后置维护在回复发送与落盘之后执行，合并中途 steer 输入且默认隔离实例技能提示", async () => {
+  const lifecycleOrder: string[] = [];
+  let postTurnInputCaptured = null as Record<string, unknown> | null;
+  let projectedMessagesCaptured: LlmMessage[] = [];
+  let exposedToolNames: string[] = [];
+
+  const harness = createExecutorHarness({
+    prepareConfig: seedTimeSkill,
+    modeId: "stateful_rp",
+    availableToolsets: [
+      { id: "stateful_rp_state", title: "沉浸状态", description: "维护状态", toolNames: ["stateful_rp_inspect"] }
+    ],
+    statefulRpStateStore: {
+      async get() {
+        return {
+          clock: { currentIso: "2026-05-16T14:00:00+08:00" },
+          embodiment: { outfit: { presetName: "常服", items: [], intimateGear: [] } }
+        };
+      }
+    },
+    statefulRpPostTurnMaintainer: {
+      async runPostTurn(input: Record<string, unknown>) {
+        // 此时回复必须已经完成发送并且 finalized 到会话历史
+        lifecycleOrder.push(`post_turn:sent=${harness.sendTextCalls.length}:history=${harness.sessionManager.getLlmVisibleHistory(harness.sessionId).length}`);
+        postTurnInputCaptured = input;
+        return null;
+      }
+    },
+    customGenerate: async (input) => {
+      const tools = typeof input.tools === "function" ? input.tools() : (input.tools ?? []);
+      exposedToolNames = tools.map((t) => t.function.name);
+      projectedMessagesCaptured = await input.projectMessagesBeforeProvider!([
+        { role: "system", content: "系统提示" },
+        { role: "user", content: "你好" }
+      ]);
+      harness.sessionManager.appendSteerMessage(harness.sessionId, {
+        ...createBatchMessage(),
+        text: "* 顺便牵住她的手"
+      });
+      await input.consumeSteerMessages!();
+      await input.onTextDelta?.("她微微脸红地回握住你的手。");
+      return {
+        text: "她微微脸红地回握住你的手。",
+        usage: createUsage()
+      };
+    }
+  });
+
+  harness.resolveDrain();
+  await harness.runPromise;
+
+  assert.deepEqual(lifecycleOrder, ["post_turn:sent=1:history=1"]);
+  assert.ok(postTurnInputCaptured);
+  assert.equal(postTurnInputCaptured.userText, "你好\n* 顺便牵住她的手");
+  assert.equal(postTurnInputCaptured.assistantText, "她微微脸红地回握住你的手。");
+  assert.doesNotMatch(JSON.stringify(projectedMessagesCaptured), /\[实例技能上下文\]/);
+  assert.equal(exposedToolNames.includes("list_skills"), false);
+  assert.equal(exposedToolNames.includes("load_skill"), false);
 });

@@ -250,6 +250,8 @@ export function createGenerationExecutor(
     let lastResultAssistantMetadata: Record<string, unknown> | undefined;
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
     let lastProviderRequestUsage: LlmUsage | null = null;
+    const consumedSteerTexts: string[] = [];
+    let statefulRpTurnBaseline: StatefulRpTurnBaseline | null = null;
     const checkpointObservations: ToolLoopCheckpointObservation[] = [];
     const runningProviderUsage = createEmptyUsage(resolvedModelRef[0] ?? null, null);
     const recordProviderCallUsage = (event: LlmProviderCallUsage): void => {
@@ -396,6 +398,11 @@ export function createGenerationExecutor(
         if (steerMessages.length === 0) {
           return [];
         }
+        for (const message of steerMessages) {
+          if (message.text.trim()) {
+            consumedSteerTexts.push(message.text);
+          }
+        }
         await segmentCoordinator.discardPendingOutput();
         return steerMessages.map((message) => ({
           role: "user" as const,
@@ -424,6 +431,9 @@ export function createGenerationExecutor(
         availableToolsets?.some((item) => item.id === id) ?? false
       )));
       const taskSession = sessionManager.getSession(sessionId);
+      const isSkillRuntimeActiveForTurn = (): boolean => (
+        input.modeId !== "stateful_rp" || sessionManager.getOperationMode(sessionId).kind === "skill_config"
+      );
       const previousSkillTaskId = config.skills.enabled ? readPreviousSkillTaskId(config, sessionId) : null;
       const planner = input.skillPlannerDecision;
       const activeTask = taskSession.taskTracker.primary;
@@ -433,7 +443,7 @@ export function createGenerationExecutor(
         explicitContinuation, startedAt: batchMessages[0]?.receivedAt ?? Date.now()
       });
       const skills = beginSkillTask(config, sessionId, skillTaskId, taskSession.taskTracker.parked.map(task => task.taskId));
-      if (config.skills.enabled && config.skills.plannerSelectionEnabled && planner) {
+      if (isSkillRuntimeActiveForTurn() && config.skills.enabled && config.skills.plannerSelectionEnabled && planner) {
         for (const id of planner.skillIds ?? []) skills.load(id, "规划器选择");
         // 只有规划器真正选择的工具集是需求信号；all/默认全集永远不参与。
         if (config.llm.turnPlanner.toolSelection === "planned") skills.loadBound(planner.toolsetIds, "规划器明确工具需求");
@@ -448,20 +458,21 @@ export function createGenerationExecutor(
       const resolveDynamicAllowedToolNames = (): string[] | undefined => {
         if (hasToolsetBoundary && availableToolsets!.length === 0) return [];
         if (!hasToolsetBoundary && availableToolNames?.length === 0) return [];
+        const skillToolNames = isSkillRuntimeActiveForTurn() ? SKILL_TOOL_NAMES : [];
         const baseToolNames = hasToolsetBoundary
           ? [
               ...resolveToolNamesFromToolsets(availableToolsets!, isPlannerToolsetMode
                 ? Array.from(activeToolsetIds)
                 : availableToolsets!.map((item) => item.id)),
               ...TURN_PLANNER_ALWAYS_TOOL_NAMES,
-              ...SKILL_TOOL_NAMES
+              ...skillToolNames
             ]
           : availableToolNames;
         if (baseToolNames === undefined) {
           return undefined;
         }
         return Array.from(new Set([
-          ...(setupMode ? SKILL_TOOL_NAMES : []),
+          ...(setupMode ? skillToolNames : []),
           ...baseToolNames.filter((name) => name !== MODEL_SELF_UPGRADE_TOOL_NAME),
           ...(isModelSelfUpgradeAvailable() ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]));
@@ -583,7 +594,9 @@ export function createGenerationExecutor(
               const allowedIds = new Set(availableToolsets!.map((item) => item.id));
               const approved = requested.filter((id) => allowedIds.has(id));
               const rejected = requested.filter((id) => !allowedIds.has(id));
-              skills.loadBound(approved, "模型显式申请工具集");
+              if (isSkillRuntimeActiveForTurn()) {
+                skills.loadBound(approved, "模型显式申请工具集");
+              }
               for (const id of approved) {
                 activeToolsetIds.add(id);
               }
@@ -683,7 +696,7 @@ export function createGenerationExecutor(
         });
         let toolResult: string | LlmToolExecutionResult;
         try {
-          if (resolveAllowedTools().some(tool => tool.function.name === toolCall.function.name) && !SKILL_TOOL_NAMES.includes(toolCall.function.name) && toolCall.function.name !== "request_toolset") {
+          if (isSkillRuntimeActiveForTurn() && resolveAllowedTools().some(tool => tool.function.name === toolCall.function.name) && !SKILL_TOOL_NAMES.includes(toolCall.function.name) && toolCall.function.name !== "request_toolset") {
             const requiredToolsets = (availableToolsets ?? TOOLSET_DEFINITIONS).filter(toolset => toolset.toolNames.includes(toolCall.function.name));
             const loaded = skills.loadBound(requiredToolsets.map(toolset => toolset.id), `实际工具需求：${toolCall.function.name}`);
             if (loaded.some(skill => !providerSeenSkillIds.has(`${skill.id}:${skill.revision}`))) {
@@ -714,15 +727,14 @@ export function createGenerationExecutor(
         return toolResult;
       };
 
-      let statefulRpClockBeforeIso: string | null = null;
-      let statefulRpOutfitBefore: string | null = null;
       if (llmClient.isConfigured(resolvedModelRef)) {
         try {
-          if (input.modeId === "stateful_rp" && !setupMode && statefulRpStateStore) {
-            const stateBefore = await statefulRpStateStore.get(sessionId);
-            statefulRpClockBeforeIso = stateBefore?.clock.currentIso ?? null;
-            statefulRpOutfitBefore = stateBefore ? buildOutfitSignature(stateBefore) : null;
-          }
+          statefulRpTurnBaseline = await captureStatefulRpTurnBaseline({
+            modeId: input.modeId,
+            setupMode,
+            sessionId,
+            statefulRpStateStore
+          });
           const activeToolCounts = new Map<string, number>();
           const listActiveToolNames = () => [...activeToolCounts.entries()]
             .filter(([, count]) => count > 0)
@@ -742,9 +754,11 @@ export function createGenerationExecutor(
             projectMessagesBeforeProvider: async (messages) => {
               assertGenerationCurrent();
               const skillDraft = sessionManager.getOperationMode(sessionId).kind === "skill_config" ? readSkillDraft(config, sessionId) : null;
-              const skillInstructions = [skills.catalog(), skills.documents(), ...(skillDraft ? [
-                `当前在技能 ${skillDraft.id} 的临时草稿编辑流程。用 get_skill 查看、save_skill 更新完整草稿和绑定；明确展示草稿，等待用户 .confirm 发布或 .cancel 放弃。当前草稿：${JSON.stringify(skillDraft)}`
-              ] : [])].filter(Boolean).join("\n\n");
+              const skillInstructions = isSkillRuntimeActiveForTurn()
+                ? [skills.catalog(), skills.documents(), ...(skillDraft ? [
+                    `当前在技能 ${skillDraft.id} 的临时草稿编辑流程。用 get_skill 查看、save_skill 更新完整草稿和绑定；明确展示草稿，等待用户 .confirm 发布或 .cancel 放弃。当前草稿：${JSON.stringify(skillDraft)}`
+                  ] : [])].filter(Boolean).join("\n\n")
+                : "";
               const cleanMessages = projectSkillObservations(config, messages).filter(message => !(message.role === "system" && typeof message.content === "string" && message.content.startsWith("[实例技能上下文]")));
               const currentMessages: LlmMessage[] = skillInstructions
                 ? [...cleanMessages.slice(0, 1), { role: "system", content: `[实例技能上下文]\n${skillInstructions}` }, ...cleanMessages.slice(1)]
@@ -1015,37 +1029,6 @@ export function createGenerationExecutor(
               .find((event) => event.phase === "final_response" || event.phase === "terminal_response")
               ?? null;
           }
-          if (
-            input.modeId === "stateful_rp"
-            && !setupMode
-            && statefulRpPostTurnMaintainer
-          ) {
-            try {
-              assertGenerationCurrent();
-              const nextRpState = await statefulRpPostTurnMaintainer.runPostTurn({
-                sessionId,
-                clockBeforeTurnIso: statefulRpClockBeforeIso,
-                outfitSignatureBeforeTurn: statefulRpOutfitBefore,
-                userText: input.batchMessages.map((message) => message.text).join("\n"),
-                assistantText: summary,
-                personaName: input.persona.name,
-                abortSignal: abortController.signal
-              });
-              assertGenerationCurrent();
-              if (nextRpState) {
-                const lastLog = nextRpState.maintenanceLog.at(-1);
-                logger.info({
-                  sessionId,
-                  clockIso: nextRpState.clock.currentIso,
-                  elapsedMinutes: lastLog?.elapsedMinutes ?? 0,
-                  passesRun: lastLog?.passesRun ?? []
-                }, "stateful_rp_post_turn_maintained");
-                persistSession(sessionId, "stateful_rp_post_turn_maintained");
-              }
-            } catch (error: unknown) {
-              logger.warn({ err: error, sessionId }, "stateful_rp_post_turn_maintenance_failed");
-            }
-          }
           const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
             ...completedUsage,
             capturedAt: Date.now(),
@@ -1229,6 +1212,31 @@ export function createGenerationExecutor(
         }
       }
 
+      if (
+        completedSuccessfully
+        && finalizedAssistant?.text.trim()
+        && !abortController.signal.aborted
+        && !responseAbortController.signal.aborted
+        && !sessionManager.getOutboundAbortSignal(sessionId)?.aborted
+      ) {
+        await runStatefulRpPostTurnIfApplicable({
+          modeId: input.modeId,
+          setupMode,
+          sessionId,
+          expectedEpoch,
+          sessionManager,
+          statefulRpPostTurnMaintainer,
+          baseline: statefulRpTurnBaseline,
+          batchMessages: input.batchMessages,
+          consumedSteerTexts,
+          assistantText: finalizedAssistant.text,
+          personaName: input.persona.name,
+          abortSignal: responseAbortController.signal,
+          logger,
+          persistSession
+        });
+      }
+
       if (finishedCurrent) {
         persistSession(sessionId, "generation_finished");
       }
@@ -1372,5 +1380,84 @@ function appendContextExtractionTranscriptEvent(input: {
   );
   if (applied) {
     input.persistSession(input.sessionId, "context_extraction_transcript_updated");
+  }
+}
+
+interface StatefulRpTurnBaseline {
+  clockBeforeTurnIso: string | null;
+  outfitSignatureBeforeTurn: string | null;
+}
+
+async function captureStatefulRpTurnBaseline(input: {
+  modeId?: string | undefined;
+  setupMode?: boolean | undefined;
+  sessionId: string;
+  statefulRpStateStore?: GenerationExecutorDeps["identity"]["statefulRpStateStore"] | undefined;
+}): Promise<StatefulRpTurnBaseline | null> {
+  if (input.modeId !== "stateful_rp" || input.setupMode || !input.statefulRpStateStore) {
+    return null;
+  }
+  const stateBefore = await input.statefulRpStateStore.get(input.sessionId);
+  return {
+    clockBeforeTurnIso: stateBefore?.clock.currentIso ?? null,
+    outfitSignatureBeforeTurn: stateBefore ? buildOutfitSignature(stateBefore) : null
+  };
+}
+
+async function runStatefulRpPostTurnIfApplicable(input: {
+  modeId?: string | undefined;
+  setupMode?: boolean | undefined;
+  sessionId: string;
+  expectedEpoch: number;
+  sessionManager: Pick<GenerationExecutorDeps["sessionRuntime"]["sessionManager"], "getMutationEpoch">;
+  statefulRpPostTurnMaintainer?: GenerationExecutorDeps["identity"]["statefulRpPostTurnMaintainer"] | undefined;
+  baseline: StatefulRpTurnBaseline | null;
+  batchMessages: GenerationRuntimeBatchMessage[];
+  consumedSteerTexts: string[];
+  assistantText: string;
+  personaName: string;
+  abortSignal: AbortSignal;
+  logger: GenerationExecutorDeps["sessionRuntime"]["logger"];
+  persistSession: GenerationExecutorDeps["lifecycle"]["persistSession"];
+}): Promise<void> {
+  if (input.modeId !== "stateful_rp" || input.setupMode || !input.statefulRpPostTurnMaintainer) {
+    return;
+  }
+  if (input.abortSignal.aborted || input.sessionManager.getMutationEpoch(input.sessionId) !== input.expectedEpoch) {
+    return;
+  }
+  const userText = [
+    ...input.batchMessages.map((message) => message.text),
+    ...input.consumedSteerTexts
+  ]
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join("\n");
+
+  try {
+    const nextRpState = await input.statefulRpPostTurnMaintainer.runPostTurn({
+      sessionId: input.sessionId,
+      clockBeforeTurnIso: input.baseline?.clockBeforeTurnIso ?? null,
+      outfitSignatureBeforeTurn: input.baseline?.outfitSignatureBeforeTurn ?? null,
+      userText,
+      assistantText: input.assistantText,
+      personaName: input.personaName,
+      abortSignal: input.abortSignal
+    });
+    if (input.abortSignal.aborted || input.sessionManager.getMutationEpoch(input.sessionId) !== input.expectedEpoch) {
+      return;
+    }
+    if (nextRpState) {
+      const lastLog = nextRpState.maintenanceLog.at(-1);
+      input.logger.info({
+        sessionId: input.sessionId,
+        clockIso: nextRpState.clock.currentIso,
+        elapsedMinutes: lastLog?.elapsedMinutes ?? 0,
+        passesRun: lastLog?.passesRun ?? []
+      }, "stateful_rp_post_turn_maintained");
+      input.persistSession(input.sessionId, "stateful_rp_post_turn_maintained");
+    }
+  } catch (error: unknown) {
+    input.logger.warn({ err: error, sessionId: input.sessionId }, "stateful_rp_post_turn_maintenance_failed");
   }
 }
