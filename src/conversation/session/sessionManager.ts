@@ -322,6 +322,10 @@ export class SessionManager {
     return cancelled;
   }
 
+  getOutboundAbortSignal(sessionId: string): AbortSignal | undefined {
+    return this.requireSession(sessionId).outboundAbortController?.signal;
+  }
+
   // Aborts the outbound message queue for a session without cancelling generation.
   // Queued messages that have not been sent yet will be skipped.
   // Generation and tool execution continue running.
@@ -342,6 +346,9 @@ export class SessionManager {
     finalizedDraftAssistant: boolean;
   } {
     const session = this.requireSession(sessionId);
+    // 模式热切换或显式中断时，先把尚未消费的补充消息移入下一轮，
+    // 避免新一轮先启动、旧生成清理阶段才补入这些消息。
+    promoteSteerMessagesToPendingState(session);
     const activeTranscriptGroupId = session.activeTranscriptGroupId;
     const finalizedDraftAssistant = finalizeActiveAssistantDraftResponseState(session);
     if (finalizedDraftAssistant != null) {

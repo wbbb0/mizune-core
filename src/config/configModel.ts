@@ -210,6 +210,10 @@ const llmProviderSchema = s.object(llmProviderSchemaShape)
   .default(emptyObject);
 
 const conversationConfigSchema = s.object({
+  interruptionMode: s.enum(["immediate", "after_tool"])
+    .title("新消息打断方式")
+    .describe("immediate：立即取消当前回复，再按会话聚合等待设置处理新消息；after_tool：立即作废未发送的旧回复，保留当前请求和工具，在下一次模型请求前插入新消息。若没有后续工具调用或已进入发送阶段，则在本轮结束后处理。仅影响原本允许打断的消息；停止命令始终立即生效。")
+    .default("after_tool"),
   crossConversation: s.object({
     enabled: s.boolean().title("启用跨会话参考").default(false),
     maxSources: s.number().int().min(1).max(3).title("最大参考会话数").default(2),
@@ -690,6 +694,7 @@ export const fileConfigSchema = s.object({
   appName: s.string().trim().nonempty().title("应用名称").default("llm-bot"),
   nodeEnv: s.string().trim().nonempty().title("运行环境").default("development"),
   logLevel: s.string().trim().nonempty().title("日志级别").default("info"),
+  logIncludeConversationContent: s.boolean().title("在日志中包含对话内容").describe("默认关闭，仅记录允许的事件和诊断元数据。开启后允许输出对话正文、工具参数与结果及错误详情；不影响 dump。支持热更新。").default(false),
   dataDir: s.string().trim().nonempty().title("数据目录").default("data"),
   proxy: proxyConfigSchema,
   onebot: onebotConfigSchema,
@@ -708,6 +713,15 @@ export const fileConfigSchema = s.object({
     enabled: s.boolean().default(true),
     maxCount: s.number().int().min(1).max(200).default(25)
   }).title("精选表情库").describe("实例共享；达到上限时必须明确替换旧表情。降额不自动删除已有收藏。").default(emptyObject),
+  skills: s.object({
+    enabled: s.boolean().title("启用技能库").default(true),
+    modelMaintenanceEnabled: s.boolean().title("模型自主维护").default(true),
+    plannerSelectionEnabled: s.boolean().title("规划器选择技能").default(true),
+    maxCount: s.number().int().min(1).max(200).title("技能数量上限").default(40),
+    maxActiveSkills: s.number().int().min(1).max(10).title("任务活跃技能上限").default(3),
+    maxBodyTokens: s.number().int().min(128).max(32000).title("技能正文总预算").default(4000),
+    maxResourceTokens: s.number().int().min(128).max(32000).title("单次引用读取预算").default(4000)
+  }).title("实例技能库").default(emptyObject),
   assets: assetsConfigSchema,
   comfy: comfyConfigSchema,
   contentSafety: contentSafetyConfigSchema,
@@ -770,6 +784,7 @@ export interface ConfigSummary {
   runtimeNodeEnv: string;
   configuredNodeEnv: string;
   logLevel: string;
+  logIncludeConversationContent: boolean;
   oneBotEnabled: boolean;
   oneBotWsUrl: string;
   oneBotHttpUrl: string;

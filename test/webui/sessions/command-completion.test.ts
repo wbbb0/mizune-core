@@ -50,3 +50,13 @@ test("completion replaces the current token and preserves following text", () =>
   assert.deepEqual(applyCommandCompletion("。st", resolve("。st")!, "sticker", commands), { text: "。sticker ", caret: 9 });
   assert.deepEqual(applyCommandCompletion(".he", resolve(".he")!, "help", commands), { text: ".help", caret: 5 });
 });
+
+test("config skill completes the third token from the dynamic skill directory", () => {
+  const definitions = [{ name: "config", parameters: [{ name: "目标", values: ["skill"] }, { name: "技能", source: "skillIds" as const, when: { index: 0, value: "skill" } }] }];
+  const completion = resolveCommandCompletion(".config skill rev", 17, definitions, [], ["review", "report"]);
+  assert.deepEqual(completion?.values, ["review"]);
+  assert.equal(completion?.start, 14);
+  assert.equal(completion?.source, "skillIds");
+  assert.equal(applyCommandCompletion(".config skill rev", completion!, "review", definitions).text, ".config skill review ");
+  assert.equal(resolveCommandCompletion(".config other ", 14, definitions, [], ["review"]), null);
+});

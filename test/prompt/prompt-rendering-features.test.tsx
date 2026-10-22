@@ -222,7 +222,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
     assert.equal(hasPromptSection(system, "active_task_state"), true);
     assert.equal(hasPromptSection(system, "tool_playbooks"), true);
     assert.match(system, /终端操作流程/);
-    assert.match(system, /网页检索与浏览流程/);
+    assert.doesNotMatch(system, /网页检索与浏览流程/);
     assert.match(system, /多步任务执行流程/);
   });
 
@@ -388,7 +388,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "tool_hints"), true);
       assert.match(system, /页面结构和交互目标用 inspect_page 查看/);
-      assert.match(system, /网页检索与浏览流程/);
+      assert.doesNotMatch(system, /网页检索与浏览流程/);
       assert.match(system, /查已登记图片、视频、音频或文件时先 asset_list/);
       assert.match(system, /处理已登记文档时用 asset_document_overview/);
       assert.match(system, /asset_document_inspect 调文本精读模型/);

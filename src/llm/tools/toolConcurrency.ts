@@ -44,6 +44,7 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
 
 export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecutionEffect {
   const toolName = toolCall.function.name;
+  if (["load_skill", "read_skill_resource", "save_skill", "set_skill_paused", "request_toolset"].includes(toolName)) return { kind: "barrier" };
   if (toolName === "request_model_upgrade") {
     return { kind: "barrier" };
   }

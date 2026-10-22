@@ -20,6 +20,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 - LLM provider → model 分层目录与 routing preset，支持供应商内局部模型别名、同名模型快速切换，以及按 preset 设置历史窗口和 token 上下限
 - 历史压缩、自动会话标题、图片说明、音频转写、turn planner
   - turn planner 按需调用：默认全量提供当前允许的工具、关闭语义等待；大小模型候选链与参数等价时自动跳过模型选择和升级工具。话题切换仅在旧历史值得压缩时判断，硬性 token 阈值压缩独立运行。配置与成本观测见 [轮次规划](docs/architecture/turn-planner.md)。
+- 实例共享的标准 `SKILL.md` 技能库：WebUI 管理、模型按需加载与自主维护、任务版本固定、可编辑工具组绑定和版本回滚。技能只提供方法，具体边界见 [实例技能库](docs/architecture/skills.md)。
 - shell、workspace 文件、网页搜索、浏览器、ComfyUI 等可选工具能力
   - 后台 shell、下载、ComfyUI 任务完成后，事件会以 `⟦section name="background_event_batch"⟧` 批注入到当前工具调用循环的下一次 LLM 推理前，无需等待当前响应收尾；定时任务（scheduled instruction）仍在无活动响应时开独立 session。
 - Fastify 内部 API 与 Vue 3 + Tailwind WebUI
@@ -129,6 +130,9 @@ CONFIG_INSTANCE_FILE=config/instances/acc1.yml npm run dev
 
 WebUI 会话输入框支持以 `.` 或 `。` 开头的指令补全：方向键选择，Tab / Enter 填入，Esc 收起；完整指令继续用 Enter 发送，Shift + Enter 换行。枚举参数和表情 ID 提供候选，自由参数只提示名称。表情 ID 在进入对应参数时读取当前实例收藏清单；补全不改变指令原有的权限和会话限制。
 
+运行中新消息的处理方式可在 WebUI 配置编辑器「会话 → 新消息打断方式」切换，对应 `conversation.interruptionMode`：`immediate` 取消当前生成和剩余发送，再按会话的消息聚合等待设置开始下一轮；默认 `after_tool` 立即作废未发送的旧回复，保留当前请求和工具，在下一次模型请求前注入补充消息。若本轮没有后续工具调用、已达工具轮次上限或已进入发送阶段，则在本轮结束后处理。WebUI 与 OneBot 共用此策略；群聊其他用户仍按原规则排队，停止命令仍立即取消。详见[新消息打断与插入](docs/architecture/message-interruption.md)。
+
+
 ### WebUI-only
 
 适合先验证模型调用、会话流程和 WebUI，不接 OneBot：
@@ -233,6 +237,7 @@ deploy/       systemd 服务示例
 - [快速上手](docs/getting-started.md)
 - [会话与资料模型](docs/architecture/session-and-profile-model.md)
 - [跨会话实时参考与成本边界](docs/architecture/cross-conversation-context.md)
+- [实例技能库](docs/architecture/skills.md)
 - [WebUI Workbench 架构](docs/architecture/webui-workbench.md)
 - [记忆架构](docs/memory-architecture.md)
 - [用户上下文检索机制](docs/user-context-retrieval-explained.md)
@@ -275,6 +280,16 @@ npm run test
 ```
 
 标准图像模型通过 `imageGenerator` 路由调用 OpenAI Images API；ComfyUI 保留独立工作流配置，两者分别提供可独立开关的工具集，并共用图片资产体系。配置见 [图像生成](docs/development/image-generation.md)。
+
+### 日志聊天内容过滤
+
+`logIncludeConversationContent` 控制是否在服务日志中包含对话内容，默认 `false`（不包含）。需要记录正文时，可在 `config/global.yml` 或实例配置中设置 `logIncludeConversationContent: true`。支持配置热更新，WebUI 配置编辑器中显示为“在日志中包含对话内容”。
+
+关闭时，日志出口仅保留登记的固定事件名、会话/请求/模型标识、计数、耗时和状态等允许的元数据。聊天正文、消息段、prompt、工具参数与结果、文件名/路径/URL、自由文本原因、未知字段及嵌套对象均不输出。异常堆栈与上游错误正文也会隐藏；已识别的超时、HTTP 错误状态和网络错误码仍可用于排查。未登记的日志消息统一显示 `[日志内容已过滤]`。这不是匿名化开关：会话、用户和群 ID 仍会保留。
+
+终端/journal 与 WebUI 最近错误使用同一过滤结果；开关只作用于新写出的日志，不删除历史日志或已保存的最近错误。会话数据、WebUI 对话展示和下述 dump 均不受影响，dump 仍按原有规则保存完整诊断。
+
+过滤策略集中在 `src/logging/logContentFilter.ts`，固定事件许可清单位于 `src/logging/safeLogEvents.ts`。新增日志字段默认隐藏；只有确认是诊断元数据时才加入许可清单，禁止将自由文本或正文放入标识字段。新增固定事件可登记到事件清单，禁止登记运行时生成的文本。
 
 ### LLM 响应诊断 dump
 

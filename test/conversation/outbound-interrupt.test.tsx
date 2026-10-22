@@ -87,7 +87,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     assert.deepEqual(sent, ["msg1"]);
   });
 
-  test("interruptOutbound aborts responseAbortController without cancelling generation", async () => {
+  test("interruptOutbound cancels pending output without cancelling the response or generation", async () => {
     const { SessionManager } = await import("../../src/conversation/session/sessionManager.ts");
     const { createTestAppConfig } = await import("../helpers/config-fixtures.tsx");
 
@@ -96,10 +96,11 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
     sm.ensureSession({ id: "s1", type: "private" });
     const started = sm.beginSyntheticGeneration("s1");
 
-    // interruptOutbound should only abort the response controller.
+    // 插话只取消输出，不能中止工具循环使用的整轮信号。
     const interrupted = sm.interruptOutbound("s1");
     assert.equal(interrupted, true);
-    assert.equal(started.responseAbortController.signal.aborted, true);
+    assert.equal(started.responseAbortController.signal.aborted, false);
+    assert.equal(sm.getOutboundAbortSignal("s1")?.aborted, true);
     assert.equal(started.abortController.signal.aborted, false);
 
     // isResponding should still be true (generation continues).

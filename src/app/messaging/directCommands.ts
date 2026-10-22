@@ -1,3 +1,4 @@
+import { startSkillDraft, readSkillDraft, confirmSkillDraft, cancelSkillDraft, requireActiveSkillDraft } from '../../skills/skillDrafts.ts';
 import type { CommandCompletionDefinition } from "#types/commandCompletion.ts";
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { Logger } from "pino";
@@ -43,7 +44,7 @@ type DirectCommandArgsMap = {
   replaceMemory: { query: string; content: string };
   debug: { mode?: DebugModeArg; inlineText?: string };
   setup: { target: ConfigTarget };
-  config: { target: ConfigTarget };
+  config: { target: ConfigTarget | "skill"; id?: string };
   reset: {};
   confirm: {};
   cancel: {};
@@ -258,6 +259,8 @@ function getOperationTargetLabel(operationMode: SessionState["operationMode"]): 
     case "persona_setup":
     case "persona_config":
       return "persona";
+    case "skill_config":
+      return `技能 ${operationMode.skillId}`;
     case "mode_setup":
     case "mode_config":
       return operationMode.modeId === "rp_assistant" ? "RP 资料" : "Scenario 资料";
@@ -304,6 +307,7 @@ async function enterConfigurationMode(
   mode: "setup" | "config",
   target: ConfigTarget
 ): Promise<string> {
+  if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") return "请先 .confirm 或 .cancel 当前技能草稿。";
   if (target === "scenario" && ctx.session.type !== "private") {
     return "Scenario 资料是当前私聊会话级配置，当前模式仅支持私聊。请在对应私聊会话中使用 `.setup scenario` 或 `.config scenario`。";
   }
@@ -365,7 +369,7 @@ async function enterConfigurationMode(
 
 async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<{ ok: true } | { ok: false; message: string }> {
   const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
-  if (operationMode.kind === "normal") {
+  if (operationMode.kind === "normal" || operationMode.kind === "skill_config") {
     return { ok: false, message: "当前没有待确认的配置流程。" };
   }
   if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {
@@ -640,6 +644,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     },
     async execute(ctx: DirectCommandExecutionContext) {
       const cancelled = ctx.input.sessionManager.cancelGeneration(ctx.session.id);
+      cancelSkillDraft(ctx.input.config, ctx.session.id);
       ctx.input.sessionManager.clearSession(ctx.session.id);
       ctx.input.persistSession(ctx.session.id, "session_cleared");
       ctx.input.logger.info({ sessionId: ctx.session.id, cancelled }, "session_cleared_by_command");
@@ -951,8 +956,8 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "config",
-    completion: { name: "config", parameters: [{ name: "配置", values: ["persona", "rp", "scenario"] }] },
-    help: ".config [persona|rp|scenario] 基于当前配置进入编辑",
+    completion: { name: "config", parameters: [{ name: "配置", values: ["persona", "rp", "scenario", "skill"] }, { name: "技能", source: "skillIds", when: { index: 0, value: "skill" } }] },
+    help: ".config [persona|rp|scenario|skill [id]] 基于当前配置进入编辑",
     dispatch: {
       requireTextOnly: true
     },
@@ -961,18 +966,28 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       allowInOwnerMentionedGroup: true
     },
     parse(text: string): ParsedDirectCommand | null {
-      const match = text.match(/^[。.]\s*config\s+(persona|rp|scenario)\s*$/i);
+      const match = text.match(/^[。.]\s*config\s+(persona|rp|scenario|skill)(?:\s+([a-z0-9-]+))?\s*$/i);
       if (!match) {
         return null;
       }
       return {
         name: "config",
-        target: match[1]!.toLowerCase() as ConfigTarget
+        ...(match[2] ? { id: match[2] } : {}),
+        target: match[1]!.toLowerCase() as ConfigTarget | "skill"
       };
     },
     access: requireOwnerForConfiguration,
     async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
       const configCommand = command as Extract<ParsedDirectCommand, { name: "config" }>;
+      if (configCommand.target === "skill") {
+        if (!ctx.input.config.skills.enabled) { await ctx.send("技能库未启用。"); return; }
+        if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind !== "normal") { await ctx.send("请先确认或取消当前资料配置草稿。"); return; }
+        const draft = startSkillDraft(ctx.input.config, ctx.session.id, configCommand.id);
+        ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "skill_config", skillId: draft.id });
+        ctx.input.persistSession(ctx.session.id, "skill_draft_started");
+        await ctx.send(`已进入技能 ${draft.id} 编辑。接下来的修改仅保存临时草稿，.confirm 发布，.cancel 放弃。\n${draft.input.document}\n工具集绑定：${draft.input.toolsetIds.join(", ") || "无"}`);
+        return;
+      }
       await ctx.send(await enterConfigurationMode(ctx, "config", configCommand.target));
     }
   },
@@ -997,6 +1012,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       const defaults = getScenarioStateDefaults(ctx.session);
       const currentProfile = (await ctx.input.scenarioHostStateStore.ensure(ctx.session.id, defaults)).profile;
       ctx.input.sessionManager.cancelGeneration(ctx.session.id);
+      cancelSkillDraft(ctx.input.config, ctx.session.id);
       ctx.input.sessionManager.clearSession(ctx.session.id);
       await ctx.input.scenarioHostStateStore.write(ctx.session.id, {
         ...createInitialScenarioHostSessionState(defaults),
@@ -1025,6 +1041,23 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     },
     access: requireOwnerForConfiguration,
     async execute(ctx: DirectCommandExecutionContext) {
+      if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") {
+        if (!readSkillDraft(ctx.input.config, ctx.session.id)) {
+          ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
+          await ctx.send("技能草稿文件已不存在，已退出配置流程。");
+          return;
+        }
+        try {
+          requireActiveSkillDraft(ctx.input.config, ctx.session.id, ctx.input.sessionManager.getOperationMode(ctx.session.id));
+          confirmSkillDraft(ctx.input.config, ctx.session.id);
+          ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
+          ctx.input.persistSession(ctx.session.id, "skill_draft_confirmed");
+          await ctx.send("技能草稿已发布，下个任务生效。");
+        } catch (error) {
+          await ctx.send(error instanceof Error ? error.message : String(error));
+        }
+        return;
+      }
       const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
       if (operationMode.kind === "normal") {
         await ctx.send("当前没有待确认的配置流程。");
@@ -1064,6 +1097,13 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     },
     access: requireOwnerForConfiguration,
     async execute(ctx: DirectCommandExecutionContext) {
+      if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") {
+        cancelSkillDraft(ctx.input.config, ctx.session.id);
+        ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
+        ctx.input.persistSession(ctx.session.id, "skill_draft_cancelled");
+        await ctx.send("已放弃技能草稿。");
+        return;
+      }
       const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
       if (operationMode.kind === "normal") {
         await ctx.send("当前没有正在进行的配置流程。");

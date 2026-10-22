@@ -289,6 +289,18 @@ export function enqueueTriggeredMessage(
     return;
   }
 
+  if (hasActiveResponse && options?.interruptPolicy === "steer") {
+    services.sessionManager.interruptOutbound(context.session.id);
+  }
+
+  if (hasActiveResponse && options?.interruptPolicy === "steer"
+    && services.sessionManager.getSession(context.session.id).generationAbortController != null) {
+    services.sessionManager.appendSteerMessage(context.session.id, context.enrichedMessage);
+    persistSession(context.session.id, "user_message_queued_for_tool_boundary");
+    logger.info({ sessionId: context.session.id }, "user_message_queued_for_tool_boundary");
+    return;
+  }
+
   if (hasActiveResponse) {
     services.sessionManager.appendPendingMessage(context.session.id, context.enrichedMessage);
     persistSession(context.session.id, "user_message_queued_during_active_response");

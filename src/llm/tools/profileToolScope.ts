@@ -32,7 +32,7 @@ export function resolveProfileToolScopeFromOperationMode(
   if (!operationMode) {
     return null;
   }
-  if (operationMode.kind === "normal") {
+  if (operationMode.kind === "normal" || operationMode.kind === "skill_config") {
     return "normal";
   }
   if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {

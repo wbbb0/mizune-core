@@ -1,3 +1,5 @@
+import { getSessionSkillsView } from '../../skills/skillRuntime.ts';
+import type { AppConfig } from '../../config/config.ts';
 import type {
   SessionStreamAccess,
   SessionAdminMutationAccess
@@ -69,6 +71,8 @@ export interface AdminMessagingService {
 
 export function createAdminMessagingService(input: {
   config: {
+    skills?: AppConfig["skills"];
+    dataDir?: string;
     onebot: {
       enabled: boolean;
     };
@@ -613,12 +617,13 @@ function extractGroupId(sessionId: string): string {
 async function readSessionStreamSnapshot(
   input: Pick<
     Parameters<typeof createAdminMessagingService>[0],
-    "sessionManager"
+    "sessionManager" | "config"
   >,
   sessionId: string
 ): Promise<WebSessionStreamSnapshot> {
   const session = input.sessionManager.getSession(sessionId);
   return {
+    ...(input.config.skills ? { skills: getSessionSkillsView(input.config as AppConfig, sessionId) } : {}),
     sessionId: session.id,
     mutationEpoch: session.mutationEpoch,
     transcript: normalizeTranscriptItems(session.internalTranscript),

@@ -17,6 +17,7 @@ export interface GenerationSegmentCommittedSink {
 
 export function createGenerationSegmentCoordinator(input: {
   disableStreamingSplit: boolean;
+  isOutputSuppressed?: () => boolean;
   committedSink: GenerationSegmentCommittedSink;
   draftOverlaySink?: GenerationDraftOverlaySink;
   draftStateSink?: GenerationDraftStateSink;
@@ -25,6 +26,13 @@ export function createGenerationSegmentCoordinator(input: {
   let previewBuffer = "";
   let committedText = "";
   let providerReplayCursor = 0;
+
+  const discardPendingOutput = async (): Promise<void> => {
+    streamBuffer = "";
+    previewBuffer = "";
+    await input.draftOverlaySink?.resetDraft?.();
+    await input.draftStateSink?.clearDraftText();
+  };
 
   const appendCommittedText = (
     chunk: string,
@@ -62,6 +70,10 @@ export function createGenerationSegmentCoordinator(input: {
   };
 
   const flushBufferedChunk = async (): Promise<void> => {
+    if (input.isOutputSuppressed?.()) {
+      await discardPendingOutput();
+      return;
+    }
     if (!streamBuffer.trim()) {
       return;
     }
@@ -74,6 +86,10 @@ export function createGenerationSegmentCoordinator(input: {
       return;
     }
     const committed = await commitChunk(chunk);
+    if (input.isOutputSuppressed?.()) {
+      await discardPendingOutput();
+      return;
+    }
     if (committed !== false) {
       streamBuffer = "";
       await input.draftStateSink?.clearDraftText();
@@ -127,6 +143,8 @@ export function createGenerationSegmentCoordinator(input: {
     if (committed !== false) {
       streamBuffer = "";
       await input.draftStateSink?.clearDraftText();
+    } else if (input.isOutputSuppressed?.()) {
+      await discardPendingOutput();
     } else {
       streamBuffer = text;
       await input.draftStateSink?.replaceDraftText(streamBuffer);
@@ -135,6 +153,10 @@ export function createGenerationSegmentCoordinator(input: {
 
   return {
     async onPreviewTextDelta(delta: string): Promise<void> {
+      if (input.isOutputSuppressed?.()) {
+        await discardPendingOutput();
+        return;
+      }
       previewBuffer += delta;
       await input.draftOverlaySink?.appendDelta(delta);
       await input.draftStateSink?.replaceDraftText(previewBuffer);
@@ -146,6 +168,10 @@ export function createGenerationSegmentCoordinator(input: {
       await input.draftStateSink?.clearDraftText();
     },
     async onTextDelta(delta: string): Promise<void> {
+      if (input.isOutputSuppressed?.()) {
+        await discardPendingOutput();
+        return;
+      }
       streamBuffer += delta;
       await input.draftOverlaySink?.appendDelta(delta);
       await input.draftStateSink?.replaceDraftText(streamBuffer);
@@ -168,10 +194,15 @@ export function createGenerationSegmentCoordinator(input: {
           break;
         }
       }
-      streamBuffer = originalBuffer.slice(committedEnd);
+      if (input.isOutputSuppressed?.()) {
+        await discardPendingOutput();
+      } else {
+        streamBuffer = originalBuffer.slice(committedEnd);
+      }
     },
 
     flushBufferedChunk,
+    discardPendingOutput,
 
     async appendStandalone(text: string): Promise<boolean | void> {
       await flushBufferedChunk();
@@ -186,12 +217,20 @@ export function createGenerationSegmentCoordinator(input: {
     },
 
     async flushSummary(summary: string, streamResponse: boolean | undefined): Promise<void> {
+      if (input.isOutputSuppressed?.()) {
+        await discardPendingOutput();
+        return;
+      }
       if (streamResponse !== false && committedText.trim()) {
         await flushSummaryTail(summary);
         return;
       }
       streamBuffer = await input.committedSink.flushBufferedOutput(summary, streamBuffer, streamResponse);
-      await clearDraftOrReplace();
+      if (input.isOutputSuppressed?.()) {
+        await discardPendingOutput();
+      } else {
+        await clearDraftOrReplace();
+      }
     },
 
     getCommittedText(): string {

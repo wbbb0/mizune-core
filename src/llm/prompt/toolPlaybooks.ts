@@ -17,18 +17,6 @@ function hasAnyTool(visibleToolNames: Set<string>, toolNames: string[]): boolean
   return toolNames.some((name) => visibleToolNames.has(name));
 }
 
-const WEB_SEARCH_TOOL_NAMES = [
-  "ground_with_google_search",
-  "search_with_iqs_lite_advanced"
-];
-
-const WEB_BROWSER_TOOL_NAMES = [
-  "open_page",
-  "inspect_page",
-  "interact_with_page",
-  "capture_screenshot"
-];
-
 const SHELL_TOOL_NAMES = [
   "terminal_list",
   "terminal_run",
@@ -40,41 +28,6 @@ const SHELL_TOOL_NAMES = [
   "terminal_signal",
   "terminal_stop"
 ];
-
-const WEB_RESEARCH_PLAYBOOK: ToolPlaybook = {
-  id: "web_research",
-  title: "网页检索与浏览流程",
-  buildLines(input) {
-    if (!input.activeToolsetIds.has("web_research")) {
-      return [];
-    }
-    const lines: string[] = [];
-    if (hasAnyTool(input.visibleToolNames, WEB_SEARCH_TOOL_NAMES)) {
-      lines.push(
-        "- 先判断是否真的需要外部信息：时效、版本、价格、政策、新闻、API 状态、网页当前状态必须查；常识或已有上下文足够时不要查。",
-        "- 先把问题拆成 1-3 个可验证查询；优先搜索专有名词、版本号、错误码、官方名称。",
-        "- 重要结论优先使用官方文档、一手公告、标准文档、代码仓库、论文或原始数据；新闻和博客只作补充。",
-        "- 涉及时效性时必须核对发布日期和事件发生日期；不要把旧页面当最新状态。",
-        "- 多来源不一致时说明差异，并优先采用权威度更高、时间更新、证据更直接的来源。",
-        "- 最终回答要区分已由来源确认的事实和基于来源做出的推断；需要引用时给出来源名称、链接和日期。"
-      );
-    }
-    if (hasAnyTool(input.visibleToolNames, WEB_BROWSER_TOOL_NAMES)) {
-      if (input.visibleToolNames.has("open_page") && input.visibleToolNames.has("inspect_page")) {
-        lines.push("- 搜索摘要不足以支撑结论时打开页面；open_page 后先 inspect_page 理解页面结构。");
-      }
-      if (input.visibleToolNames.has("inspect_page")) {
-        lines.push("- 页面跳转、刷新、弹窗或表单变化后重新 inspect。");
-      }
-      if (input.visibleToolNames.has("interact_with_page")) {
-        lines.push("- 网页交互有 target_id 时优先用 target_id；定位失败再用语义 target 或截图。");
-        lines.push("- 登录、提交、删除、购买、发送消息、授权等有外部影响的动作，必须先获得用户明确确认。");
-      }
-      lines.push("- 遇到验证码、短信码、邮箱码或 TOTP 时向用户索取；验证码只用于当前步骤，不写入长期资料。");
-    }
-    return lines;
-  }
-};
 
 const SHELL_RUNTIME_PLAYBOOK: ToolPlaybook = {
   id: "shell_runtime",
@@ -127,7 +80,6 @@ const TASK_EXECUTION_PLAYBOOK: ToolPlaybook = {
 };
 
 const TOOL_PLAYBOOKS = [
-  WEB_RESEARCH_PLAYBOOK,
   SHELL_RUNTIME_PLAYBOOK,
   TASK_EXECUTION_PLAYBOOK
 ];

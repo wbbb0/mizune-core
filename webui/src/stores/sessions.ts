@@ -1,3 +1,4 @@
+import type { SessionSkillsView } from "../../../src/types/skills";
 import { defineStore } from "pinia";
 import { ref, type Ref } from "vue";
 import type {
@@ -80,6 +81,7 @@ export interface TranscriptEntry {
 }
 
 export interface ActiveSession {
+  skills?: SessionSkillsView | null;
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";
@@ -387,7 +389,8 @@ export const useSessionsStore = defineStore("sessions", () => {
         mutationEpoch: event.mutationEpoch,
         transcriptCount: event.transcriptCount,
         lastActiveAt: event.lastActiveAt,
-        phase: event.phase
+        phase: event.phase,
+        skills: event.skills ?? null
       });
       return;
     }
@@ -399,6 +402,7 @@ export const useSessionsStore = defineStore("sessions", () => {
         transcriptCount: 0,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase,
+        skills: event.skills ?? null,
         streamStatus: "connecting",
         transcript: [],
         transcriptHasMore: false,

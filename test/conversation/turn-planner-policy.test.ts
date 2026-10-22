@@ -9,7 +9,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createGenerationReplyGateDeps, createGenerationReplyGateHandlers, createGenerationReplyGateInput, createReplyGate, createReplyGateBatchMessage } from "../helpers/reply-gate-fixtures.tsx";
 
 const noRequirements: TurnPlannerRequirements = {
-  modelSelection: false, toolSelection: false, replyGate: false,
+  modelSelection: false, toolSelection: false, skillSelection: false, replyGate: false,
   semanticWait: false, topicSwitch: false, taskIntent: false
 };
 
@@ -78,6 +78,7 @@ test("route equivalence ignores aliases but preserves parameters, providers and 
 
 test("a skipped turn never prepares planner media and preserves all allowed toolsets", async () => {
   const value = config();
+  value.skills.plannerSelectionEnabled = false;
   let called = false;
   const planner = createReplyGate(value, { onGenerate() { called = true; } });
   const result = await handleGenerationTurnPlanner(
@@ -124,10 +125,10 @@ test("task-only planning omits inactive fields and rejects unsolicited routing, 
   assert.ok(result.metrics);
 });
 
-test("all mode removes tool discovery and activation tools", () => {
+test("all mode retains explicit toolset skill requests when skills are enabled", () => {
   const value = config();
   const names = ["list_available_toolsets", "request_toolset"];
-  assert.deepEqual(getBuiltinToolNames("owner", null, value, { modelRef: ["main"], availableToolNames: names }), []);
+  assert.deepEqual(getBuiltinToolNames("owner", null, value, { modelRef: ["main"], availableToolNames: names }).sort(), names);
   value.llm.turnPlanner.toolSelection = "planned";
   assert.deepEqual(getBuiltinToolNames("owner", null, value, { modelRef: ["main"], availableToolNames: names }).sort(), names);
 });

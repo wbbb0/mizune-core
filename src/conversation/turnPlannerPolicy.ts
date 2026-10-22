@@ -6,6 +6,7 @@ import type { TurnPlannerTaskContext } from "./taskTracker/taskTrackerPlannerCon
 export interface TurnPlannerRequirements {
   modelSelection: boolean;
   toolSelection: boolean;
+  skillSelection?: boolean;
   replyGate: boolean;
   semanticWait: boolean;
   topicSwitch: boolean;
@@ -21,6 +22,7 @@ export function resolveTurnPlannerRequirements(config: AppConfig, input: {
   canSkipReply: boolean;
   pendingWaitPasses: number;
   availableToolsetCount: number;
+  availableSkillCount?: number;
   taskContext?: TurnPlannerTaskContext | null | undefined;
   topicCompressionCandidate?: TopicCompressionCandidate | null | undefined;
 }): TurnPlannerRequirements {
@@ -28,6 +30,7 @@ export function resolveTurnPlannerRequirements(config: AppConfig, input: {
   const candidate = input.topicCompressionCandidate;
   return {
     modelSelection: getModelRefsForRole(config, "main_large").length > 0 && !areMainModelRoutesEquivalent(config),
+    skillSelection: config.skills.enabled && config.skills.plannerSelectionEnabled && (input.availableSkillCount ?? 0) > 0,
     toolSelection: options.toolSelection === "planned" && input.availableToolsetCount > 0,
     replyGate: input.canSkipReply,
     semanticWait: options.semanticWait && input.pendingWaitPasses < options.maxWaitPasses,

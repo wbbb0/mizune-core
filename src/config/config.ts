@@ -290,6 +290,7 @@ export function toConfigSummary(
     runtimeNodeEnv: process.env.NODE_ENV?.trim() || "unknown",
     configuredNodeEnv: config.nodeEnv,
     logLevel: config.logLevel,
+    logIncludeConversationContent: config.logIncludeConversationContent,
     oneBotEnabled: config.onebot.enabled,
     oneBotWsUrl: config.onebot.wsUrl,
     oneBotHttpUrl: config.onebot.httpUrl,

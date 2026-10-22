@@ -21,6 +21,7 @@ import type { TurnPlannerRequirements } from "#conversation/turnPlannerPolicy.ts
 
 export function buildTurnPlannerPrompt(input: {
   requirements: TurnPlannerRequirements;
+  availableSkills?: Array<{ id: string; name: string; description: string }>;
   sessionId: string;
   chatType: "private" | "group";
   relationship: string;
@@ -91,6 +92,7 @@ export function buildTurnPlannerPrompt(input: {
   ];
   const outputFields = [
     "reason: <中文理由，不超过12字>",
+    ...(needs.skillSelection ? ["skill_ids: <逗号分隔技能 ID；无则填 none>"] : []),
     ...((needs.modelSelection || needs.semanticWait || needs.replyGate) ? [`reply_decision: <${replyOptions.join("|")}>`] : []),
     ...(needs.topicSwitch ? ["topic_decision: <continue_topic|new_topic>"] : []),
     ...(hasTaskContext ? ["task_intent: <none|continue_current|modify_current|pause_current|cancel_current|confirm_completed|switch_topic|start_unrelated_task|restore_parked|unknown>|<target_task_id_or_none>|<low|medium|high>"] : []),
@@ -112,6 +114,7 @@ export function buildTurnPlannerPrompt(input: {
         ? ["在 stateful_rp（沉浸状态角色扮演）模式下：若收到 # 开头的场外指令、涉及细腻身体感官与羞耻/情欲表里心理反差描写、高张力情感冲突、换装或私密道具互动、或 mode_signal 提示高张力/感官复杂时，优先选择 reply_large；普通简短寒暄或轻量日常对话选择 reply_small。"]
         : [])
     ]) : null,
+    ...(needs.skillSelection ? [renderPromptSection("planner_skill_selection", ["只按当前任务需要，从给定技能目录选出最多三个技能。技能选择与工具可用性分离；无需技能时填 none。", ...(input.availableSkills ?? []).map(skill => `${skill.id} | ${skill.name} | ${skill.description}`)])] : []),
     renderPromptSection("planner_rules", [
       `严格输出以下 ${outputFields.length} 行，不得添加解释、空行或代码块：`,
       ...outputFields,

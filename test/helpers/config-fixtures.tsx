@@ -326,6 +326,7 @@ export function createTestAppConfig(overrides: TestAppConfigOverrides = {}): App
 
   return {
     ...fileConfig,
+    dataDir: overrides.dataDir ?? createTempDir("llm-bot-test-data"),
     llm: {
       ...fileConfig.llm,
       ...catalogConfig

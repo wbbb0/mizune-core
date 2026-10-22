@@ -97,7 +97,7 @@ export interface TriggerDecision {
   shouldTriggerResponse: boolean;
   threadAction: "record_only" | "reply_now" | "soft_interrupt" | "queue_next_thread";
   replyDecision: "no_reply" | "reply_small";
-  interruptPolicy: "none" | "soft_interrupt" | "queue";
+  interruptPolicy: "none" | "soft_interrupt" | "steer" | "queue";
   priority: "low" | "normal" | "owner";
   reason: string;
 }

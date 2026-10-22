@@ -50,22 +50,26 @@ export interface SessionTranscriptStore {
 }
 
 export function createSessionTranscriptStore(session: SessionState, config: AppConfig): SessionTranscriptStore {
+  // steer 在模型请求边界单独注入；构建初始 prompt 时不能提前读入，否则会重复。
+  const promptItems = () => session.pendingSteerMessages.length > 0 && session.pendingTranscriptGroupId
+    ? session.internalTranscript.filter((item) => item.groupId !== session.pendingTranscriptGroupId)
+    : session.internalTranscript;
   return {
     rawItems() {
       return session.internalTranscript;
     },
     runtimeItems() {
-      return session.internalTranscript.filter(isTranscriptRuntimeIncluded);
+      return promptItems().filter(isTranscriptRuntimeIncluded);
     },
     projectRuntimeHistory() {
-      return projectLlmVisibleHistoryFromTranscript(session.internalTranscript, config);
+      return projectLlmVisibleHistoryFromTranscript(promptItems(), config);
     },
     projectRuntimeHistoryExcludingGroup(groupId) {
       if (!groupId) {
-        return projectLlmVisibleHistoryFromTranscript(session.internalTranscript, config);
+        return projectLlmVisibleHistoryFromTranscript(promptItems(), config);
       }
       return projectLlmVisibleHistoryFromTranscript(
-        session.internalTranscript.filter((item) => item.groupId !== groupId),
+        promptItems().filter((item) => item.groupId !== groupId),
         config
       );
     },

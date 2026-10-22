@@ -429,6 +429,7 @@ export interface SessionState {
   debounceTimer: NodeJS.Timeout | null;
   generationAbortController: AbortController | null;
   responseAbortController: AbortController | null;
+  outboundAbortController: AbortController | null;
   activeAssistantResponse: ActiveAssistantResponse | null;
   activeAssistantDraftResponse: ActiveAssistantResponse | null;
 }

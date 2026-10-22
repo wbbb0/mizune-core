@@ -1,3 +1,4 @@
+import type { SessionSkillsView } from '../../types/skills.ts';
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
 import type { ParsedWebSessionStreamQuery } from "../routeSupport.ts";
 import { buildTranscriptItemPatch, getTranscriptItemId } from "#conversation/session/transcriptMetadata.ts";
@@ -8,6 +9,7 @@ export type WebSessionPhase =
   | (Extract<SessionPhase, { kind: "delivering" }> & { label: string; previewText?: string | null });
 export type WebSessionStatusPatch = {
   modeId?: string;
+  skills?: SessionSkillsView;
   lastActiveAt?: number;
   phase?: WebSessionPhase;
 };
@@ -15,6 +17,7 @@ export type WebSessionStatusPatch = {
 export type WebSessionStreamEvent =
   | {
       type: "ready";
+      skills?: SessionSkillsView;
       sessionId: string;
       modeId: string;
       mutationEpoch: number;
@@ -25,6 +28,7 @@ export type WebSessionStreamEvent =
     }
   | {
       type: "reset";
+      skills?: SessionSkillsView;
       sessionId: string;
       modeId: string;
       mutationEpoch: number;
@@ -64,6 +68,7 @@ export type WebSessionStreamEvent =
     };
 
 export type WebSessionStreamSnapshot = {
+  skills?: SessionSkillsView;
   sessionId: string;
   modeId: string;
   mutationEpoch: number;
@@ -79,6 +84,7 @@ export function buildInitialSessionStreamEvents(
 ): WebSessionStreamEvent[] {
   const readyEvent: WebSessionStreamEvent = {
     type: "ready",
+    ...(snapshot.skills ? { skills: snapshot.skills } : {}),
     sessionId: snapshot.sessionId,
     modeId: snapshot.modeId,
     mutationEpoch: snapshot.mutationEpoch,
@@ -95,6 +101,7 @@ export function buildInitialSessionStreamEvents(
   ) {
     events.push({
       type: "reset",
+      ...(snapshot.skills ? { skills: snapshot.skills } : {}),
       sessionId: snapshot.sessionId,
       modeId: snapshot.modeId,
       mutationEpoch: snapshot.mutationEpoch,
@@ -110,6 +117,7 @@ export function buildInitialSessionStreamEvents(
   if (query.transcriptCount > snapshot.transcript.length) {
     events.push({
       type: "reset",
+      ...(snapshot.skills ? { skills: snapshot.skills } : {}),
       sessionId: snapshot.sessionId,
       modeId: snapshot.modeId,
       mutationEpoch: snapshot.mutationEpoch,
@@ -138,6 +146,7 @@ export function diffSessionStreamEvents(
   if (current.mutationEpoch !== previous.mutationEpoch) {
     events.push({
       type: "reset",
+      ...(current.skills ? { skills: current.skills } : {}),
       sessionId: current.sessionId,
       modeId: current.modeId,
       mutationEpoch: current.mutationEpoch,
@@ -153,6 +162,7 @@ export function diffSessionStreamEvents(
   if (current.transcript.length < previous.transcript.length) {
     events.push({
       type: "reset",
+      ...(current.skills ? { skills: current.skills } : {}),
       sessionId: current.sessionId,
       modeId: current.modeId,
       mutationEpoch: current.mutationEpoch,
@@ -168,6 +178,7 @@ export function diffSessionStreamEvents(
   if (hasTranscriptIndexGap(previous, current)) {
     events.push({
       type: "reset",
+      ...(current.skills ? { skills: current.skills } : {}),
       sessionId: current.sessionId,
       modeId: current.modeId,
       mutationEpoch: current.mutationEpoch,
@@ -189,11 +200,13 @@ export function diffSessionStreamEvents(
   const currentPhase = deriveWebSessionPhase(current);
 
   if (
-    current.lastActiveAt !== previous.lastActiveAt
+    JSON.stringify(current.skills) !== JSON.stringify(previous.skills)
+    || current.lastActiveAt !== previous.lastActiveAt
     || current.modeId !== previous.modeId
     || !isSameWebSessionPhase(previousPhase, currentPhase)
   ) {
     const patch: WebSessionStatusPatch = {};
+    if (current.skills && JSON.stringify(current.skills) !== JSON.stringify(previous.skills)) patch.skills = current.skills;
     if (current.modeId !== previous.modeId) {
       patch.modeId = current.modeId;
     }

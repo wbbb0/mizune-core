@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
+import SessionSkillsPanel from "./SessionSkillsPanel.vue";
 import { RefreshCw } from "lucide-vue-next";
 import { sessionsApi } from "@/api/sessions";
 import type { MemoryContextItem, SessionDetailResult, SessionTaskTracker } from "@/api/types";
@@ -109,6 +110,8 @@ const lastRequestUsageRows = computed(() => {
     ["Provider 上报", usage.providerReported ? "是" : "否"]
   ];
 });
+
+const skills = computed(() => props.session.skills === undefined ? detail.value?.session.skills : props.session.skills);
 
 const taskTracker = computed<SessionTaskTracker | null>(() => detail.value?.session.taskTracker ?? null);
 const taskTrackerSummary = computed(() => {
@@ -399,6 +402,8 @@ async function loadDetail() {
           <div v-if="loading && !detail" class="text-small text-text-subtle">加载中…</div>
           <pre v-else class="overflow-auto rounded-lg border border-border-default bg-surface-sidebar p-3 text-small leading-6 whitespace-pre-wrap wrap-break-word text-text-muted">{{ detail?.session.historySummary || "暂无摘要" }}</pre>
         </WorkbenchDisclosure>
+
+        <SessionSkillsPanel :skills="skills ?? null" />
 
         <WorkbenchDisclosure
           :expanded="isDisclosureExpanded('task-tracker')"

@@ -1,3 +1,4 @@
+import type { SessionSkillsView } from "../../../src/types/skills.ts";
 import type {
   NormalizedInternalTranscriptItem as SharedTranscriptItem,
   StoredToolCall,
@@ -63,13 +64,14 @@ export type SessionPhase =
   | { kind: "delivering"; label: string; previewText?: string | null };
 
 export interface SessionStatusPatch {
+  skills?: SessionSkillsView;
   modeId?: string;
   lastActiveAt?: number;
   phase?: SessionPhase;
 }
 
 export type SessionStreamEvent =
-  | { type: "ready";   sessionId: string; modeId: string; mutationEpoch: number; transcriptCount: number; lastActiveAt: number; phase: SessionPhase; timestampMs: number }
+  | { type: "ready";   sessionId: string; modeId: string; mutationEpoch: number; transcriptCount: number; lastActiveAt: number; phase: SessionPhase; skills?: SessionSkillsView; timestampMs: number }
   | {
       type: "reset";
       sessionId: string;
@@ -78,6 +80,7 @@ export type SessionStreamEvent =
       transcriptCount: number;
       lastActiveAt: number;
       phase: SessionPhase;
+      skills?: SessionSkillsView;
       reason: "mutation_epoch_changed" | "transcript_cursor_ahead" | "transcript_gap_detected";
       timestampMs: number;
     }
@@ -309,6 +312,7 @@ export interface DerivedObservation {
 }
 
 export interface SessionDetailSnapshot {
+  skills?: SessionSkillsView;
   id: string;
   type: "private" | "group";
   source: "onebot" | "web";

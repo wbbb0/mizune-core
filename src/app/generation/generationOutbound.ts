@@ -58,6 +58,9 @@ export function createGenerationOutbound(
       joinWithDoubleNewline?: boolean | undefined;
     }
   ): Promise<boolean> => {
+    // 在异步渲染前捕获信号，旧片段不能借用消费插话后创建的新信号。
+    const outboundSignal = sessionManager.getOutboundAbortSignal(input.sessionId);
+    if (outboundSignal?.aborted) return false;
     const storedText = sanitizeStoredOutboundText(chunk, {
       stripLeadingMessageHeaders: !hasSentAssistantChunk
     }).trim();
@@ -149,7 +152,7 @@ export function createGenerationOutbound(
       sessionId: input.sessionId,
       text: deliveryText,
       pacing: resolvePacing(),
-      abortSignals: [input.abortController.signal, input.responseAbortController.signal],
+      abortSignals: [input.abortController.signal, input.responseAbortController.signal, ...(outboundSignal ? [outboundSignal] : [])],
       send: async () => {
         if (input.sendTarget.delivery === "web") {
           await input.committedTextSink?.commitText(storedText);

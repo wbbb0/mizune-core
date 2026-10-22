@@ -1,3 +1,4 @@
+import { assertOutsideSkillLibrary, isSkillLibraryPath } from "../../skills/skillPathPolicy.ts";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join, normalize, posix, resolve } from "node:path";
@@ -58,6 +59,7 @@ export class LocalFileService {
     }
     if (isAbsolute(normalizedInput)) {
       const absolutePath = resolve(normalizedInput);
+      assertOutsideSkillLibrary(this.config.dataDir, absolutePath);
       return {
         relativePath: absolutePath,
         absolutePath
@@ -70,6 +72,7 @@ export class LocalFileService {
     }
     const cleanedRelative = normalizedRelative === "." ? "" : normalizedRelative;
     const absolutePath = resolve(this.rootDir, cleanedRelative);
+    assertOutsideSkillLibrary(this.config.dataDir, absolutePath);
     const relativeFromRoot = normalize(absolutePath).startsWith(normalize(this.rootDir))
       ? cleanedRelative
       : null;
@@ -104,7 +107,8 @@ export class LocalFileService {
       }
       throw error;
     });
-    const items = await Promise.all(entries.map(async (entry): Promise<LocalFileItemStat> => {
+    const visibleEntries = entries.filter(entry => !isSkillLibraryPath(this.config.dataDir, join(target.absolutePath, entry.name)));
+    const items = await Promise.all(visibleEntries.map(async (entry): Promise<LocalFileItemStat> => {
       const itemRelativePath = target.relativePath === "."
         ? entry.name
         : posix.join(target.relativePath, entry.name);
@@ -386,6 +390,7 @@ export class LocalFileService {
   }
 
   private assertMutablePath(path: string): void {
+    assertOutsideSkillLibrary(this.config.dataDir, this.resolvePath(path).absolutePath, true);
     if (this.scope && this.resolvePath(path).relativePath === ".") throw new Error("不能移动、复制或删除工作区根目录，请使用 workspace_close");
   }
 
@@ -402,6 +407,7 @@ export class LocalFileService {
     });
 
     for (const entry of entries) {
+      if (isSkillLibraryPath(this.config.dataDir, join(target.absolutePath, entry.name))) continue;
       const itemPath = target.relativePath === "." ? entry.name : posix.join(target.relativePath, entry.name);
       const kind = entry.isDirectory() ? "directory" as const : "file" as const;
       const shouldContinue = await visitor(itemPath, kind);

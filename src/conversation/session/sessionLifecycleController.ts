@@ -32,10 +32,11 @@ export class SessionLifecycleController {
   }
 
   interruptOutbound(session: SessionState): boolean {
-    if (session.responseAbortController == null || session.responseAbortController.signal.aborted) {
+    if (session.outboundAbortController == null || session.outboundAbortController.signal.aborted) {
       return false;
     }
-    session.responseAbortController.abort();
+    session.outboundAbortController.abort();
+    session.activeAssistantDraftResponse = null;
     return true;
   }
 

@@ -16,6 +16,7 @@ export function beginGenerationState(session: SessionState) {
   const responseAbortController = new AbortController();
   session.generationAbortController = abortController;
   session.responseAbortController = responseAbortController;
+  session.outboundAbortController = new AbortController();
   return {
     session,
     messages,
@@ -36,6 +37,7 @@ export function beginSyntheticGenerationState(session: SessionState) {
   const responseAbortController = new AbortController();
   session.generationAbortController = abortController;
   session.responseAbortController = responseAbortController;
+  session.outboundAbortController = new AbortController();
   return { session, abortController, responseAbortController, responseEpoch: session.responseEpoch };
 }
 
@@ -97,6 +99,7 @@ export function completeResponseState(session: SessionState, expectedResponseEpo
   }
   session.phase = { kind: "idle" };
   session.responseAbortController = null;
+  session.outboundAbortController = null;
   session.currentReplyTarget = null;
   clearActiveTranscriptGroup(session);
   return true;

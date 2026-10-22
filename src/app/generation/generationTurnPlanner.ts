@@ -1,3 +1,4 @@
+import { getSkillStore } from '../../skills/skillStore.ts';
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { Relationship } from "#identity/relationship.ts";
@@ -83,10 +84,12 @@ export async function handleGenerationTurnPlanner(
     return continueWithoutPlanner("audio_pending_transcription");
   }
 
+  const selectableSkills = config.skills.enabled && config.skills.plannerSelectionEnabled ? getSkillStore(config).list().filter(skill => skill.effectiveAvailable) : [];
   const requirements = resolveTurnPlannerRequirements(config, {
     canSkipReply: !shouldCoerceNoReplyToReply(input),
     pendingWaitPasses: input.pendingReplyGateWaitPasses,
     availableToolsetCount: input.availableToolsets.length,
+    availableSkillCount: selectableSkills.length,
     taskContext: input.taskContext,
     topicCompressionCandidate: input.topicCompressionCandidate
   });
@@ -130,6 +133,7 @@ export async function handleGenerationTurnPlanner(
 
   let planner = await turnPlanner.decide({
     requirements,
+    availableSkills: requirements.skillSelection ? selectableSkills.map(({ id, name, description }) => ({ id, name, description })) : [],
     sessionId: input.sessionId,
     chatType: input.sendTarget.chatType,
     relationship: input.relationship,

@@ -1,3 +1,4 @@
+import { skillToolDescriptors, skillToolHandlers } from './runtime/skillTools.ts';
 import type { AppConfig } from "#config/config.ts";
 import type { ToolHandler } from "./core/shared.ts";
 import { conversationToolDescriptors, conversationToolHandlers } from "./registries/conversationRegistry.ts";
@@ -8,6 +9,7 @@ import { statefulRpToolDescriptors, statefulRpToolHandlers } from "#modes/statef
 
 export function getBuiltinToolDescriptors(config?: AppConfig) {
   return [
+    ...skillToolDescriptors,
     ...runtimeToolDescriptorsRegistry(config),
     ...conversationToolDescriptors,
     ...profileToolDescriptorsRegistry,
@@ -22,6 +24,7 @@ export function getBuiltinToolDescriptorByName(name: string, config?: AppConfig)
 }
 
 export const builtinToolHandlers: Record<string, ToolHandler> = {
+  ...skillToolHandlers,
   ...runtimeToolHandlersRegistry,
   ...conversationToolHandlers,
   ...profileToolHandlersRegistry,

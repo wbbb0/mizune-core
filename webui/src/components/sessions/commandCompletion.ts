@@ -12,7 +12,7 @@ export interface CommandCompletion {
 
 /** Only complete the command at the beginning of a draft, at the actual caret. */
 export function resolveCommandCompletion(
-  text: string, caret: number, commands: CommandCompletionDefinition[], stickerIds: string[] = []
+  text: string, caret: number, commands: CommandCompletionDefinition[], stickerIds: string[] = [], skillIds: string[] = []
 ): CommandCompletion | null {
   const prefix = text.match(/^\s*[。.]\s*/);
   if (!prefix || /[\r\n]/.test(text) || caret < prefix[0].length) return null;
@@ -45,7 +45,7 @@ export function resolveCommandCompletion(
     const token = text.slice(start, end);
     if (caret <= end) {
       const query = text.slice(start, caret).toLowerCase();
-      const values = parameter.values ?? (parameter.source === "stickerIds" ? stickerIds : []);
+      const values = parameter.values ?? (parameter.source === "stickerIds" ? stickerIds : parameter.source === "skillIds" ? skillIds : []);
       return {
         values: values.some((value) => value.toLowerCase() === token.toLowerCase()) && caret === end
           ? [] : values.filter((value) => value.toLowerCase().startsWith(query)),

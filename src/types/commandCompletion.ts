@@ -2,7 +2,7 @@
 export interface CommandParameter {
   name: string;
   values?: string[];
-  source?: "stickerIds";
+  source?: "stickerIds" | "skillIds";
   rest?: boolean;
   separator?: string;
   when?: { index: number; value: string };

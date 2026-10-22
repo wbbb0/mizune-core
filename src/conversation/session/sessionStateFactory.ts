@@ -100,6 +100,7 @@ export function createSessionState(target: {
     debounceTimer: null,
     generationAbortController: null,
     responseAbortController: null,
+    outboundAbortController: null,
     activeAssistantResponse: null,
     activeAssistantDraftResponse: null
   } as SessionState;
@@ -234,6 +235,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     debounceTimer: null,
     generationAbortController: null,
     responseAbortController: null,
+    outboundAbortController: null,
     activeAssistantResponse: null,
     activeAssistantDraftResponse: null
   } as SessionState;

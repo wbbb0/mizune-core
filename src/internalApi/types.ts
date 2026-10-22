@@ -1,3 +1,4 @@
+import type { SessionSkillsView } from '../types/skills.ts';
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { Logger } from "pino";
@@ -127,6 +128,7 @@ export interface InternalApiSessionDetail {
     sentMessages: unknown[];
     contentSafetyAudits: ContentSafetyAuditView[];
     memoryContext: ContextPromptMemoryReport | null;
+    skills?: SessionSkillsView;
     lastActiveAt: number;
     isGenerating: boolean;
     historyRevision: number;
