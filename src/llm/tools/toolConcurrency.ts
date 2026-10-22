@@ -39,7 +39,8 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   search_with_iqs_lite_advanced: ["web_search:*"],
   list_browser_profiles: ["browser_profile:*"],
   inspect_browser_profile: ["browser_profile:*"],
-  get_scenario_state: ["scenario_state:*"]
+  get_scenario_state: ["scenario_state:*"],
+  stateful_rp_inspect: ["stateful_rp_state:*"]
 };
 
 export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecutionEffect {
@@ -111,6 +112,11 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
         getStringArg(args, "resource_id") ? [browserPageKey(getStringArg(args, "resource_id"))] : ["web_download:*"],
         ["download:*", "chat_file:*"]
       );
+    case "stateful_rp_init":
+    case "stateful_rp_update_embodiment":
+    case "stateful_rp_update_mind_and_relation":
+    case "stateful_rp_update_scene":
+      return parallel([], ["stateful_rp_state:*"]);
     default:
       return { kind: "barrier" };
   }

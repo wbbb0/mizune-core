@@ -209,7 +209,11 @@ export class StatefulRpPostTurnMaintainer {
           { role: "user", content: userPrompt }
         ]
       });
-      return parseFirstJsonObject(result.text);
+      const parsed = parseFirstJsonObject(result.text);
+      if (!parsed) {
+        this.logger.warn({ passName }, "stateful_rp_post_turn_pass_invalid_json");
+      }
+      return parsed;
     } catch (error: unknown) {
       this.logger.warn({ passName, err: error }, "stateful_rp_post_turn_pass_failed");
       return null;

@@ -89,6 +89,7 @@ interface DirectCommandFixtureOptions {
       defaults: { playerUserId: string; playerDisplayName: string }
     ) => Promise<unknown>;
   };
+  statefulRpStateStore?: Parameters<typeof createDirectCommandHandler>[0]["statefulRpStateStore"];
   sessionCaptioner?: {
     isAvailable: () => boolean;
     generateTitle: (input: Record<string, unknown>) => Promise<string | null>;
@@ -304,6 +305,7 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
         return updater(createInitialScenarioHostSessionState(defaults));
       }
     },
+    ...(options.statefulRpStateStore ? { statefulRpStateStore: options.statefulRpStateStore } : {}),
     ...(options.forceCompactSession ? { forceCompactSession: options.forceCompactSession } : {}),
     ...(options.sessionCaptioner ? { sessionCaptioner: options.sessionCaptioner as any } : {}),
     async sendImmediateText(params: SentImmediateText) {

@@ -9,6 +9,7 @@ import {
   applyDeterministicTimeTick,
   clamp,
   deriveClockFields,
+  formatIsoToDisplayClock,
   parseDisplayClockToIso
 } from "./clockAndRules.ts";
 import {
@@ -494,7 +495,13 @@ export const statefulRpToolHandlers: Record<string, ToolHandler> = {
       }
     );
     context.persistSession?.(context.lastMessage.sessionId, "stateful_rp_initialized");
-    return JSON.stringify({ ok: true, state });
+    return JSON.stringify({
+      ok: true,
+      action: "updated",
+      targetCategory: "stateful_rp:init",
+      clock: formatIsoToDisplayClock(state.clock.currentIso),
+      state
+    });
   },
 
   async stateful_rp_update_embodiment(_toolCall, args, context) {
@@ -634,7 +641,13 @@ export const statefulRpToolHandlers: Record<string, ToolHandler> = {
       }
     );
     context.persistSession?.(context.lastMessage.sessionId, "stateful_rp_embodiment_updated");
-    return JSON.stringify({ ok: true, state });
+    return JSON.stringify({
+      ok: true,
+      action: "updated",
+      targetCategory: "stateful_rp:embodiment",
+      clock: formatIsoToDisplayClock(state.clock.currentIso),
+      state
+    });
   },
 
   async stateful_rp_update_mind_and_relation(_toolCall, args, context) {
@@ -749,7 +762,13 @@ export const statefulRpToolHandlers: Record<string, ToolHandler> = {
       }
     );
     context.persistSession?.(context.lastMessage.sessionId, "stateful_rp_mind_relation_updated");
-    return JSON.stringify({ ok: true, state });
+    return JSON.stringify({
+      ok: true,
+      action: "updated",
+      targetCategory: "stateful_rp:mind_relation",
+      clock: formatIsoToDisplayClock(state.clock.currentIso),
+      state
+    });
   },
 
   async stateful_rp_update_scene(_toolCall, args, context) {
@@ -851,7 +870,13 @@ export const statefulRpToolHandlers: Record<string, ToolHandler> = {
       }
     );
     context.persistSession?.(context.lastMessage.sessionId, "stateful_rp_scene_updated");
-    return JSON.stringify({ ok: true, state });
+    return JSON.stringify({
+      ok: true,
+      action: "updated",
+      targetCategory: "stateful_rp:scene",
+      clock: formatIsoToDisplayClock(state.clock.currentIso),
+      state
+    });
   },
 
   async stateful_rp_inspect(_toolCall, args, context) {

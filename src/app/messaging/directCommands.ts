@@ -19,6 +19,8 @@ import type { InternalTranscriptItem, SessionState } from "#conversation/session
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { createInitialScenarioHostSessionState, getMissingScenarioSetupFields, isScenarioSetupComplete } from "#modes/scenarioHost/types.ts";
 import { createEmptyScenarioProfile } from "#modes/scenarioHost/profileSchema.ts";
+import type { StatefulRpStateStore } from "#modes/statefulRp/stateStore.ts";
+import { createInitialStatefulRpSessionState } from "#modes/statefulRp/types.ts";
 import { resolveSessionParticipantLabel } from "#conversation/session/sessionIdentity.ts";
 import { parseOwnerBootstrapCommand } from "#app/bootstrap/ownerBootstrapPolicy.ts";
 import { resolvePersonaReadinessStatus } from "#persona/personaSetupPolicy.ts";
@@ -82,6 +84,7 @@ interface DirectCommandHandlerInput {
   logger: Logger;
   sessionCaptioner?: SessionCaptioner;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore?: StatefulRpStateStore;
   personaStore: PersonaStore;
   rpProfileStore: RpProfileStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
@@ -139,7 +142,7 @@ interface DirectCommandDispatchContext extends DirectCommandRoutingContext {
 
 interface DirectCommandDescriptor {
   name: DirectCommandName;
-  scope?: "universal" | string;
+  scope?: "universal" | string | readonly string[];
   help: string;
   completion: CommandCompletionDefinition;
   dispatch?: {
@@ -994,8 +997,8 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   {
     name: "reset",
     completion: { name: "reset", parameters: [] },
-    scope: "scenario_host",
-    help: ".reset 重置场景状态并清空会话历史（仅 scenario_host 模式）",
+    scope: ["scenario_host", "stateful_rp"],
+    help: ".reset 重置当前有状态模式的场景/角色状态并清空会话历史（仅 scenario_host / stateful_rp 模式）",
     dispatch: {
       requireTextOnly: true
     },
@@ -1009,6 +1012,19 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         : null;
     },
     async execute(ctx: DirectCommandExecutionContext) {
+      if (ctx.session.modeId === "stateful_rp") {
+        ctx.input.sessionManager.cancelGeneration(ctx.session.id);
+        cancelSkillDraft(ctx.input.config, ctx.session.id);
+        ctx.input.sessionManager.clearSession(ctx.session.id);
+        await ctx.input.statefulRpStateStore?.write(
+          ctx.session.id,
+          createInitialStatefulRpSessionState({ sessionId: ctx.session.id })
+        );
+        ctx.input.persistSession(ctx.session.id, "stateful_rp_reset_by_command");
+        ctx.input.logger.info({ sessionId: ctx.session.id }, "stateful_rp_reset_by_command");
+        await ctx.send("当前角色与场景状态已重置，会话上下文已清空。");
+        return;
+      }
       const defaults = getScenarioStateDefaults(ctx.session);
       const currentProfile = (await ctx.input.scenarioHostStateStore.ensure(ctx.session.id, defaults)).profile;
       ctx.input.sessionManager.cancelGeneration(ctx.session.id);
@@ -1228,7 +1244,8 @@ export function canExecuteDirectCommand(command: ParsedDirectCommand, context: D
 
   // Scope check: if a command has a non-universal scope, only allow in the matching mode
   if (descriptor.scope && descriptor.scope !== "universal") {
-    if (context.sessionModeId !== descriptor.scope) {
+    const allowedModes = Array.isArray(descriptor.scope) ? descriptor.scope : [descriptor.scope];
+    if (!context.sessionModeId || !allowedModes.includes(context.sessionModeId)) {
       return false;
     }
   }

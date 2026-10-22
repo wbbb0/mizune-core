@@ -15,6 +15,10 @@ import {
   StatefulRpStateStore
 } from "../../src/modes/statefulRp/index.ts";
 import { buildUserBatchContent } from "../../src/llm/prompts/trigger-batch.prompt.ts";
+import { analyzeBuiltinToolConcurrency } from "../../src/llm/tools/toolConcurrency.ts";
+import { resolveDispatchableDirectCommand } from "../../src/app/messaging/directCommands.ts";
+import { safeLogEvents } from "../../src/logging/safeLogEvents.ts";
+import { createDirectCommandFixture } from "../helpers/direct-command-fixtures.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
@@ -256,6 +260,94 @@ test("StatefulRpPostTurnMaintainer executes split passes based on 30-minute thre
     assert.equal(updated.embodiment.partSensations.thighs_legs.salience, 68);
     assert.equal(updated.mind.surfaceVsInner.tension, 65);
     assert.equal(updated.mind.intentions[0]?.goal, "提议去前面的咖啡馆坐下休息并借机去洗手间");
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("stateful_rp tool concurrency, safe log events, and .reset command support", async () => {
+  assert.ok(safeLogEvents.has("stateful_rp_post_turn_maintained"));
+  assert.ok(safeLogEvents.has("stateful_rp_reset_by_command"));
+
+  const inspectEffect = analyzeBuiltinToolConcurrency({
+    id: "c1",
+    type: "function",
+    function: { name: "stateful_rp_inspect", arguments: "{}" }
+  });
+  assert.deepEqual(inspectEffect, {
+    kind: "parallel",
+    reads: ["stateful_rp_state:*"],
+    writes: []
+  });
+
+  for (const writeTool of [
+    "stateful_rp_init",
+    "stateful_rp_update_embodiment",
+    "stateful_rp_update_mind_and_relation",
+    "stateful_rp_update_scene"
+  ]) {
+    const effect = analyzeBuiltinToolConcurrency({
+      id: `c-${writeTool}`,
+      type: "function",
+      function: { name: writeTool, arguments: "{}" }
+    });
+    assert.deepEqual(effect, {
+      kind: "parallel",
+      reads: [],
+      writes: ["stateful_rp_state:*"]
+    });
+  }
+
+  const resetInStatefulRp = resolveDispatchableDirectCommand({
+    phase: "chat",
+    setupState: "ready",
+    chatType: "private",
+    relationship: "owner",
+    sessionModeId: "stateful_rp",
+    text: ".reset"
+  });
+  assert.deepEqual(resetInStatefulRp, { name: "reset" });
+
+  const resetInRpAssistant = resolveDispatchableDirectCommand({
+    phase: "chat",
+    setupState: "ready",
+    chatType: "private",
+    relationship: "owner",
+    sessionModeId: "rp_assistant",
+    text: ".reset"
+  });
+  assert.equal(resetInRpAssistant?.name, "unknown");
+
+  const dataDir = await mkdtemp(join(tmpdir(), "stateful-rp-reset-test-"));
+  const logger = createSilentLogger();
+  const config = createTestAppConfig({ dataDir });
+  const store = new StatefulRpStateStore(dataDir, config, logger);
+  await store.init();
+  try {
+    await store.update("qqbot:p:owner", (cur) => ({
+      ...cur,
+      initialized: true,
+      world: { ...cur.world, currentLocation: "商业街" }
+    }));
+    let cleared = false;
+    const fixture = createDirectCommandFixture({
+      config: { dataDir },
+      session: { modeId: "stateful_rp" },
+      statefulRpStateStore: store,
+      clearSession: () => {
+        cleared = true;
+      }
+    });
+    await fixture.handler({
+      command: { name: "reset" },
+      sessionId: "qqbot:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
+    });
+    assert.equal(cleared, true);
+    const afterReset = await store.get("qqbot:p:owner");
+    assert.ok(afterReset);
+    assert.equal(afterReset.initialized, false);
+    assert.match(fixture.calls.at(-1)?.text ?? "", /角色与场景状态已重置/);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

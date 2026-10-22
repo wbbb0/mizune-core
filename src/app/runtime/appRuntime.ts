@@ -223,6 +223,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       userIdentityStore,
       recentErrorStore,
       scenarioHostStateStore,
+      statefulRpStateStore,
       persistSession,
       flushSession: (sessionId, options) => sessionWorkCoordinator.flushSession(sessionId, options),
       onebotSendImmediateText: sendImmediateText,

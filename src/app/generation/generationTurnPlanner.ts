@@ -84,7 +84,13 @@ export async function handleGenerationTurnPlanner(
     return continueWithoutPlanner("audio_pending_transcription");
   }
 
-  const selectableSkills = config.skills.enabled && config.skills.plannerSelectionEnabled ? getSkillStore(config).list().filter(skill => skill.effectiveAvailable) : [];
+  const selectableSkills = (
+    config.skills.enabled
+    && config.skills.plannerSelectionEnabled
+    && input.modeId !== "stateful_rp"
+  )
+    ? getSkillStore(config).list().filter(skill => skill.effectiveAvailable)
+    : [];
   const requirements = resolveTurnPlannerRequirements(config, {
     canSkipReply: !shouldCoerceNoReplyToReply(input),
     pendingWaitPasses: input.pendingReplyGateWaitPasses,

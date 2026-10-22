@@ -30,6 +30,7 @@ type DirectCommandDeps = Pick<
   | "rpProfileStore"
   | "globalProfileReadinessStore"
   | "scenarioHostStateStore"
+  | "statefulRpStateStore"
   | "sessionCaptioner"
   | "contextStore"
   | "userIdentityStore"
@@ -131,6 +132,7 @@ function createDeliveryHandleDirectCommand(
     logger: deps.logger,
     sessionCaptioner: deps.sessionCaptioner,
     scenarioHostStateStore: deps.scenarioHostStateStore,
+    statefulRpStateStore: deps.statefulRpStateStore,
     personaStore: deps.personaStore,
     rpProfileStore: deps.rpProfileStore,
     globalProfileReadinessStore: deps.globalProfileReadinessStore,
