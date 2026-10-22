@@ -71,6 +71,7 @@ import {
   MODEL_SELF_UPGRADE_TOOL_NAME,
   type ModelSelfUpgradePlan
 } from "#llm/shared/modelSelfUpgrade.ts";
+import { buildOutfitSignature } from "#modes/statefulRp/postTurnMaintainer.ts";
 
 export interface GenerationRuntimeBatchMessage {
   chatType: "private" | "group";
@@ -196,6 +197,8 @@ export function createGenerationExecutor(
     globalRuleStore,
     toolsetRuleStore,
     scenarioHostStateStore,
+    statefulRpStateStore,
+    statefulRpPostTurnMaintainer,
     setupStore,
     globalProfileReadinessStore,
     conversationAccess,
@@ -613,6 +616,7 @@ export function createGenerationExecutor(
         globalRuleStore,
         toolsetRuleStore,
         scenarioHostStateStore,
+        ...(statefulRpStateStore ? { statefulRpStateStore } : {}),
         ...(structuredSuggestionService ? { structuredSuggestionService } : {}),
         setupStore,
         globalProfileReadinessStore,
@@ -673,8 +677,15 @@ export function createGenerationExecutor(
         return toolResult;
       };
 
+      let statefulRpClockBeforeIso: string | null = null;
+      let statefulRpOutfitBefore: string | null = null;
       if (llmClient.isConfigured(resolvedModelRef)) {
         try {
+          if (input.modeId === "stateful_rp" && !setupMode && statefulRpStateStore) {
+            const stateBefore = await statefulRpStateStore.get(sessionId);
+            statefulRpClockBeforeIso = stateBefore?.clock.currentIso ?? null;
+            statefulRpOutfitBefore = stateBefore ? buildOutfitSignature(stateBefore) : null;
+          }
           const activeToolCounts = new Map<string, number>();
           const listActiveToolNames = () => [...activeToolCounts.entries()]
             .filter(([, count]) => count > 0)
@@ -957,6 +968,37 @@ export function createGenerationExecutor(
             finalProviderCallUsage = [...(result.providerCallUsages ?? [])].reverse()
               .find((event) => event.phase === "final_response" || event.phase === "terminal_response")
               ?? null;
+          }
+          if (
+            input.modeId === "stateful_rp"
+            && !setupMode
+            && statefulRpPostTurnMaintainer
+          ) {
+            try {
+              assertGenerationCurrent();
+              const nextRpState = await statefulRpPostTurnMaintainer.runPostTurn({
+                sessionId,
+                clockBeforeTurnIso: statefulRpClockBeforeIso,
+                outfitSignatureBeforeTurn: statefulRpOutfitBefore,
+                userText: input.batchMessages.map((message) => message.text).join("\n"),
+                assistantText: summary,
+                personaName: input.persona.name,
+                abortSignal: abortController.signal
+              });
+              assertGenerationCurrent();
+              if (nextRpState) {
+                const lastLog = nextRpState.maintenanceLog.at(-1);
+                logger.info({
+                  sessionId,
+                  clockIso: nextRpState.clock.currentIso,
+                  elapsedMinutes: lastLog?.elapsedMinutes ?? 0,
+                  passesRun: lastLog?.passesRun ?? []
+                }, "stateful_rp_post_turn_maintained");
+                persistSession(sessionId, "stateful_rp_post_turn_maintained");
+              }
+            } catch (error: unknown) {
+              logger.warn({ err: error, sessionId }, "stateful_rp_post_turn_maintenance_failed");
+            }
           }
           const usageApplied = sessionManager.setLastLlmUsageIfEpochMatches(sessionId, expectedEpoch, {
             ...completedUsage,

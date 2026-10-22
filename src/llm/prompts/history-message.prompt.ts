@@ -27,8 +27,8 @@ export function formatConversationHistoryPromptMessage(
   message: PromptHistoryMessage,
   options?: { modeId?: string }
 ): string {
-  const content = options?.modeId === "scenario_host" && message.role === "user"
-    ? formatScenarioHostStructuredUserContent(message.content)
+  const content = (options?.modeId === "scenario_host" || options?.modeId === "stateful_rp") && message.role === "user"
+    ? formatScenarioHostStructuredUserContent(message.content, options)
     : message.content;
   return [
     formatConversationMessageHeader(formatPromptTimestamp(message.timestampMs)),
@@ -41,8 +41,8 @@ export function formatScheduledHistoryPromptMessage(
   message: PromptHistoryMessage,
   options?: { modeId?: string }
 ): string {
-  const content = options?.modeId === "scenario_host" && message.role === "user"
-    ? formatScenarioHostStructuredUserContent(message.content)
+  const content = (options?.modeId === "scenario_host" || options?.modeId === "stateful_rp") && message.role === "user"
+    ? formatScenarioHostStructuredUserContent(message.content, options)
     : message.content;
   return [
     formatScheduledMessageHeader(message.role, formatPromptTimestamp(message.timestampMs)),

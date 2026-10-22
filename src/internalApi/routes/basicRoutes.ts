@@ -26,6 +26,7 @@ import {
   listUsers,
   getWhitelist,
   regenerateSessionTitle,
+  resetStatefulRpSessionState,
   restoreSessionSnapshot,
   resetContextIndex,
   rebuildContextIndex,
@@ -821,6 +822,18 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
     try {
       return await updateSessionModeState(services.config, params.sessionId, body);
+    } catch (error: unknown) {
+      return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/sessions/:sessionId/stateful-rp/reset", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) {
+      return reply;
+    }
+    try {
+      return await resetStatefulRpSessionState(services.config, params.sessionId);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

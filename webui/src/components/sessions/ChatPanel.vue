@@ -8,6 +8,7 @@ import Composer from "./Composer.vue";
 import SessionStatePanel from "./SessionStatePanel.vue";
 import SessionSettingsPanel from "./SessionSettingsPanel.vue";
 import ScenarioHostPanel from "./ScenarioHostPanel.vue";
+import StatefulRpPanel from "./StatefulRpPanel.vue";
 import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
 import { useSessionsStore } from "@/stores/sessions";
 import { useAuthStore } from "@/stores/auth";
@@ -42,26 +43,40 @@ provide("transcriptExpandStates", transcriptExpandStates);
 watch(() => session.value?.id, () => { transcriptExpandStates.clear(); });
 
 // Tabs
-type Tab = "chat" | "transcript" | "scenario" | "state" | "settings";
+type Tab = "chat" | "transcript" | "scenario" | "stateful_rp" | "state" | "settings";
 const tab = ref<Tab>("chat");
 const hasScenarioTab = computed(() => session.value?.modeId === "scenario_host");
+const hasStatefulRpTab = computed(() => session.value?.modeId === "stateful_rp");
 const tabs = computed<Array<{ id: Tab; label: string }>>(() => [
   { id: "chat", label: "聊天" },
   { id: "transcript", label: "后台" },
   ...(hasScenarioTab.value ? [{ id: "scenario" as const, label: "Scenario" }] : []),
+  ...(hasStatefulRpTab.value ? [{ id: "stateful_rp" as const, label: "RP 状态" }] : []),
   { id: "state", label: "状态" },
   { id: "settings", label: "设置" }
 ]);
 const selectedTab = computed({
   get: () => tab.value,
   set: (value: string) => {
-    if (value === "chat" || value === "transcript" || value === "scenario" || value === "state" || value === "settings") {
+    if (
+      value === "chat"
+      || value === "transcript"
+      || value === "scenario"
+      || value === "stateful_rp"
+      || value === "state"
+      || value === "settings"
+    ) {
       tab.value = value;
     }
   }
 });
 watch(hasScenarioTab, (enabled) => {
   if (!enabled && tab.value === "scenario") {
+    tab.value = "chat";
+  }
+});
+watch(hasStatefulRpTab, (enabled) => {
+  if (!enabled && tab.value === "stateful_rp") {
     tab.value = "chat";
   }
 });
@@ -445,6 +460,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
       </div>
 
       <ScenarioHostPanel v-if="hasScenarioTab" v-show="tab === 'scenario'" :session="session" />
+      <StatefulRpPanel v-if="hasStatefulRpTab" v-show="tab === 'stateful_rp'" :session="session" />
 
       <SessionStatePanel v-show="tab === 'state'" :session="session" />
 
@@ -452,7 +468,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
 
       <!-- Composer -->
       <Composer
-        v-if="tab !== 'state' && tab !== 'scenario' && tab !== 'settings'"
+        v-if="tab !== 'state' && tab !== 'scenario' && tab !== 'stateful_rp' && tab !== 'settings'"
         :session-type="isPrivate ? 'private' : 'group'"
         :locked-user-id="lockedUserId"
         :default-user-id="defaultUserId"

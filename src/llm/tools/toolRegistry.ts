@@ -4,13 +4,15 @@ import { conversationToolDescriptors, conversationToolHandlers } from "./registr
 import { profileToolDescriptorsRegistry, profileToolHandlersRegistry } from "./registries/profileRegistry.ts";
 import { runtimeToolDescriptorsRegistry, runtimeToolHandlersRegistry } from "./registries/runtimeRegistry.ts";
 import { webToolDescriptorsRegistry, webToolHandlersRegistry } from "./registries/webRegistry.ts";
+import { statefulRpToolDescriptors, statefulRpToolHandlers } from "#modes/statefulRp/tools.ts";
 
 export function getBuiltinToolDescriptors(config?: AppConfig) {
   return [
     ...runtimeToolDescriptorsRegistry(config),
     ...conversationToolDescriptors,
     ...profileToolDescriptorsRegistry,
-    ...webToolDescriptorsRegistry
+    ...webToolDescriptorsRegistry,
+    ...statefulRpToolDescriptors
   ];
 }
 
@@ -23,5 +25,6 @@ export const builtinToolHandlers: Record<string, ToolHandler> = {
   ...runtimeToolHandlersRegistry,
   ...conversationToolHandlers,
   ...profileToolHandlersRegistry,
-  ...webToolHandlersRegistry
+  ...webToolHandlersRegistry,
+  ...statefulRpToolHandlers
 };

@@ -146,9 +146,30 @@ export const scenarioHostStateDataDomain = defineDataDomain({
   }
 });
 
+export const statefulRpStateDataDomain = defineDataDomain({
+  database: "sessions",
+  tableGroup: "sessions.stateful_rp_state",
+  schemaVersion: 1,
+  resetPolicy: "block_reset",
+  tables: {
+    stateful_rp_session_states: defineTable({
+      table: "stateful_rp_session_states",
+      primaryKey: ["sessionId"],
+      columns: [
+        textColumn("sessionId", { title: "Session ID", role: "id", primary: true, storageName: "session_id", notNull: true }),
+        jsonColumn("state", { title: "State", role: "payload", storageName: "state_json", notNull: true }),
+        integerColumn("updatedAtMs", { title: "Updated", role: "time", primary: true, storageName: "updated_at_ms", notNull: true })
+      ],
+      defaultSort: [{ column: "updatedAtMs", direction: "desc" }],
+      detail: { payloadColumns: ["state"] }
+    })
+  }
+});
+
 export const sessionsTableModel = requireDataTable("sessions");
 export const sessionTranscriptItemsTableModel = requireDataTable("session_transcript_items");
 export const scenarioHostSessionStatesTableModel = requireDomainTable(scenarioHostStateDataDomain, "scenario_host_session_states");
+export const statefulRpSessionStatesTableModel = requireDomainTable(statefulRpStateDataDomain, "stateful_rp_session_states");
 
 function requireDataTable(key: string): DataTableModel {
   const table = sessionDataDomain.tables[key];

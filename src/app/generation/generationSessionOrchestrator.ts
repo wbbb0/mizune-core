@@ -36,6 +36,7 @@ import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { resolveSessionModeSetupContext } from "./generationSetupContext.ts";
 import { getMissingRpProfileFields, type RpProfile } from "#modes/rpAssistant/profileSchema.ts";
 import { getMissingScenarioProfileFields, type ScenarioProfile } from "#modes/scenarioHost/profileSchema.ts";
+import { buildStatefulRpPlannerSignalLine } from "#modes/statefulRp/promptContext.ts";
 import { resolveSessionModeSetupOperation } from "#modes/types.ts";
 import { resolveInternalUserIdForOneBotPrivateUser } from "#identity/userIdentityResolution.ts";
 import type { ProfileToolScope } from "#llm/tools/profileToolScope.ts";
@@ -243,11 +244,16 @@ function isAssistantMode(modeId: string): boolean {
 // pipeline as normal turns. This hand-maintained list can drift from mode
 // eligibility and deterministic auto-activation rules.
 function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSessionTriggerExecution["kind"]): string[] {
-  const withScenarioHostState = (toolsetIds: string[]): string[] => (
-    modeId === "scenario_host"
-      ? Array.from(new Set(["scenario_host_state", ...toolsetIds]))
-      : toolsetIds
-  );
+  const withModeState = (toolsetIds: string[]): string[] => {
+    const stateToolset = modeId === "scenario_host"
+      ? "scenario_host_state"
+      : modeId === "stateful_rp"
+        ? "stateful_rp_state"
+        : null;
+    return stateToolset
+      ? Array.from(new Set([stateToolset, ...toolsetIds]))
+      : toolsetIds;
+  };
   if (isAssistantMode(modeId)) {
     if (triggerKind === "terminal_session_closed" || triggerKind === "terminal_input_required") {
       return ["chat_context", "shell_runtime", "filesystem_io", "asset_io", "time_utils"];
@@ -264,18 +270,18 @@ function selectScheduledActiveToolsetIds(modeId: string, triggerKind: InternalSe
     return ["chat_context", "web_research", "shell_runtime", "filesystem_io", "asset_io", "scheduler_admin", "time_utils", "image_generation", "comfy_image", "session_mode_control"];
   }
   if (triggerKind === "scheduled_instruction") {
-    return withScenarioHostState(["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "filesystem_io", "asset_io", "scheduler_admin", "time_utils"]);
+    return withModeState(["memory_profile", "chat_context", "conversation_navigation", "chat_delegation", "web_research", "filesystem_io", "asset_io", "scheduler_admin", "time_utils"]);
   }
   if (triggerKind === "comfy_task_completed") {
-    return withScenarioHostState(["chat_context", "filesystem_io", "asset_io", "comfy_image"]);
+    return withModeState(["chat_context", "filesystem_io", "asset_io", "comfy_image"]);
   }
   if (triggerKind === "comfy_task_failed") {
-    return withScenarioHostState(["comfy_image"]);
+    return withModeState(["comfy_image"]);
   }
   if (triggerKind === "download_completed" || triggerKind === "download_failed") {
-    return withScenarioHostState(["chat_context", "web_research", "asset_io", "time_utils"]);
+    return withModeState(["chat_context", "web_research", "asset_io", "time_utils"]);
   }
-  return withScenarioHostState(["chat_context", "shell_runtime", "filesystem_io", "asset_io", "time_utils"]);
+  return withModeState(["chat_context", "shell_runtime", "filesystem_io", "asset_io", "time_utils"]);
 }
 
 function shouldUseSummaryOnlyTranscriptProjector(input: {
@@ -657,6 +663,12 @@ export function createGenerationSessionOrchestrator(
       });
 
       if (!(setupMode || options?.skipReplyGate)) {
+        const modeSignalLine = sessionModeId === "stateful_rp"
+          ? buildStatefulRpPlannerSignalLine(
+              await identity.statefulRpStateStore?.get(sessionId) ?? null,
+              last.text
+            )
+          : null;
         const gateResult = await handleGenerationTurnPlanner(
           {
             config,
@@ -677,6 +689,8 @@ export function createGenerationSessionOrchestrator(
             sessionId,
             relationship,
             currentUser: user,
+            modeId: sessionModeId,
+            modeSignalLine,
             batchMessages: promptSafety.runtimeBatchMessages,
             availableToolsets: plannerToolsets,
             taskContext: buildTurnPlannerTaskContext(refreshedSession.taskTracker),

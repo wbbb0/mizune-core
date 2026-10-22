@@ -36,7 +36,8 @@ export function buildGenerationPromptBuilderDeps(services: AppServiceBootstrap):
     toolsetRuleStore: services.toolsetRuleStore,
     contextStore: services.contextStore,
     contextRetrievalService: services.contextRetrievalService,
-    scenarioHostStateStore: services.scenarioHostStateStore
+    scenarioHostStateStore: services.scenarioHostStateStore,
+    statefulRpStateStore: services.statefulRpStateStore
   };
 }
 
@@ -63,6 +64,8 @@ export function buildGenerationIdentityDeps(services: AppServiceBootstrap): Gene
     globalRuleStore: services.globalRuleStore,
     toolsetRuleStore: services.toolsetRuleStore,
     scenarioHostStateStore: services.scenarioHostStateStore,
+    statefulRpStateStore: services.statefulRpStateStore,
+    statefulRpPostTurnMaintainer: services.statefulRpPostTurnMaintainer,
     setupStore: services.setupStore,
     globalProfileReadinessStore: services.globalProfileReadinessStore,
     conversationAccess: services.conversationAccess,

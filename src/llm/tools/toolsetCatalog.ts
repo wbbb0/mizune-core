@@ -338,6 +338,24 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    id: "stateful_rp_state",
+    title: "沉浸状态 RP 状态",
+    description: "初始化、读取和修改 stateful_rp 会话的身体感官、服饰穿戴、私密配饰、心理反差、关系张力与世界时间状态。",
+    plannerSignals: [
+      "初始化或重设沉浸状态 RP 开局状态",
+      "换装、脱衣、穿戴或调整私密道具、洗澡清洁、如厕、身体感官突变",
+      "更新表里情绪、情欲羞耻、短期微意图、关系进展或约定",
+      "切换场景地点、分开或重逢、跳过时间、处理 # 场外导演指令"
+    ],
+    toolNames: [
+      "stateful_rp_init",
+      "stateful_rp_update_embodiment",
+      "stateful_rp_update_mind_and_relation",
+      "stateful_rp_update_scene",
+      "stateful_rp_inspect"
+    ]
+  },
+  {
     modeUniversal: { defaultEnabled: true },
     id: "time_utils",
     title: "时间工具",

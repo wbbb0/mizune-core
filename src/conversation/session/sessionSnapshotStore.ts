@@ -15,6 +15,10 @@ import {
   scenarioHostSessionStateSchema,
   type ScenarioHostSessionState
 } from "#modes/scenarioHost/types.ts";
+import {
+  statefulRpSessionStateSchema,
+  type StatefulRpSessionState
+} from "#modes/statefulRp/types.ts";
 import type { PersistedSessionState } from "./sessionTypes.ts";
 import { persistedSessionStateSchema } from "./sessionPersistence.ts";
 
@@ -30,10 +34,26 @@ const scenarioHostSessionStateZodSchema = z.unknown().transform((value, context)
   }
 });
 
+const statefulRpSessionStateZodSchema = z.unknown().transform((value, context) => {
+  try {
+    return statefulRpSessionStateSchema.parse(value);
+  } catch (error: unknown) {
+    context.addIssue({
+      code: "custom",
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return z.NEVER;
+  }
+});
+
 const sessionSnapshotModeStateSchema = z.union([
   z.object({
     kind: z.literal("scenario_host"),
     state: scenarioHostSessionStateZodSchema
+  }),
+  z.object({
+    kind: z.literal("stateful_rp"),
+    state: statefulRpSessionStateZodSchema
   })
 ]).nullable();
 
@@ -45,6 +65,7 @@ const sessionSnapshotPayloadSchema = z.object({
 
 export type SessionSnapshotModeState =
   | { kind: "scenario_host"; state: ScenarioHostSessionState }
+  | { kind: "stateful_rp"; state: StatefulRpSessionState }
   | null;
 
 export interface SessionSnapshotPayload {
@@ -62,6 +83,7 @@ export interface SessionSnapshotSummary {
   title: string | null;
   transcriptCount: number;
   hasScenarioHostState: boolean;
+  hasStatefulRpState?: boolean;
 }
 
 export interface SessionSnapshotRecord {
@@ -222,7 +244,8 @@ function rowToSnapshotRecord(row: SessionSnapshotRow): SessionSnapshotRecord {
       modeId: payload.session.modeId ?? getDefaultSessionModeId(),
       title: payload.session.title,
       transcriptCount: payload.session.internalTranscript.length,
-      hasScenarioHostState: payload.modeState?.kind === "scenario_host"
+      hasScenarioHostState: payload.modeState?.kind === "scenario_host",
+      hasStatefulRpState: payload.modeState?.kind === "stateful_rp"
     },
     payload
   };
@@ -231,6 +254,9 @@ function rowToSnapshotRecord(row: SessionSnapshotRow): SessionSnapshotRecord {
 function assertSnapshotPayloadConsistent(payload: SessionSnapshotPayload): void {
   if (payload.modeState?.kind === "scenario_host" && payload.session.modeId !== "scenario_host") {
     throw new Error("Scenario host snapshot payload must belong to a scenario_host session");
+  }
+  if (payload.modeState?.kind === "stateful_rp" && payload.session.modeId !== "stateful_rp") {
+    throw new Error("Stateful RP snapshot payload must belong to a stateful_rp session");
   }
 }
 

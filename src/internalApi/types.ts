@@ -34,6 +34,7 @@ import type { AssetLifecycleStore } from "#data/assets/assetLifecycleStore.ts";
 import type { LocalFileService } from "#services/workspace/localFileService.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { StatefulRpStateStore } from "#modes/statefulRp/stateStore.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import type { ContextRetrievalService } from "#context/contextRetrievalService.ts";
@@ -138,6 +139,7 @@ export interface InternalApiSessionReadDeps {
   config?: AppConfig;
   sessionManager: SessionAdminReadAccess;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore?: StatefulRpStateStore | undefined;
   sessionCaptioner: SessionCaptioner;
   chatFileStore: Pick<ChatFileStore, "getMany">;
   audioStore: Pick<AudioStore, "getMany">;
@@ -150,6 +152,7 @@ export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps 
   sessionPersistence: SessionPersistence;
   sessionSnapshotStore: SessionSnapshotStore;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore?: StatefulRpStateStore | undefined;
   sessionCaptioner: SessionCaptioner;
 }
 
@@ -229,6 +232,7 @@ export interface InternalApiDeps {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore?: StatefulRpStateStore | undefined;
   userStore: UserStore;
   contextStore: ContextStore;
   contextEmbeddingService: ContextEmbeddingService;
@@ -305,6 +309,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         personaStore: deps.personaStore,
         globalRuleStore: deps.globalRuleStore,
         scenarioHostStateStore: deps.scenarioHostStateStore,
+        statefulRpStateStore: deps.statefulRpStateStore,
         sessionCaptioner: deps.sessionCaptioner,
         chatFileStore: deps.chatFileStore,
         audioStore: deps.audioStore,
@@ -349,7 +354,8 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
         runtimeResourceStore: deps.runtimeResourceStore,
         recentErrorStore: deps.recentErrorStore,
         ...(deps.contentSafetyStore ? { contentSafetyStore: deps.contentSafetyStore } : {}),
-        scenarioHostStateStore: deps.scenarioHostStateStore
+        scenarioHostStateStore: deps.scenarioHostStateStore,
+        ...(deps.statefulRpStateStore ? { statefulRpStateStore: deps.statefulRpStateStore } : {})
       }),
       localFileAdmin: createLocalFileAdminService({
         localFileService: deps.localFileService,

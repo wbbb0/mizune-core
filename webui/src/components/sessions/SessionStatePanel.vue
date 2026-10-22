@@ -636,7 +636,15 @@ async function loadDetail() {
           expanded-title="模式专属状态"
           @toggle="toggleDisclosure('mode-state')"
         >
-          <WorkbenchEmptyState :centered="false" class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle" message="当前模式暂无可管理的结构化状态。" />
+          <WorkbenchEmptyState
+            :centered="false"
+            class="rounded border border-dashed border-border-default px-3 py-3 text-small text-text-subtle"
+            :message="props.session.modeId === 'stateful_rp'
+              ? '当前会话处于沉浸状态 RP 模式，请切换至顶部「RP 状态」标签页查看或管理状态与存档。'
+              : props.session.modeId === 'scenario_host'
+                ? '当前会话处于 Scenario Host 模式，请切换至顶部「Scenario」标签页查看或管理状态与存档。'
+                : '当前模式暂无可管理的结构化状态。'"
+          />
         </WorkbenchDisclosure>
       </div>
     </div>

@@ -294,12 +294,12 @@ function buildMessageBodyText(
     parts.push(formatStructuredMentionReference(mentionUserId));
   }
   if (message.text.trim()) {
-    if (!options?.disableScenarioHostParsing && context?.modeId === "scenario_host") {
-      const parsed = parseScenarioHostUserInput(message.text);
+    if (!options?.disableScenarioHostParsing && (context?.modeId === "scenario_host" || context?.modeId === "stateful_rp")) {
+      const parsed = parseScenarioHostUserInput(message.text, { modeId: context?.modeId });
       parts.push(formatScenarioHostParsedUserInput({
         ...parsed,
         content: escapePromptBodyText(parsed.content)
-      }));
+      }, { modeId: context?.modeId }));
     } else {
       parts.push(escapePromptBodyText(message.text.trim()));
     }
@@ -356,12 +356,12 @@ function formatMessageContentPartsForPrompt(input: {
         if (!part.text.trim()) {
           break;
         }
-        if (!input.disableScenarioHostParsing && input.context?.modeId === "scenario_host") {
-          const parsed = parseScenarioHostUserInput(part.text);
+        if (!input.disableScenarioHostParsing && (input.context?.modeId === "scenario_host" || input.context?.modeId === "stateful_rp")) {
+          const parsed = parseScenarioHostUserInput(part.text, { modeId: input.context?.modeId });
           parts.push(formatScenarioHostParsedUserInput({
             ...parsed,
             content: escapePromptBodyText(parsed.content)
-          }));
+          }, { modeId: input.context?.modeId }));
         } else {
           parts.push(escapePromptBodyText(part.text.trim()));
         }

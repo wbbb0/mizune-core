@@ -50,6 +50,9 @@ export function resolveAutoActivatedToolsets(input: TurnToolsetActivationContext
   if (input.modeId === "scenario_host") {
     add("scenario_host_state", "scenario_host_mode");
   }
+  if (input.modeId === "stateful_rp") {
+    add("stateful_rp_state", "stateful_rp_mode");
+  }
 
   const toolsetIds = input.availableToolsets
     .map((item) => item.id)

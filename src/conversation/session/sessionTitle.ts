@@ -1,6 +1,9 @@
 import type { SessionState } from "./sessionTypes.ts";
 
 export function resolveDefaultSessionTitle(modeId: string): string {
+  if (modeId === "stateful_rp") {
+    return "New Stateful RP";
+  }
   return modeId === "scenario_host" ? "New Scenario" : "New Chat";
 }
 

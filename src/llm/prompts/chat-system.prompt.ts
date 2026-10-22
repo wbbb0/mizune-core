@@ -16,6 +16,10 @@ import {
   buildScenarioProfileLines,
   buildScenarioProfileSnapshotLines
 } from "#modes/scenarioHost/promptSections.ts";
+import {
+  buildStatefulRpIdentityLines,
+  buildStatefulRpRuleLines
+} from "#modes/statefulRp/promptSections.ts";
 import type { EditableScenarioProfileFieldName } from "#modes/scenarioHost/profileSchema.ts";
 import type {
   PromptInput,
@@ -57,6 +61,8 @@ const STABLE_SYSTEM_SECTION_NAMES = new Set([
   "global_persona_base",
   "assistant_identity",
   "rp_identity",
+  "stateful_rp_identity",
+  "stateful_rp_rules",
   "host_identity",
   "host_rules",
   "persona_snapshot",
@@ -247,6 +253,7 @@ export function buildBaseSystemSections(input: {
   toolsetRules?: PromptInput["toolsetRules"] | undefined;
   scenarioStateLines?: string[] | undefined;
   scenarioSetupRequirementLines?: string[] | undefined;
+  statefulRpStateLines?: string[] | undefined;
   modeProfile?: PromptInput["modeProfile"] | undefined;
   draftMode?: PromptInput["draftMode"] | undefined;
   isInSetup?: boolean | undefined;
@@ -349,6 +356,56 @@ export function buildBaseSystemSections(input: {
       systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
       ...taskSections,
       systemSection("history_summary", buildHistorySummaryLines(input.historySummary))
+    ].filter((item): item is PromptSection => Boolean(item));
+  }
+
+  if (input.modeId === "stateful_rp") {
+    const preparedMemoryContext = preparePromptMemoryContext({
+      persona: input.persona,
+      globalRules: input.globalRules,
+      toolsetRules: input.toolsetRules,
+      userProfile: input.userProfile,
+      userMemories: input.currentUserMemories
+    });
+
+    return [
+      systemSection("global_persona", buildSharedPersonaLines(input.persona)),
+      systemSection("stateful_rp_identity", buildStatefulRpIdentityLines()),
+      systemSection(
+        "rp_profile",
+        input.modeProfile?.target === "rp" ? buildRpProfileLines(input.modeProfile.profile) : []
+      ),
+      systemSection("session_bot_profile", buildSessionBotProfileLines(input.sessionBotProfile, "rp_assistant")),
+      systemSection("disclosure", buildDisclosureLines(input.interactionMode)),
+      systemSection("stateful_rp_rules", buildStatefulRpRuleLines()),
+      systemSection("memory_write_decision", buildMemoryRuleLines()),
+      systemSection("context_rules", buildContextRuleLines()),
+      systemSection("tool_hints", buildToolHintLines(input.visibleToolNames)),
+      systemSection("tool_playbooks", buildToolPlaybookLines({
+        activeToolsets: input.activeToolsets,
+        visibleToolNames: input.visibleToolNames,
+        taskTracker: input.taskTracker
+      })),
+      systemSection("toolset_guidance", buildToolsetGuidanceLines({
+        activeToolsets: input.activeToolsets
+      })),
+      systemSection("live_resources", buildLiveResourceLines(input.liveResources)),
+      ...taskSections,
+      systemSection("participant_context", [
+        ...buildParticipantContextLines(input.sessionMode, input.participantProfiles),
+        ...buildNpcContextLines(input.sessionMode, input.npcProfiles, input.participantProfiles)
+      ]),
+      systemSection("history_summary", buildHistorySummaryLines(input.historySummary)),
+      systemSection("stateful_rp_state", input.statefulRpStateLines ?? []),
+      systemSection("current_session_context", buildCurrentSessionContextLines(input.currentSessionContext)),
+      systemSection("retrieved_user_context", buildRetrievedUserContextLines(input.retrievedUserContext)),
+      systemSection("global_rules", buildGlobalRuleLines(preparedMemoryContext.globalRules)),
+      systemSection("toolset_rules", buildToolsetRuleLines(preparedMemoryContext.toolsetRules)),
+      systemSection("current_user_profile", buildCurrentUserProfileLines({
+        userProfile: input.userProfile,
+        userMemories: preparedMemoryContext.userMemories
+      })),
+      systemSection("current_user_memories", buildCurrentUserMemoryLines(preparedMemoryContext.userMemories))
     ].filter((item): item is PromptSection => Boolean(item));
   }
 
@@ -864,7 +921,7 @@ function normalizeSessionBotProfilePromptValue(value: string): string {
 
 function buildRpProfileLines(profile: RpProfile): string[] {
   return buildModeProfileSummaryLines({
-    intro: "以下 RP 全局资料只在 rp_assistant 模式下生效，是建立在全局 persona 之上的 bot 自身真人化补充。",
+    intro: "以下 RP 全局资料在当前 RP 模式下生效，是建立在全局 persona 之上的 bot 自身真人化补充。",
     label: "RP 全局资料",
     coreParts: [
       profile.identity ? `身份定位=${profile.identity}` : null,

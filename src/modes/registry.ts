@@ -1,12 +1,14 @@
 import { assistantModeDefinition } from "./assistantMode.ts";
 import { rpAssistantModeDefinition } from "./rpAssistantMode.ts";
 import { scenarioHostModeDefinition } from "./scenarioHost/mode.ts";
+import { statefulRpModeDefinition } from "./statefulRp/mode.ts";
 import type { SessionModeDefinition } from "./types.ts";
 
 const SESSION_MODES: SessionModeDefinition[] = [
   rpAssistantModeDefinition,
   assistantModeDefinition,
-  scenarioHostModeDefinition
+  scenarioHostModeDefinition,
+  statefulRpModeDefinition
 ];
 
 const SESSION_MODE_BY_ID = new Map(SESSION_MODES.map((mode) => [mode.id, mode]));

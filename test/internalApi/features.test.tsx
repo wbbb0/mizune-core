@@ -1648,6 +1648,11 @@ other:
         title: "Scenario Host",
         description: "轻规则单人剧情主持模式。当前仅支持私聊。",
         allowedChatTypes: ["private"]
+      }, {
+        id: "stateful_rp",
+        title: "沉浸状态 RP",
+        description: "基于 Persona + RP 设定底座，结合身体感官、服饰久穿物理影响、表里心理反差、关系张力与后置时间自治结算的沉浸式角色扮演模式。",
+        allowedChatTypes: ["private"]
       }]);
 
       const switchResponse = await app.inject({

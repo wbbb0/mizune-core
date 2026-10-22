@@ -34,7 +34,15 @@ import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceSto
 import type { RecentErrorStore } from "#runtime/recentErrorStore.ts";
 import { chatFileRecordRegistrySchema, type ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
-import { scenarioHostStateDataDomain, scenarioHostSessionStatesTableModel, sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "#conversation/session/sessionDataModel.ts";
+import {
+  scenarioHostStateDataDomain,
+  scenarioHostSessionStatesTableModel,
+  statefulRpStateDataDomain,
+  statefulRpSessionStatesTableModel,
+  sessionDataDomain,
+  sessionsTableModel,
+  sessionTranscriptItemsTableModel
+} from "#conversation/session/sessionDataModel.ts";
 import type { ComfyTaskStore } from "#comfy/taskStore.ts";
 import { comfyTaskRecordSchema } from "#comfy/taskSchema.ts";
 import { assetSessionRefsTableModel, audioFilesTableModel, chatFilesTableModel, comfyTaskResultFilesTableModel, comfyTasksTableModel, contentSafetyAuditsTableModel } from "#data/assets/assetsDataModel.ts";
@@ -50,6 +58,7 @@ import {
 } from "#context/contextDataModels.ts";
 import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { StatefulRpStateStore } from "#modes/statefulRp/stateStore.ts";
 import {
   globalRulesTableModel,
   groupMembershipTableModel,
@@ -106,6 +115,7 @@ export function createDataRegistryService(input: {
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
   scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
+  statefulRpStateStore?: Pick<StatefulRpStateStore, "listRows">;
 }): DataRegistryService {
   const registry = new DataRegistry({
     dumpDir: join(input.config.dataDir, "dumps")
@@ -141,6 +151,7 @@ function createInitialDataResourceDefinitions(input: {
   recentErrorStore: Pick<RecentErrorStore, "listRows">;
   contentSafetyStore?: Pick<ContentSafetyStore, "listRows">;
   scenarioHostStateStore?: Pick<ScenarioHostStateStore, "listRows">;
+  statefulRpStateStore?: Pick<StatefulRpStateStore, "listRows">;
 }): DataResourceDefinition[] {
   const definitions: DataResourceDefinition[] = [
     singletonSqliteResource({
@@ -211,6 +222,9 @@ function createInitialDataResourceDefinitions(input: {
   }
   if (input.scenarioHostStateStore) {
     definitions.push(createScenarioHostSessionStatesResource(input.scenarioHostStateStore));
+  }
+  if (input.statefulRpStateStore) {
+    definitions.push(createStatefulRpSessionStatesResource(input.statefulRpStateStore));
   }
   return definitions;
 }
@@ -559,6 +573,23 @@ function createScenarioHostSessionStatesResource(
     rowIdentity: { fields: ["sessionId"], encode: "single" },
     fileName: "scenario_host_session_states.json",
     listRows: (query) => scenarioHostStateStore.listRows(query)
+  });
+}
+
+function createStatefulRpSessionStatesResource(
+  statefulRpStateStore: Pick<StatefulRpStateStore, "listRows">
+): DataResourceDefinition {
+  return readOnlySqliteRowsResource({
+    key: "stateful_rp_session_states",
+    title: "沉浸状态 RP 会话状态",
+    shape: "collection",
+    database: statefulRpStateDataDomain.database,
+    tableGroup: statefulRpStateDataDomain.tableGroup,
+    tables: ["stateful_rp_session_states"],
+    model: statefulRpSessionStatesTableModel,
+    rowIdentity: { fields: ["sessionId"], encode: "single" },
+    fileName: "stateful_rp_session_states.json",
+    listRows: (query) => statefulRpStateStore.listRows(query)
   });
 }
 

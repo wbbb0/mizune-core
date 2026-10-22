@@ -31,6 +31,11 @@ import {
   scenarioHostSessionStateSchema,
   type ScenarioHostSessionState
 } from "#modes/scenarioHost/types.ts";
+import {
+  createInitialStatefulRpSessionState,
+  statefulRpSessionStateSchema,
+  type StatefulRpSessionState
+} from "#modes/statefulRp/types.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { DerivedObservationReader } from "#llm/derivations/derivedObservationReader.ts";
 import { isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
@@ -345,7 +350,20 @@ function extractMediaIdsFromText(text: string): string[] {
 async function getSessionModeStateDetail(
   deps: InternalApiSessionReadDeps,
   session: SessionState
-): Promise<{ kind: "scenario_host"; state: ScenarioHostSessionState } | null> {
+): Promise<
+  | { kind: "scenario_host"; state: ScenarioHostSessionState }
+  | { kind: "stateful_rp"; state: StatefulRpSessionState }
+  | null
+> {
+  if (session.modeId === "stateful_rp") {
+    if (!deps.statefulRpStateStore) {
+      return null;
+    }
+    return {
+      kind: "stateful_rp",
+      state: await deps.statefulRpStateStore.ensureForSession(session)
+    };
+  }
   if (session.modeId !== "scenario_host") {
     return null;
   }
@@ -412,14 +430,18 @@ export async function restoreSessionSnapshot(
   }
 
   const previousSession = deps.sessionManager.getPersistedSession(session.id);
-  const previousModeState = await deps.scenarioHostStateStore.get(session.id);
+  const previousScenarioState = await deps.scenarioHostStateStore.get(session.id);
+  const previousStatefulRpState = await deps.statefulRpStateStore?.get(session.id) ?? null;
   let restored: SessionState | null = null;
   try {
     await applySessionSnapshotModeState(deps, session.id, snapshot.payload.modeState);
     restored = deps.sessionManager.restorePersistedSession(snapshot.payload.session);
     await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(restored.id));
   } catch (error: unknown) {
-    await restorePreviousSnapshotModeState(deps, session.id, previousModeState).catch(() => undefined);
+    await restorePreviousSnapshotModeState(deps, session.id, {
+      scenarioHost: previousScenarioState,
+      statefulRp: previousStatefulRpState
+    }).catch(() => undefined);
     if (restored) {
       deps.sessionManager.restorePersistedSession(previousSession);
     }
@@ -462,6 +484,15 @@ async function captureSessionSnapshotModeState(
   deps: InternalApiSessionWriteDeps,
   session: SessionState
 ): Promise<SessionSnapshotModeState> {
+  if (session.modeId === "stateful_rp") {
+    if (!deps.statefulRpStateStore) {
+      return null;
+    }
+    return {
+      kind: "stateful_rp",
+      state: await deps.statefulRpStateStore.ensureForSession(session)
+    };
+  }
   if (session.modeId !== "scenario_host") {
     return null;
   }
@@ -478,21 +509,39 @@ async function applySessionSnapshotModeState(
 ): Promise<void> {
   if (modeState?.kind === "scenario_host") {
     await deps.scenarioHostStateStore.write(sessionId, modeState.state);
+    await deps.statefulRpStateStore?.delete(sessionId);
+    return;
+  }
+  if (modeState?.kind === "stateful_rp") {
+    await deps.scenarioHostStateStore.delete(sessionId);
+    await deps.statefulRpStateStore?.write(sessionId, {
+      ...modeState.state,
+      sessionId
+    });
     return;
   }
   await deps.scenarioHostStateStore.delete(sessionId);
+  await deps.statefulRpStateStore?.delete(sessionId);
 }
 
 async function restorePreviousSnapshotModeState(
   deps: InternalApiSessionWriteDeps,
   sessionId: string,
-  previousModeState: ScenarioHostSessionState | null
-): Promise<void> {
-  if (previousModeState) {
-    await deps.scenarioHostStateStore.write(sessionId, previousModeState);
-    return;
+  previous: {
+    scenarioHost: ScenarioHostSessionState | null;
+    statefulRp: StatefulRpSessionState | null;
   }
-  await deps.scenarioHostStateStore.delete(sessionId);
+): Promise<void> {
+  if (previous.scenarioHost) {
+    await deps.scenarioHostStateStore.write(sessionId, previous.scenarioHost);
+  } else {
+    await deps.scenarioHostStateStore.delete(sessionId);
+  }
+  if (previous.statefulRp) {
+    await deps.statefulRpStateStore?.write(sessionId, previous.statefulRp);
+  } else {
+    await deps.statefulRpStateStore?.delete(sessionId);
+  }
 }
 
 export async function createWebSession(
@@ -519,6 +568,8 @@ export async function createWebSession(
   deps.sessionManager.setModeId(session.id, modeId, { appendSwitchMarker: false });
   if (modeId === "scenario_host") {
     await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(deps.sessionManager.getSession(session.id)));
+  } else if (modeId === "stateful_rp" && deps.statefulRpStateStore) {
+    await deps.statefulRpStateStore.ensureForSession(deps.sessionManager.getSession(session.id));
   }
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(session.id));
   return {
@@ -576,6 +627,7 @@ export async function copySessionToWebSession(
     };
   } catch (error: unknown) {
     await deps.scenarioHostStateStore.delete(targetSessionId).catch(() => undefined);
+    await deps.statefulRpStateStore?.delete(targetSessionId).catch(() => undefined);
     if (restored) {
       deps.sessionManager.deleteSession(targetSessionId);
     }
@@ -595,6 +647,8 @@ export async function switchSessionMode(
   deps.sessionManager.setModeId(sessionId, body.modeId);
   if (body.modeId === "scenario_host") {
     await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session));
+  } else if (body.modeId === "stateful_rp" && deps.statefulRpStateStore) {
+    await deps.statefulRpStateStore.ensureForSession(session);
   }
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
   return {
@@ -609,8 +663,32 @@ export async function updateSessionModeState(
   body: ParsedUpdateSessionModeStateBody
 ) {
   const session = deps.sessionManager.getSession(sessionId);
+  if (session.modeId === "stateful_rp") {
+    if (!deps.statefulRpStateStore) {
+      throw new Error("stateful_rp_state_store_unavailable");
+    }
+    const current = await deps.statefulRpStateStore.ensureForSession(session);
+    const merged = isRecord(body.state)
+      ? {
+          ...current,
+          ...body.state,
+          sessionId,
+          version: 1 as const,
+          updatedAt: new Date().toISOString()
+        }
+      : body.state;
+    const parsedState = statefulRpSessionStateSchema.parse(merged);
+    const state = await deps.statefulRpStateStore.write(sessionId, parsedState);
+    return {
+      ok: true as const,
+      modeState: {
+        kind: "stateful_rp" as const,
+        state
+      }
+    };
+  }
   if (session.modeId !== "scenario_host") {
-    throw new Error(`Session mode ${session.modeId} does not support editable mode state; only scenario_host is supported`);
+    throw new Error(`Session mode ${session.modeId} does not support editable mode state; only scenario_host and stateful_rp are supported`);
   }
 
   const current = await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session));
@@ -626,6 +704,28 @@ export async function updateSessionModeState(
     ok: true as const,
     modeState: {
       kind: "scenario_host" as const,
+      state
+    }
+  };
+}
+
+export async function resetStatefulRpSessionState(
+  deps: InternalApiSessionWriteDeps,
+  sessionId: string
+) {
+  const session = deps.sessionManager.getSession(sessionId);
+  if (session.modeId !== "stateful_rp") {
+    throw new Error("Session is not in stateful_rp mode");
+  }
+  if (!deps.statefulRpStateStore) {
+    throw new Error("stateful_rp_state_store_unavailable");
+  }
+  const resetState = createInitialStatefulRpSessionState({ sessionId });
+  const state = await deps.statefulRpStateStore.write(sessionId, resetState);
+  return {
+    ok: true as const,
+    modeState: {
+      kind: "stateful_rp" as const,
       state
     }
   };
@@ -869,6 +969,7 @@ export async function deleteSession(
   deps.contextSessionCleanupService?.cleanupDeletedSession({ sessionId });
   await deps.sessionSnapshotStore.deleteAllForSession(sessionId);
   await deps.scenarioHostStateStore.delete(sessionId);
+  await deps.statefulRpStateStore?.delete(sessionId);
   await deps.sessionPersistence.remove(sessionId);
   await deps.assetLifecycleService.onSessionDeleted({
     sessionId,
@@ -943,6 +1044,16 @@ function remapCopiedSessionModeState(
     targetTitle: string;
   }
 ): SessionSnapshotModeState {
+  if (modeState?.kind === "stateful_rp") {
+    return {
+      kind: "stateful_rp",
+      state: {
+        ...modeState.state,
+        sessionId: input.targetSessionId,
+        updatedAt: new Date().toISOString()
+      }
+    };
+  }
   if (modeState?.kind !== "scenario_host") {
     return modeState;
   }

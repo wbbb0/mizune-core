@@ -55,6 +55,8 @@ import { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import { StructuredSuggestionService } from "#llm/structured/structuredSuggestionService.ts";
 import { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import { StatefulRpStateStore } from "#modes/statefulRp/stateStore.ts";
+import { StatefulRpPostTurnMaintainer } from "#modes/statefulRp/postTurnMaintainer.ts";
 import type { SessionBootstrapPersistenceAccess } from "#conversation/session/sessionCapabilities.ts";
 import { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import { isOwnerBootstrapCommandText } from "./ownerBootstrapPolicy.ts";
@@ -130,6 +132,13 @@ export function createBootstrapServices(
   const toolsetRuleStore = new ToolsetRuleStore(dataDir, config, logger, stateDatabase);
   const structuredSuggestionService = new StructuredSuggestionService(config, llmClient, logger);
   const scenarioHostStateStore = new ScenarioHostStateStore(dataDir, config, logger);
+  const statefulRpStateStore = new StatefulRpStateStore(dataDir, config, logger);
+  const statefulRpPostTurnMaintainer = new StatefulRpPostTurnMaintainer(
+    config,
+    llmClient,
+    statefulRpStateStore,
+    logger
+  );
   const rpProfileStore = new RpProfileStore(dataDir, config, logger, stateDatabase);
   const setupStore = new SetupStateStore(dataDir, config, userIdentityStore, logger, stateDatabase);
   const globalProfileReadinessStore = new GlobalProfileReadinessStore(dataDir, config, logger, stateDatabase);
@@ -186,6 +195,8 @@ export function createBootstrapServices(
     toolsetRuleStore,
     structuredSuggestionService,
     scenarioHostStateStore,
+    statefulRpStateStore,
+    statefulRpPostTurnMaintainer,
     rpProfileStore,
     setupStore,
     globalProfileReadinessStore,
@@ -247,6 +258,7 @@ export async function initializeBootstrapState(
       | "globalRuleStore"
       | "toolsetRuleStore"
       | "scenarioHostStateStore"
+      | "statefulRpStateStore"
       | "rpProfileStore"
       | "setupStore"
       | "globalProfileReadinessStore"
@@ -288,6 +300,7 @@ export async function initializeBootstrapState(
     globalRuleStore,
     toolsetRuleStore,
     scenarioHostStateStore,
+    statefulRpStateStore,
     rpProfileStore,
     setupStore,
     globalProfileReadinessStore,
@@ -320,6 +333,7 @@ export async function initializeBootstrapState(
   await globalRuleStore.init();
   await toolsetRuleStore.init();
   await scenarioHostStateStore.init();
+  await statefulRpStateStore.init();
   await rpProfileStore.init();
   const currentPersona = await personaStore.get();
   const currentRpProfile = await rpProfileStore.get();

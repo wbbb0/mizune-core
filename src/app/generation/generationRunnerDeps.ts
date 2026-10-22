@@ -50,6 +50,8 @@ import type { ComfyTemplateCatalogService } from "#comfy/templateCatalogService.
 import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { StructuredSuggestionService } from "#llm/structured/structuredSuggestionService.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { StatefulRpStateStore } from "#modes/statefulRp/stateStore.ts";
+import type { StatefulRpPostTurnMaintainer } from "#modes/statefulRp/postTurnMaintainer.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
 import type { SessionCaptioner } from "./sessionCaptioner.ts";
 import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
@@ -77,6 +79,7 @@ export interface GenerationPromptBuilderDeps {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore?: StatefulRpStateStore | undefined;
   contextStore?: Pick<ContextStore, "listUserFacts" | "listUserPromptFacts" | "listSessionFacts">;
   contextRetrievalService?: Pick<ContextRetrievalService, "retrieveUserContext" | "recordPromptMemoryReport">;
 }
@@ -101,6 +104,8 @@ export interface GenerationIdentityDeps {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore?: StatefulRpStateStore | undefined;
+  statefulRpPostTurnMaintainer?: StatefulRpPostTurnMaintainer | undefined;
   setupStore: SetupStateStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;
   conversationAccess: ConversationAccessService;
@@ -177,6 +182,6 @@ export type GenerationSessionOrchestratorDeps =
     sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };
-    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "setupStore" | "scenarioHostStateStore" | "globalProfileReadinessStore" | "conversationAccess">;
+    identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "setupStore" | "scenarioHostStateStore" | "statefulRpStateStore" | "globalProfileReadinessStore" | "conversationAccess">;
     toolRuntime: Pick<GenerationToolRuntimeDeps, "shellRuntime" | "browserService" | "downloadRuntime">;
   };

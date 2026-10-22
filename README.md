@@ -15,7 +15,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 
 - OneBot 事件接入与消息发送
 - WebUI 会话与 OneBot 会话并存
-- 会话级模式切换，当前内置 `rp_assistant` 与 `scenario_host`
+- 会话级模式切换，当前内置 `rp_assistant`、`assistant`、`scenario_host` 与 `stateful_rp`（沉浸状态 RP）
 - persona、RP / Scenario 资料、用户资料、记忆和规则持久化
 - LLM provider → model 分层目录与 routing preset，支持供应商内局部模型别名、同名模型快速切换，以及按 preset 设置历史窗口和 token 上下限
 - 历史压缩、自动会话标题、图片说明、音频转写、turn planner

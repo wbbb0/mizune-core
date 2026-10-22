@@ -76,8 +76,17 @@ export const commonToolResultCompactors: Record<string, ToolResultCompactor> = {
     const message = stringValue(ctx.parsedContent?.error)
       ?? stringValue(ctx.parsedContent?.message)
       ?? compactText(ctx.rawContent, 300);
+    // 错误的关键信息经常在 detail / issues / hint 里；只保留 error 会让模型
+    // 只看到“xxx_failed”，无法知道是哪个字段、应该怎么改。
+    const detail = ctx.parsedContent?.detail
+      ?? ctx.parsedContent?.issues
+      ?? ctx.parsedContent?.hint
+      ?? null;
+    const detailText = detail == null
+      ? ""
+      : `；${compactText(typeof detail === "string" ? detail : JSON.stringify(detail), 800)}`;
     return {
-      ...buildCompaction(ctx, `${ctx.toolName} 返回错误：${message}`),
+      ...buildCompaction(ctx, `${ctx.toolName} 返回错误：${message}${detailText}`),
       pinned: true
     };
   },

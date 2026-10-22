@@ -92,7 +92,12 @@ function getWebuiDevPort(): number {
 
 const apiTarget = getWebuiApiTarget();
 const devPort = getWebuiDevPort();
-const allowedHosts = loadWebuiDevConfig().allowedHosts;
+const configuredAllowedHosts = loadWebuiDevConfig().allowedHosts;
+const devAllowedHosts: string[] | true = configuredAllowedHosts.includes("*")
+  ? true
+  : configuredAllowedHosts.length > 0
+    ? configuredAllowedHosts
+    : true;
 const webuiBase = "/webui/";
 const sharedProxy = {
   "/api": {
@@ -220,13 +225,14 @@ export default defineConfig({
     host: "0.0.0.0",
     port: devPort,
     strictPort: true,
-    allowedHosts,
+    allowedHosts: devAllowedHosts,
     proxy: sharedProxy
   },
   preview: {
     host: "0.0.0.0",
     port: devPort,
     strictPort: true,
+    allowedHosts: devAllowedHosts,
     proxy: sharedProxy
   },
   build: {

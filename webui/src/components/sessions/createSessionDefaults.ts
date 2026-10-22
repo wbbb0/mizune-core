@@ -22,6 +22,9 @@ export function resolveCreateSessionModeId(input: {
 }
 
 export function resolveCreateSessionTitlePlaceholder(modeId: string): string {
+  if (modeId === "stateful_rp") {
+    return "New Stateful RP";
+  }
   return modeId === "scenario_host" ? "New Scenario" : "New Chat";
 }
 

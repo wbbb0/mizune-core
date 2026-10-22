@@ -219,6 +219,12 @@ function toErrorMessage(error: unknown, fallback: string) {
             >
               Scenario
             </span>
+            <span
+              v-if="snapshot.hasStatefulRpState"
+              class="shrink-0 rounded border border-border-subtle px-1 text-[11px] leading-4 text-text-subtle"
+            >
+              Stateful RP
+            </span>
           </div>
           <div class="truncate text-[11px] leading-4 text-text-subtle">
             {{ formatSnapshotTime(snapshot.createdAtMs) }} · {{ snapshot.transcriptCount }} 条记录 · {{ snapshot.modeId }}

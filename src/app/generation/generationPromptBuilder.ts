@@ -41,6 +41,7 @@ import type { UserMemoryEntry } from "#memory/userMemoryEntry.ts";
 import { createEmptyScenarioProfile, getMissingScenarioProfileFields } from "#modes/scenarioHost/profileSchema.ts";
 import { buildScenarioRuntimeQueryText, buildScenarioStateLines } from "#modes/scenarioHost/promptContext.ts";
 import { buildScenarioSetupRequirementLines } from "#modes/scenarioHost/promptSections.ts";
+import { buildStatefulRpStateLines } from "#modes/statefulRp/promptContext.ts";
 import { preparePromptMemoryContext } from "#llm/prompts/chat-system.prompt.ts";
 import type { PromptInput } from "#llm/prompt/promptTypes.ts";
 import type { MessageContentPart } from "#messages/contentParts.ts";
@@ -1089,6 +1090,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     isInSetup?: boolean;
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
+    const statefulRpMode = input.modeId === "stateful_rp";
     const assistantMode = isAssistantMode(input.modeId);
     const draftMode = input.draftMode ?? (
       input.isInSetup
@@ -1145,6 +1147,12 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const runtimeScenarioState = scenarioHostMode && !draftScopedMode
       ? scenarioState
       : null;
+    const statefulRpState = statefulRpMode && !draftScopedMode && deps.statefulRpStateStore
+      ? await deps.statefulRpStateStore.ensure(input.sessionId)
+      : null;
+    const statefulRpStateLines = statefulRpState
+      ? buildStatefulRpStateLines(statefulRpState)
+      : undefined;
     const scenarioSetupRequirementLines = scenarioDraftMode && scenarioState
       ? buildScenarioSetupRequirementLines({
           profile: draftMode.profile,
@@ -1287,6 +1295,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       toolsetRules,
       ...(runtimeScenarioState ? { scenarioStateLines: buildScenarioStateLines(runtimeScenarioState, { queryText: scenarioRuntimeQueryText }) } : {}),
       ...(scenarioSetupRequirementLines ? { scenarioSetupRequirementLines } : {}),
+      ...(statefulRpStateLines ? { statefulRpStateLines } : {}),
       ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
       ...(draftMode ? { draftMode } : {}),
       recentMessages: mediaContext.historyForPrompt,
@@ -1345,6 +1354,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     modeProfile?: PromptInput["modeProfile"];
   }) => {
     const scenarioHostMode = isScenarioHostMode(input.modeId);
+    const statefulRpMode = input.modeId === "stateful_rp";
     const assistantMode = isAssistantMode(input.modeId);
     const safetyProjected = await projectPromptContentSafety(deps, {
       sessionId: input.sessionId,
@@ -1377,6 +1387,12 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
             ?? (input.targetContext.chatType === "private" ? input.targetContext.senderName : "玩家")
         })
       : null;
+    const statefulRpState = statefulRpMode && deps.statefulRpStateStore
+      ? await deps.statefulRpStateStore.ensure(input.sessionId)
+      : null;
+    const statefulRpStateLines = statefulRpState
+      ? buildStatefulRpStateLines(statefulRpState)
+      : undefined;
 
     const relevantUserIds = new Set<string>([
       ...(input.currentUser?.userId ? [input.currentUser.userId] : []),
@@ -1495,6 +1511,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       liveResources,
       toolsetRules,
       ...(scenarioState ? { scenarioStateLines: buildScenarioStateLines(scenarioState, { queryText: scenarioRuntimeQueryText }) } : {}),
+      ...(statefulRpStateLines ? { statefulRpStateLines } : {}),
       ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
       recentMessages: mediaContext.historyForPrompt,
       targetContext: input.targetContext

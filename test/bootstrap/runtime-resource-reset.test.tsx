@@ -65,6 +65,7 @@ test("initializeBootstrapState initializes state database before resetting runti
       globalRuleStore: { async init() {} } as any,
       toolsetRuleStore: { async init() {} } as any,
       scenarioHostStateStore: { async init() {} } as any,
+      statefulRpStateStore: { async init() {} } as any,
       rpProfileStore: { async init() {}, async get() { return {}; }, isComplete() { return false; } } as any,
       setupStore: { async init() {} } as any,
       globalProfileReadinessStore: {

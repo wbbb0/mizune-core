@@ -3,8 +3,9 @@ import type {
   StoredToolCall,
   TranscriptItemPatch
 } from "../../../src/conversation/session/transcriptContract.ts";
+import type { StatefulRpSessionState } from "../../../src/modes/statefulRp/types.ts";
 
-export type { StoredToolCall, TranscriptItemPatch };
+export type { StoredToolCall, TranscriptItemPatch, StatefulRpSessionState };
 
 // ── Session list ──────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ export interface SessionSnapshotSummary {
   title: string | null;
   transcriptCount: number;
   hasScenarioHostState: boolean;
+  hasStatefulRpState?: boolean;
 }
 
 export type SessionListStreamEvent =
@@ -516,6 +518,7 @@ export interface ScenarioHostSessionState {
 
 export type SessionModeStateDetail =
   | { kind: "scenario_host"; state: ScenarioHostSessionState }
+  | { kind: "stateful_rp"; state: StatefulRpSessionState }
   | null;
 
 export interface SessionDetailResult {

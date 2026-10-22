@@ -18,6 +18,8 @@ export interface GenerationTurnPlannerInput {
   sessionId: string;
   relationship: Relationship;
   currentUser: GenerationCurrentUser;
+  modeId?: string | null;
+  modeSignalLine?: string | null;
   batchMessages: GenerationRuntimeBatchMessage[];
   availableToolsets: ToolsetView[];
   taskContext?: TurnPlannerTaskContext | null | undefined;
@@ -132,6 +134,8 @@ export async function handleGenerationTurnPlanner(
     chatType: input.sendTarget.chatType,
     relationship: input.relationship,
     currentUserSpecialRole: input.currentUser?.specialRole ?? null,
+    modeId: input.modeId ?? null,
+    modeSignalLine: input.modeSignalLine ?? null,
     recentMessages: input.historyForPrompt,
     availableToolsets: requirements.toolSelection ? input.availableToolsets : [],
     taskContext: requirements.taskIntent ? input.taskContext : null,

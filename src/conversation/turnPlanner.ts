@@ -51,6 +51,8 @@ export interface TurnPlannerInput {
   chatType: "private" | "group";
   relationship: Relationship;
   currentUserSpecialRole?: SpecialRole | null;
+  modeId?: string | null;
+  modeSignalLine?: string | null;
   recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
   abortSignal?: AbortSignal;
   availableToolsets?: ToolsetView[];

@@ -25,6 +25,8 @@ export function buildTurnPlannerPrompt(input: {
   chatType: "private" | "group";
   relationship: string;
   currentUserSpecialRole?: string | null;
+  modeId?: string | null;
+  modeSignalLine?: string | null;
   recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
   batchMessages: Array<{
     senderName: string;
@@ -105,7 +107,10 @@ export function buildTurnPlannerPrompt(input: {
     needs.modelSelection ? renderPromptSection("planner_model_selection", [
       "模型大小只按当前可见的任务要求判断，与工具集选择分开。",
       "已明确需要复杂推理、多约束权衡、形式化验证或高风险决策时，选择 reply_large。",
-      "否则选择 reply_small；不要仅因需要工具、执行步骤多、原因未知，或难度取决于尚未读取的代码、日志和工具结果而选择 reply_large。"
+      "否则选择 reply_small；不要仅因需要工具、执行步骤多、原因未知，或难度取决于尚未读取的代码、日志和工具结果而选择 reply_large。",
+      ...(input.modeId === "stateful_rp"
+        ? ["在 stateful_rp（沉浸状态角色扮演）模式下：若收到 # 开头的场外指令、涉及细腻身体感官与羞耻/情欲表里心理反差描写、高张力情感冲突、换装或私密道具互动、或 mode_signal 提示高张力/感官复杂时，优先选择 reply_large；普通简短寒暄或轻量日常对话选择 reply_small。"]
+        : [])
     ]) : null,
     renderPromptSection("planner_rules", [
       `严格输出以下 ${outputFields.length} 行，不得添加解释、空行或代码块：`,
@@ -136,7 +141,9 @@ export function buildTurnPlannerPrompt(input: {
       `session_id=${input.sessionId}`,
       `chat_type=${input.chatType}`,
       `relationship=${input.relationship}`,
-      `current_user_special_role=${input.currentUserSpecialRole ?? "none"}`
+      `current_user_special_role=${input.currentUserSpecialRole ?? "none"}`,
+      ...(input.modeId ? [`mode_id=${input.modeId}`] : []),
+      ...(input.modeSignalLine ? [`mode_signal=${input.modeSignalLine}`] : [])
     ]),
     renderPromptSection("planner_task_context", hasTaskContext ? formatTaskContext(input.taskContext!) : []),
     needs.toolSelection ? renderPromptSection("available_toolsets", input.availableToolsets.length > 0

@@ -680,6 +680,12 @@ export const llmCatalogSchema = s.object({
   routingPresets: llmRoutingPresetCatalogSchema
 }).title("LLM 目录").default(emptyObject);
 
+const statefulRpConfigSchema = s.object({
+  postTurnMaintenanceEnabled: s.boolean().title("启用后置静默维护").default(true),
+  embodimentTickMinutes: s.number().int().min(5).max(720).title("服饰与分部位感官结算间隔（游戏内分钟）").default(30),
+  mindTickMinutes: s.number().int().min(5).max(720).title("心理转化与微意图结算间隔（游戏内分钟）").default(30)
+}).title("沉浸状态 RP (stateful_rp)").describe("控制 stateful_rp 模式的后置静默状态维护策略。").default(emptyObject);
+
 export const fileConfigSchema = s.object({
   appName: s.string().trim().nonempty().title("应用名称").default("llm-bot"),
   nodeEnv: s.string().trim().nonempty().title("运行环境").default("development"),
@@ -707,7 +713,8 @@ export const fileConfigSchema = s.object({
   contentSafety: contentSafetyConfigSchema,
   search: searchConfigSchema,
   browser: browserConfigSchema,
-  backup: backupConfigSchema
+  backup: backupConfigSchema,
+  statefulRp: statefulRpConfigSchema
 }).title("运行时配置");
 
 export const configRuntimeSchema = s.object({

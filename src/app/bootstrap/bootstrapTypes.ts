@@ -54,6 +54,8 @@ import type { ToolsetRuleStore } from "#llm/prompt/toolsetRuleStore.ts";
 import type { StructuredSuggestionService } from "#llm/structured/structuredSuggestionService.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
 import type { RpProfileStore } from "#modes/rpAssistant/profileStore.ts";
+import type { StatefulRpStateStore } from "#modes/statefulRp/stateStore.ts";
+import type { StatefulRpPostTurnMaintainer } from "#modes/statefulRp/postTurnMaintainer.ts";
 import type { SessionCaptioner } from "#app/generation/sessionCaptioner.ts";
 import type { ContentSafetyService } from "#contentSafety/contentSafetyService.ts";
 import type { ContentSafetyStore } from "#contentSafety/contentSafetyStore.ts";
@@ -91,6 +93,8 @@ export interface AppServiceBootstrap {
   toolsetRuleStore: ToolsetRuleStore;
   structuredSuggestionService: StructuredSuggestionService;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore: StatefulRpStateStore;
+  statefulRpPostTurnMaintainer: StatefulRpPostTurnMaintainer;
   rpProfileStore: RpProfileStore;
   setupStore: SetupStateStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;

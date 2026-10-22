@@ -56,6 +56,7 @@ import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 import type { SessionModeDefinition } from "#modes/types.ts";
 import type { ScenarioHostStateStore } from "#modes/scenarioHost/stateStore.ts";
+import type { StatefulRpStateStore } from "#modes/statefulRp/stateStore.ts";
 import type { StructuredSuggestionService } from "#llm/structured/structuredSuggestionService.ts";
 import type { GenerationCommittedTextSink } from "#app/generation/generationOutputContracts.ts";
 import type { ToolResultObservationPolicy } from "./resultObservation.ts";
@@ -117,6 +118,7 @@ export interface BuiltinToolStoreDeps {
   globalRuleStore: GlobalRuleStore;
   toolsetRuleStore: ToolsetRuleStore;
   scenarioHostStateStore: ScenarioHostStateStore;
+  statefulRpStateStore?: StatefulRpStateStore;
   structuredSuggestionService?: StructuredSuggestionService;
   setupStore: SetupStateStore;
   globalProfileReadinessStore: GlobalProfileReadinessStore;

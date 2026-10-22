@@ -372,3 +372,7 @@ browser:
     screenshotMaxBytes: 5242880
 backup:
   profileRotateLimit: 10
+statefulRp:
+  postTurnMaintenanceEnabled: true
+  embodimentTickMinutes: 30
+  mindTickMinutes: 30

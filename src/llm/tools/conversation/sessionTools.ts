@@ -248,6 +248,8 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     context.sessionManager.setModeId(context.lastMessage.sessionId, modeId);
     if (modeId === "scenario_host") {
       await context.scenarioHostStateStore.ensureForSession(session);
+    } else if (modeId === "stateful_rp") {
+      await context.statefulRpStateStore?.ensureForSession(session);
     }
     context.persistSession?.(context.lastMessage.sessionId, "session_mode_switched_by_tool");
     return JSON.stringify({

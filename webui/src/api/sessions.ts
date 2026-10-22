@@ -7,6 +7,7 @@ import type {
   SessionSettings,
   SessionSettingsResult,
   SessionSnapshotSummary,
+  StatefulRpSessionState,
   TranscriptFetchResult
 } from "./types";
 
@@ -63,6 +64,16 @@ export const sessionsApi = {
     baseState?: ScenarioHostSessionState;
   }): Promise<{ ok: boolean; modeState: { kind: "scenario_host"; state: ScenarioHostSessionState } }> {
     return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/mode-state`, body);
+  },
+
+  updateStatefulRpState(sessionId: string, body: {
+    state: StatefulRpSessionState;
+  }): Promise<{ ok: boolean; modeState: { kind: "stateful_rp"; state: StatefulRpSessionState } }> {
+    return api.patch(`/api/sessions/${encodeURIComponent(sessionId)}/mode-state`, body);
+  },
+
+  resetStatefulRpState(sessionId: string): Promise<{ ok: boolean; modeState: { kind: "stateful_rp"; state: StatefulRpSessionState } }> {
+    return api.post(`/api/sessions/${encodeURIComponent(sessionId)}/stateful-rp/reset`, {});
   },
 
   listSnapshots(sessionId: string): Promise<{ snapshots: SessionSnapshotSummary[] }> {
