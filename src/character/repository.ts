@@ -152,6 +152,15 @@ export class CharacterRepository {
       }
     });
   }
+  skipDraftSection(sessionId: string, mode: string, id: string, draftId: string): void {
+    this.transaction(() => {
+      const draft = this.draft(sessionId);
+      if (!draft || draft.id !== draftId) throw new Error("配置阶段已变化，请重新读取目录");
+      this.section(sessionId, mode, id);
+      if (!draft.touched.includes(id)) draft.touched.push(id);
+      this.write(`draft:${sessionId}`, draft);
+    });
+  }
   confirm(sessionId: string, mode: string): CharacterStage {
     return this.transaction(() => {
       const draft = this.draft(sessionId); if (!draft) throw new Error("没有待确认的角色草稿");

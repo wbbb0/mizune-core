@@ -1,3 +1,6 @@
+import { executeSetupAttempt } from "./setup/retryGuard.ts";
+import { initializationToolDefinition, isScenarioSetupTool, isScenarioSetupToolName } from "./setup/initializationContracts.ts";
+import { normalizeSetupContainers, setupInputErrors, setupInputFailure } from "./setup/inputValidation.ts";
 import type { LlmToolCall, LlmToolDefinition, LlmToolExecutionResult } from "../llmClient.ts";
 import type {
   BuiltinToolContext,
@@ -116,7 +119,7 @@ export function getBuiltinTools(
     ...(options?.visibilityContext ? { visibilityContext: options.visibilityContext } : {}),
     profileToolScope: options?.profileToolScope ?? resolveProfileToolScopeFromOperationMode(options?.operationMode)
   })
-    .map((tool) => tool.definition);
+    .flatMap((tool) => initializationToolDefinition(tool.definition, resolvedConfig?.dataDir, options?.visibilityContext?.sessionId, options?.operationMode));
 }
 
 export function getBuiltinToolNames(
@@ -164,7 +167,7 @@ export function createBuiltinToolExecutor(
       .map((tool) => tool.definition.function.name)
   );
 
-  return async (toolCall, args) => {
+  const execute = async (toolCall: LlmToolCall, args: unknown): Promise<string | LlmToolExecutionResult> => {
     if (!allowedToolNames.has(toolCall.function.name)) {
       return projectRawToolContent(toolCall.function.name, JSON.stringify({
         error: `Tool is not available in the current model toolset: ${toolCall.function.name}`
@@ -176,9 +179,35 @@ export function createBuiltinToolExecutor(
         error: `Unsupported contextual tool: ${toolCall.function.name}`
       }));
     }
+    const operation = isScenarioSetupToolName(toolCall.function.name) ? context.sessionManager.getOperationMode(context.lastMessage.sessionId) : undefined;
+    if (isScenarioSetupTool(toolCall.function.name, operation)) {
+      const descriptor = getBuiltinToolDescriptors(context.config).find(tool => tool.definition.function.name === toolCall.function.name)!;
+      const schema = initializationToolDefinition(descriptor.definition, context.config.dataDir, context.lastMessage.sessionId, operation)[0]!.function.parameters;
+      const normalized = normalizeSetupContainers(args, schema);
+      const errors = setupInputErrors(schema, normalized);
+      if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
+      try {
+        const result = await handler(toolCall, normalized, context);
+        if (typeof result !== "string") return result;
+        let parsed: { error?: unknown };
+        try { parsed = JSON.parse(result); } catch { return projectRawToolContent(toolCall.function.name, result); }
+        if (parsed?.error) return projectRawToolContent(toolCall.function.name, JSON.stringify({ ...parsed, code: "setup_operation_rejected", nextStep: "按错误说明修正字段；涉及条目 ID 时先调用 get_scenario_state 核对。不要原样重复失败调用。", expectedSchema: schema }));
+        return projectRawToolContent(toolCall.function.name, result);
+      } catch (error) {
+        return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: error instanceof Error ? error.message : String(error), code: "setup_operation_rejected", nextStep: "先读取当前草稿或场景状态确认结果，再按错误修正参数；不要原样重试。", expectedSchema: schema }));
+      }
+    }
     const result = await handler(toolCall, args, context);
     return typeof result === "string"
       ? projectRawToolContent(toolCall.function.name, result)
       : result;
+  };
+  return async (toolCall, args) => {
+    const name = toolCall.function.name;
+    const candidate = ["list_character_sections", "read_character_section", "edit_character_section"].includes(name) || isScenarioSetupToolName(name);
+    if (!candidate) return execute(toolCall, args);
+    const operation = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
+    const setup = operation.kind === "character_config" || isScenarioSetupTool(name, operation);
+    return setup ? executeSetupAttempt(context, name, args, () => execute(toolCall, args)) : execute(toolCall, args);
   };
 }

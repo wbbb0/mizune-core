@@ -488,6 +488,7 @@ export function createGenerationExecutor(
             ? Array.from(new Set([...visibleAllowedToolNames, MODEL_SELF_UPGRADE_TOOL_NAME]))
             : visibleAllowedToolNames;
         return {
+          operationMode: sessionManager.getOperationMode(sessionId),
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
           visibilityContext: {

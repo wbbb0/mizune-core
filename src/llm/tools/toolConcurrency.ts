@@ -40,8 +40,7 @@ const READ_ONLY_TOOL_RESOURCES: Record<string, readonly string[]> = {
   list_browser_profiles: ["browser_profile:*"],
   inspect_browser_profile: ["browser_profile:*"],
   get_scenario_state: ["scenario_state:*"],
-  list_character_sections: ["character:*"],
-  read_character_section: ["character:*"]
+  list_character_sections: ["character:*"]
 };
 
 export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecutionEffect {
@@ -113,6 +112,7 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
         getStringArg(args, "resource_id") ? [browserPageKey(getStringArg(args, "resource_id"))] : ["web_download:*"],
         ["download:*", "chat_file:*"]
       );
+    case "read_character_section": // 配置阶段读取会选择下一次编辑的分块。
     case "edit_character_section":
       return parallel([], ["character:*"]);
     default:
