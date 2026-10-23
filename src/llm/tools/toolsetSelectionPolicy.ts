@@ -71,6 +71,7 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
     input.currentUser,
     input.config,
     {
+      forCatalog: true,
       modelRef: input.modelRef,
       includeDebugTools: input.includeDebugTools,
       ...(input.visibilityContext ? { visibilityContext: input.visibilityContext } : {}),

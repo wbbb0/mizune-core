@@ -29,7 +29,7 @@ test("同一档案的各模式只能读取自己的层，配置提示不包含�
   assert.doesNotMatch(assistant, /embodiment|physiology|participantRelationships/);
   assert.match(social, /social/); assert.doesNotMatch(social, /menstrualCycle/); assert.match(sim, /menstrualCycle/);
   store.begin("s", "embodiment", "config", "stateful_rp");
-  assert.match(characterPrompt(config.dataDir, "s", "stateful_rp").join("\n"), /每次只传要改的字段/);
+  assert.match(characterPrompt(config.dataDir, "s", "stateful_rp").join("\n"), /直接在参数顶层传要改的业务字段/);
 });
 
 

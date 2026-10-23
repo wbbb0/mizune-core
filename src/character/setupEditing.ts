@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { LlmToolDefinition } from "../llm/llmClient.ts";
 import { characterRepository } from "./repository.ts";
 import { emptyValue, type CharacterSection, type JsonObject } from "./schemaCatalog.ts";
@@ -30,20 +31,60 @@ export function mergeSetupValue(current: unknown, patch: unknown, schema: JsonOb
   }
   return base;
 }
-export function setupEditDefinition(section: CharacterSection, draftId: string): LlmToolDefinition {
+export type SetupEditAction = "fill" | "add" | "update" | "remove" | "skip" | "clear";
+export interface SetupEditBinding {
+  definition: LlmToolDefinition;
+  sectionId: string;
+  draftId: string;
+  action: SetupEditAction;
+  fieldName: string;
+}
+export const isCharacterSetupToolName = (name: string): boolean => /^setup_(fill|add|update|remove|skip|clear)_[a-zA-Z0-9_]+_[a-f0-9]{12}$/.test(name);
+
+// participantId、穿戴记录的 instanceId 是业务引用，不能由系统随机生成。
+export function hasGeneratedCollectionKey(section: CharacterSection): boolean {
+  return section.collectionKey === "id" || section.id === "session.simulation.wardrobe.instances";
+}
+
+export function setupEditBindings(section: CharacterSection, draftId: string): SetupEditBinding[] {
   const valueSchema = section.collectionKey ? partialObjectSchema(section.schema.items) : partialObjectSchema(section.schema);
   const codeFields = section.id === "session.simulation.clock"
     ? ["dayOfWeek", "timeOfDay", "minutesSinceLastSensoryTick", "minutesSinceLastMindTick", "separatedMinutesAccumulated"]
     : section.id === "session.simulation.body.activePhysiology.menstrualCycle" ? ["nextStartDate", "currentEndDate", "active"] : [];
   for (const field of codeFields) delete valueSchema.properties?.[field];
-  return { type: "function", function: {
-    name: "edit_character_section",
-    description: `修改当前配置分块 ${section.id}：${section.description}。省略 action 即保存；对象只传要修改的字段，未提供的字段保持原值，null 明确清空。${section.collectionKey ? "集合每次一条；修改或删除传 itemId，新增省略 itemId。" : "普通数组整体替换。"} skip 仅标记本块暂不填写，不清空已有内容。需要换块先调用 read_character_section。draftId 和 id 使用下面规定的固定值，不能替玩家确认。`,
-    parameters: { type: "object", properties: {
-      id: { type: "string", enum: [section.id] }, draftId: { type: "string", enum: [draftId] },
-      action: { type: "string", enum: section.collectionKey ? ["save", "remove", "skip"] : ["save", "skip"], description: "省略时保存；remove 删除一条集合记录；skip 保留当前值并跳过" },
-      value: { ...valueSchema, description: `${valueSchema.description ?? ""} 直接传符合类型的值，不要将对象或数组序列化成字符串。` },
-      ...(section.collectionKey ? { itemId: { type: "string", description: "现有条目的 ID。新增时省略，由系统生成；删除时必填。" } } : {})
-    }, required: ["id", "draftId"], additionalProperties: false }
-  } };
+  const fieldName = section.path.at(-1)!;
+  const isObject = !!valueSchema.properties;
+  const fields: JsonObject = isObject ? valueSchema.properties : { [fieldName]: valueSchema };
+  const generatedKey = hasGeneratedCollectionKey(section);
+  const actions: SetupEditAction[] = section.collectionKey ? ["add", "update", "remove", "skip"] : ["fill", "skip"];
+  if (isObject && Array.isArray(section.schema.type) && section.schema.type.includes("null")) actions.push("clear");
+  const token = createHash("sha256").update(JSON.stringify([draftId, section.id])).digest("hex").slice(0, 12);
+  const label = section.path.join("_").replace(/[^a-zA-Z0-9_]/g, "_").slice(-36);
+  const texts: Record<SetupEditAction, string> = {
+    fill: "填写本块的业务字段。只传要修改的字段，未提供的字段保持原值，null 明确清空可空字段；普通数组整体替换。",
+    add: generatedKey ? "新增一条记录，直接填写业务字段，系统生成 ID。不要传现有记录 ID。" : `新增一条关联记录，必须填写 ${section.collectionKey}，引用对应参与者或已有衣物实例；不要随机编造引用 ID。`,
+    update: "修改一条已有记录。itemId 使用读取结果中的 ID；只传要修改的业务字段，其他字段保留。",
+    remove: "删除一条已有记录。只传 itemId；删除前确认用户意图。",
+    skip: "暂不填写本块，保留所有已有内容，不需要参数。",
+    clear: "明确清空这个可空对象，设为 null。仅在用户明确要求清空时使用，不需要参数。"
+  };
+  return actions.map(action => {
+    const properties: JsonObject = ["skip", "clear", "remove"].includes(action) ? {} : structuredClone(fields);
+    const required: string[] = [];
+    if (section.collectionKey) {
+      if (action !== "add" || generatedKey) delete properties[section.collectionKey];
+      else required.push(section.collectionKey);
+    }
+    if (action === "update" || action === "remove") {
+      properties.itemId = { type: "string", minLength: 1, description: "读取结果中已有记录的 ID" };
+      required.push("itemId");
+    }
+    if (action === "fill" && !isObject) required.push(fieldName);
+    const parameters = { type: "object", properties, required, additionalProperties: false };
+    return { sectionId: section.id, draftId, action, fieldName, definition: { type: "function", function: {
+      name: `setup_${action}_${label}_${token}`,
+      description: `${section.description}（${section.id}）。${texts[action]}文本字段直接填文本，如名称填小满；不要将 JSON 对象、数组或代码块填入字符串。本工具已绑定当前草稿和分块，无需传草稿 ID、分块 ID、action 或 value。用户 .confirm 前不会发布。`,
+      parameters
+    } } };
+  });
 }

@@ -7,7 +7,7 @@ export function characterPrompt(dataDir: string, sessionId: string, mode: string
   if (draft) return [
     `当前处于角色${draft.phase === "setup" ? "初始化" : "配置"}阶段：${draft.stage}。尚未进入普通游玩。`,
     "固定资料依次为 persona（基础人格）、social（具体身份与社交设定）、embodiment（具身设定与初始衣柜）；state 是本会话动态状态。只处理当前阶段。",
-    "先调用 list_character_sections 读取目录，再按需调用 read_character_section，读取后 edit_character_section 的参数会变成当前块的具体格式；每次只传要改的字段，省略 action 即保存，未提供的字段保持原值。对象和数组直接传值，不要序列化成字符串。不要生成或索要整份大 JSON。衣柜每次填写一个物品，修改或删除已有物品时传 itemId。",
+    "先调用 list_character_sections 读取目录，再按需调用 read_character_section，读取后使用该块专用的填写工具，直接在参数顶层传要改的业务字段，未提供的字段保持原值；不要传 action、value、draftId 或分块 ID。工具名由系统提供，已经绑定当前草稿。对象和数组直接传值，不要序列化成字符串。不要生成或索要整份大 JSON。衣柜使用分开的新增、修改、删除工具，每次处理一个物品；修改或删除已有物品时传 itemId。跳过使用独立工具，保留已填内容。",
     "主动根据已有设定推荐、尽量补全，先从最有帮助的小组开始。玩家明确要求留空、跳过或就这样时尊重选择，不反复追问，不擅自补造被拒绝的信息。",
     "每阶段由玩家发送 .confirm 保存，.cancel 放弃当前草稿。你不能替玩家确认，留空仍可确认。空值不是没有边界，也不等于关闭机制。",
     "如果这是进入阶段后的引导请求，用自然中文说明当前在配置什么、需要哪些信息、可接受推荐或跳过，再给出第一组建议；不要机械罗列全部字段。",

@@ -1,6 +1,8 @@
+import { executeCharacterSetupTool } from "../../character/setupToolExecution.ts";
+import { isCharacterSetupToolName } from "../../character/setupEditing.ts";
 import { executeSetupAttempt } from "./setup/retryGuard.ts";
 import { initializationToolDefinition, isScenarioSetupTool, isScenarioSetupToolName } from "./setup/initializationContracts.ts";
-import { normalizeSetupContainers, setupInputErrors, setupInputFailure } from "./setup/inputValidation.ts";
+import { setupInputErrors, setupInputFailure } from "./setup/inputValidation.ts";
 import type { LlmToolCall, LlmToolDefinition, LlmToolExecutionResult } from "../llmClient.ts";
 import type {
   BuiltinToolContext,
@@ -93,6 +95,7 @@ export function getBuiltinTools(
   currentUserOrConfig?: BuiltinToolContext["currentUser"] | BuiltinToolContext["config"],
   config?: BuiltinToolContext["config"],
   options?: {
+    forCatalog?: boolean;
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
@@ -119,7 +122,7 @@ export function getBuiltinTools(
     ...(options?.visibilityContext ? { visibilityContext: options.visibilityContext } : {}),
     profileToolScope: options?.profileToolScope ?? resolveProfileToolScopeFromOperationMode(options?.operationMode)
   })
-    .flatMap((tool) => initializationToolDefinition(tool.definition, resolvedConfig?.dataDir, options?.visibilityContext?.sessionId, options?.operationMode));
+    .flatMap((tool) => options?.forCatalog ? [tool.definition] : initializationToolDefinition(tool.definition, resolvedConfig?.dataDir, options?.visibilityContext?.sessionId, options?.operationMode));
 }
 
 export function getBuiltinToolNames(
@@ -127,6 +130,7 @@ export function getBuiltinToolNames(
   currentUserOrConfig?: BuiltinToolContext["currentUser"] | BuiltinToolContext["config"],
   config?: BuiltinToolContext["config"],
   options?: {
+    forCatalog?: boolean;
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
@@ -168,6 +172,9 @@ export function createBuiltinToolExecutor(
   );
 
   const execute = async (toolCall: LlmToolCall, args: unknown): Promise<string | LlmToolExecutionResult> => {
+    if (isCharacterSetupToolName(toolCall.function.name) && allowedToolNames.has("edit_character_section")) {
+      return projectRawToolContent(toolCall.function.name, executeCharacterSetupTool(toolCall.function.name, args, context));
+    }
     if (!allowedToolNames.has(toolCall.function.name)) {
       return projectRawToolContent(toolCall.function.name, JSON.stringify({
         error: `Tool is not available in the current model toolset: ${toolCall.function.name}`
@@ -183,11 +190,10 @@ export function createBuiltinToolExecutor(
     if (isScenarioSetupTool(toolCall.function.name, operation)) {
       const descriptor = getBuiltinToolDescriptors(context.config).find(tool => tool.definition.function.name === toolCall.function.name)!;
       const schema = initializationToolDefinition(descriptor.definition, context.config.dataDir, context.lastMessage.sessionId, operation)[0]!.function.parameters;
-      const normalized = normalizeSetupContainers(args, schema);
-      const errors = setupInputErrors(schema, normalized);
+      const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
       try {
-        const result = await handler(toolCall, normalized, context);
+        const result = await handler(toolCall, args, context);
         if (typeof result !== "string") return result;
         let parsed: { error?: unknown };
         try { parsed = JSON.parse(result); } catch { return projectRawToolContent(toolCall.function.name, result); }
@@ -197,6 +203,12 @@ export function createBuiltinToolExecutor(
         return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: error instanceof Error ? error.message : String(error), code: "setup_operation_rejected", nextStep: "先读取当前草稿或场景状态确认结果，再按错误修正参数；不要原样重试。", expectedSchema: schema }));
       }
     }
+    if (["list_character_sections", "read_character_section"].includes(toolCall.function.name)
+      && context.sessionManager.getOperationMode(context.lastMessage.sessionId).kind === "character_config") {
+      const schema = getBuiltinToolDescriptors(context.config).find(tool => tool.definition.function.name === toolCall.function.name)!.definition.function.parameters;
+      const errors = setupInputErrors(schema, args);
+      if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
+    }
     const result = await handler(toolCall, args, context);
     return typeof result === "string"
       ? projectRawToolContent(toolCall.function.name, result)
@@ -204,7 +216,7 @@ export function createBuiltinToolExecutor(
   };
   return async (toolCall, args) => {
     const name = toolCall.function.name;
-    const candidate = ["list_character_sections", "read_character_section", "edit_character_section"].includes(name) || isScenarioSetupToolName(name);
+    const candidate = isCharacterSetupToolName(name) || ["list_character_sections", "read_character_section", "edit_character_section"].includes(name) || isScenarioSetupToolName(name);
     if (!candidate) return execute(toolCall, args);
     const operation = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
     const setup = operation.kind === "character_config" || isScenarioSetupTool(name, operation);

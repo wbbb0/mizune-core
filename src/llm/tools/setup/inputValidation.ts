@@ -3,20 +3,27 @@ import type { JsonObject } from "../../../character/schemaCatalog.ts";
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 const cache = new WeakMap<object, ReturnType<typeof ajv.compile>>();
 
-/** 只解开 Schema 明确声明的对象/数组的一层 JSON；文本字段保持原文。 */
-export function normalizeSetupContainers(value: unknown, schema: JsonObject): unknown {
-  const types = Array.isArray(schema.type) ? schema.type : [schema.type];
-  let next = value;
-  if (typeof next === "string" && !types.includes("string") && (types.includes("object") || types.includes("array"))) {
-    try { next = JSON.parse(next); } catch { return next; }
+/** 初始化输入禁止把 JSON 对象/数组包进任何字符串；只检测，不转换。 */
+export function jsonStringErrors(value: unknown, path = ""): Array<{ path: string; rule: string; message: string }> {
+  if (typeof value === "string") {
+    let text = value.trim();
+    const fenced = text.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
+    if (fenced) text = fenced[1]!.trim();
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed !== null && typeof parsed === "object") return [{ path: path || "/", rule: "json_in_string",
+        message: "字符串中不能填写整段 JSON 对象或数组。文本字段只填文本（如名称填小满）；对象或数组字段直接传结构化值，不要加外层引号或代码块。此次未保存。" }];
+    } catch { /* 普通文本及含有 JSON 示例的叙述允许保留。 */ }
+    return [];
   }
-  if (Array.isArray(next) && types.includes("array") && schema.items) return next.map(item => normalizeSetupContainers(item, schema.items));
-  if (next && typeof next === "object" && !Array.isArray(next) && types.includes("object")) {
-    return Object.fromEntries(Object.entries(next).map(([name, item]) => [name, schema.properties?.[name] ? normalizeSetupContainers(item, schema.properties[name]) : item]));
+  if (value && typeof value === "object") {
+    return Object.entries(value).flatMap(([key, child]) => jsonStringErrors(child, `${path}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`)).slice(0, 8);
   }
-  return next;
+  return [];
 }
 export function setupInputErrors(schema: JsonObject, value: unknown) {
+  const stringErrors = jsonStringErrors(value);
+  if (stringErrors.length) return stringErrors;
   let validate = cache.get(schema);
   if (!validate) { validate = ajv.compile(schema); cache.set(schema, validate); }
   if (validate(value)) return [];

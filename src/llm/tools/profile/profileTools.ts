@@ -69,22 +69,16 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
       type: "function",
       function: {
         name: "patch_scenario_profile",
-        description: "按字段 patch 当前会话中的 Scenario 资料草稿，不直接写持久化存储。",
+        description: "直接填写当前会话 Scenario 草稿的业务字段，省略字段保留原值；不要使用 profilePatch 包装或将 JSON 放入文本字段。由用户确认后发布。",
         parameters: {
           type: "object",
           properties: {
-            profilePatch: {
-              type: "object",
-              properties: {
-                theme: { type: "string" },
-                worldBaseline: { type: "string" },
-                narrationStyle: { type: "string" },
-                boundaries: { type: "string" }
-              },
-              additionalProperties: false
-            }
+            theme: { type: "string", description: "场景主题，直接填写主题文本" },
+            worldBaseline: { type: "string", description: "世界背景，直接填写说明文本" },
+            narrationStyle: { type: "string", description: "叙事风格，直接填写说明文本" },
+            boundaries: { type: "string", description: "边界约定，直接填写说明文本" }
           },
-          required: ["profilePatch"],
+          minProperties: 1,
           additionalProperties: false
         }
       }
@@ -608,11 +602,11 @@ function parseProfilePatch(
   args: unknown,
   allowedFieldNames: Set<string>
 ): Record<string, string> {
-  if (typeof args !== "object" || !args || !("profilePatch" in args) || typeof (args as { profilePatch?: unknown }).profilePatch !== "object") {
+  if (typeof args !== "object" || !args || Array.isArray(args)) {
     return {};
   }
   return Object.fromEntries(
-    Object.entries((args as { profilePatch: Record<string, unknown> }).profilePatch)
+    Object.entries(args)
       .filter(([key, value]) => allowedFieldNames.has(key) && typeof value === "string")
       .map(([key, value]) => [key, String(value)])
   );
@@ -732,7 +726,7 @@ export const profileToolHandlers: Record<string, ToolHandler> = {
     }
     const profilePatch = parseProfilePatch(args, scenarioProfilePatchFieldNames);
     if (Object.keys(profilePatch).length === 0) {
-      return JSON.stringify({ error: "profilePatch with at least one string field is required" });
+      return JSON.stringify({ error: "请直接填写至少一个业务字段：theme、worldBaseline、narrationStyle 或 boundaries" });
     }
     const nextDraft: ScenarioProfile = {
       ...(draftOperation.draft as ScenarioProfile),
