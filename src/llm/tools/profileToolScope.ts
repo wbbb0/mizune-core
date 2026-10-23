@@ -20,19 +20,13 @@ export const scenarioProfileToolNames = [
   "clear_scenario_profile_field"
 ] as const;
 
-export const sessionBotProfileToolNames = [
-  "get_current_chat_identity",
-  "patch_current_chat_identity",
-  "clear_current_chat_identity"
-] as const;
-
 export function resolveProfileToolScopeFromOperationMode(
   operationMode: SessionOperationMode | undefined
 ): ProfileToolScope | null {
   if (!operationMode) {
     return null;
   }
-  if (operationMode.kind === "normal" || operationMode.kind === "skill_config") {
+  if (operationMode.kind === "normal" || operationMode.kind === "skill_config" || operationMode.kind === "character_config") {
     return "normal";
   }
   if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {
@@ -61,8 +55,6 @@ export function filterProfileToolNamesForScope(
     deleteNames(scenarioProfileToolNames);
     return Array.from(visibleNames);
   }
-
-  deleteNames(sessionBotProfileToolNames);
 
   if (scope === "persona") {
     deleteNames(rpProfileToolNames);

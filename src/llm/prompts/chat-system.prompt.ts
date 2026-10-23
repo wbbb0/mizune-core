@@ -232,7 +232,15 @@ function buildSetupSnapshotLines(persona: Persona, missingFields: EditablePerson
   ];
 }
 
-export function buildBaseSystemSections(input: {
+export function buildBaseSystemSections(input: Parameters<typeof buildBaseSystemSectionsWithoutCharacter>[0]): PromptSection[] {
+  const sections = buildBaseSystemSectionsWithoutCharacter(input);
+  if (!input.characterLines) return sections;
+  const replaced = new Set(["global_persona", "global_persona_base", "rp_profile", "rp_profile_snapshot", "persona_snapshot", "session_bot_profile", "stateful_rp_state"]);
+  if (input.characterSetup) for (const name of ["assistant_identity", "rp_identity", "stateful_rp_identity", "stateful_rp_rules", "host_identity", "host_rules"]) replaced.add(name);
+  return [systemSection("character_profile", input.characterLines)!, ...sections.filter(section => !replaced.has(section.name))];
+}
+
+function buildBaseSystemSectionsWithoutCharacter(input: {
   sessionMode: "private" | "group" | "unknown";
   modeId?: string;
   interactionMode?: PromptInteractionMode;
@@ -253,6 +261,8 @@ export function buildBaseSystemSections(input: {
   toolsetRules?: PromptInput["toolsetRules"] | undefined;
   scenarioStateLines?: string[] | undefined;
   scenarioSetupRequirementLines?: string[] | undefined;
+  characterSetup?: boolean | undefined;
+  characterLines?: string[] | undefined;
   statefulRpStateLines?: string[] | undefined;
   modeProfile?: PromptInput["modeProfile"] | undefined;
   draftMode?: PromptInput["draftMode"] | undefined;

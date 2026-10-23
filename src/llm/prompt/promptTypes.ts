@@ -163,6 +163,8 @@ export interface PromptInput {
   toolsetRules?: ToolsetRuleEntry[] | undefined;
   scenarioStateLines?: string[] | undefined;
   scenarioSetupRequirementLines?: string[] | undefined;
+  characterSetup?: boolean | undefined;
+  characterLines?: string[] | undefined;
   statefulRpStateLines?: string[] | undefined;
   modeProfile?:
     | {
@@ -302,6 +304,8 @@ export interface InternalSessionTriggerPromptInput {
   liveResources?: PromptInput["liveResources"];
   toolsetRules?: PromptInput["toolsetRules"];
   scenarioStateLines?: PromptInput["scenarioStateLines"];
+  characterSetup?: boolean | undefined;
+  characterLines?: string[] | undefined;
   statefulRpStateLines?: PromptInput["statefulRpStateLines"];
   modeProfile?: PromptInput["modeProfile"];
   targetContext:

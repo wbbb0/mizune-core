@@ -110,7 +110,6 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     oneBotClient,
     sessionManager,
     sessionPersistence,
-    personaStore,
     setupStore,
     userIdentityStore,
     userStore

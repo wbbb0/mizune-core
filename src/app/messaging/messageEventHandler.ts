@@ -90,17 +90,7 @@ export async function processIncomingMessage(
     return;
   }
 
-  await ensureAutomaticSetupOperationMode(
-    {
-      sessionManager,
-      globalProfileReadinessStore: services.globalProfileReadinessStore,
-      personaStore: services.personaStore,
-      rpProfileStore: services.rpProfileStore,
-      scenarioHostStateStore: services.scenarioHostStateStore
-    },
-    context,
-    persistSession
-  );
+
 
   const command = resolveChatDirectCommand(context);
   if (command) {
@@ -112,6 +102,19 @@ export async function processIncomingMessage(
     }
     return;
   }
+
+  await ensureAutomaticSetupOperationMode(
+    {
+      config,
+      sessionManager,
+      globalProfileReadinessStore: services.globalProfileReadinessStore,
+      personaStore: services.personaStore,
+      rpProfileStore: services.rpProfileStore,
+      scenarioHostStateStore: services.scenarioHostStateStore
+    },
+    context,
+    persistSession
+  );
 
   const initialTriggerDecision = deps.inboundDelivery === "web"
     ? {

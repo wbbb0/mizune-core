@@ -1,3 +1,4 @@
+import { characterRepository } from "../../character/repository.ts";
 import type { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
 import {
@@ -825,6 +826,31 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }
+  });
+
+  app.get("/api/sessions/:sessionId/character", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) return reply;
+    const store = characterRepository(services.config.config!.dataDir);
+    const session = services.config.sessionManager.getSession(params.sessionId);
+    const draft = store.draft(session.id);
+    return { stage: draft?.stage ?? null, draftId: draft?.id ?? null, sections: store.sections(session.id, session.modeId).map(section => ({ id: section.id, description: section.description, collectionKey: section.collectionKey, touched: draft?.touched.includes(section.id) ?? false })) };
+  });
+
+  app.post("/api/sessions/:sessionId/character/section", async (request, reply) => {
+    const params = parseSessionParams(request.params);
+    if (!parseOrReply(reply, params)) return reply;
+    try {
+      const body = request.body as Record<string, unknown>;
+      if (!body || typeof body.id !== "string") throw new Error("需要分块 ID");
+      const store = characterRepository(services.config.config!.dataDir);
+      const session = services.config.sessionManager.getSession(params.sessionId);
+      if (body.action !== undefined) {
+        if (!["set", "upsert", "remove", "skip"].includes(String(body.action))) throw new Error("未知编辑动作");
+        store.edit(session.id, session.modeId, body.id, body.action as "set" | "upsert" | "remove" | "skip", body.value, typeof body.itemId === "string" ? body.itemId : undefined, typeof body.draftId === "string" ? body.draftId : undefined);
+      }
+      return store.section(session.id, session.modeId, body.id);
+    } catch (error) { return respondBadRequest(reply, String(error)); }
   });
 
   app.post("/api/sessions/:sessionId/stateful-rp/reset", async (request, reply) => {

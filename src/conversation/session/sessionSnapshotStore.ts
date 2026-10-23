@@ -51,6 +51,7 @@ const sessionSnapshotModeStateSchema = z.union([
     kind: z.literal("scenario_host"),
     state: scenarioHostSessionStateZodSchema
   }),
+  z.object({ kind: z.literal("rp_assistant"), state: statefulRpSessionStateZodSchema }),
   z.object({
     kind: z.literal("stateful_rp"),
     state: statefulRpSessionStateZodSchema
@@ -65,7 +66,7 @@ const sessionSnapshotPayloadSchema = z.object({
 
 export type SessionSnapshotModeState =
   | { kind: "scenario_host"; state: ScenarioHostSessionState }
-  | { kind: "stateful_rp"; state: StatefulRpSessionState }
+  | { kind: "stateful_rp" | "rp_assistant"; state: StatefulRpSessionState }
   | null;
 
 export interface SessionSnapshotPayload {

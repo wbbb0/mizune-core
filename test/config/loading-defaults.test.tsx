@@ -175,7 +175,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         CONFIG_DIR: configDir
       });
 
-      assert.equal(config.conversation.setup.skipPersonaInitialization, false);
+      assert.equal("setup" in config.conversation, false);
     });
   });
 

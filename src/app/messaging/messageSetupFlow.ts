@@ -1,3 +1,4 @@
+import { characterRepository } from "../../character/repository.ts";
 import type { Logger } from "pino";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import type { MessageEventHandlerDeps, MessageHandlerServices, MessageProcessingContext } from "./messageHandlerTypes.ts";
@@ -34,7 +35,7 @@ export async function handlePreRouterDecision(
 export async function ensureAutomaticSetupOperationMode(
   services: Pick<
     MessageHandlerServices,
-    "sessionManager" | "globalProfileReadinessStore" | "personaStore" | "rpProfileStore" | "scenarioHostStateStore"
+    "config" | "sessionManager" | "globalProfileReadinessStore" | "personaStore" | "rpProfileStore" | "scenarioHostStateStore"
   >,
   context: MessageProcessingContext,
   persistSession: MessageEventHandlerDeps["persistSession"]
@@ -44,70 +45,19 @@ export async function ensureAutomaticSetupOperationMode(
     return;
   }
 
-  const modeDef = requireSessionModeDefinition(context.session.modeId);
-  if (!modeDef.setupPhase) {
+  if (context.enrichedMessage.chatType !== "private" || context.user.relationship !== "owner") return;
+  const draft = characterRepository(services.config.dataDir).ensureSetup(context.session.id, context.session.modeId);
+  if (draft) {
+    services.sessionManager.setOperationMode(context.session.id, { kind: "character_config", stage: draft.stage });
+    persistSession(context.session.id, "character_setup_entered");
     return;
   }
-
-  const readiness = await services.globalProfileReadinessStore.get();
-  const scenarioState = modeDef.profileAccess.modeProfile === "scenario"
-    ? await services.scenarioHostStateStore.ensureForSession(context.session)
-    : null;
-  const modeProfileReady = modeDef.profileAccess.modeProfile === "rp"
-    ? readiness.rp === "ready"
-    : modeDef.profileAccess.modeProfile === "scenario"
-      ? scenarioState != null && isScenarioSetupComplete(scenarioState)
-      : true;
-  const setupContext: SessionModeSetupContext = {
-    personaReady: readiness.persona === "ready",
-    modeProfileReady,
-    operationMode: currentOperationMode,
-    chatType: context.enrichedMessage.chatType,
-    relationship: context.user.relationship
-  };
-  const nextOperationKind = modeDef.setupPhase.resolveOperationModeKind(setupContext);
-  if (nextOperationKind === "persona_setup") {
-    services.sessionManager.setOperationMode(context.session.id, {
-      kind: "persona_setup",
-      draft: services.personaStore.createEmpty()
-    });
-    services.sessionManager.appendProfilePhaseTransition(context.session.id, {
-      target: "persona",
-      phase: "setup",
-      action: "enter",
-      source: "automatic"
-    });
-    persistSession(context.session.id, "persona_setup_mode_auto_entered");
-    return;
-  }
-  if (nextOperationKind === "mode_setup" && modeDef.profileAccess.modeProfile === "rp") {
-    services.sessionManager.setOperationMode(context.session.id, {
-      kind: "mode_setup",
-      modeId: "rp_assistant",
-      draft: services.rpProfileStore.createEmpty()
-    });
-    services.sessionManager.appendProfilePhaseTransition(context.session.id, {
-      target: "rp",
-      phase: "setup",
-      action: "enter",
-      source: "automatic"
-    });
-    persistSession(context.session.id, "rp_setup_mode_auto_entered");
-    return;
-  }
-  if (nextOperationKind === "mode_setup" && modeDef.profileAccess.modeProfile === "scenario") {
-    services.sessionManager.setOperationMode(context.session.id, {
-      kind: "mode_setup",
-      modeId: "scenario_host",
-      draft: scenarioState?.profile ?? createEmptyScenarioProfile()
-    });
-    services.sessionManager.appendProfilePhaseTransition(context.session.id, {
-      target: "scenario",
-      phase: "setup",
-      action: "enter",
-      source: "automatic"
-    });
-    persistSession(context.session.id, "scenario_setup_mode_auto_entered");
+  if (context.session.modeId === "scenario_host") {
+    const state = await services.scenarioHostStateStore.ensureForSession(context.session);
+    if (!isScenarioSetupComplete(state)) {
+      services.sessionManager.setOperationMode(context.session.id, { kind: "mode_setup", modeId: "scenario_host", draft: state.profile });
+      persistSession(context.session.id, "scenario_setup_entered");
+    }
   }
 }
 

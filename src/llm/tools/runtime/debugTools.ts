@@ -1,3 +1,4 @@
+import { characterPersonaView } from "../../../character/prompt.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
@@ -218,7 +219,7 @@ async function renderDebugLiteral(literal: DebugLiteral, context: Parameters<Non
         participantProfiles: snapshot?.participantProfiles ?? []
       }, null, 2);
     case "persona":
-      return JSON.stringify(snapshot?.persona ?? await context.personaStore.get(), null, 2);
+      return JSON.stringify(snapshot?.persona ?? characterPersonaView(context.config.dataDir), null, 2);
     case "recent_history":
       return JSON.stringify(snapshot?.recentHistory ?? [], null, 2);
     case "current_batch":

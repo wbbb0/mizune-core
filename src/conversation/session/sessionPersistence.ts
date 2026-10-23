@@ -45,6 +45,7 @@ const scenarioProfileDraftSchema = z.object({
 });
 
 const sessionOperationModeSchema = z.union([
+  z.object({ kind: z.literal("character_config"), stage: z.enum(["persona", "social", "embodiment", "state"]) }),
   z.object({ kind: z.literal("skill_config"), skillId: z.string().min(1) }),
   z.object({
     kind: z.literal("normal")

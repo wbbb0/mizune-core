@@ -1,3 +1,7 @@
+import { characterPersonaView } from "../../character/prompt.ts";
+import { characterRepository } from "../../character/repository.ts";
+import { enqueueCharacterIntroduction } from "../../character/introduction.ts";
+import type { CharacterStage } from "../../character/model.ts";
 import { startSkillDraft, readSkillDraft, confirmSkillDraft, cancelSkillDraft, requireActiveSkillDraft } from '../../skills/skillDrafts.ts';
 import type { CommandCompletionDefinition } from "#types/commandCompletion.ts";
 import type { StickerService } from "#services/stickers/stickerService.ts";
@@ -28,7 +32,7 @@ import type { RecentErrorStore } from "#runtime/recentErrorStore.ts";
 import { hasOneBotSelfAccountCapability } from "#services/onebot/selfAccountCapabilities.ts";
 
 type DebugModeArg = "on" | "off" | "once" | "status";
-type ConfigTarget = "persona" | "rp" | "scenario";
+type ConfigTarget = CharacterStage | "scenario";
 
 type DirectCommandArgsMap = {
   sticker: { action: "lock" | "unlock"; id: string };
@@ -246,12 +250,20 @@ function triggerInlineDebugOnce(ctx: DirectCommandExecutionContext, inlineText: 
   ctx.input.flushSession(ctx.session.id, { skipReplyGate: true });
 }
 
+function queueCharacterIntroduction(ctx: DirectCommandExecutionContext): void {
+  if (!ctx.input.flushSession) return;
+  enqueueCharacterIntroduction({ dataDir: ctx.input.config.dataDir, sessionId: ctx.session.id, userId: ctx.incomingMessage.userId,
+    sessionManager: ctx.input.sessionManager, flushSession: ctx.input.flushSession,
+    persist: () => ctx.input.persistSession(ctx.session.id, "character_introduction_enqueued") });
+}
+
 function getTargetLabel(target: ConfigTarget): string {
   switch (target) {
+    case "social":
+    case "embodiment":
+    case "state":
     case "persona":
-      return "persona";
-    case "rp":
-      return "RP 资料";
+      return target;
     case "scenario":
       return "Scenario 资料";
   }
@@ -310,39 +322,33 @@ async function enterConfigurationMode(
   mode: "setup" | "config",
   target: ConfigTarget
 ): Promise<string> {
-  if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") return "请先 .confirm 或 .cancel 当前技能草稿。";
+  if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind !== "normal"
+    || characterRepository(ctx.input.config.dataDir).draft(ctx.session.id)) {
+    return "请先确认或取消当前配置草稿。";
+  }
+  if (target !== "scenario") {
+    if (ctx.session.type !== "private") return "请在私聊中配置全局角色。";
+    try {
+      const store = characterRepository(ctx.input.config.dataDir);
+      const draft = store.begin(ctx.session.id, target, mode, ctx.session.modeId);
+      ctx.input.sessionManager.interruptResponse(ctx.session.id);
+      ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "character_config", stage: draft.stage });
+      ctx.input.persistSession(ctx.session.id, "character_configuration_entered");
+      queueCharacterIntroduction(ctx);
+      return `已进入 ${target} 配置，.confirm 保存，.cancel 放弃；允许留空。`;
+    } catch (error) { return error instanceof Error ? error.message : String(error); }
+  }
   if (target === "scenario" && ctx.session.type !== "private") {
     return "Scenario 资料是当前私聊会话级配置，当前模式仅支持私聊。请在对应私聊会话中使用 `.setup scenario` 或 `.config scenario`。";
   }
   const readiness = await readProfileReadiness(ctx, target);
   if (mode === "config") {
-    if (target === "persona" && !readiness.persona) {
-      return "persona 尚未初始化，请先使用 `.setup persona`。";
-    }
-    if (target === "rp" && !readiness.rp) {
-      return "RP 资料尚未初始化，请先使用 `.setup rp`。";
-    }
     if (target === "scenario" && !readiness.scenario) {
       return "当前会话 Scenario 资料尚未初始化，请先使用 `.setup scenario`。";
     }
   }
 
-  if (target === "persona") {
-    ctx.input.sessionManager.setOperationMode(ctx.session.id, {
-      kind: mode === "setup" ? "persona_setup" : "persona_config",
-      draft: mode === "setup"
-        ? ctx.input.personaStore.createEmpty()
-        : await ctx.input.personaStore.get()
-    });
-  } else if (target === "rp") {
-    ctx.input.sessionManager.setOperationMode(ctx.session.id, {
-      kind: mode === "setup" ? "mode_setup" : "mode_config",
-      modeId: "rp_assistant",
-      draft: mode === "setup"
-        ? ctx.input.rpProfileStore.createEmpty()
-        : await ctx.input.rpProfileStore.get()
-    });
-  } else {
+  {
     ctx.input.sessionManager.setOperationMode(ctx.session.id, {
       kind: mode === "setup" ? "mode_setup" : "mode_config",
       modeId: "scenario_host",
@@ -372,25 +378,10 @@ async function enterConfigurationMode(
 
 async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<{ ok: true } | { ok: false; message: string }> {
   const operationMode = ctx.input.sessionManager.getOperationMode(ctx.session.id);
-  if (operationMode.kind === "normal" || operationMode.kind === "skill_config") {
+  if (operationMode.kind === "normal" || operationMode.kind === "skill_config" || operationMode.kind === "character_config") {
     return { ok: false, message: "当前没有待确认的配置流程。" };
   }
-  if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {
-    await ctx.input.personaStore.write(operationMode.draft);
-    await syncSelfAccountNicknameFromPersona(ctx, operationMode.draft);
-    await ctx.input.setupStore.advanceAfterPersonaUpdate(operationMode.draft);
-    await ctx.input.globalProfileReadinessStore.setPersonaReadiness(
-      resolvePersonaReadinessStatus(ctx.input.config, operationMode.draft)
-    );
-    return { ok: true };
-  }
-  if (operationMode.modeId === "rp_assistant") {
-    await ctx.input.rpProfileStore.write(operationMode.draft);
-    await ctx.input.globalProfileReadinessStore.setRpReadiness(
-      ctx.input.rpProfileStore.isComplete(operationMode.draft) ? "ready" : "uninitialized"
-    );
-    return { ok: true };
-  }
+  if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config" || operationMode.modeId !== "scenario_host") return { ok: false, message: "此旧配置草稿已作废，请取消后重新配置。" };
   const currentScenarioState = await ctx.input.scenarioHostStateStore.ensure(
     ctx.session.id,
     getScenarioStateDefaults(ctx.session)
@@ -932,8 +923,8 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "setup",
-    completion: { name: "setup", parameters: [{ name: "配置", values: ["persona", "rp", "scenario"] }] },
-    help: ".setup [persona|rp|scenario] 从空白草稿重新开始配置",
+    completion: { name: "setup", parameters: [{ name: "配置", values: ["persona", "social", "embodiment", "state", "scenario"] }] },
+    help: ".setup [persona|social|embodiment|state|scenario] 从空白草稿重新开始配置",
     dispatch: {
       requireTextOnly: true
     },
@@ -942,7 +933,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       allowInOwnerMentionedGroup: true
     },
     parse(text: string): ParsedDirectCommand | null {
-      const match = text.match(/^[。.]\s*setup\s+(persona|rp|scenario)\s*$/i);
+      const match = text.match(/^[。.]\s*setup\s+(persona|social|embodiment|state|scenario)\s*$/i);
       if (!match) {
         return null;
       }
@@ -959,8 +950,8 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
   },
   {
     name: "config",
-    completion: { name: "config", parameters: [{ name: "配置", values: ["persona", "rp", "scenario", "skill"] }, { name: "技能", source: "skillIds", when: { index: 0, value: "skill" } }] },
-    help: ".config [persona|rp|scenario|skill [id]] 基于当前配置进入编辑",
+    completion: { name: "config", parameters: [{ name: "配置", values: ["persona", "social", "embodiment", "state", "scenario", "skill"] }, { name: "技能", source: "skillIds", when: { index: 0, value: "skill" } }] },
+    help: ".config [persona|social|embodiment|state|scenario|skill [id]] 基于当前配置进入编辑",
     dispatch: {
       requireTextOnly: true
     },
@@ -969,7 +960,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       allowInOwnerMentionedGroup: true
     },
     parse(text: string): ParsedDirectCommand | null {
-      const match = text.match(/^[。.]\s*config\s+(persona|rp|scenario|skill)(?:\s+([a-z0-9-]+))?\s*$/i);
+      const match = text.match(/^[。.]\s*config\s+(persona|social|embodiment|state|scenario|skill)(?:\s+([a-z0-9-]+))?\s*$/i);
       if (!match) {
         return null;
       }
@@ -984,7 +975,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       const configCommand = command as Extract<ParsedDirectCommand, { name: "config" }>;
       if (configCommand.target === "skill") {
         if (!ctx.input.config.skills.enabled) { await ctx.send("技能库未启用。"); return; }
-        if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind !== "normal") { await ctx.send("请先确认或取消当前资料配置草稿。"); return; }
+        if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind !== "normal" || characterRepository(ctx.input.config.dataDir).draft(ctx.session.id)) { await ctx.send("请先确认或取消当前资料配置草稿。"); return; }
         const draft = startSkillDraft(ctx.input.config, ctx.session.id, configCommand.id);
         ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "skill_config", skillId: draft.id });
         ctx.input.persistSession(ctx.session.id, "skill_draft_started");
@@ -1016,10 +1007,11 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         ctx.input.sessionManager.cancelGeneration(ctx.session.id);
         cancelSkillDraft(ctx.input.config, ctx.session.id);
         ctx.input.sessionManager.clearSession(ctx.session.id);
-        await ctx.input.statefulRpStateStore?.write(
-          ctx.session.id,
-          createInitialStatefulRpSessionState({ sessionId: ctx.session.id })
-        );
+        const store = characterRepository(ctx.input.config.dataDir);
+        store.reset(ctx.session.id);
+        const draft = store.ensureSetup(ctx.session.id, ctx.session.modeId);
+        if (draft) ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "character_config", stage: draft.stage });
+        queueCharacterIntroduction(ctx);
         ctx.input.persistSession(ctx.session.id, "stateful_rp_reset_by_command");
         ctx.input.logger.info({ sessionId: ctx.session.id }, "stateful_rp_reset_by_command");
         await ctx.send("当前角色与场景状态已重置，会话上下文已清空。");
@@ -1057,6 +1049,20 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     },
     access: requireOwnerForConfiguration,
     async execute(ctx: DirectCommandExecutionContext) {
+      const characterStore = characterRepository(ctx.input.config.dataDir);
+      if (characterStore.draft(ctx.session.id)) {
+        ctx.input.sessionManager.interruptResponse(ctx.session.id);
+        try {
+          const stage = characterStore.confirm(ctx.session.id, ctx.session.modeId);
+          if (stage === "persona") await syncSelfAccountNicknameFromPersona(ctx, characterPersonaView(ctx.input.config.dataDir));
+          const next = characterStore.ensureSetup(ctx.session.id, ctx.session.modeId);
+          ctx.input.sessionManager.setOperationMode(ctx.session.id, next ? { kind: "character_config", stage: next.stage } : { kind: "normal" });
+          ctx.input.persistSession(ctx.session.id, "character_configuration_confirmed");
+          await ctx.send(`${stage} 已确认。${next ? `接下来配置 ${next.stage}。` : "可以开始正常对话。"}`);
+          queueCharacterIntroduction(ctx);
+        } catch (error) { await ctx.send(error instanceof Error ? error.message : String(error)); }
+        return;
+      }
       if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") {
         if (!readSkillDraft(ctx.input.config, ctx.session.id)) {
           ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
@@ -1113,6 +1119,15 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     },
     access: requireOwnerForConfiguration,
     async execute(ctx: DirectCommandExecutionContext) {
+      const characterStore = characterRepository(ctx.input.config.dataDir);
+      if (characterStore.draft(ctx.session.id)) {
+        ctx.input.sessionManager.interruptResponse(ctx.session.id);
+        characterStore.cancel(ctx.session.id);
+        ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
+        ctx.input.persistSession(ctx.session.id, "character_configuration_cancelled");
+        await ctx.send("已放弃当前草稿；未完成的必要初始化会在继续对话时重新进入。");
+        return;
+      }
       if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") {
         cancelSkillDraft(ctx.input.config, ctx.session.id);
         ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });

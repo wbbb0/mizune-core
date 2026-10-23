@@ -3,7 +3,7 @@ import type { GlobalProfileReadinessStatus } from "#identity/globalProfileReadin
 import { isPersonaComplete, type Persona } from "./personaSchema.ts";
 
 export function shouldSkipPersonaInitialization(config?: Pick<AppConfig, "conversation">): boolean {
-  return config?.conversation?.setup?.skipPersonaInitialization === true;
+  return false;
 }
 
 export function resolvePersonaReadinessStatus(

@@ -1,3 +1,4 @@
+import { characterRepository } from "../../character/repository.ts";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { AppConfig } from "#config/config.ts";
@@ -154,30 +155,13 @@ function createInitialDataResourceDefinitions(input: {
   statefulRpStateStore?: Pick<StatefulRpStateStore, "listRows">;
 }): DataResourceDefinition[] {
   const definitions: DataResourceDefinition[] = [
-    singletonSqliteResource({
-      key: "global_profile_readiness",
-      title: "全局资料就绪状态",
-      tableGroup: "state.global_profile_readiness",
-      tables: ["global_profile_readiness"],
-      schema: globalProfileReadinessSchema,
-      accessMode: "editable",
-      get: () => input.globalProfileReadinessStore.get(),
-      write: (value) => input.globalProfileReadinessStore.write(value)
-    }),
-    createPersonaResource(input.personaStore),
-    singletonSqliteResource({
-      key: "rp_profile",
-      title: "角色扮演全局资料",
-      tableGroup: "state.rp_profile",
-      tables: ["rp_profile"],
-      schema: rpProfileSchema,
-      accessMode: "editable",
-      get: () => input.rpProfileStore.get(),
-      write: async (value) => {
-        await input.rpProfileStore.write(value);
-        return input.rpProfileStore.get();
-      }
-    }),
+    {
+      key: "character_profile", title: "三层角色档案", description: "实例共享固定设定；通过会话中的 .config 和 .confirm 修改。",
+      shape: "singleton", accessMode: "readonly", durability: "source_of_truth",
+      storage: { kind: "sqlite", path: "character.sqlite", tables: ["character_documents"] },
+      export: { enabled: true, fileName: "character-profile.json", format: "json" },
+      adapter: { get: async () => characterRepository(input.config.dataDir).profile() }
+    },
     singletonSqliteResource({
       key: "setup_state",
       title: "初始化状态",
@@ -579,7 +563,7 @@ function createScenarioHostSessionStatesResource(
 function createStatefulRpSessionStatesResource(
   statefulRpStateStore: Pick<StatefulRpStateStore, "listRows">
 ): DataResourceDefinition {
-  return readOnlySqliteRowsResource({
+  const resource = readOnlySqliteRowsResource({
     key: "stateful_rp_session_states",
     title: "沉浸状态 RP 会话状态",
     shape: "collection",
@@ -591,6 +575,7 @@ function createStatefulRpSessionStatesResource(
     fileName: "stateful_rp_session_states.json",
     listRows: (query) => statefulRpStateStore.listRows(query)
   });
+  return { ...resource, storage: { kind: "sqlite", path: "character.sqlite", tables: ["character_documents"] } };
 }
 
 function readOnlySqliteRowsResource(input: {

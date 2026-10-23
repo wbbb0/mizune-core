@@ -1,3 +1,4 @@
+import { characterRepository } from "../../src/character/repository.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -586,6 +587,7 @@ test("DataRegistryService exposes initial file and directory resources", async (
     assert.deepEqual(listed.resources.map((resource) => resource.key), [
       "asset_session_refs",
       "audio_files",
+      "character_profile",
       "comfy_task_result_files",
       "comfy_tasks",
       "content_safety_audits",
@@ -596,14 +598,11 @@ test("DataRegistryService exposes initial file and directory resources", async (
       "context_manual_audit_events",
       "context_raw_messages",
       "embedding_profiles",
-      "global_profile_readiness",
       "global_rules",
       "group_membership",
       "live_resources",
-      "persona",
       "recent_errors",
       "requests",
-      "rp_profile",
       "runtime_browser_pages",
       "runtime_shell_sessions",
       "scenario_host_session_states",
@@ -998,24 +997,16 @@ test("DataRegistryService exports registry resources to stable dump files", asyn
   try {
     const service = createRegistryService(dataDir);
 
-    await service.patchSingleton("persona", {
-      name: "Bot",
-      temperament: "calm",
-      voiceStyle: "clear"
-    });
-    const first = await service.exportResource("persona") as { filePath: string; bytes: number };
-    assert.equal(first.filePath, join(dataDir, "dumps", "persona.json"));
+    { const store = characterRepository(dataDir); const draft = store.begin("test", "persona", "config", "assistant"); store.edit("test", "assistant", "persona.name", "set", "Bot", undefined, draft.id); store.confirm("test", "assistant"); }
+    const first = await service.exportResource("character_profile") as { filePath: string; bytes: number };
+    assert.equal(first.filePath, join(dataDir, "dumps", "character-profile.json"));
     assert.ok(first.bytes > 0);
-    assert.equal((JSON.parse(await readFile(first.filePath, "utf8")) as { name: string }).name, "Bot");
+    assert.equal((JSON.parse(await readFile(first.filePath, "utf8")) as { persona: { name: string } }).persona.name, "Bot");
 
-    await service.patchSingleton("persona", {
-      name: "Bot 2",
-      temperament: "calm",
-      voiceStyle: "clear"
-    });
-    const second = await service.exportResource("persona") as { filePath: string };
+    { const store = characterRepository(dataDir); const draft = store.begin("test", "persona", "config", "assistant"); store.edit("test", "assistant", "persona.name", "set", "Bot 2", undefined, draft.id); store.confirm("test", "assistant"); }
+    const second = await service.exportResource("character_profile") as { filePath: string };
     assert.equal(second.filePath, first.filePath);
-    assert.equal((JSON.parse(await readFile(second.filePath, "utf8")) as { name: string }).name, "Bot 2");
+    assert.equal((JSON.parse(await readFile(second.filePath, "utf8")) as { persona: { name: string } }).persona.name, "Bot 2");
 
     await service.createRow("global_rules", {
       id: "rule-1",
@@ -1056,28 +1047,10 @@ test("DataRegistryService exposes editable persona singleton and whitelist colle
   try {
     const service = createRegistryService(dataDir);
 
-    const persona = await service.getResource("persona") as {
-      resource: {
-        shape: string;
-        accessMode: string;
-        value: unknown;
-        uiTree?: unknown;
-      };
-    };
-    assert.equal(persona.resource.shape, "singleton");
-    assert.equal(persona.resource.accessMode, "editable");
-    assert.ok(persona.resource.uiTree);
-
-    await service.patchSingleton("persona", {
-      name: "Bot",
-      temperament: "calm",
-      voiceStyle: "clear"
-    });
-    assert.deepEqual((await service.getResource("persona") as { resource: { value: unknown } }).resource.value, {
-      name: "Bot",
-      temperament: "calm",
-      voiceStyle: "clear"
-    });
+    const profile = await service.getResource("character_profile") as { resource: { shape: string; accessMode: string } };
+    assert.equal(profile.resource.shape, "singleton");
+    assert.equal(profile.resource.accessMode, "readonly");
+    await assert.rejects(service.patchSingleton("character_profile", {}));
 
     const created = await service.createRow("whitelist", {
       targetType: "user",
@@ -1109,33 +1082,9 @@ test("DataRegistryService exposes migrated profile and setup singleton resources
   try {
     const service = createRegistryService(dataDir);
 
-    const rpProfile = await service.getResource("rp_profile") as {
-      resource: {
-        shape: string;
-        accessMode: string;
-        uiTree?: unknown;
-      };
-    };
-    assert.equal(rpProfile.resource.shape, "singleton");
-    assert.equal(rpProfile.resource.accessMode, "editable");
-    assert.ok(rpProfile.resource.uiTree);
-
-    await service.patchSingleton("rp_profile", {
-      identity: "搭档",
-      background: "夜间工作",
-      continuityFacts: "",
-      boundaries: "不跳出身份"
-    });
-    assert.equal((
-      await service.getResource("rp_profile") as { resource: { value: { boundaries: string } } }
-    ).resource.value.boundaries, "不跳出身份");
-
-    const readiness = await service.patchSingleton("global_profile_readiness", {
-      persona: "ready",
-      rp: "ready",
-      updatedAt: 2
-    }) as { value: { rp: string } };
-    assert.equal(readiness.value.rp, "ready");
+    const profile = await service.getResource("character_profile") as { resource: { value: { confirmed: string[] } } };
+    assert.deepEqual(profile.resource.value.confirmed, []);
+    await assert.rejects(service.patchSingleton("character_profile", { confirmed: ["persona"] }));
 
     const setupState = await service.getResource("setup_state") as {
       resource: {

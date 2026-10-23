@@ -133,95 +133,15 @@
 - `src/llm/llmClient.ts`
 - `webui/src/components/sessions/SessionModelRoutingControl.vue`
 
-## 资料分层
+## 资料分层与配置工作态
 
-当前仓库已经把长期资料拆成全局资料与会话级资料，而不是继续把所有信息塞进单层 `persona`：
+实例固定角色分为 `persona`、`social`、`embodiment`，按模式逐层读取；动态社交与模拟状态按会话保存。固定角色不再由会话身份覆盖，也不再从旧 persona/RP 表读取。当前角色档案以 `character.sqlite` 为唯一来源。
 
-- `persona`
-  - 只负责 bot 的名字、全局人格底色和语气风格
-  - 实例级全局数据
-- `rpProfile`
-  - 只负责 `rp_assistant` 模式下 bot 自身的真人化设定与边界
-  - 实例级全局数据
-- `scenarioHostState.profile`
-  - 只负责当前 `scenario_host` 会话所需的主题、世界基线、叙事风格与边界
-  - 每个会话独立保存，不跨聊天复用
-- `session.botProfile`
-  - 只负责当前聊天中的 bot 自我呈现覆盖，包括名字、身份定位、背景、性格表现和语气风格
-  - 每个会话独立保存；由用户在普通聊天中明确提出后，通过会话身份工具写入
-  - 可在 WebUI 会话“状态”页只读查看；WebUI 不提供第二套编辑入口
-  - 不承载安全边界、工具权限、模式职责或跨会话记忆
+首次沉浸会话经过四个确认阶段，`session.operationMode.kind = character_config` 记录当前阶段；草稿、revision 和引导认领状态由角色仓库持久化。确认与内容填满分离，用户可以留空确认。只有 `.confirm` 发布固定设定，普通游玩与 OOC 只能改动态属性。配置阶段保留会话历史。
 
-正常聊天中的自我呈现按以下顺序叠加：全局 `persona` → 模式 profile → 当前会话 `botProfile`。后层只覆盖同类自我呈现字段，不能改变前层规定的模式职责。例如 `scenario_host` 中的会话身份可以改变主持人的名字和口吻，但不能让 bot 变成玩家/NPC，也不能改写 Scenario 世界状态。
+Scenario 的主持资料和世界状态仍然独立保存在当前会话的 `scenarioHostState` 中，不能混入角色自身固定设定。技能配置继续使用自己的 `skill_config` 工作态。
 
-会话身份不是普通上下文记忆，不写入 `context_items`，也不依赖异步记忆抽取。私聊中的当前用户可以设置本会话身份；群聊因为共享同一个 session，当前只允许 bot owner 修改，避免任意群成员永久覆盖整群身份。普通聊天使用 `patch_current_chat_identity` / `clear_current_chat_identity` 修改；配置草稿阶段不暴露这些入口。
-
-Scenario 运行态同样是会话级数据，保存在 `scenario_host_session_states` 中；`profile` 与当前局势、位置、玩家角色、NPC、目标、lore、非角色实体、关系、剧情日志和轻规则配置等状态一起组成当前会话的完整 Scenario Host 状态。玩家和 NPC 的穿着与随身持有物保存在各自角色字段中，通用 `entities` 只描述地点、组织、物品等非角色对象。
-
-同时，系统单独维护全局准备度：
-
-- `persona`
-- `rp`
-
-它们通过 `GlobalProfileReadinessStore` 持久化，和会话本身的运行工作态分离。Scenario 是否完成初始化由当前会话的 `scenarioHostState.profile` 判定，不进入全局准备度。
-
-相关实现入口：
-
-- `src/identity/globalProfileReadinessSchema.ts`
-- `src/identity/globalProfileReadinessStore.ts`
-- `src/persona/personaSchema.ts`
-- `src/modes/rpAssistant/profileSchema.ts`
-- `src/modes/scenarioHost/profileSchema.ts`
-- `src/modes/scenarioHost/stateStore.ts`
-
-## 会话工作态与草稿语义
-
-当前会话通过 `session.operationMode` 表达当前工作态，而不是继续复用旧的单一 setup 标志。
-
-当前工作态包括：
-
-- `normal`
-- `persona_setup`
-- `persona_config`
-- `mode_setup`
-- `mode_config`
-
-其中：
-
-- `persona_setup` / `persona_config` 持有 `Persona` 草稿
-- `mode_setup` / `mode_config` 持有模式专属 profile 草稿；RP 草稿确认后写入全局 `rpProfile`，Scenario 草稿确认后写入当前会话 `scenarioHostState.profile`
-- `normal` 表示正常运行态，不应暴露直接写 profile 的运行时入口
-
-关键边界：
-
-- 草稿先存在会话态中，而不是直接写入正式数据
-- `confirm` 才会把草稿提交为正式资料
-- `cancel` 应放弃当前草稿并退出对应配置流程
-- 自动进入 persona/RP setup 由全局 readiness 决定；Scenario setup 由当前会话 profile 完整度决定
-- 显式配置和首次初始化是不同语义，不应继续混成一套 prompt / 工具入口
-- 进入或退出 `persona` / 模式 profile 的 setup/config 流程时，不应强制清空会话历史；系统会写入 `profile_phase_transition` transcript 标记作为模型可见的阶段边界
-- 退出配置流程时只重置草稿工作态和运行队列等临时状态，保留已有 transcript 与摘要；模型看到阶段边界后，应以当前系统注入的已保存 profile 为正式行为依据
-
-相关实现入口：
-
-- `src/conversation/session/sessionOperationMode.ts`
-- `src/conversation/session/sessionPersistence.ts`
-- `src/conversation/session/sessionMutations.ts`
-- `src/conversation/session/transcriptContract.ts`
-- `test/session/persistence.test.tsx`
-- `test/tools/tool-runtime-features.test.tsx`
-- `test/messaging/direct-command-features.test.tsx`
-
-## 运行态约束
-
-当前模型要求以下约束长期成立：
-
-- `normal` 态不直接暴露 profile 写入口
-- profile 草稿编辑和正常聊天要走不同 prompt / 工具边界
-- 会话标题、会话主体、场景状态、外部身份绑定不再互相串味
-- 全局 readiness、会话级 profile 与单会话工作态分别建模，不再复用一个字段承担多种职责
-
-如果后续继续扩展模式、身份源或 WebUI 展示，应该沿用上述边界，而不是重新把这些职责混回同一个字段。
+完整边界、分块工具和周期规则见 [三层角色与初始化](character-initialization.md)。
 
 ### 会话摘要与 transcript 快照
 
@@ -230,3 +150,9 @@ Scenario 运行态同样是会话级数据，保存在 `scenario_host_session_st
 ### 实时草稿与正式回复
 
 WebUI 的实时 provider 文本是可撤回草稿，通过 `draft_delta` 展示，通过 `draft_reset` 清除。候选失败、回退或完成时清除该候选草稿；只有通过 provider 响应和工具协议验证的内容才进入正式回复与 transcript。OneBot 的不可撤回发送保持在验证之后，不能将草稿直接用于消息投递。
+
+## 沉浸状态 RP 的回合后维护
+
+主回复与维护模型读取同一份三层固定档案和会话动态状态。代码先推进游戏时钟与周期事件，再按条件调用动态分块维护器。未确认的会话不进行后台初始化或结算。
+
+每次状态写入生成新 revision；提交同时检查状态与角色 revision、会话取消信号。人工修改、重置、删除、读档或全局配置变更后，旧维护结果不会覆盖新状态。任一维护响应失败时不提交半成品，也不清零本轮维护计时器。

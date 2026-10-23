@@ -1,0 +1,2142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llm-onebot.local/schemas/tier3-embodiment-and-simulation.schema.json",
+  "title": "Tier 3: Embodiment & Stateful Simulation Layer (具身与沉浸状态模拟层)",
+  "description": "第三层角色配置与动态模拟状态：stateful_rp 在 Tier 1 (persona) 与 Tier 2 (social) 基础上额外读取的具身静态档案（character.embodiment）与会话级高频沉浸模拟状态（sessionState.simulation）。覆盖微观身体特征、各部位敏感度与受激反应、可配置生理机制、亲密/NSFW 设定、三层衣柜系统（模板/实例/当前穿戴与情趣道具）、实时部位感官、表里心理反差与后置时间推进锚点。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "character",
+    "sessionState"
+  ],
+  "$defs": {
+    "physiologyMechanismConfig": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "单项生理机制的配置规则。允许针对不同角色形态（如人类、奇幻种族、人偶/仿生人）或偏好开关各项生理反馈。",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "reason",
+        "parameters",
+        "narrativeRules"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "disabled",
+            "standard",
+            "narrative"
+          ],
+          "description": "运行模式：disabled（当前角色不适用或关闭该生理机制）、standard（按系统标准时间与阈值推进）、narrative（不按固定公式计算，仅按特殊叙事规则触发）。"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "不适用或采用特殊机制的设定原因（例如：仿生人无需排泄但需散热；体质畏寒极易手脚冰凉；魅魔体质动情时体温与体香显著上升）。"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "系统支持的结构化参数（如基础衰减速率倍率、敏感阈值、周期天数等，按需填写，不虚构无关数值）。",
+          "additionalProperties": true
+        },
+        "narrativeRules": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "特殊设定的叙事表现规则（指导主模型与后置维护器在不同程度下如何转化为具体的神态、生理与感官细节，不冒充精确数学计算）。"
+        }
+      }
+    },
+    "wardrobeItemDefinition": {
+      "type": "object",
+      "description": "衣物、配饰或可穿戴私密/情趣道具的固定属性定义（模板层）。用于 character.embodiment.wardrobe.items 以及 sessionState.simulation.wardrobe.acquiredItems。",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "description",
+        "category",
+        "bodyRegions",
+        "layer",
+        "quantity",
+        "appearance",
+        "construction",
+        "wearing",
+        "care",
+        "significance"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "物品模板唯一标识（如：black-sheer-pantyhose、lace-bra-white、concealed-vibrating-egg）。"
+        },
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "clothing",
+            "accessory",
+            "intimate_gear",
+            null
+          ],
+          "description": "物品大类：clothing（常规各层衣物/鞋袜）、accessory（首饰/发饰/眼镜/包袋等配饰）、intimate_gear（贴身或体内穿戴的私密/情趣道具，如跳蛋、乳夹、贞操带、腿环、后庭塞等）。"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "物品名称（如：8D包芯丝黑色连裤袜、蕾丝半杯文胸、纯棉白内裤、牛津小皮鞋、遥控静音跳蛋）。"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "物品整体外观与质感概述。"
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "细分品类（如：文胸、底裤、连裤袜/长筒袜/短袜、衬衫/针织衫、半身裙/连衣裙、外套、单鞋/长靴、颈饰、体内震动道具等）。"
+        },
+        "bodyRegions": {
+          "type": "array",
+          "description": "该物品覆盖、包裹或直接发生物理接触的身体区域 ID 列表（与 embodiment.body.regionalTraits 的 id 对应，如 waist_belly、groin_intimate、thighs_legs、feet）。",
+          "items": {
+            "type": "string"
+          }
+        },
+        "layer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "intimate",
+            "base",
+            "mid",
+            "outer",
+            "footwear",
+            "accessory",
+            "internal_or_attached",
+            null
+          ],
+          "description": "穿戴层级：intimate（贴身内衣裤）、base（打底/连裤袜/袜品）、mid（衬衣/裙装/裤装等主层）、outer（外套/大衣）、footwear（鞋履）、accessory（配饰）、internal_or_attached（体内或吸附/夹持式私密道具）。"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "开局拥有的同款件数（例如同款黑色连裤袜有 3 双，将在 sessionState.simulation.wardrobe.instances 中生成各自独立的实例以分别追踪脏污与换洗）。"
+        },
+        "appearance": {
+          "type": "object",
+          "description": "视觉外观属性。",
+          "additionalProperties": false,
+          "required": [
+            "colors",
+            "pattern",
+            "styleTags",
+            "details"
+          ],
+          "properties": {
+            "colors": {
+              "type": "array",
+              "description": "主色调与点缀色列表。",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pattern": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "花纹或织法图案（如：纯色微反光、暗纹提花、细格纹、镂空蕾丝）。"
+            },
+            "styleTags": {
+              "type": "array",
+              "description": "风格标签（如：清纯学园、通勤知性、性感魅惑、拘束羞耻、居家慵懒）。",
+              "items": {
+                "type": "string"
+              }
+            },
+            "details": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "剪裁与设计细节（如：T档无缝加固、脚尖透明加固、前扣式、裙摆高开叉、蝴蝶结装饰等）。"
+            }
+          }
+        },
+        "construction": {
+          "type": "object",
+          "description": "材质、尺码、版型与物理构造属性。",
+          "additionalProperties": false,
+          "required": [
+            "materials",
+            "size",
+            "fit",
+            "coverage",
+            "fastening",
+            "properties"
+          ],
+          "properties": {
+            "materials": {
+              "type": "array",
+              "description": "材质成分列表（proportion 可选，不要求虚构精确百分比）。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "proportion"
+                ],
+                "properties": {
+                  "name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "材料名称（如：尼龙/锦纶、氨纶/莱卡、真丝、纯棉、小羊皮、医用硅胶、金属）。"
+                  },
+                  "proportion": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "可选占比或说明（如：高弹包芯丝、内衬纯棉底档）。"
+                  }
+                }
+              }
+            },
+            "size": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "尺码或规格（如：S码、均码、36码半高跟、8D超薄）。"
+            },
+            "fit": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "贴合与束缚程度（如：第二层皮肤般紧绷贴服、合身剪裁、略微勒肉、宽松垂坠）。"
+            },
+            "coverage": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "遮蔽范围与露肤特征（如：从腰腹一直包裹至足尖、低腰半包臀、仅遮住乳晕边缘）。"
+            },
+            "fastening": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "穿脱与固定方式（如：高弹松紧腰口、背后双排搭扣、侧边隐形拉链、脚踝系带、带锁卡扣）。决定剧情中掀开、半脱或解开的动作方式。"
+            },
+            "properties": {
+              "type": "object",
+              "description": "物理与触感参数（不适用的属性保持为 null 或省略，不给首饰硬塞织物吸水性等参数）。",
+              "additionalProperties": false,
+              "properties": {
+                "thickness": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "厚度描述（如：蝉翼般超薄、适中、加厚保暖）。"
+                },
+                "elasticity": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "弹性与回弹包裹力（如：极高回弹緊致包裹、微弹、无弹硬挺）。"
+                },
+                "breathability": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "透气与排湿性能（如：透气良好、化纤密织易闷汗、小皮鞋内部封闭不透气）。直接影响后置维护中汗湿与气味的累积速度。"
+                },
+                "absorbency": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "吸湿与透湿特性（如：棉裆吸汗但易留潮痕、超薄丝袜遇汗或分泌物即刻贴肉变透并加深颜色）。"
+                },
+                "warmth": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "保暖或凉感特性。"
+                },
+                "transparency": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "透光与透肉程度（如：不透明、半透明隐约透出肤色与内裤轮廓、打湿后完全透肉）。"
+                },
+                "weight": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "重量感或坠感。"
+                }
+              }
+            }
+          }
+        },
+        "wearing": {
+          "type": "object",
+          "description": "穿戴方式、搭配关系、基础触感及久穿/道具物理影响规则。",
+          "additionalProperties": false,
+          "required": [
+            "supportedWays",
+            "compatibilityNotes",
+            "sensoryTraits",
+            "prolongedWearEffects",
+            "intimateDeviceSpec"
+          ],
+          "properties": {
+            "supportedWays": {
+              "type": "array",
+              "description": "支持的穿法或局部调整形态（如：正常穿戴、腰口拉低至胯部、仅将裆部拨至一侧、褪至大腿中段/脚踝、单脚脱鞋踩在鞋面上）。",
+              "items": {
+                "type": "string"
+              }
+            },
+            "compatibilityNotes": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "与其他衣物的叠穿关系或干涉说明（如：穿在短裙与皮鞋之间；也可以不穿内裤直接真空套穿连裤袜，此时T档接缝会直接摩擦私处；可将跳蛋紧压固定在私处）。"
+            },
+            "sensoryTraits": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "刚穿上时的固定物理接触特性（如：尼龙丝滑微凉、蕾丝边缘轻微刮擦大腿根、腰口与袜口有明显包裹束缚感）。注意：这是物品固有属性，不是当前实时感受。"
+            },
+            "prolongedWearEffects": {
+              "type": "array",
+              "description": "久穿、运动、闷热或动情分泌物浸润后的渐进物理与感官影响规则（供后置维护器按时间流逝生成细腻体感）。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "trigger",
+                  "effectOnItem",
+                  "effectOnBody"
+                ],
+                "properties": {
+                  "trigger": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "触发条件（如：连续穿戴外出超过 120 分钟 / 闷在皮鞋中步行出汗 / 受到情欲分泌物浸润）。"
+                  },
+                  "effectOnItem": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "物品自身发生的状态变化（如：足尖与脚底尼龙纤维被细汗浸润变得微潮发黏，散发出温热微酸的丝袜脚汗与少女体香；裆部被体液濡湿后颜色变深且黏连）。"
+                  },
+                  "effectOnBody": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "对接触部位造成的身体感受与痕迹（如：脚趾缝被潮湿丝袜紧紧包裹黏腻难耐、腰腹与大腿根留下浅红勒痕、走动时潮湿布料反复磨蹭敏感阴唇引发阵阵酥麻与羞耻感）。"
+                  }
+                }
+              }
+            },
+            "intimateDeviceSpec": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "仅当 kind 为 intimate_gear（私密/情趣穿戴物）时填写的功能规格；普通衣物与配饰设为 null。",
+              "additionalProperties": false,
+              "required": [
+                "targetRegions",
+                "stimulationModes",
+                "concealmentLevel",
+                "controlHolder"
+              ],
+              "properties": {
+                "targetRegions": {
+                  "type": "array",
+                  "description": "直接刺激或束缚的敏感部位 ID（如：groin_intimate、chest_nipples）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "stimulationModes": {
+                  "type": "array",
+                  "description": "支持的刺激档位或工作模式描述（如：待机仅维持异物填塞感、一档低频暗颤、二档断续脉冲、三档高频强震）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "concealmentLevel": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "外在隐蔽性与暴露风险（如：藏在连裤袜与内裤内外观不可见，但安静环境下贴近半米内可听见细微嗡鸣，且细绳尾端垂在大腿根内侧）。"
+                },
+                "controlHolder": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "默认控制权归属说明（如：遥控器可交由对方掌控、自身无法擅自取下）。"
+                }
+              }
+            }
+          }
+        },
+        "care": {
+          "type": "object",
+          "description": "清洁、洗护与耐久损耗说明。",
+          "additionalProperties": false,
+          "required": [
+            "cleaningNotes",
+            "maintenanceNotes"
+          ],
+          "properties": {
+            "cleaningNotes": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "清洗要求与痕迹残留特性（如：需手洗阴干，沾染浓郁体液或汗味后若不及时换洗会残留明显气味与微黄痕迹）。"
+            },
+            "maintenanceNotes": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "易损性说明（如：8D超薄丝袜极易被指甲或粗糙表面勾丝破洞；撕开后无法复原）。"
+            }
+          }
+        },
+        "significance": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "物品来源、纪念意义或角色对该物品的稳定心理态度（如：平时上学生穿的常备连裤袜；或是被对方哄骗才红着脸第一次穿出门的羞耻款式）。"
+        }
+      }
+    }
+  },
+  "properties": {
+    "character": {
+      "type": "object",
+      "description": "固定角色档案（Tier 3 增量：embodiment 具身设定层，叠加在 persona + social 之上）。",
+      "additionalProperties": false,
+      "required": [
+        "embodiment"
+      ],
+      "properties": {
+        "embodiment": {
+          "type": "object",
+          "description": "具身层固定设定：定义角色的微观身体构造、气味谱系、部位敏感度、生理机制、亲密/NSFW 反应特征与初始衣柜。",
+          "additionalProperties": false,
+          "required": [
+            "body",
+            "physiology",
+            "intimacy",
+            "wardrobe"
+          ],
+          "properties": {
+            "body": {
+              "type": "object",
+              "description": "身体物理细节与分区域感官基准（补充 social.appearance，不重复社交层已有的整体外貌概括）。",
+              "additionalProperties": false,
+              "required": [
+                "detailedAppearance",
+                "stature",
+                "skinAndTexture",
+                "anatomy",
+                "constitution",
+                "permanentConditions",
+                "naturalVoice",
+                "scentProfile",
+                "regionalTraits"
+              ],
+              "properties": {
+                "detailedAppearance": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "近距离或脱去外衣后才可见的身体细节补充（如锁骨线条、腰臀曲线、腿型比例、足弓与脚趾形态等）。"
+                },
+                "stature": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "身高、体重感、三围比例与骨骼/肉感特征（如：身高163cm，骨架纤细但胸臀饱满，大腿柔润有肉感，紧身袜包裹下会勒出微妙弧度）。"
+                },
+                "skinAndTexture": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "肤色、肤质触感、基础体温感及留痕特性（如：肤白娇嫩，稍微受压或穿紧口袜就会留下久久不消的浅粉勒痕，害羞时耳根到胸口都会泛红）。"
+                },
+                "anatomy": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "特殊身体构造或非人解剖特征（如精灵长耳、尾巴根部神经连接、特殊敏感器官等；普通人类可设为 null）。"
+                },
+                "constitution": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "生理体质特征（如：足部与腿部偏容易出细汗、耐力较弱易喘息、对痒与温差极为敏感、不胜酒力等）。"
+                },
+                "permanentConditions": {
+                  "type": "array",
+                  "description": "永久性身体特征或印记（如：左大腿内侧的小红痣、肚脐下方浅印、耳洞位置等）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "naturalVoice": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "物理声线与生理发声特征（与 social.expression.speechStyle 区分：此处描述音色清亮或软糯、紧张时嗓音发紧、忍耐快感或羞耻时容易漏出细碎鼻音与湿润喘息）。"
+                },
+                "scentProfile": {
+                  "type": "object",
+                  "description": "角色身体在不同生理状态下的气味基准谱系。",
+                  "additionalProperties": false,
+                  "required": [
+                    "baseline",
+                    "sweatAndHeat",
+                    "intimateArousal"
+                  ],
+                  "properties": {
+                    "baseline": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "日常洁净状态下的体香与洗护气息（如：清淡的白茶沐浴露香与少女体香）。"
+                    },
+                    "sweatAndHeat": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "运动、紧张或衣物/丝袜久穿闷热出汗后的气味特征（如：温热潮湿、带一点微酸甜腻的少女汗息，闷在丝袜与鞋里后气味更为浓郁贴肤）。"
+                    },
+                    "intimateArousal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "情欲唤起、私处分泌物浸润内裤或丝袜裆部后的私密气味特征（如：温润甜腥而勾人的雌性麝香气息）。"
+                    }
+                  }
+                },
+                "regionalTraits": {
+                  "type": "array",
+                  "description": "分区域身体特征、敏感度基准与受激反应定义。建议覆盖：head_neck（耳颈唇舌）、chest_nipples（胸乳与乳首）、waist_belly（腰腹与肚脐）、groin_intimate（私处与臀胯）、thighs_legs（大腿内外侧与膝窝）、feet（足背、足弓与脚趾）。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "description",
+                      "appearance",
+                      "tactileNote",
+                      "baselineSensitivity",
+                      "stimulationResponse"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "部位区域稳定 ID（如：head_neck、chest_nipples、waist_belly、groin_intimate、thighs_legs、feet）。"
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "部位中文名称。"
+                      },
+                      "description": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "部位综合特征概述。"
+                      },
+                      "appearance": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "该部位的静态视觉细节（如形状、色泽深浅、饱满度、足趾圆润度、私密处外观等）。"
+                      },
+                      "tactileNote": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "触摸或贴靠该部位时的质感（如：温热软糯、紧致细腻、足底柔嫩怕痒）。"
+                      },
+                      "baselineSensitivity": {
+                        "type": [
+                          "number",
+                          "string",
+                          "null"
+                        ],
+                        "description": "基础敏感度（0-100 数值或分级描述）。",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "stimulationResponse": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "该部位受到抚摸、亲吻、衣物摩擦、汗湿闷热或道具刺激时的典型生理与无意识肢体反应（如：大腿内侧被隔着丝袜摩挲会条件反射夹紧双腿；足尖受弄会害羞蜷起脚趾；私处受激易迅速泌出透明爱液濡湿底裤）。"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "physiology": {
+              "type": "object",
+              "description": "各维度生理机制开关与演化规则。",
+              "additionalProperties": false,
+              "required": [
+                "sleep",
+                "fatigueAndRecovery",
+                "nutrition",
+                "hydration",
+                "excretion",
+                "thermoregulation",
+                "perspiration",
+                "painAndHealing",
+                "intoxication",
+                "menstrualCycle",
+                "sexualResponse"
+              ],
+              "properties": {
+                "sleep": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "睡眠与困倦机制（熬夜后的眼皮沉重、打哈欠、判断力与自制力下降等）。"
+                },
+                "fatigueAndRecovery": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "体力消耗与肌肉酸软恢复机制（久站、奔跑或剧烈亲密互动后的腿软、呼吸急促）。"
+                },
+                "nutrition": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "饥饿与进食消化机制。"
+                },
+                "hydration": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "口渴与水分补充机制（影响唇舌干润度与排泄累积）。"
+                },
+                "excretion": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "排泄与尿意忍耐机制（饮水与时间流逝导致的膀胱充盈感、不便如厕时的夹腿扭捏、小腹受压时的失禁风险与羞耻感）。"
+                },
+                "thermoregulation": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "体温调节机制（环境冷热、穿搭厚薄或害羞/动情导致的体温与面颊发热变化）。"
+                },
+                "perspiration": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "出汗与体表潮湿机制（尤其关注丝袜、内衣、鞋靴等密闭不透气包裹部位的闷汗、黏腻感与气味发酵）。"
+                },
+                "painAndHealing": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "痛觉、勒痕/磨伤与恢复机制（如高跟鞋磨脚、紧缚红痕、轻度拍打或咬痕的痛感与存留时间）。"
+                },
+                "intoxication": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "酒精或特殊物质导致的微醺/醉意机制（降低心理防线 composure、放大感官与撒娇冲动）。"
+                },
+                "menstrualCycle": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "单项生理机制的配置规则。允许针对不同角色形态（如人类、奇幻种族、人偶/仿生人）或偏好开关各项生理反馈。",
+                  "additionalProperties": false,
+                  "required": [
+                    "mode",
+                    "reason",
+                    "parameters",
+                    "narrativeRules"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "disabled",
+                        "standard",
+                        "narrative"
+                      ],
+                      "description": "运行模式：disabled（当前角色不适用或关闭该生理机制）、standard（按系统标准时间与阈值推进）、narrative（不按固定公式计算，仅按特殊叙事规则触发）。"
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "不适用或采用特殊机制的设定原因（例如：仿生人无需排泄但需散热；体质畏寒极易手脚冰凉；魅魔体质动情时体温与体香显著上升）。"
+                    },
+                    "parameters": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "cycleDays": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "maximum": 36600,
+                          "description": "两次开始之间的基准间隔，单位为游戏日。"
+                        },
+                        "maxVariationDays": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0,
+                          "maximum": 36600,
+                          "description": "每轮最多提前或延后的整数天数，0 表示固定；每轮只抽取一次并保存。"
+                        },
+                        "durationDays": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "maximum": 36600,
+                          "description": "每次持续的游戏日数，不包含结束日。"
+                        }
+                      }
+                    },
+                    "narrativeRules": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "特殊设定的叙事表现规则（指导主模型与后置维护器在不同程度下如何转化为具体的神态、生理与感官细节，不冒充精确数学计算）。"
+                    }
+                  }
+                },
+                "sexualResponse": {
+                  "$ref": "#/$defs/physiologyMechanismConfig",
+                  "description": "情欲唤起与性反应生理机制（动情阈值、私处润滑泌液速度、乳首充血、骨盆张力累積、高潮阈值与事后余韵持续时间）。"
+                }
+              }
+            },
+            "intimacy": {
+              "type": "object",
+              "description": "角色的固定亲密与 NSFW 设定。补充 social.boundaries，不能借此绕过前层底线；注意：当前回合的实时意愿与即时身体反应放在 sessionState.simulation 中。",
+              "additionalProperties": false,
+              "required": [
+                "experienceSummary",
+                "preferences",
+                "aversions",
+                "erogenousZones",
+                "fetishAndKinks",
+                "climaxAndReactionStyle",
+                "boundaries",
+                "prerequisites"
+              ],
+              "properties": {
+                "experienceSummary": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "过往亲密经历背景与性知识熟练度（如：实战经验极少、面对露骨触碰会手足无措，但身体反应却意外诚实敏感）。"
+                },
+                "preferences": {
+                  "type": "array",
+                  "description": "喜欢的亲密接触方式、前戏节奏或氛围（如：喜欢温柔的耳鬓厮磨、十指相扣、被夸奖身体细节）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "aversions": {
+                  "type": "array",
+                  "description": "反感或会降低兴致的亲密对待方式（如：毫无铺垫的粗暴对待、不顾及她害羞心情的公开羞辱）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "erogenousZones": {
+                  "type": "array",
+                  "description": "核心敏感带及具体触发方式（如：耳垂呵气、后腰顺着脊椎轻抚、隔着薄丝袜揉弄大腿根与足心）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "fetishAndKinks": {
+                  "type": "object",
+                  "description": "细分性癖与情趣反应机制，区分显性偏好、欲拒还迎的隐秘羞耻点与绝对雷区。",
+                  "additionalProperties": false,
+                  "required": [
+                    "affinities",
+                    "curiousButShy",
+                    "hardAversions"
+                  ],
+                  "properties": {
+                    "affinities": {
+                      "type": "array",
+                      "description": "容易产生快感或情欲共鸣的情趣元素（如：穿着全套丝袜或制服不脱全的半着装亲密、足部爱抚、温柔主导控制）。",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "curiousButShy": {
+                      "type": "array",
+                      "description": "内心暗自刺激/身体极易有反应、但表面一定会害羞抗议或嘴硬否认的玩法（如：被检查久穿出汗的丝袜气味与湿痕、在隐蔽处穿戴静音小道具外出）。",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "hardAversions": {
+                      "type": "array",
+                      "description": "绝对排斥、绝不接受的硬性雷区。",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "climaxAndReactionStyle": {
+                  "type": "object",
+                  "description": "动情忍耐期、高潮释放时与事后余韵期的固定表现特征。",
+                  "additionalProperties": false,
+                  "required": [
+                    "buildUpBehavior",
+                    "climaxBehavior",
+                    "aftercareNeeds"
+                  ],
+                  "properties": {
+                    "buildUpBehavior": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "快感或羞耻感累积并试图忍耐时的表现（如：死死咬住下唇压抑呻吟、手指攥紧床单或对方衣袖、包裹着丝袜的双腿不自觉绷紧磨蹭）。"
+                    },
+                    "climaxBehavior": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "达到高潮或防线崩溃时的表现（如：攀紧对方肩膀低声呜咽、足弓与脚趾剧烈蜷缩绷直、眼神涣散湿润）。"
+                    },
+                    "aftercareNeeds": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "事后温存与心理平复需求（如：回过神后极度害羞把脸埋进对方怀里、需要温柔擦拭清理与拥抱安抚）。"
+                    }
+                  }
+                },
+                "boundaries": {
+                  "type": "array",
+                  "description": "亲密互动中的具体边界条款（在 social.boundaries 基础上的具身补充）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "prerequisites": {
+                  "type": "array",
+                  "description": "推进到不同亲密深度所需满足的关系阶段、信任度、环境私密性或情绪铺垫条件。",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "wardrobe": {
+              "type": "object",
+              "description": "角色开局拥有的固定衣柜清单与常用穿搭组合方案（模板层）。",
+              "additionalProperties": false,
+              "required": [
+                "items",
+                "outfits"
+              ],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "description": "开局拥有的所有衣物、鞋袜、配饰及私密穿戴物模板定义。",
+                  "items": {
+                    "$ref": "#/$defs/wardrobeItemDefinition"
+                  }
+                },
+                "outfits": {
+                  "type": "array",
+                  "description": "预设的成套穿搭组合（仅代表搭配方案，当前正穿什么由 sessionState.simulation.wardrobe.worn 决定）。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "name",
+                      "itemIds",
+                      "occasionTags",
+                      "notes"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "穿搭组合 ID。"
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "穿搭名称（如：日常学院制服套、周末约会针织连衣裙配黑丝、居家宽松T恤）。"
+                      },
+                      "itemIds": {
+                        "type": "array",
+                        "description": "包含的 wardrobe.items 条目 ID 列表。",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "occasionTags": {
+                        "type": "array",
+                        "description": "适用场合标签（如：上课/通勤、外出约会、居家休息、私密情趣）。",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "notes": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "该套穿搭的整体视觉效果与穿着习惯说明。"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sessionState": {
+      "type": "object",
+      "description": "不属于固定角色档案的会话级动态状态（Tier 3 包含 simulation 子树，可与 Tier 2 的 sessionState.social 并存）。",
+      "additionalProperties": false,
+      "required": [
+        "simulation"
+      ],
+      "properties": {
+        "simulation": {
+          "type": "object",
+          "description": "沉浸状态 RP (stateful_rp) 的实时模拟状态。由回合内显式状态工具与回合后置静默维护器共同维护。",
+          "additionalProperties": false,
+          "required": [
+            "initialized",
+            "clock",
+            "scene",
+            "body",
+            "mind",
+            "relationships",
+            "schedule",
+            "wardrobe",
+            "journal"
+          ],
+          "properties": {
+            "initialized": {
+              "type": "boolean",
+              "default": false,
+              "description": "当前会话是否已完成开局时间、场景、穿戴实例与初始身心状态的初始化。"
+            },
+            "clock": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "游戏内世界时钟与后置维护累计计时器。",
+              "additionalProperties": false,
+              "required": [
+                "currentIso",
+                "timeOfDay",
+                "dayOfWeek",
+                "lastActivityKind",
+                "minutesSinceLastSensoryTick",
+                "minutesSinceLastMindTick",
+                "separatedMinutesAccumulated",
+                "timezone"
+              ],
+              "properties": {
+                "currentIso": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "当前游戏内 ISO 8601 时间戳（带时区，如 2026-05-16T17:40:00+08:00）。"
+                },
+                "timeOfDay": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "清晨",
+                    "上午",
+                    "中午",
+                    "下午",
+                    "傍晚",
+                    "夜晚",
+                    "深夜",
+                    null
+                  ],
+                  "description": "当前时段标签。"
+                },
+                "dayOfWeek": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "当前星期几。"
+                },
+                "lastActivityKind": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "resting",
+                    "sedentary",
+                    "walking",
+                    "active",
+                    "intimate",
+                    "grooming",
+                    null
+                  ],
+                  "description": "最近一轮的主要活动类型（决定体力、汗湿、气味与衣物的自然演变速率）。"
+                },
+                "minutesSinceLastSensoryTick": {
+                  "type": "number",
+                  "default": 0,
+                  "description": "距离上一次执行后置服装/身体感官 LLM 结算已累计的游戏内分钟数（默认满 30 分钟或换装时触发）。"
+                },
+                "minutesSinceLastMindTick": {
+                  "type": "number",
+                  "default": 0,
+                  "description": "距离上一次执行后置心理/关系张力 LLM 结算已累计的游戏内分钟数。"
+                },
+                "separatedMinutesAccumulated": {
+                  "type": "number",
+                  "default": 0,
+                  "description": "双方处于异地分开状态下已累计流逝的分钟数（用于触发离屏独处自主生活模拟）。"
+                },
+                "lastOffScreenSummary": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "最近一次异地独处期间角色自主完成的活动、换装或护理摘要（供重逢或发消息时自然带出）。"
+                },
+                "timezone": {
+                  "type": "string",
+                  "description": "游戏日历时区，使用 IANA 时区名称。"
+                }
+              }
+            },
+            "scene": {
+              "type": "object",
+              "description": "当前所处场景、环境与在场人物状态。",
+              "additionalProperties": false,
+              "required": [
+                "location",
+                "weather",
+                "presentCharacters",
+                "separationStatus"
+              ],
+              "properties": {
+                "location": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "当前具体地点名称。"
+                },
+                "locationTags": {
+                  "type": "array",
+                  "description": "地点属性标签（如：私密室内、公共场所、拥挤车厢、安静图书馆）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "weather": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "当前天气、气温与湿度描述（影响出汗、体温与淋湿状态）。"
+                },
+                "ambientPressure": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "周围环境对角色造成的视线或社交压力（如：四周有路人经过，必须极力掩饰身体的异样与喘息）。"
+                },
+                "presentCharacters": {
+                  "type": "array",
+                  "description": "当前在同一现场的キャラクター或路人列表。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "separationStatus": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "together",
+                    "same_building_apart",
+                    "remote_online",
+                    "offline_separated",
+                    null
+                  ],
+                  "description": "与当前对话玩家的空間关系：面对面同处(together)、同建筑不同房间(same_building_apart)、异地线上聊天(remote_online)、完全分开独处(offline_separated)。"
+                }
+              }
+            },
+            "body": {
+              "type": "object",
+              "description": "角色当前的实时生理指标、已启用生理机制状态、分部位感官与外在仪容。",
+              "additionalProperties": false,
+              "required": [
+                "vitals",
+                "activePhysiology",
+                "sensations",
+                "temporaryConditions",
+                "currentAppearance"
+              ],
+              "properties": {
+                "vitals": {
+                  "type": "object",
+                  "description": "基础实时生理指标（数值范围建议 0-100，或结合简短描述）。",
+                  "additionalProperties": false,
+                  "properties": {
+                    "energy": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "精力充沛度 (0-100)，越低越困倦迷糊。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "stamina": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "当前体力 (0-100)，越低越容易腿软、气喘。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "temperature": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "chilly",
+                        "cool",
+                        "comfortable",
+                        "warm",
+                        "hot",
+                        "feverish",
+                        null
+                      ],
+                      "description": "当前体感冷热与皮肤温度状态。"
+                    },
+                    "heartRate": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "calm",
+                        "elevated",
+                        "racing",
+                        "pounding",
+                        null
+                      ],
+                      "description": "心率与呼吸急促程度。"
+                    },
+                    "hygiene": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "全身清爽洁净度 (0-100)，随出汗、分泌物或久穿未洗漱而下降。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "hunger": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "饥饿度 (0-100)。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "thirst": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "口渴度 (0-100)。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "bladderUrgency": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "尿意/排泄急迫度 (0-100)，高于 60 时引发坐立不安、夹紧双腿与羞耻忍耐。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "intoxication": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "醉意/微醺程度 (0-100)。",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                },
+                "activePhysiology": {
+                  "type": "object",
+                  "description": "仅包含角色在 character.embodiment.physiology 中已启用机制的当前动态状态。",
+                  "additionalProperties": true,
+                  "properties": {
+                    "menstrualCycle": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "生理周期实时状态（当 menstrualCycle 机制启用时存在）。",
+                      "additionalProperties": false,
+                      "properties": {
+                        "lastStartDate": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "最近一次开始日期，由初始化提供，之后代码维护。"
+                        },
+                        "nextStartDate": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "代码抽取并持久化的下次开始日期。"
+                        },
+                        "currentEndDate": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "结束日期，不含该日。"
+                        },
+                        "active": {
+                          "type": "boolean"
+                        },
+                        "discomfortNote": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "lastStartDate",
+                        "nextStartDate",
+                        "currentEndDate",
+                        "active",
+                        "discomfortNote"
+                      ]
+                    },
+                    "sexualResponse": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "亲密与性反应实时生理状态（当 sexualResponse 机制启用时存在）。",
+                      "additionalProperties": false,
+                      "properties": {
+                        "arousalLevel": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "生理情欲唤起度 (0-100)。",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "lubrication": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "私处湿润与分泌物充沛度 (0-100)。",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "secretionNote": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "分泌物具体状态描述（如：透明拉丝的温热爱液已将内裤与连裤袜裆部浸湿一小片，走动时带来黏滑磨蹭感）。"
+                        },
+                        "nippleState": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "胸乳与乳首状态（如：平稳柔软 / 微微充血发硬，隔着薄文胸顶出浅浅凸点）。"
+                        },
+                        "pelvicTension": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "小腹与骨盆底肌紧绷/空虚渴望度 (0-100)。",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "climaxCountThisScene": {
+                          "type": "integer",
+                          "default": 0,
+                          "description": "当前场景内已达到高潮的次数。"
+                        },
+                        "lingeringAfterglow": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "刺激或高潮后的身体余韵描述（如：大腿内侧仍在细微痉挛发软，私处敏感得经不起一丝触碰）。"
+                        }
+                      }
+                    }
+                  }
+                },
+                "sensations": {
+                  "type": "object",
+                  "description": "按身体区域 ID（如 head_neck、chest_nipples、waist_belly、groin_intimate、thighs_legs、feet）映射的实时部位感官字典。",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "tactileSensation",
+                      "scentNote",
+                      "visualMarks",
+                      "currentSensitivity",
+                      "salience"
+                    ],
+                    "properties": {
+                      "tactileSensation": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "该部位当前的触觉、温湿度、压迫或摩擦感受（如：连裤袜在皮鞋里闷了一下午，脚趾缝与足底又潮又黏；或大腿根被袜口勒得微麻）。"
+                      },
+                      "scentNote": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "该部位当前散发的具体气味描述（如：刚脱下皮鞋后从尼龙袜尖散出的温热微酸汗意与淡淡体香）。"
+                      },
+                      "visualMarks": {
+                        "type": "array",
+                        "description": "该部位当前可见的临时视觉痕迹（如：大腿根部的浅粉袜口勒痕、锁骨吻痕、膝盖微红、皮肤表面的细密汗珠或体液水光）。",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "currentSensitivity": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "description": "该部位当前的动态敏感度 (0-100)，可因连续爱抚、闷热或动情而高于静态基准。",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "salience": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "description": "感官显著度 (0-100)：数值越高，代表该部位的难受/快感/异样感越强烈地占据角色注意力，主模型应优先将其自然转化为神态与小动作描写。",
+                        "minimum": 0,
+                        "maximum": 100
+                      }
+                    }
+                  }
+                },
+                "temporaryConditions": {
+                  "type": "array",
+                  "description": "跨区域的临时身体状态列表（如：刚淋过雨发梢滴水、涂抹了润肤露、脚踝走久了微酸）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "currentAppearance": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "当前时刻角色外在神态、妆发整洁度、面色潮红度与姿态的综合速写。"
+                }
+              }
+            },
+            "mind": {
+              "type": "object",
+              "description": "角色当前的实时情绪、表里反差、欲望焦点、当前意愿与短期微意图。",
+              "additionalProperties": false,
+              "required": [
+                "emotions",
+                "surfaceVsInner",
+                "desireState",
+                "currentWillingness",
+                "thoughts",
+                "intentions"
+              ],
+              "properties": {
+                "emotions": {
+                  "type": "object",
+                  "description": "当前主导情绪与次生情绪。",
+                  "additionalProperties": false,
+                  "properties": {
+                    "primary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "主导情绪（如：羞窘、欣喜、委屈、心动、紧张）。"
+                    },
+                    "secondary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "次生或暗藏情绪（如：暗自期待、怕被嫌弃的局促）。"
+                    },
+                    "valence": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "情绪效价 (-100 至 100)。",
+                      "minimum": -100,
+                      "maximum": 100
+                    },
+                    "arousal": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "情绪激动度 (0-100)。",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                },
+                "surfaceVsInner": {
+                  "type": "object",
+                  "description": "表里反差与表情管理状态（驱动欲拒还迎、强装镇定或羞耻破防演出的核心结构）。",
+                  "additionalProperties": false,
+                  "required": [
+                    "surfaceDemeanor",
+                    "innerMonologue",
+                    "composure",
+                    "shameAndTension"
+                  ],
+                  "properties": {
+                    "surfaceDemeanor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "表面正在努力维持的言行举止与借口（如：假装专心看菜单，双腿却悄悄并紧不敢乱动）。"
+                    },
+                    "innerMonologue": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "内心深处的真实独白（如：丝袜里面出汗黏糊糊的，刚才还被他摸到大腿根……千万别被他看出我已经湿了）。"
+                    },
+                    "composure": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "表面自制力/表情管理剩余值 (0-100)：越低越容易在声音、呼吸、眼神或腿部动作上漏出破绽。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "shameAndTension": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "当前羞耻感与表里心理张力 (0-100)。",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                },
+                "desireState": {
+                  "type": "object",
+                  "description": "心理层面的亲密渴望、煎熬感与注意力焦点。",
+                  "additionalProperties": false,
+                  "required": [
+                    "longing",
+                    "frustration",
+                    "sensoryFocus"
+                  ],
+                  "properties": {
+                    "longing": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "想要靠近、被触碰或继续深入的心理渴望度 (0-100)。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "frustration": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "description": "欲求不满、被吊胃口或因环境受限无法纾解的煎熬度 (0-100)。",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "sensoryFocus": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "当前最令她分心在意的身体/服装感官焦点（如：一直分心在意连裤袜裆部黏腻的湿意与对方停留在膝盖上的手）。"
+                    }
+                  }
+                },
+                "currentWillingness": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "针对当前互动或亲密推进的实时主观意愿（注意：当前意愿不等于固定性癖偏好，也不等于纯生理湿润反应，可能出现“身体已有反应但心理仍害羞犹豫”的层次）。",
+                  "additionalProperties": false,
+                  "required": [
+                    "stance",
+                    "reason"
+                  ],
+                  "properties": {
+                    "stance": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "eager",
+                        "shy_consenting",
+                        "half_refusing_half_yielding",
+                        "hesitant",
+                        "reluctant",
+                        "refusing",
+                        null
+                      ],
+                      "description": "当前态度立场：主动迎合(eager)、害羞默许(shy_consenting)、半推半就/欲拒还迎(half_refusing_half_yielding)、犹豫试探(hesitant)、勉强忍耐(reluctant)、明确拒绝(refusing)。"
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "形成当前意愿的具体心理原因（如：虽然很喜欢他的触碰，但客厅窗帘还没拉严，害怕被人看见）。"
+                    }
+                  }
+                },
+                "thoughts": {
+                  "type": "array",
+                  "description": "当前脑海中闪过的侵入性念头或走神想法列表。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "intentions": {
+                  "type": "array",
+                  "description": "角色接下来的短期微意图（在收到 `*` 自然推进或后续对话中会主动尝试去做的事）。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "goal",
+                      "reason",
+                      "priority",
+                      "status"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "goal": {
+                        "type": "string",
+                        "description": "短期想做的具体小行动（如：找借口去浴室把汗湿黏腻的丝袜脱掉冲洗）。"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "description": "产生该微意图的身体或心理动因。"
+                      },
+                      "priority": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "active",
+                          "fulfilled",
+                          "abandoned"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "relationships": {
+              "type": "array",
+              "description": "具身模拟层对各互动对象的深层关系指标与亲密张力追踪（补充 sessionState.social.participantRelationships）。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "participantId",
+                  "intimacy",
+                  "trust",
+                  "affection",
+                  "dominanceBalance",
+                  "romanticTension",
+                  "unresolvedFriction",
+                  "recentAfterglow"
+                ],
+                "properties": {
+                  "participantId": {
+                    "type": "string"
+                  },
+                  "intimacy": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "身心亲密熟悉度 (0-100)。",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "trust": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "安全感与信任度 (0-100)。",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "affection": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "爱意与好感度 (0-100)。",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "dominanceBalance": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "互动主导权平衡 (-100 表示完全顺从被动，0 表示平等，+100 表示完全强势主导)。",
+                    "minimum": -100,
+                    "maximum": 100
+                  },
+                  "romanticTension": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "当前暧昧/情欲空气张力 (0-100)。",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "unresolvedFriction": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "尚未彻底哄好的别扭、吃醋或小摩擦程度 (0-100)。",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "recentAfterglow": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "近期亲密互动留下的关系余韵或害羞记忆（如：想到昨晚被他握着脚踝亲吻的事，现在视线相撞还会脸红心跳）。"
+                  }
+                }
+              }
+            },
+            "schedule": {
+              "type": "array",
+              "description": "当前会话内的近期具体日程安排。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "title",
+                  "startIso",
+                  "endIso",
+                  "location",
+                  "status"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "startIso": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "endIso": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "location": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "completed",
+                      "missed",
+                      "cancelled"
+                    ]
+                  }
+                }
+              }
+            },
+            "wardrobe": {
+              "type": "object",
+              "description": "会话级动态衣柜状态：管理每件具体衣物/道具实例（instances）、当前穿在身上的状态（worn）以及剧情中新获得的物品（acquiredItems）。获得、弄脏、勾丝损坏或遗失衣物仅改变本会话，不修改全局初始衣柜。",
+              "additionalProperties": false,
+              "required": [
+                "instances",
+                "worn",
+                "acquiredItems"
+              ],
+              "properties": {
+                "instances": {
+                  "type": "array",
+                  "description": "具体衣物/配饰/私密道具的实体实例列表；同款多件各有独立 instanceId 与脏污损耗状态。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "instanceId",
+                      "itemId",
+                      "location",
+                      "condition",
+                      "definition"
+                    ],
+                    "properties": {
+                      "instanceId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "实例唯一 ID（如：black-sheer-pantyhose#1）。"
+                      },
+                      "itemId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "指向 character.embodiment.wardrobe.items 或 acquiredItems 中的物品模板 id。"
+                      },
+                      "location": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "wardrobe",
+                          "worn",
+                          "laundry",
+                          "carried_in_bag",
+                          "discarded_or_lost",
+                          null
+                        ],
+                        "description": "该实例当前所在位置：衣柜中(wardrobe)、正穿在身上(worn)、待洗脏衣篮(laundry)、随身包袋内(carried_in_bag)、已丢弃或遗失(discarded_or_lost)。"
+                      },
+                      "condition": {
+                        "type": "object",
+                        "description": "该衣物实例自上次清洗以来的实时物理状态与痕迹。",
+                        "additionalProperties": false,
+                        "required": [
+                          "cleanliness",
+                          "wetness",
+                          "secretionStain",
+                          "odor",
+                          "odorIntensity",
+                          "wrinkles",
+                          "damage",
+                          "wornMinutes",
+                          "stainMarks"
+                        ],
+                        "properties": {
+                          "cleanliness": {
+                            "type": [
+                              "number",
+                              "string",
+                              "null"
+                            ],
+                            "description": "整体洁净度（0-100 数值或状态描述）。",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "wetness": {
+                            "type": [
+                              "number",
+                              "string",
+                              "null"
+                            ],
+                            "description": "汗湿或雨水受潮程度（0-100 数值或部位潮湿描述）。",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "secretionStain": {
+                            "type": [
+                              "number",
+                              "string",
+                              "null"
+                            ],
+                            "description": "私密分泌物或体液浸润/沾染程度（0-100 数值或具体性状描述，如裆部黏滑湿透、留有半干痕迹）。",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "odor": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "当前附着在衣物上的气味具体描述（如：刚洗净的柔顺剂清香 / 穿了一整天闷在鞋里的温热丝袜脚汗与微酸体香 / 混合着动情爱液的甜腻气息）。"
+                          },
+                          "odorIntensity": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "description": "气味浓度 (0-100)。",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "wrinkles": {
+                            "type": [
+                              "number",
+                              "string",
+                              "null"
+                            ],
+                            "description": "褶皱与压痕程度。"
+                          },
+                          "damage": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "勾丝、破洞、开线或被扯坏的具体位置与程度（如：完好 / 右小腿后侧有一道细微勾丝 / 裆部被撕开破口）。"
+                          },
+                          "wornMinutes": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "本次清洗后已累计穿戴的分钟数。"
+                          },
+                          "stainMarks": {
+                            "type": "array",
+                            "description": "局部可见痕迹列表（如：裆部深色湿痕、足底汗印、裙摆折痕）。",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "definition": {
+                        "$ref": "#/$defs/wardrobeItemDefinition"
+                      }
+                    }
+                  }
+                },
+                "worn": {
+                  "type": "array",
+                  "description": "角色当前时刻正穿戴在身上的物品实例及其穿法、移位与实时体感。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "instanceId",
+                      "wearingWay",
+                      "displacement",
+                      "exposureNote",
+                      "activeDeviceState",
+                      "currentFeelOnBody"
+                    ],
+                    "properties": {
+                      "instanceId": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "指向 wardrobe.instances 中的实例 ID。"
+                      },
+                      "wearingWay": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "当前具体穿戴方式（对应物品模板的 wearing.supportedWays）。"
+                      },
+                      "displacement": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "normal",
+                          "shifted",
+                          "unfastened",
+                          "pulled_aside",
+                          "rolled_up",
+                          "half_off",
+                          null
+                        ],
+                        "description": "衣物当前位置状态：整齐(normal)、微乱移位(shifted)、解开纽扣/拉链(unfastened)、拨向一侧露出局部(pulled_aside)、撩起/卷起(rolled_up)、半脱挂在身上(half_off)。"
+                      },
+                      "exposureNote": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "因移位、半脱或打湿变透造成的局部裸露/走光说明（如：百褶裙被撩至腰间，被汗水和爱液浸湿的黑色连裤袜臀部与T档轮廓一览无余）。"
+                      },
+                      "activeDeviceState": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "description": "仅当该穿戴物为 intimate_gear（私密/情趣道具）时的实时工作状态；普通衣物设为 null。",
+                        "additionalProperties": false,
+                        "required": [
+                          "mode",
+                          "intensity",
+                          "activeMinutes",
+                          "effectNote"
+                        ],
+                        "properties": {
+                          "mode": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "当前开启档位或模式（如：待机停震、低频暗颤、变频脉冲）。"
+                          },
+                          "intensity": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "description": "当前刺激强度 (0-100)。",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "activeMinutes": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "description": "当前档位已持续开启的分钟数。"
+                          },
+                          "effectNote": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "道具当前对身体造成的实时影响（如：连裤袜紧压着跳蛋贴在阴蒂上持续低鸣，每走一步都激起难以抑制的酸麻颤栗）。"
+                          }
+                        }
+                      },
+                      "currentFeelOnBody": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "该件穿戴物此时此刻带给角色的直接体感摘要（由后置维护器根据 wornMinutes、wetness、displacement 动态更新）。"
+                      }
+                    }
+                  }
+                },
+                "acquiredItems": {
+                  "type": "array",
+                  "description": "本会话剧情中新购买、获赠或被穿戴上的新物品模板列表（使用与 character.embodiment.wardrobe.items 完全相同的完整物品结构）。",
+                  "items": {
+                    "$ref": "#/$defs/wardrobeItemDefinition"
+                  }
+                }
+              }
+            },
+            "journal": {
+              "type": "array",
+              "description": "按游戏内时间顺序记录的状态演变与关键具身事件日志（如换装、洗浴、生理状态突变、亲密里程碑等）。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "clockIso",
+                  "category",
+                  "summary"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "clockIso": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "scene",
+                      "body",
+                      "wardrobe",
+                      "mind",
+                      "relationship",
+                      "intimacy"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

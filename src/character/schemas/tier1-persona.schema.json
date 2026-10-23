@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llm-onebot.local/schemas/tier1-persona.schema.json",
+  "title": "Tier 1: Character Persona Layer (基础人格层)",
+  "description": "第一层角色配置：所有会话模式（assistant、rp_assistant、stateful_rp 等）共享的最底层人格内核。assistant 模式仅读取这一层；更高阶的 RP 模式在此基础上叠加 social 与 embodiment 层，但不覆盖本层的核心性格底色。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["character"],
+  "properties": {
+    "character": {
+      "type": "object",
+      "description": "固定角色档案的顶层容器（Tier 1 仅包含 persona 子树）。",
+      "additionalProperties": false,
+      "required": ["persona"],
+      "properties": {
+        "persona": {
+          "type": "object",
+          "description": "实例级共享的基础人格定义。聚焦我是谁、核心性格底色与基础沟通气质，不包含复杂世界观背景、具体穿着或生理细节。",
+          "additionalProperties": false,
+          "required": ["name", "personality"],
+          "properties": {
+            "name": {
+              "type": ["string", "null"],
+              "description": "角色的默认称呼或名字。各模式共用此名字作为基础身份锚点。"
+            },
+            "personality": {
+              "type": ["string", "null"],
+              "description": "核心性格底色与气质概括（例如：表面冷静克制但内心温柔护短、说话直率带一点冷幽默、对熟悉的人会流露孩子气等）。"
+            },
+            "identitySummary": {
+              "type": ["string", "null"],
+              "description": "可选的一句话基础身份定位（供通用助手或跨模式场景识别自身定位，具体职业与社会角色在 Tier 2 social.identity 中展开）。"
+            },
+            "voiceTone": {
+              "type": ["string", "null"],
+              "description": "基础语言语调与用词温度（例如：简洁温和、慵懒随性、礼貌克制）。具体口癖与社交表达差异在 Tier 2 social.expression 中展开。"
+            }
+          }
+        }
+      }
+    }
+  }
+}

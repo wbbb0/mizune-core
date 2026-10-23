@@ -147,6 +147,7 @@ function formatOperationModeDraft(operationMode: SessionOperationMode, scenarioR
         })),
         scenarioRuntimeLines
       );
+    case "character_config":
     case "skill_config":
     case "normal":
       return "";

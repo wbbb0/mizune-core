@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
-import { createTestAppConfig } from "./config-fixtures.tsx";
+import { createConfiguredTestAppConfig as createTestAppConfig } from "./character-fixtures.ts";
 import { createTempDir } from "./temp-paths.ts";
 import { registerBasicRoutes } from "../../src/internalApi/routes/basicRoutes.ts";
 import { registerBrowserRoutes } from "../../src/internalApi/routes/browserRoutes.ts";
@@ -723,6 +723,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return structuredClone(settings);
       },
       appendSyntheticPendingMessage() {},
+      setOperationMode(sessionId: string, mode: any) { const session = state.sessions.find(item => item.id === sessionId)!; session.operationMode = mode; return mode; },
       appendHistory() {},
       appendInternalTranscript(sessionId: string, item: InternalTranscriptItem) {
         const session = state.sessions.find((entry) => entry.id === sessionId);

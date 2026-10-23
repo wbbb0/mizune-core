@@ -1,73 +1,10 @@
+import { characterRepository } from "../../../character/repository.ts";
 import { canReferenceConversation, readConversationContext } from "#conversation/crossConversationContext.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { conversationContextPolicy, keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObservationPresets.ts";
 import { getSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
-import {
-  sessionBotProfileFields,
-  sessionBotProfileSchema,
-  type SessionBotProfile,
-  type SessionBotProfileField
-} from "#conversation/session/sessionBotProfile.ts";
-
 export const sessionToolDescriptors: ToolDescriptor[] = [
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "get_current_chat_identity",
-        description: "读取只在当前聊天生效的 bot 身份覆盖。",
-        parameters: {
-          type: "object",
-          properties: {},
-          additionalProperties: false
-        }
-      }
-    },
-    resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "patch_current_chat_identity",
-        description: "按用户明确要求更新当前聊天中的 bot 身份；只修改提供的字段，不影响其他聊天。",
-        parameters: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "当前聊天中使用的名字" },
-            identity: { type: "string", description: "身份定位、社会角色或自我理解" },
-            background: { type: "string", description: "只在当前聊天成立的背景" },
-            temperament: { type: "string", description: "只在当前聊天覆盖的性格表现" },
-            voiceStyle: { type: "string", description: "只在当前聊天覆盖的语气和表达方式" }
-          },
-          additionalProperties: false
-        }
-      }
-    },
-    resultObservation: stateChangePolicy()
-  },
-  {
-    definition: {
-      type: "function",
-      function: {
-        name: "clear_current_chat_identity",
-        description: "清除当前聊天的部分或全部 bot 身份覆盖，恢复使用全局 persona 和模式资料。",
-        parameters: {
-          type: "object",
-          properties: {
-            fields: {
-              type: "array",
-              items: { type: "string", enum: [...sessionBotProfileFields] },
-              description: "要清除的字段；省略时清除当前聊天的全部身份覆盖"
-            }
-          },
-          additionalProperties: false
-        }
-      }
-    },
-    resultObservation: stateChangePolicy()
-  },
   {
     definition: {
       type: "function",
@@ -158,59 +95,6 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
 ];
 
 export const sessionToolHandlers: Record<string, ToolHandler> = {
-  async get_current_chat_identity(_toolCall, _args, context) {
-    const session = context.sessionManager.getSession(context.lastMessage.sessionId);
-    return JSON.stringify({
-      sessionId: session.id,
-      profile: session.botProfile
-    });
-  },
-  async patch_current_chat_identity(_toolCall, args, context) {
-    const session = context.sessionManager.getSession(context.lastMessage.sessionId);
-    const denied = validateSessionBotProfileWrite(session, context.relationship);
-    if (denied) {
-      return denied;
-    }
-    const parsed = sessionBotProfileSchema.safeParse(args);
-    if (!parsed.success) {
-      return JSON.stringify({ error: parsed.error.issues[0]?.message ?? "Invalid chat identity" });
-    }
-    if (!sessionBotProfileFields.some((field) => Boolean(parsed.data[field]?.trim()))) {
-      return JSON.stringify({ error: "At least one non-empty identity field is required" });
-    }
-    let profile: SessionBotProfile | null;
-    try {
-      profile = context.sessionManager.patchBotProfile(session.id, parsed.data);
-    } catch (error) {
-      return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
-    }
-    context.persistSession?.(session.id, "session_bot_profile_patched_by_tool");
-    return JSON.stringify({
-      ok: true,
-      sessionId: session.id,
-      profile,
-      instruction: "本轮后续回复立即按更新后的当前聊天身份表达。"
-    });
-  },
-  async clear_current_chat_identity(_toolCall, args, context) {
-    const session = context.sessionManager.getSession(context.lastMessage.sessionId);
-    const denied = validateSessionBotProfileWrite(session, context.relationship);
-    if (denied) {
-      return denied;
-    }
-    const fields = parseSessionBotProfileFields(args);
-    if (fields instanceof Error) {
-      return JSON.stringify({ error: fields.message });
-    }
-    const profile = context.sessionManager.clearBotProfile(session.id, fields);
-    context.persistSession?.(session.id, "session_bot_profile_cleared_by_tool");
-    return JSON.stringify({
-      ok: true,
-      sessionId: session.id,
-      profile,
-      instruction: "本轮后续回复立即使用清除覆盖后的当前身份。"
-    });
-  },
   async list_session_modes(_toolCall, _args, context) {
     const modes = (context.listSessionModes?.() ?? []).map((mode) => ({
       id: mode.id,
@@ -245,18 +129,23 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
         message: `Current session mode is already ${modeId}`
       });
     }
+    const characters = characterRepository(context.config.dataDir);
+    if (characters.draft(session.id)) return JSON.stringify({ error: "请先确认或取消当前角色配置" });
     context.sessionManager.setModeId(context.lastMessage.sessionId, modeId);
     if (modeId === "scenario_host") {
       await context.scenarioHostStateStore.ensureForSession(session);
     } else if (modeId === "stateful_rp") {
       await context.statefulRpStateStore?.ensureForSession(session);
     }
+    const draft = context.relationship === "owner" && session.type === "private" ? characters.ensureSetup(session.id, modeId) : null;
+    if (draft) context.sessionManager.setOperationMode(session.id, { kind: "character_config", stage: draft.stage });
     context.persistSession?.(context.lastMessage.sessionId, "session_mode_switched_by_tool");
     return JSON.stringify({
       ok: true,
       changed: true,
       fromModeId: currentModeId,
       toModeId: modeId,
+      ...(draft && characters.claimIntroduction(session.id) ? { setupStage: draft.stage, instruction: "已进入角色配置，请在下一次回复主动说明当前阶段、推荐填写内容和 .confirm / .cancel；不要开始游玩。" } : {}),
       title: targetMode.title
     });
   },
@@ -299,32 +188,3 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     ));
   }
 };
-
-function validateSessionBotProfileWrite(
-  session: { type: "private" | "group"; operationMode: { kind: string } },
-  relationship: "owner" | "known"
-): string | null {
-  if (session.operationMode.kind !== "normal") {
-    return JSON.stringify({ error: "Chat identity can only be changed during normal conversation" });
-  }
-  if (session.type === "group" && relationship !== "owner") {
-    return JSON.stringify({ error: "Only the bot owner can change identity for a group chat" });
-  }
-  return null;
-}
-
-function parseSessionBotProfileFields(args: unknown): SessionBotProfileField[] | undefined | Error {
-  if (typeof args !== "object" || args == null || !("fields" in args)) {
-    return undefined;
-  }
-  const value = (args as { fields?: unknown }).fields;
-  if (!Array.isArray(value) || value.length === 0) {
-    return new Error("fields must be a non-empty array when provided");
-  }
-  const allowed = new Set<string>(sessionBotProfileFields);
-  const fields = Array.from(new Set(value.map(String)));
-  if (fields.some((field) => !allowed.has(field))) {
-    return new Error("fields contains an unknown identity field");
-  }
-  return fields as SessionBotProfileField[];
-}

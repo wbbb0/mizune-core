@@ -28,8 +28,8 @@ test(".config skill 完整确认、取消、互斥与群聊权限", async () => 
   await send({ name: "config", target: "skill", id: "admin-guide" });
   const config = createTestAppConfig({ dataDir });
   assert.equal(readSkillDraft(config, sessionId)?.id, "admin-guide");
-  await send({ name: "setup", target: "rp" });
-  assert.match(fixture.calls.at(-1)!.text, /当前技能草稿/);
+  await send({ name: "setup", target: "social" });
+  assert.match(fixture.calls.at(-1)!.text, /当前配置草稿/);
   writeSkillDraft(config, sessionId, { id: "admin-guide", input: draftInput() });
   await send({ name: "cancel" });
   assert.equal(readSkillDraft(config, sessionId), null);

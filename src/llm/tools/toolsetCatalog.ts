@@ -51,9 +51,6 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "list_current_group_members",
       "asset_media_view",
       "asset_media_inspect",
-      "get_current_chat_identity",
-      "patch_current_chat_identity",
-      "clear_current_chat_identity",
       "end_turn_without_reply"
     ]
   },
@@ -68,9 +65,8 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "长期偏好、边界、默认做法"
     ],
     toolNames: [
+      "list_character_sections", "read_character_section", "edit_character_section",
       "get_persona",
-      "patch_persona",
-      "clear_persona_field",
       "list_global_rules",
       "upsert_global_rule",
       "remove_global_rule",
@@ -85,36 +81,6 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "replace_user_memory",
       "register_known_user",
       "set_user_special_role"
-    ]
-  },
-  {
-    id: "persona_profile_draft",
-    title: "全局人格草稿",
-    description: "读取和修改当前会话中的 persona 草稿。",
-    ownerOnly: true,
-    plannerSignals: [
-      "编辑 persona 草稿",
-      "查看当前 persona 草稿"
-    ],
-    toolNames: [
-      "get_persona",
-      "patch_persona",
-      "clear_persona_field"
-    ]
-  },
-  {
-    id: "rp_profile_draft",
-    title: "RP 资料草稿",
-    description: "读取和修改当前会话中的 RP 全局资料草稿。",
-    ownerOnly: true,
-    plannerSignals: [
-      "编辑 RP 草稿",
-      "查看当前 RP 草稿"
-    ],
-    toolNames: [
-      "get_rp_profile",
-      "patch_rp_profile",
-      "clear_rp_profile_field"
     ]
   },
   {
@@ -347,13 +313,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "更新表里情绪、情欲羞耻、短期微意图、关系进展或约定",
       "切换场景地点、分开或重逢、跳过时间、处理 # 场外导演指令"
     ],
-    toolNames: [
-      "stateful_rp_init",
-      "stateful_rp_update_embodiment",
-      "stateful_rp_update_mind_and_relation",
-      "stateful_rp_update_scene",
-      "stateful_rp_inspect"
-    ]
+    toolNames: ["list_character_sections", "read_character_section", "edit_character_section"]
   },
   {
     modeUniversal: { defaultEnabled: true },

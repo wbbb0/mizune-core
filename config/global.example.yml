@@ -102,8 +102,6 @@ conversation:
     #     sourceSessionId: "qqbot:g:10002"
     #     mode: live # 或 last_completed_reply
     links: []
-  setup:
-    skipPersonaInitialization: false
   images:
     maxSerializedPixels: 1048576
     maxCachedFiles: 100
@@ -386,6 +384,7 @@ browser:
     screenshotMaxBytes: 5242880
 backup:
   profileRotateLimit: 10
+# 固定三层档案由 .config / .confirm 管理；周期参数在 embodiment 中配置。
 statefulRp:
   postTurnMaintenanceEnabled: true
   embodimentTickMinutes: 30

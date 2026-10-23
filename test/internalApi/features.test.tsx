@@ -966,11 +966,7 @@ other:
         kind: "user",
         id: "10001"
       });
-      assert.deepEqual(response.json().session.botProfile, {
-        name: "小岚",
-        identity: "Alice 当前聊天中的旅行搭档",
-        voiceStyle: "自然、简洁"
-      });
+      assert.ok(!("botProfile" in response.json().session));
       assert.ok(!("participantLabel" in response.json().session));
       assert.equal(response.json().session.historyRevision, 0);
       assert.equal(response.json().modeState, null);
@@ -1651,7 +1647,7 @@ other:
       }, {
         id: "stateful_rp",
         title: "沉浸状态 RP",
-        description: "基于 Persona + RP 设定底座，结合身体感官、服饰久穿物理影响、表里心理反差、关系张力与后置时间自治结算的沉浸式角色扮演模式。",
+        description: "基于基础人格、社交设定和具身设定三层固定档案，维护每个会话独立的场景、衣物、身体与心理动态状态，并由代码结算周期的沉浸式角色扮演模式。",
         allowedChatTypes: ["private"]
       }]);
 

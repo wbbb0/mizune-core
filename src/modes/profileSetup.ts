@@ -14,7 +14,7 @@ function createPersonaSetupToolsetOverrides(): SessionModeSetupToolsetOverride[]
       toolsetId: "memory_profile",
       title: "长期资料与规则",
       description: "初始化阶段仅允许写入 persona 相关资料。",
-      toolNames: ["get_persona", "patch_persona", "clear_persona_field"],
+      toolNames: ["list_character_sections", "read_character_section", "edit_character_section"],
       plannerSignals: ["初始化 persona 补全"]
     },
     {
@@ -31,10 +31,10 @@ function createModeProfileSetupToolsetOverrides(target: NonNullable<SessionModeP
   if (target === "rp") {
     return [
       {
-        toolsetId: "rp_profile_draft",
+        toolsetId: "memory_profile",
         title: "RP 资料草稿",
         description: "初始化阶段仅允许写入 RP 全局资料草稿。",
-        toolNames: ["get_rp_profile", "patch_rp_profile", "clear_rp_profile_field"],
+        toolNames: ["list_character_sections", "read_character_section", "edit_character_section"],
         plannerSignals: ["初始化 RP 全局资料"]
       },
       {

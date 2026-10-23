@@ -29,7 +29,7 @@ test("only command drafts complete; both prefixes and uppercase are supported", 
   for (const draft of ["你好 .deb", "普通文本", ".debug\non", ".unknown "]) assert.equal(resolve(draft), null);
   assert.deepEqual(resolve(".help")?.values, []);
   assert.deepEqual(resolve(".debug on")?.values, []); // 不把 on 意外补成 once
-  assert.deepEqual(resolve(".setup ")?.values, ["persona", "rp", "scenario"]);
+  assert.deepEqual(resolve(".setup ")?.values, ["persona", "social", "embodiment", "state", "scenario"]);
   assert.deepEqual(resolve(".sticker lock stk_")?.values, ["stk_a", "stk_b"]);
 });
 

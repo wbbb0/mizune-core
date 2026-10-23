@@ -80,10 +80,6 @@ export function createInteractiveConfig(config: AppConfig, args: InteractiveRunt
     },
     conversation: {
       ...config.conversation,
-      setup: {
-        ...config.conversation.setup,
-        skipPersonaInitialization: true
-      },
       debounce: {
         ...config.conversation.debounce,
         defaultBaseSeconds: 0.1,
@@ -129,7 +125,7 @@ export async function prepareInteractiveRuntime(
       });
     }
   }
-  await services.setupStore.advanceAfterOwnerBound(await services.personaStore.get());
+  await services.setupStore.advanceAfterOwnerBound();
   await services.globalProfileReadinessStore.setPersonaReadiness("ready");
   await services.globalProfileReadinessStore.setRpReadiness("ready");
 }

@@ -1,0 +1,547 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llm-onebot.local/schemas/tier2-social.schema.json",
+  "title": "Tier 2: Social Roleplay Layer (社交角色层)",
+  "description": "第二层角色配置与会话状态：rp_assistant 在 Tier 1 (persona) 基础上额外读取的社交角色设定（character.social）与轻量会话社交状态（sessionState.social）。不依赖高频数值模拟或后置生理维护器，聚焦社会身份、经历背景、整体外貌、表达习惯、价值观、边界以及与当前聊天对象的关系演进。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "character",
+    "sessionState"
+  ],
+  "properties": {
+    "character": {
+      "type": "object",
+      "description": "固定角色档案（Tier 2 增量：social 层）。",
+      "additionalProperties": false,
+      "required": [
+        "social"
+      ],
+      "properties": {
+        "social": {
+          "type": "object",
+          "description": "社交层固定角色设定。建立在 character.persona 之上，严禁重复照搬 persona 内容。",
+          "additionalProperties": false,
+          "required": [
+            "identity",
+            "background",
+            "appearance",
+            "expression",
+            "preferences",
+            "values",
+            "boundaries",
+            "capabilities"
+          ],
+          "properties": {
+            "identity": {
+              "type": "object",
+              "description": "社会身份与自我认知定位。",
+              "additionalProperties": false,
+              "required": [
+                "species",
+                "ageDescription",
+                "genderIdentity",
+                "occupation",
+                "socialRoles",
+                "selfPerception"
+              ],
+              "properties": {
+                "species": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "种族或生命形态（如：人类、半精灵、仿生人等）。涉及特殊生理结构的细节放入 Tier 3 embodiment.body.anatomy。"
+                },
+                "ageDescription": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "年龄或外在年龄阶段描述（如：20岁大二学生、外表十八九岁实际百余岁等）。"
+                },
+                "genderIdentity": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "性别认同与日常性别呈现。"
+                },
+                "occupation": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "当前职业、学业身份或主要社会职责。"
+                },
+                "socialRoles": {
+                  "type": "array",
+                  "description": "在社会或人际网络中常扮演的角色标签（如：学生会副会长、乐队贝斯手、独居租客、邻家姐姐等）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "selfPerception": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "自我评价与自我认知（如：自认成熟可靠但其实很怕寂寞、觉得自己普通不够耀眼等）。"
+                }
+              }
+            },
+            "background": {
+              "type": "object",
+              "description": "过往经历、既定事实、所处世界背景及原有社会关系网。",
+              "additionalProperties": false,
+              "required": [
+                "biography",
+                "establishedFacts",
+                "worldContext",
+                "importantRelationships"
+              ],
+              "properties": {
+                "biography": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "成长经历、关键人生转折与塑造当前性格的背景故事。"
+                },
+                "establishedFacts": {
+                  "type": "array",
+                  "description": "不可违背的角色既定事实清单（如：从小在海边城市长大、对猫毛轻度过敏、目前独自住在校外公寓等）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "worldContext": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "角色所处的时代、城市、校园/职场环境或架空世界观背景说明。"
+                },
+                "importantRelationships": {
+                  "type": "array",
+                  "description": "角色原有的重要人际关系（家人、挚友、前辈、宿敌等），注意：这不是对当前聊天用户的动态关系进度。",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "name",
+                      "relation",
+                      "summary"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "关系对象称呼或姓名。"
+                      },
+                      "relation": {
+                        "type": "string",
+                        "description": "关系定位（如：严厉的母亲、大学室友、青梅竹马）。"
+                      },
+                      "summary": {
+                        "type": "string",
+                        "description": "相处模式、情感态度及对角色的影响。"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "appearance": {
+              "type": "object",
+              "description": "社交层可见的整体外貌印象与穿搭风格（不含私密部位或微观体感细节）。",
+              "additionalProperties": false,
+              "required": [
+                "overview",
+                "distinctiveFeatures",
+                "clothingStyle"
+              ],
+              "properties": {
+                "overview": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "第一眼社交外貌印象（发型发色、五官气质、大致身形轮廓、给人的视觉氛围）。"
+                },
+                "distinctiveFeatures": {
+                  "type": "array",
+                  "description": "社交距离下显眼的记忆点（如：右眼下方的泪痣、常戴细框眼镜、笑起来有浅梨涡）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "clothingStyle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "稳定的日常穿衣审美与偏好风格（如：偏爱浅色系针织衫配百褶裙与连裤袜、通勤极简风等），注意：不是当前时刻正穿着的具体衣物。"
+                }
+              }
+            },
+            "expression": {
+              "type": "object",
+              "description": "语言风格、副语言习惯与人际交往表现方式。",
+              "additionalProperties": false,
+              "required": [
+                "speechStyle",
+                "habitualExpressions",
+                "humorStyle",
+                "emotionalExpression",
+                "socialStyle"
+              ],
+              "properties": {
+                "speechStyle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "说话节奏、句式偏好、用词习惯与礼貌程度（注意：物理音色特征放入 Tier 3 embodiment.body.naturalVoice）。"
+                },
+                "habitualExpressions": {
+                  "type": "array",
+                  "description": "口头禅、习惯性语气词或固定小动作（如：思考时轻咬下唇、句尾常带“呢/吧”、害羞时会移开视线整理耳发）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "humorStyle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "幽默感类型与开玩笑方式（如：一本正经地吐槽、冷笑话、顺着对方的话轻轻捉弄）。"
+                },
+                "emotionalExpression": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "情绪外露方式（如：开心时掩饰不住，委屈或生气时反而会沉默嘴硬，极少当面掉眼泪）。"
+                },
+                "socialStyle": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "人际距离感与熟稔度差异（如：对陌生人客气疏离，对熟人毒舌又粘人，慢热型还是自来熟）。"
+                }
+              }
+            },
+            "preferences": {
+              "type": "object",
+              "description": "日常生活喜好、厌恶与稳定习惯。",
+              "additionalProperties": false,
+              "required": [
+                "interests",
+                "likes",
+                "dislikes",
+                "habits",
+                "routine"
+              ],
+              "properties": {
+                "interests": {
+                  "type": "array",
+                  "description": "长期投入的兴趣爱好或关注领域。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "likes": {
+                  "type": "array",
+                  "description": "喜欢的食物、饮品、天气、气味、事物或相处细节。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "dislikes": {
+                  "type": "array",
+                  "description": "讨厌或害怕的事物、食物、环境或人际行为。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "habits": {
+                  "type": "array",
+                  "description": "日常生活习惯或小癖好（如：睡前一定要喝温水、出门前反复确认门锁、紧张时会捏裙角）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "routine": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "稳定的日常作息规律（如：工作日早八上课/上班、周末喜欢赖床到十点、晚上十一点后洗漱休息；当天的具体行程另存于动态状态 schedule）。"
+                }
+              }
+            },
+            "values": {
+              "type": "object",
+              "description": "世界观、道德准则、价值排序与长期理想。",
+              "additionalProperties": false,
+              "required": [
+                "worldview",
+                "moralPrinciples",
+                "priorities",
+                "aspirations"
+              ],
+              "properties": {
+                "worldview": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "对世界、人性与情感关系的基本看法。"
+                },
+                "moralPrinciples": {
+                  "type": "array",
+                  "description": "角色恪守的道德信条与是非观。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "priorities": {
+                  "type": "array",
+                  "description": "面临抉择时的价值优先级排序（如：身边人的安全 > 个人尊严 > 世俗规则）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "aspirations": {
+                  "type": "array",
+                  "description": "长期人生愿望或理想追求（不是当前回合的待办任务）。",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "boundaries": {
+              "type": "object",
+              "description": "角色在人际、道德与情感关系中的原则与边界。未填写不等于明确无限制；若确无限制需显式标注“无固定限制”。",
+              "additionalProperties": false,
+              "required": [
+                "behavioral",
+                "moral",
+                "relationship"
+              ],
+              "properties": {
+                "behavioral": {
+                  "type": "array",
+                  "description": "日常人际互动中的行为原则与雷区（如：讨厌未经允许翻看手机或私人物品、反感居高临下的命令口吻）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "moral": {
+                  "type": "array",
+                  "description": "角色自己绝不触碰的道德底线。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "relationship": {
+                  "type": "array",
+                  "description": "友谊、信任、暧昧与恋爱关系中的阶段原则（如：确立信任前不会轻易去对方家里过夜、重感情且极度排斥背叛）。",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "capabilities": {
+              "type": "object",
+              "description": "角色设定层面的知识、技能、特殊能力与短板。注意：这只决定剧情设定表现，不授予真实系统工具权限。",
+              "additionalProperties": false,
+              "required": [
+                "knowledgeAndSkills",
+                "specialAbilities",
+                "limitations"
+              ],
+              "properties": {
+                "knowledgeAndSkills": {
+                  "type": "array",
+                  "description": "擅长的专业知识、生活技能或才艺（如：擅长家常料理、精通古典钢琴、外语流利）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "specialAbilities": {
+                  "type": "array",
+                  "description": "超自然能力、特殊体质本领或高于常人的天赋（现实题材可为空数组）。",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "limitations": {
+                  "type": "array",
+                  "description": "能力短板、笨拙之处或弱点（如：严重路痴、体能较弱跑不快、不擅长应付人多的酒局）。",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sessionState": {
+      "type": "object",
+      "description": "不属于固定角色档案的会话级动态状态（Tier 2 包含 social 子树）。",
+      "additionalProperties": false,
+      "required": [
+        "social"
+      ],
+      "properties": {
+        "social": {
+          "type": "object",
+          "description": "社交 RP 可使用的会话关系与经历状态；不强制数值化，也不必启用 Tier 3 的高频生理/时间维护器。",
+          "additionalProperties": false,
+          "required": [
+            "participantRelationships",
+            "recentEvents",
+            "promises",
+            "currentMood"
+          ],
+          "properties": {
+            "participantRelationships": {
+              "type": "array",
+              "description": "角色对当前会话各参与者的关系认知与情感进展。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "participantId",
+                  "displayName",
+                  "stage",
+                  "summary",
+                  "trustNote",
+                  "affectionNote",
+                  "nicknamesUsed"
+                ],
+                "properties": {
+                  "participantId": {
+                    "type": "string",
+                    "description": "对话参与者的唯一标识。"
+                  },
+                  "displayName": {
+                    "type": "string",
+                    "description": "参与者名称。"
+                  },
+                  "stage": {
+                    "type": "string",
+                    "description": "当前关系阶段描述（如：初识陌生、普通朋友、知己、暧昧拉扯、热恋伴侣、冷战中等）。"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "对对方的整体印象、相处默契度与近期关系基调。"
+                  },
+                  "trustNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "信任程度描述与原因（如：愿意向他倾诉学业压力，但还不敢暴露私密小癖好）。"
+                  },
+                  "affectionNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "好感/依恋程度描述与近期心动点或摩擦点。"
+                  },
+                  "nicknamesUsed": {
+                    "type": "array",
+                    "description": "当前阶段对对方的称呼习惯（如：私下叫阿澈、人前叫学长）。",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "recentEvents": {
+              "type": "array",
+              "description": "本会话近期共同经历的关键事件摘要（用于保持跨回合的情感与话题连续性）。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "summary"
+                ],
+                "properties": {
+                  "timeLabel": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "事件发生的大致时间锚点（如：昨天傍晚、刚才在咖啡馆）。"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "事件内容及其对角色态度或关系造成的影响。"
+                  }
+                }
+              }
+            },
+            "promises": {
+              "type": "array",
+              "description": "双方在对话中达成的约定、承诺或待兑现事项。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "content",
+                  "status"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "约定条目 ID。"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "约定内容（如：答应周末陪他去水族馆）。"
+                  },
+                  "dueNote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "兑现期限或触发条件描述。"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "fulfilled",
+                      "broken",
+                      "overdue"
+                    ],
+                    "description": "约定状态：待兑现(pending)、已履行(fulfilled)、违约(broken)或已逾期(overdue)。"
+                  }
+                }
+              }
+            },
+            "currentMood": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "当前会话中的整体心情基调与简短原因（如：被夸奖后暗自窃喜但表面故作镇定）。"
+            }
+          }
+        }
+      }
+    }
+  }
+}

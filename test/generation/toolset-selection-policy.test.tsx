@@ -59,7 +59,7 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
             toolsetId: "memory_profile",
             title: "初始化资料",
             description: "仅初始化 persona",
-            toolNames: ["get_persona", "patch_persona"]
+            toolNames: ["list_character_sections", "edit_character_section"]
           }
         ]
       },
@@ -67,7 +67,7 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     });
 
     const memoryProfile = toolsets.find((item) => item.id === "memory_profile");
-    assert.deepEqual(memoryProfile?.toolNames, ["get_persona", "patch_persona"]);
+    assert.deepEqual(memoryProfile?.toolNames, ["list_character_sections", "edit_character_section"]);
     assert.equal(toolsets.some((item) => item.id === "chat_context"), true);
     assert.equal(toolsets.some((item) => item.id === "web_research"), false);
     assert.equal(toolsets.some((item) => item.id === "shell_runtime"), false);
@@ -149,14 +149,14 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
         setupToolsetOverrides: [{
           toolsetId: "memory_profile",
           title: "初始化资料",
-          toolNames: ["get_persona", "patch_persona"]
+          toolNames: ["list_character_sections", "edit_character_section"]
         }]
       }
     });
 
     assert.deepEqual(
       toolsets.find((item) => item.id === "memory_profile")?.toolNames,
-      ["get_persona", "patch_persona"]
+      ["list_character_sections", "edit_character_section"]
     );
   });
 

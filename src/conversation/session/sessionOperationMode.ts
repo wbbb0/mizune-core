@@ -18,6 +18,7 @@ export type SessionProfileOperationMode =
 
 export type SessionOperationMode =
   | { kind: "normal" }
+  | { kind: "character_config"; stage: "persona" | "social" | "embodiment" | "state" }
   | { kind: "skill_config"; skillId: string }
   | { kind: "persona_setup"; draft: Persona }
   | SessionProfileOperationMode
@@ -49,6 +50,7 @@ export function getSessionOperationProfilePhase(
         target: operationMode.modeId === "rp_assistant" ? "rp" : "scenario",
         phase: "config"
       };
+    case "character_config":
     case "skill_config":
     case "normal":
       return null;
@@ -59,7 +61,7 @@ export function cloneSessionOperationMode(operationMode: SessionOperationMode): 
   if (operationMode.kind === "normal") {
     return createNormalSessionOperationMode();
   }
-  if (operationMode.kind === "skill_config") return { ...operationMode };
+  if (operationMode.kind === "skill_config" || operationMode.kind === "character_config") return { ...operationMode };
   if (operationMode.kind === "persona_setup" || operationMode.kind === "persona_config") {
     return {
       ...operationMode,

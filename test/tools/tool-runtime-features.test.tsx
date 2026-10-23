@@ -495,7 +495,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const ownerNames = getBuiltinTools("owner", config).map((tool) => tool.function.name);
     const knownNames = getBuiltinTools("known", config).map((tool) => tool.function.name);
     assert.ok(ownerNames.includes("get_persona"));
-    assert.ok(ownerNames.includes("patch_persona"));
+    assert.ok(ownerNames.includes("edit_character_section"));
     assert.ok(ownerNames.includes("upsert_global_rule"));
     assert.ok(ownerNames.includes("upsert_toolset_rule"));
     assert.ok(ownerNames.includes("patch_user_profile"));
@@ -529,8 +529,8 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       profileToolScope: "persona"
     }).map((tool) => tool.function.name);
     assert.ok(names.includes("get_persona"));
-    assert.ok(names.includes("patch_persona"));
-    assert.ok(names.includes("clear_persona_field"));
+    assert.ok(names.includes("edit_character_section"));
+    assert.ok(!names.includes("clear_persona_field"));
     assert.ok(!names.includes("get_rp_profile"));
     assert.ok(!names.includes("patch_rp_profile"));
     assert.ok(!names.includes("get_scenario_profile"));
@@ -546,9 +546,9 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       profileToolScope: "scenario"
     }).map((tool) => tool.function.name);
 
-    assert.ok(rpNames.includes("get_rp_profile"));
-    assert.ok(rpNames.includes("patch_rp_profile"));
-    assert.ok(rpNames.includes("clear_rp_profile_field"));
+    assert.ok(rpNames.includes("list_character_sections"));
+    assert.ok(rpNames.includes("edit_character_section"));
+    assert.ok(!rpNames.includes("clear_rp_profile_field"));
     assert.ok(!rpNames.includes("get_persona"));
     assert.ok(!rpNames.includes("patch_persona"));
     assert.ok(!rpNames.includes("get_scenario_profile"));
@@ -561,82 +561,6 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.ok(!scenarioNames.includes("get_rp_profile"));
   });
 
-  test("profile draft handlers read and update operationMode drafts instead of stores", async () => {
-    let personaOperationMode = {
-      kind: "persona_config" as const,
-      draft: {
-        ...createEmptyPersona(),
-        name: "小满"
-      }
-    };
-    let rpOperationMode = {
-      kind: "mode_config" as const,
-      modeId: "rp_assistant" as const,
-      draft: {
-        ...createEmptyRpProfile(),
-        identity: "雨夜里也保持镇定"
-      }
-    };
-
-    const personaContext = {
-      relationship: "owner",
-      lastMessage: {
-        sessionId: "web:persona-draft",
-        userId: "owner",
-        senderName: "Owner"
-      },
-      sessionManager: {
-        getOperationMode() {
-          return personaOperationMode;
-        },
-        setOperationMode(_sessionId: string, operationMode: typeof personaOperationMode) {
-          personaOperationMode = operationMode;
-          return operationMode;
-        }
-      }
-    } as any;
-    const rpContext = {
-      relationship: "owner",
-      lastMessage: {
-        sessionId: "web:rp-draft",
-        userId: "owner",
-        senderName: "Owner"
-      },
-      sessionManager: {
-        getOperationMode() {
-          return rpOperationMode;
-        },
-        setOperationMode(_sessionId: string, operationMode: typeof rpOperationMode) {
-          rpOperationMode = operationMode;
-          return operationMode;
-        }
-      }
-    } as any;
-
-    await profileToolHandlers.patch_persona!(
-      { id: "tool_persona_draft_patch_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"voiceStyle\":\"短句\"}}" } },
-      { personaPatch: { voiceStyle: "短句" } },
-      personaContext
-    );
-    await profileToolHandlers.patch_rp_profile!(
-      { id: "tool_rp_draft_patch_1", type: "function", function: { name: "patch_rp_profile", arguments: "{\"profilePatch\":{\"boundaries\":\"绝不跳出角色\"}}" } },
-      { profilePatch: { boundaries: "绝不跳出角色" } },
-      rpContext
-    );
-
-    assert.equal(personaOperationMode.draft.voiceStyle, "短句");
-    assert.equal(rpOperationMode.draft.boundaries, "绝不跳出角色");
-    assert.equal(JSON.parse(String(await profileToolHandlers.get_persona!(
-      { id: "tool_persona_draft_get_1", type: "function", function: { name: "get_persona", arguments: "{}" } },
-      {},
-      personaContext
-    ))).voiceStyle, "短句");
-    assert.equal(JSON.parse(String(await profileToolHandlers.get_rp_profile!(
-      { id: "tool_rp_draft_get_1", type: "function", function: { name: "get_rp_profile", arguments: "{}" } },
-      {},
-      rpContext
-    ))).boundaries, "绝不跳出角色");
-  });
 
   test("send_setup_draft uses committed text sink for web sessions", async () => {
     const appended: string[] = [];
@@ -1058,47 +982,6 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
   });
 
   test("memory handlers surface structured scope conflict warnings", async () => {
-    const personaWarningResult = await profileToolHandlers.patch_persona!(
-      { id: "tool_persona_warn_1", type: "function", function: { name: "patch_persona", arguments: "{\"personaPatch\":{\"voiceStyle\":\"所有任务默认先给结论再展开\"}}" } },
-      { personaPatch: { voiceStyle: "所有任务默认先给结论再展开" } },
-      {
-        relationship: "owner",
-        personaStore: {
-          isComplete() {
-            return false;
-          },
-          async patchWithDiagnostics() {
-            return {
-              persona: {
-                name: "",
-                temperament: "",
-                voiceStyle: "所有任务默认先给结论再展开"
-              },
-              warning: {
-                code: "warning_scope_conflict",
-                currentScope: "persona",
-                suggestedScope: "global_rules",
-                reason: "内容更像跨任务长期工作流规则，不像 bot 的名字、性格底色或语气风格。"
-              }
-            };
-          }
-        },
-        setupStore: {
-          async advanceAfterPersonaUpdate() {
-            return undefined;
-          }
-        },
-        globalProfileReadinessStore: {
-          async setPersonaReadiness() {
-            return null;
-          }
-        }
-      } as any
-    );
-    const personaPayload = JSON.parse(String(personaWarningResult));
-    assert.equal(personaPayload.finalAction, "warning_scope_conflict");
-    assert.equal(personaPayload.warnings[0].suggestedScope, "global_rules");
-
     const globalWarningResult = await profileToolHandlers.upsert_global_rule!(
       { id: "tool_global_rule_warn_1", type: "function", function: { name: "upsert_global_rule", arguments: "{\"title\":\"角色口吻\",\"content\":\"以后都用傲娇少女口吻说话\"}" } },
       { title: "角色口吻", content: "以后都用傲娇少女口吻说话" },
@@ -1488,6 +1371,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       { id: "tool_mode_switch_1", type: "function", function: { name: "switch_session_mode", arguments: "{\"modeId\":\"scenario_host\"}" } },
       { modeId: "scenario_host" },
       {
+        config: createForwardFeatureConfig(),
         lastMessage: {
           sessionId: "qqbot:p:owner",
           userId: "owner",

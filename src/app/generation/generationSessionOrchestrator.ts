@@ -1,3 +1,6 @@
+import { characterPersonaView } from "../../character/prompt.ts";
+import { characterRepository } from "../../character/repository.ts";
+import { characterToolNames } from "../../character/tools.ts";
 import { prepareCrossConversationContext } from "#conversation/crossConversationContext.ts";
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
 import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, SessionDelivery, SessionReplyTarget } from "#conversation/session/sessionTypes.ts";
@@ -220,10 +223,7 @@ async function resolvePromptModeProfile(input: {
   }
 
   if (input.mode.profileAccess.modeProfile === "rp") {
-    return {
-      target: "rp",
-      profile: await input.rpProfileStore.get()
-    };
+    return undefined;
   }
 
   if (input.mode.profileAccess.modeProfile === "scenario") {
@@ -598,7 +598,18 @@ export function createGenerationSessionOrchestrator(
       }
       const sessionModeId = refreshedSession.modeId;
       const assistantMode = isAssistantMode(sessionModeId);
-      const persona = await personaStore.get();
+      const characterStore = characterRepository(config.dataDir);
+      let characterDraft = characterStore.draft(sessionId);
+      if (relationship === "owner" && last.chatType === "private" && ["normal", "character_config"].includes(refreshedSession.operationMode.kind)) {
+        characterDraft = characterStore.ensureSetup(sessionId, sessionModeId);
+        if (characterDraft) {
+          sessionManager.setOperationMode(sessionId, { kind: "character_config", stage: characterDraft.stage });
+          if (characterStore.claimIntroduction(sessionId)) currentTurnDirectives.push("本轮刚进入角色配置阶段，请主动介绍本阶段需要配置的信息、第一组建议以及确认和跳过方式。");
+          persistSession(sessionId, "character_setup_entered");
+          refreshedSession = sessionManager.getSession(sessionId);
+        }
+      }
+      const persona = characterPersonaView(config.dataDir);
       const mode = requireSessionModeDefinition(sessionModeId);
       const setupCtx = await resolveSessionModeSetupContext(
         sessionModeId,
@@ -606,20 +617,23 @@ export function createGenerationSessionOrchestrator(
         { globalProfileReadinessStore, sessionManager, scenarioHostStateStore: identity.scenarioHostStateStore },
         { chatType: last.chatType, relationship }
       );
-      const setupOperationKind = mode.setupPhase?.resolveOperationModeKind(setupCtx) ?? null;
+      setupCtx.personaReady = true;
+      const setupOperationKind = !characterDraft && sessionModeId === "scenario_host" ? mode.setupPhase?.resolveOperationModeKind(setupCtx) ?? null : null;
       const readinessSetupOperation = resolveSessionModeSetupOperation(mode.setupPhase, setupOperationKind);
-      const activeDraftOperation = resolveActiveDraftOperation({
+      const activeDraftOperation = characterDraft ? null : resolveActiveDraftOperation({
         mode,
         operationMode: refreshedSession.operationMode,
         readinessOperation: readinessSetupOperation
       });
-      const setupMode = activeDraftOperation != null;
+      const setupMode = characterDraft != null || activeDraftOperation != null;
       const profileToolScope = resolveProfileToolScope({
         operationMode: refreshedSession.operationMode,
         activeSetupOperationKind: activeDraftOperation?.kind ?? null,
         modeId: sessionModeId
       });
-      const setupPhaseSelection = activeDraftOperation?.setupToolsetOverrides
+      const setupPhaseSelection = characterDraft
+        ? { setupPhase: { setupToolsetOverrides: [{ toolsetId: "memory_profile", title: "角色分块配置", description: "按分块填写当前阶段草稿", toolNames: characterToolNames, plannerSignals: ["角色配置"] }] } }
+        : activeDraftOperation?.setupToolsetOverrides
         ? { setupPhase: { setupToolsetOverrides: activeDraftOperation.setupToolsetOverrides } }
         : {};
       let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
@@ -1071,7 +1085,7 @@ export function createGenerationSessionOrchestrator(
       });
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
-      const persona = await personaStore.get();
+      const persona = characterPersonaView(config.dataDir);
       const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger });
       const scheduledAvailableToolsets = listTurnToolsets({
         config,
@@ -1285,7 +1299,7 @@ export function createGenerationSessionOrchestrator(
       });
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
-      const persona = await personaStore.get();
+      const persona = characterPersonaView(config.dataDir);
       const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger: primaryTrigger });
       const scheduledAvailableToolsets = listTurnToolsets({
         config,

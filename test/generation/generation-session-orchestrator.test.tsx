@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import pino from "pino";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createGenerationSessionOrchestrator } from "../../src/app/generation/generationSessionOrchestrator.ts";
-import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createConfiguredTestAppConfig as createTestAppConfig } from "../helpers/character-fixtures.ts";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { createEmptyRpProfile } from "../../src/modes/rpAssistant/profileSchema.ts";
 import { createEmptyScenarioProfile } from "../../src/modes/scenarioHost/profileSchema.ts";
@@ -360,10 +360,7 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
   orchestrator.flushSession(sessionId, { skipReplyGate: true });
   await runGenerationDone;
 
-  assert.deepEqual(capturedModeProfile, {
-    target: "rp",
-    profile: savedRpProfile
-  });
+  assert.equal(capturedModeProfile, undefined);
   assert.equal(capturedStreamResponse, false);
   assert.deepEqual(capturedModelSelfUpgradePlan, {
     fromRole: "main_small",

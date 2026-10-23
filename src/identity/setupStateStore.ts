@@ -1,3 +1,4 @@
+import { characterRepository } from "../character/repository.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { UserIdentityStore } from "./userIdentityStore.ts";
@@ -13,7 +14,7 @@ import { setupStateSchema, type SetupStateRecord } from "./setupStateSchema.ts";
 
 export class SetupStateStore {
   constructor(
-    dataDir: string,
+    private readonly dataDir: string,
     private readonly config: Pick<AppConfig, "conversation">,
     private readonly userIdentityStore: Pick<UserIdentityStore, "hasOwnerIdentity">,
     private readonly logger: Logger,
@@ -28,7 +29,9 @@ export class SetupStateStore {
 
   async get(): Promise<SetupStateRecord> {
     await this.stateDatabase.init();
-    return this.readOrInitialize();
+    const current = await this.readOrInitialize();
+    if (current.state !== "needs_owner") return this.write({ ...current, state: characterRepository(this.dataDir).profile().confirmed.includes("persona") ? "ready" : "needs_persona" });
+    return current;
   }
 
   async isReady(): Promise<boolean> {
@@ -42,13 +45,13 @@ export class SetupStateStore {
     }));
   }
 
-  async advanceAfterOwnerBound(persona: Persona): Promise<SetupStateRecord> {
+  async advanceAfterOwnerBound(): Promise<SetupStateRecord> {
     const current = await this.get();
     if (current.state === "ready") {
       return current;
     }
     return this.write({
-      state: isPersonaInitializationRequired(this.config, persona) ? "needs_persona" : "ready",
+      state: !characterRepository(this.dataDir).profile().confirmed.includes("persona") ? "needs_persona" : "ready",
       ownerPromptSentAt: null,
       updatedAt: Date.now()
     });
@@ -67,7 +70,7 @@ export class SetupStateStore {
       });
     }
     return this.write({
-      state: isPersonaInitializationRequired(this.config, persona) ? "needs_persona" : "ready",
+      state: !characterRepository(this.dataDir).profile().confirmed.includes("persona") ? "needs_persona" : "ready",
       ownerPromptSentAt: current.ownerPromptSentAt,
       updatedAt: Date.now()
     });
@@ -110,7 +113,7 @@ export class SetupStateStore {
       };
     }
     return {
-      state: persona && !isPersonaInitializationRequired(this.config, persona) ? "ready" : "needs_persona",
+      state: characterRepository(this.dataDir).profile().confirmed.includes("persona") ? "ready" : "needs_persona",
       ownerPromptSentAt: null,
       updatedAt: now
     };

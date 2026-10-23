@@ -66,6 +66,8 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
     ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
     ...(input.scenarioSetupRequirementLines ? { scenarioSetupRequirementLines: input.scenarioSetupRequirementLines } : {}),
+    characterSetup: input.characterSetup,
+    ...(input.characterLines ? { characterLines: input.characterLines } : {}),
     ...(input.statefulRpStateLines ? { statefulRpStateLines: input.statefulRpStateLines } : {}),
     ...(input.modeProfile ? { modeProfile: input.modeProfile } : {}),
     ...(input.draftMode ? { draftMode: input.draftMode } : {}),
@@ -131,6 +133,8 @@ export function buildScheduledTaskPrompt(
     liveResources: input.liveResources,
     ...(input.toolsetRules ? { toolsetRules: input.toolsetRules } : {}),
     ...(input.scenarioStateLines ? { scenarioStateLines: input.scenarioStateLines } : {}),
+    characterSetup: input.characterSetup,
+    ...(input.characterLines ? { characterLines: input.characterLines } : {}),
     ...(input.statefulRpStateLines ? { statefulRpStateLines: input.statefulRpStateLines } : {}),
     ...(input.modeProfile ? { modeProfile: input.modeProfile } : {})
   });

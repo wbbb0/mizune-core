@@ -6,7 +6,6 @@ import type {
 } from "#conversation/session/sessionCapabilities.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { Logger } from "pino";
-import type { PersonaStore } from "#persona/personaStore.ts";
 import type { SetupStateStore } from "#identity/setupStateStore.ts";
 import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
@@ -17,7 +16,6 @@ export interface AppSetupSupportDeps {
   oneBotClient: OneBotClient;
   sessionManager: SessionPersistenceAccess & SessionOutboundHistoryAccess;
   sessionPersistence: SessionPersistence;
-  personaStore: PersonaStore;
   setupStore: SetupStateStore;
   userIdentityStore: UserIdentityStore;
   userStore: UserStore;
@@ -30,7 +28,6 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     oneBotClient,
     sessionManager,
     sessionPersistence,
-    personaStore,
     setupStore,
     userIdentityStore,
     userStore
@@ -129,17 +126,15 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     }
   };
 
-  // Builds the current owner-facing setup instruction text from persona gaps.
+  // 初始化以显式确认状态为准；字段留空仍然可以完成配置。
   const buildSetupInstructionText = async (): Promise<string> => {
-    const currentPersona = await personaStore.get();
-    const missing = setupStore.describeMissingFields(currentPersona);
-    if (missing.length === 0) {
-      return "当前实例已进入初始化确认阶段，但没有检测到缺失字段。你可以继续补充或微调角色设定。";
+    if ((await setupStore.get()).state === "ready") {
+      return "基础人格已确认，可以开始对话。需要修改时，请在私聊中使用 .config persona，修改后用 .confirm 保存。";
     }
     return [
-      "当前实例还在 OneBot 初始化阶段，请先补全角色设定。",
-      `仍需填写：${missing.map((item) => item.label).join("、")}`,
-      "你可以直接发文本描述，也可以发图片辅助设定。"
+      "当前实例需要先确认基础人格 persona。请在私聊中开始配置，我们会逐项推荐名称、性格等信息。",
+      "你可以描述希望的设定，也可以接受推荐或明确留空；完成这一阶段后发送 .confirm 保存，.cancel 放弃草稿。",
+      "RP 模式还会继续配置社交设定；沉浸模式还需确认具身设定和本会话的动态状态。"
     ].join("\n");
   };
 
@@ -194,7 +189,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
       channelId: params.channelId,
       externalId: targetUserId
     });
-    await setupStore.advanceAfterOwnerBound(await personaStore.get());
+    const setupState = await setupStore.advanceAfterOwnerBound();
 
     if (targetUserId !== params.requesterUserId) {
       await oneBotClient.sendText({
@@ -202,11 +197,11 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
         text: await buildSetupInstructionText()
       });
       await setupStore.markOwnerPromptSent();
-      return `已将 ${targetUserId} 设为管理者，并通知对方继续完成角色设定。`;
+      return `已将 ${targetUserId} 设为管理者，并通知对方${setupState.state === "ready" ? "可以开始对话" : "继续确认角色设定"}。`;
     }
 
     await notifyOwnerSetupIfNeeded({ force: true, ownerExternalId: targetUserId });
-    return "已将你设为管理者。接下来请继续补全角色设定。";
+    return setupState.state === "ready" ? "已将你设为管理者。基础人格已确认，可以开始对话。" : "已将你设为管理者。接下来请配置并确认基础人格，允许留空。";
   };
 
   return {

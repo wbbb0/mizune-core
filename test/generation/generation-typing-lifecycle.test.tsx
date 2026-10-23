@@ -1974,6 +1974,7 @@ test("stateful_rp 后置维护在回复发送与落盘之后执行，合并中�
     statefulRpStateStore: {
       async get() {
         return {
+          initialized: false,
           clock: { currentIso: "2026-05-16T14:00:00+08:00" },
           embodiment: { outfit: { presetName: "常服", items: [], intimateGear: [] } }
         };
@@ -2012,6 +2013,9 @@ test("stateful_rp 后置维护在回复发送与落盘之后执行，合并中�
 
   assert.deepEqual(lifecycleOrder, ["post_turn:sent=1:history=1"]);
   assert.ok(postTurnInputCaptured);
+  assert.equal(postTurnInputCaptured.clockBeforeTurnIso, null);
+  assert.equal(postTurnInputCaptured.outfitSignatureBeforeTurn, null);
+  assert.equal(typeof postTurnInputCaptured.isCurrent, "function");
   assert.equal(postTurnInputCaptured.userText, "你好\n* 顺便牵住她的手");
   assert.equal(postTurnInputCaptured.assistantText, "她微微脸红地回握住你的手。");
   assert.doesNotMatch(JSON.stringify(projectedMessagesCaptured), /\[实例技能上下文\]/);

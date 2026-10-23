@@ -1398,8 +1398,11 @@ async function captureStatefulRpTurnBaseline(input: {
     return null;
   }
   const stateBefore = await input.statefulRpStateStore.get(input.sessionId);
+  if (!stateBefore?.initialized) {
+    return null;
+  }
   return {
-    clockBeforeTurnIso: stateBefore?.clock.currentIso ?? null,
+    clockBeforeTurnIso: stateBefore?.simulation.clock?.currentIso ?? null,
     outfitSignatureBeforeTurn: stateBefore ? buildOutfitSignature(stateBefore) : null
   };
 }
@@ -1442,19 +1445,14 @@ async function runStatefulRpPostTurnIfApplicable(input: {
       userText,
       assistantText: input.assistantText,
       personaName: input.personaName,
+      isCurrent: () => input.sessionManager.getMutationEpoch(input.sessionId) === input.expectedEpoch,
       abortSignal: input.abortSignal
     });
     if (input.abortSignal.aborted || input.sessionManager.getMutationEpoch(input.sessionId) !== input.expectedEpoch) {
       return;
     }
     if (nextRpState) {
-      const lastLog = nextRpState.maintenanceLog.at(-1);
-      input.logger.info({
-        sessionId: input.sessionId,
-        clockIso: nextRpState.clock.currentIso,
-        elapsedMinutes: lastLog?.elapsedMinutes ?? 0,
-        passesRun: lastLog?.passesRun ?? []
-      }, "stateful_rp_post_turn_maintained");
+      input.logger.info({ sessionId: input.sessionId, clockIso: nextRpState.simulation.clock?.currentIso }, "stateful_rp_post_turn_maintained");
       input.persistSession(input.sessionId, "stateful_rp_post_turn_maintained");
     }
   } catch (error: unknown) {

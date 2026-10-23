@@ -296,28 +296,6 @@ import { createIdentityStore, createMemoryHarness, createMemoryTestConfig } from
     }
   });
 
-  test("setup state can skip persona initialization through config", async () => {
-    const harness = await createMemoryHarness();
-    try {
-      const setupStore = new SetupStateStore(
-        harness.dataDir,
-        createMemoryTestConfig({
-          conversation: {
-            setup: {
-              skipPersonaInitialization: true
-            }
-          }
-        }),
-        harness.userIdentityStore,
-        pino({ level: "silent" })
-      );
-      const persona = await harness.personaStore.get();
-      const state = await setupStore.init(persona);
-      assert.equal(state.state, "ready");
-    } finally {
-      await harness.cleanup();
-    }
-  });
 
   test("user memories support overwrite list semantics", async () => {
     const harness = await createMemoryHarness();

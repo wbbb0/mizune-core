@@ -1,3 +1,4 @@
+import { characterRepository } from "../../character/repository.ts";
 import { getSessionSkillsView } from '../../skills/skillRuntime.ts';
 import type {
   InternalApiConfigSummaryDeps,
@@ -262,6 +263,7 @@ export async function getSessionDetail(
   }
 
   const {
+    botProfile: _botProfile,
     participantLabel: _participantLabel,
     participantUserId: _participantUserId,
     ...sessionView
@@ -477,6 +479,7 @@ function findSession(deps: InternalApiSessionReadDeps, sessionId: string): Sessi
 }
 
 function assertSessionSnapshotMutationAllowed(session: SessionState, action: string): void {
+  if (session.operationMode.kind === "character_config") throw new Error(`请先确认或取消角色配置，再${action}`);
   if (isSessionResponding(session)) {
     throw new Error(`当前会话正在回复，完成后再${action}`);
   }
@@ -486,12 +489,12 @@ async function captureSessionSnapshotModeState(
   deps: InternalApiSessionWriteDeps,
   session: SessionState
 ): Promise<SessionSnapshotModeState> {
-  if (session.modeId === "stateful_rp") {
+  if (session.modeId === "stateful_rp" || session.modeId === "rp_assistant") {
     if (!deps.statefulRpStateStore) {
       return null;
     }
     return {
-      kind: "stateful_rp",
+      kind: session.modeId,
       state: await deps.statefulRpStateStore.ensureForSession(session)
     };
   }
@@ -514,11 +517,10 @@ async function applySessionSnapshotModeState(
     await deps.statefulRpStateStore?.delete(sessionId);
     return;
   }
-  if (modeState?.kind === "stateful_rp") {
+  if (modeState?.kind === "stateful_rp" || modeState?.kind === "rp_assistant") {
     await deps.scenarioHostStateStore.delete(sessionId);
     await deps.statefulRpStateStore?.write(sessionId, {
-      ...modeState.state,
-      sessionId
+      ...modeState.state
     });
     return;
   }
@@ -574,6 +576,7 @@ export async function createWebSession(
     await deps.statefulRpStateStore.ensureForSession(deps.sessionManager.getSession(session.id));
   }
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(session.id));
+  await deps.startCharacterSetup?.(session.id);
   return {
     ok: true,
     session: buildSessionSummary(session)
@@ -646,6 +649,7 @@ export async function switchSessionMode(
   requireSessionModeDefinition(body.modeId);
   const session = deps.sessionManager.getSession(sessionId);
   assertSessionModeAllowed(body.modeId, session.type);
+  if (deps.config && characterRepository(deps.config.dataDir).draft(sessionId)) throw new Error("请先确认或取消当前角色配置");
   deps.sessionManager.setModeId(sessionId, body.modeId);
   if (body.modeId === "scenario_host") {
     await deps.scenarioHostStateStore.ensureForSession(toScenarioHostSession(session));
@@ -653,6 +657,7 @@ export async function switchSessionMode(
     await deps.statefulRpStateStore.ensureForSession(session);
   }
   await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
+  await deps.startCharacterSetup?.(sessionId);
   return {
     ok: true as const,
     session: buildSessionSummary(deps.sessionManager.getSession(sessionId))
@@ -665,30 +670,7 @@ export async function updateSessionModeState(
   body: ParsedUpdateSessionModeStateBody
 ) {
   const session = deps.sessionManager.getSession(sessionId);
-  if (session.modeId === "stateful_rp") {
-    if (!deps.statefulRpStateStore) {
-      throw new Error("stateful_rp_state_store_unavailable");
-    }
-    const current = await deps.statefulRpStateStore.ensureForSession(session);
-    const merged = isRecord(body.state)
-      ? {
-          ...current,
-          ...body.state,
-          sessionId,
-          version: 1 as const,
-          updatedAt: new Date().toISOString()
-        }
-      : body.state;
-    const parsedState = statefulRpSessionStateSchema.parse(merged);
-    const state = await deps.statefulRpStateStore.write(sessionId, parsedState);
-    return {
-      ok: true as const,
-      modeState: {
-        kind: "stateful_rp" as const,
-        state
-      }
-    };
-  }
+  if (session.modeId === "stateful_rp") throw new Error("请使用角色分块编辑；初始化和固定设定需通过配置流程确认。");
   if (session.modeId !== "scenario_host") {
     throw new Error(`Session mode ${session.modeId} does not support editable mode state; only scenario_host and stateful_rp are supported`);
   }
@@ -722,8 +704,10 @@ export async function resetStatefulRpSessionState(
   if (!deps.statefulRpStateStore) {
     throw new Error("stateful_rp_state_store_unavailable");
   }
+  deps.statefulRpStateStore.characters.reset(sessionId);
   const resetState = createInitialStatefulRpSessionState({ sessionId });
   const state = await deps.statefulRpStateStore.write(sessionId, resetState);
+  await deps.startCharacterSetup?.(sessionId);
   return {
     ok: true as const,
     modeState: {
@@ -983,7 +967,7 @@ export async function deleteSession(
 
 export async function getPersona(deps: InternalApiPersonaDeps) {
   return {
-    persona: await deps.personaStore.get()
+    persona: characterRepository(deps.config.dataDir).profile().persona
   };
 }
 
@@ -1046,13 +1030,11 @@ function remapCopiedSessionModeState(
     targetTitle: string;
   }
 ): SessionSnapshotModeState {
-  if (modeState?.kind === "stateful_rp") {
+  if (modeState?.kind === "stateful_rp" || modeState?.kind === "rp_assistant") {
     return {
-      kind: "stateful_rp",
+      kind: modeState.kind,
       state: {
-        ...modeState.state,
-        sessionId: input.targetSessionId,
-        updatedAt: new Date().toISOString()
+        ...modeState.state
       }
     };
   }

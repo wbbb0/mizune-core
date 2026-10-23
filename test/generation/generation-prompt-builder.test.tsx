@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createGenerationPromptBuilder } from "../../src/app/generation/generationPromptBuilder.ts";
-import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createConfiguredTestAppConfig as createTestAppConfig } from "../helpers/character-fixtures.ts";
 import { hasPromptSection, readPromptSystemText } from "../helpers/prompt-fixtures.tsx";
 import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
@@ -1231,8 +1231,8 @@ function createActiveTaskTracker() {
     });
 
     const system = readPromptSystemText(result.promptMessages);
-    assert.equal(hasPromptSection(system, "global_persona"), true);
-    assert.match(system, /全局 persona：名字=Ignored Persona；性格底色=；语气风格=/);
+    assert.equal(hasPromptSection(system, "character_profile"), true);
+    assert.match(system, /小满/);
     assert.match(system, /AI assistant 模式工作/);
     assert.doesNotMatch(system, /current_user_memories/);
     assert.doesNotMatch(system, /current_user_profile/);
@@ -1538,12 +1538,12 @@ function createActiveTaskTracker() {
       .join("\n");
 
     assert.ok(systemContent.includes("scenario_profile_setup_mode"), `Expected scenario_profile_setup_mode section, got: ${systemContent.slice(0, 400)}`);
-    assert.ok(systemContent.includes("global_persona_base"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(systemContent.includes("character_profile"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_setup_requirements"), `Expected scenario_setup_requirements section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_profile_snapshot"), `Expected scenario_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
     assert.match(systemContent, /以下全局 persona 是当前实例在所有模式下共享的底座/);
-    assert.match(systemContent, /全局 persona：名字=主持者；性格底色=；语气风格=/);
+    assert.match(systemContent, /小满/);
     assert.match(systemContent, /当前 Scenario 资料只是建立在这层基础上的模式补充/);
     assert.match(systemContent, /你当前只在Scenario 资料的临时草稿上工作/);
     assert.match(systemContent, /只有当 owner 明确说这是“我的角色 \/ 玩家角色 \/ 我扮演的角色 \/ PC”时，才把角色信息写入玩家角色/);
@@ -1723,8 +1723,8 @@ function createActiveTaskTracker() {
     });
 
     const system = readPromptSystemText(result.promptMessages);
-    assert.equal(hasPromptSection(system, "global_persona"), true);
-    assert.match(system, /全局 persona：名字=Bot；性格底色=；语气风格=/);
+    assert.equal(hasPromptSection(system, "character_profile"), true);
+    assert.match(system, /小满/);
     assert.match(system, /剧情主持模式下的场景主持者/);
     assert.equal(hasPromptSection(system, "scenario_profile"), true);
     assert.match(system, /当前会话 Scenario 资料：主题=钟楼怪谈；世界基线=海边小城潜伏超自然异象；叙事风格=冷静克制/);
@@ -2080,10 +2080,10 @@ function createActiveTaskTracker() {
     });
 
     const system = readPromptSystemText(result.promptMessages);
-    assert.equal(hasPromptSection(system, "global_persona"), true);
-    assert.match(system, /全局 persona：名字=小满；性格底色=冷静细致；语气风格=短句克制/);
-    assert.equal(hasPromptSection(system, "rp_profile"), true);
-    assert.match(system, /RP 全局资料：身份定位=图书管理员；稳定背景=黑色风衣，短发；边界=绝不跳出角色/);
+    assert.equal(hasPromptSection(system, "character_profile"), true);
+    assert.match(system, /小满/);
+    assert.equal(hasPromptSection(system, "rp_profile"), false);
+    assert.match(system, /图书管理员/);
     assert.match(system, /RP assistant 模式/);
     assert.doesNotMatch(system, /scenario_state/);
   });
@@ -2241,7 +2241,7 @@ function createActiveTaskTracker() {
       .join("\n");
 
     assert.ok(systemContent.includes("scenario_profile_config_mode"), `Expected scenario_profile_config_mode section, got: ${systemContent.slice(0, 400)}`);
-    assert.ok(systemContent.includes("global_persona_base"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
+    assert.ok(systemContent.includes("character_profile"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_setup_requirements"), `Expected scenario_setup_requirements section, got: ${systemContent.slice(0, 400)}`);
     assert.ok(systemContent.includes("scenario_profile_snapshot"), `Expected scenario_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
@@ -2270,137 +2270,6 @@ function createActiveTaskTracker() {
     assert.ok(!systemContent.includes("scenario_state"), `Expected no runtime scenario state section, got: ${systemContent.slice(0, 400)}`);
   });
 
-  test("rp draft prompt includes global persona as the shared base", async () => {
-    const builder = createGenerationPromptBuilder({
-      config: createTestAppConfig(),
-      oneBotClient: {} as any,
-      audioStore: {} as any,
-      audioTranscriber: {
-        async transcribeMany() {
-          return [];
-        }
-      } as any,
-      npcDirectory: {
-        listProfiles() {
-          return [];
-        }
-      } as any,
-      browserService: {
-        async listPages() {
-          return { pages: [] };
-        }
-      } as any,
-      temporaryWorkspaceService: { list() { return []; } } as any,
-      localFileService: {} as any,
-      chatFileStore: {} as any,
-      downloadRuntime: { list() { return []; } } as any,
-      mediaVisionService: {
-        async prepareFilesForModel() {
-          return [];
-        }
-      } as any,
-      mediaCaptionService: {
-        async ensureReady() {
-          return new Map();
-        }
-      } as any,
-      globalRuleStore: {
-        async getAll() {
-          return [];
-        }
-      } as any,
-      toolsetRuleStore: {
-        async getAll() {
-          return [];
-        }
-      } as any,
-      scenarioHostStateStore: {
-        async ensure() {
-          throw new Error("rp draft prompt should not load scenario state");
-        }
-      } as any,
-      shellRuntime: {
-        async listSessionResources() {
-          return [];
-        }
-      } as any,
-      setupStore: {
-        describeMissingFields() {
-          return [];
-        }
-      } as any
-    });
-
-    const result = await builder.buildChatPromptMessages({
-      sessionId: "qqbot:p:u1",
-      modeId: "rp_assistant",
-      interactionMode: "normal",
-      mainModelRef: ["main"],
-      visibleToolNames: [],
-      activeToolsets: [],
-      lateSystemMessages: [],
-      replayMessages: [],
-      persona: {
-        name: "小满",
-        temperament: "冷静细致",
-        voiceStyle: "短句克制"
-      },
-      relationship: "owner",
-      participantProfiles: [],
-      currentUser: null,
-      historySummary: null,
-      historyForPrompt: [],
-      debugMarkers: [],
-      internalTranscript: [],
-      lastLlmUsage: null,
-      abortSignal: new AbortController().signal,
-      batchMessages: [{
-        userId: "u1",
-        senderName: "Alice",
-        text: "把 RP 前提改成雨夜同居",
-        images: [],
-        audioSources: [],
-        audioIds: [],
-        emojiSources: [],
-        imageIds: [],
-        emojiIds: [],
-        forwardIds: [],
-        replyMessageId: null,
-        mentionUserIds: [],
-        mentionedAll: false,
-        isAtMentioned: false,
-        receivedAt: Date.now()
-      }],
-      draftMode: {
-        target: "rp",
-        phase: "config",
-        profile: {
-          identity: "图书管理员",
-          background: "",
-          continuityFacts: "",
-          boundaries: "绝不跳出角色"
-        },
-        missingFields: ["background", "continuityFacts"]
-      }
-    });
-
-    const systemContent = result.promptMessages
-      .filter((m) => m.role === "system")
-      .map((m) => (typeof m.content === "string" ? m.content : JSON.stringify(m.content)))
-      .join("\n");
-
-    assert.ok(systemContent.includes("rp_profile_config_mode"), `Expected rp_profile_config_mode section, got: ${systemContent.slice(0, 400)}`);
-    assert.ok(systemContent.includes("global_persona_base"), `Expected global_persona_base section, got: ${systemContent.slice(0, 400)}`);
-    assert.ok(systemContent.includes("draft_workflow"), `Expected draft_workflow section, got: ${systemContent.slice(0, 400)}`);
-    assert.ok(systemContent.includes("rp_profile_snapshot"), `Expected rp_profile_snapshot section, got: ${systemContent.slice(0, 400)}`);
-    assert.match(systemContent, /全局 persona：名字=小满；性格底色=冷静细致；语气风格=短句克制/);
-    assert.match(systemContent, /当前 RP 资料只是建立在这层基础上的模式补充/);
-    assert.match(systemContent, /不要把已属于 persona 的内容重复搬进 RP 资料/);
-    assert.match(systemContent, /当前草稿已明确：身份定位、边界/);
-    assert.match(systemContent, /核心字段仍缺：稳定背景/);
-    assert.match(systemContent, /可在需要时继续补充：连续性事实/);
-    assert.match(systemContent, /已设定：身份定位=图书管理员；边界=绝不跳出角色/);
-  });
 
   test("chat prompt retrieves context without depositing current turn into memory store", async () => {
     const rawMessages: Array<{ messageId: string; text: string; userId: string }> = [];

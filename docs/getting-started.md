@@ -286,17 +286,11 @@ conversation:
 
 群聊中普通消息会进入会话历史作为上下文；只有明确 @ bot 或回复 bot 已发送消息才会触发回复。触发时会在当前轮输入中追加本轮回复目标，避免模型在多人群聊里切换回复对象。
 
-## persona 初始化
+## 角色初始化
 
-如果联调其他功能时想先跳过全局 persona 初始化门槛，可以临时加上：
+首次进入时，按当前模式需要依次确认 `persona`、`social`、`embodiment`；沉浸模式再确认当前会话的动态状态。每阶段由模型主动介绍并按小块填写，使用 `.confirm` 保存、`.cancel` 放弃草稿。允许留空确认，不再提供跳过确认的全局开关。
 
-```yml
-conversation:
-  setup:
-    skipPersonaInitialization: true
-```
-
-默认是 `false`。开启后仍然可以手动使用 `.setup persona` / `.config persona` 编辑 persona，只是不再阻塞会话进入正常模式。
+已确认的固定档案由实例内所有会话共享。新会话只补齐本模式所需的未确认层，以及自己的动态状态。修改固定信息使用 `.config persona`、`.config social` 或 `.config embodiment`；校正开局日期等动态信息使用 `.config state`。
 
 ## 生产启动
 
@@ -340,7 +334,8 @@ config/instances/acc1.yml
 
 - `sessions/`
 - `sessions/sessions.sqlite`，其中包含会话快照、会话 transcript 竖表与 `scenario_host` 每会话状态持久化数据
-- `state/state.sqlite`，其中包含 `persona`、`rp_profile`、`global_profile_readiness`、`setup_state`、`users`、`user_memories`、`pending_requests`、`scheduled_jobs`、`scheduled_job_targets`、`global_rules`、`toolset_rules`、`toolset_rule_toolsets`、`user_identities`、`group_membership_entries` 与 `whitelist_entries`
+- `character.sqlite`，其中包含三层固定角色档案、分块配置草稿、社交与模拟动态状态；新角色不会读取旧 persona/RP 档案
+- `state/state.sqlite`，其中包含 `setup_state`、`users`、`user_memories`、`pending_requests`、`scheduled_jobs`、`scheduled_job_targets`、`global_rules`、`toolset_rules`、`toolset_rule_toolsets`、`user_identities`、`group_membership_entries` 与 `whitelist_entries`
 - `assets/assets.sqlite`，其中包含 `audio_files`、`chat_files`、`comfy_tasks`、`comfy_task_result_files` 与 `content_safety_audits`
 - `dumps/`，WebUI Data Registry 导出的可读文件会使用稳定文件名覆盖写入这里，避免按时间戳生成大量 dump
 - `workspace/`
@@ -352,7 +347,7 @@ config/instances/acc1.yml
 npm run migrate:memory -- data/<instance>
 ```
 
-迁移会归并旧版 memory / rules 数据，并生成 `memory-migration-report.json` 审计报告。`persona`、RP 全局资料、全局资料就绪状态、初始化状态、用户资料、规则、身份映射、群成员缓存、待处理请求、定时任务和白名单已由 `state/state.sqlite` 承载；会话快照与 `scenario_host` 每会话状态已由 `sessions/sessions.sqlite` 承载，Scenario 资料随对应会话状态保存。对应旧 JSON 文件不再作为运行时数据源。
+迁移会归并旧版 memory / rules 数据，并生成 `memory-migration-report.json` 审计报告。初始化状态、用户资料、规则、身份映射、群成员缓存、待处理请求、定时任务和白名单由 `state/state.sqlite` 承载；新角色固定档案与动态状态由 `character.sqlite` 承载，旧 persona/RP 数据不迁移；会话快照与 `scenario_host` 每会话状态已由 `sessions/sessions.sqlite` 承载，Scenario 资料随对应会话状态保存。对应旧 JSON 文件不再作为运行时数据源。
 
 ## 反向代理注意事项
 

@@ -226,9 +226,6 @@ const conversationConfigSchema = s.object({
       mode: s.enum(["live", "last_completed_reply"]).title("读取模式").default("live")
     })).title("有方向的会话关联").default([])
   }).title("跨会话参考").describe("仅在生成回答时读取关联会话；不新增模型调用。群聊不能参考私聊。").default(emptyObject),
-  setup: s.object({
-    skipPersonaInitialization: s.boolean().title("跳过 Persona 初始化").default(false)
-  }).title("初始化").describe("控制是否跳过全局 persona 初始化门槛；用于联调时快速进入其他功能。").default(emptyObject),
   images: s.object({
     maxSerializedPixels: s.number().int().positive().title("最大序列化像素").default(1024 ** 2),
     maxCachedFiles: s.number().int().positive().title("最大缓存文件数").default(100)

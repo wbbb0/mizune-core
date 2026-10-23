@@ -55,7 +55,7 @@ function createScenarioState(input: {
       query: "早餐",
       content: "早餐固定吃全麦吐司"
     });
-    assert.deepEqual(parseDirectCommand(".setup rp"), { name: "setup", target: "rp" });
+    assert.deepEqual(parseDirectCommand(".setup social"), { name: "setup", target: "social" });
     assert.deepEqual(parseDirectCommand(".config scenario"), { name: "config", target: "scenario" });
     assert.deepEqual(parseDirectCommand(".cancel"), { name: "cancel" });
   });
@@ -688,23 +688,17 @@ function createScenarioState(input: {
     });
 
     await handler({
-      command: { name: "setup", target: "rp" },
+      command: { name: "setup", target: "social" },
       sessionId: "qqbot:p:owner",
       incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
     });
 
     assert.deepEqual(latestOperationMode, {
-      kind: "mode_setup",
-      modeId: "rp_assistant",
-      draft: createEmptyRpProfile()
+      kind: "character_config",
+      stage: "social"
     });
-    assert.deepEqual(phaseTransitions, [{
-      target: "rp",
-      phase: "setup",
-      action: "enter",
-      source: "command"
-    }]);
-    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 RP 资料 初始化流程/);
+    assert.deepEqual(phaseTransitions, []);
+    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 social 配置/);
   });
 
   test("setup command restarts persona from an empty draft even after initialization", async () => {
@@ -751,10 +745,10 @@ function createScenarioState(input: {
     });
 
     assert.deepEqual(latestOperationMode, {
-      kind: "persona_setup",
-      draft: createEmptyPersona()
+      kind: "character_config",
+      stage: "persona"
     });
-    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 初始化流程/);
+    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 配置/);
   });
 
   test("setup command restarts scenario from an empty draft even after initialization", async () => {
@@ -886,16 +880,11 @@ function createScenarioState(input: {
     });
 
     assert.deepEqual(latestOperationMode, {
-      kind: "persona_config",
-      draft: savedPersona
+      kind: "character_config",
+      stage: "persona"
     });
-    assert.deepEqual(phaseTransitions, [{
-      target: "persona",
-      phase: "config",
-      action: "enter",
-      source: "command"
-    }]);
-    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 配置流程/);
+    assert.deepEqual(phaseTransitions, []);
+    assert.match(String(calls.at(-1)?.text ?? ""), /已进入 persona 配置/);
   });
 
   test("config command still rejects uninitialized targets", async () => {
@@ -942,149 +931,7 @@ function createScenarioState(input: {
     assert.equal(calls.at(-1)?.text, "当前会话 Scenario 资料尚未初始化，请先使用 `.setup scenario`。");
   });
 
-  test("confirm command persists persona draft and exits configuration flow without clearing history", async () => {
-    let interruptCalled = 0;
-    const finishedOperations: Array<Record<string, unknown>> = [];
-    const writtenPersonas: unknown[] = [];
-    const setupAdvanceCalls: unknown[] = [];
-    const personaReadinessUpdates: Array<"uninitialized" | "ready"> = [];
-    const nicknameUpdates: string[] = [];
 
-    const { calls, handler } = createDirectCommandFixture({
-      config: {
-        onebot: {
-          provider: "napcat"
-        }
-      },
-      session: {
-        operationMode: {
-          kind: "persona_setup",
-          draft: {
-            ...createEmptyPersona(),
-            name: "小满",
-            temperament: "克制",
-            voiceStyle: "简洁"
-          }
-        }
-      },
-      interruptResponse() {
-        interruptCalled += 1;
-        return {};
-      },
-      finishProfileOperation(_sessionId, input) {
-        finishedOperations.push(input);
-        return true;
-      },
-      personaStore: {
-        async get() {
-          return createEmptyPersona();
-        },
-        async write(persona: unknown) {
-          writtenPersonas.push(persona);
-        },
-        createEmpty() {
-          return createEmptyPersona();
-        },
-        isComplete() {
-          return true;
-        }
-      },
-      setupStore: {
-        async advanceAfterPersonaUpdate(persona: unknown) {
-          setupAdvanceCalls.push(persona);
-          return null;
-        }
-      },
-      globalProfileReadinessStore: {
-        async get() {
-          return {
-            persona: "uninitialized",
-            rp: "uninitialized",
-            updatedAt: 1
-          };
-        },
-        async setPersonaReadiness(status: "uninitialized" | "ready") {
-          personaReadinessUpdates.push(status);
-          return null;
-        }
-      } as any,
-      oneBotClient: {
-        async setQQProfile(input: { nickname: string }) {
-          nicknameUpdates.push(input.nickname);
-          return { status: "ok", retcode: 0, data: null };
-        }
-      }
-    });
-
-    await handler({
-      command: { name: "confirm" },
-      sessionId: "qqbot:p:owner",
-      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
-    });
-
-    assert.equal(interruptCalled, 1);
-    assert.deepEqual(finishedOperations, [{ action: "exit_confirmed", source: "command" }]);
-    assert.equal(writtenPersonas.length, 1);
-    assert.equal(setupAdvanceCalls.length, 1);
-    assert.deepEqual(personaReadinessUpdates, ["ready"]);
-    assert.deepEqual(nicknameUpdates, ["小满"]);
-    assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
-  });
-
-  test("confirm command does not sync persona nickname when OneBot is disabled", async () => {
-    const writtenPersonas: unknown[] = [];
-    const nicknameUpdates: string[] = [];
-
-    const { calls, handler } = createDirectCommandFixture({
-      config: {
-        onebot: {
-          enabled: false,
-          provider: "napcat"
-        }
-      },
-      session: {
-        operationMode: {
-          kind: "persona_config",
-          draft: {
-            ...createEmptyPersona(),
-            name: "小满",
-            temperament: "克制",
-            voiceStyle: "简洁"
-          }
-        }
-      },
-      personaStore: {
-        async get() {
-          return createEmptyPersona();
-        },
-        async write(persona: unknown) {
-          writtenPersonas.push(persona);
-        },
-        createEmpty() {
-          return createEmptyPersona();
-        },
-        isComplete() {
-          return true;
-        }
-      },
-      oneBotClient: {
-        async setQQProfile(input: { nickname: string }) {
-          nicknameUpdates.push(input.nickname);
-          return { status: "ok", retcode: 0, data: null };
-        }
-      }
-    });
-
-    await handler({
-      command: { name: "confirm" },
-      sessionId: "qqbot:p:owner",
-      incomingMessage: { chatType: "private", userId: "owner", relationship: "owner" }
-    });
-
-    assert.equal(writtenPersonas.length, 1);
-    assert.deepEqual(nicknameUpdates, []);
-    assert.equal(calls.at(-1)?.text, "配置已确认，已回到正常对话。");
-  });
 
   test("confirm command persists mode draft and updates mode readiness", async () => {
     const finishedOperations: Array<Record<string, unknown>> = [];

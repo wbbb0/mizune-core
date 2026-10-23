@@ -318,7 +318,6 @@ export interface SessionDetailSnapshot {
   source: "onebot" | "web";
   modeId: string;
   participantRef: SessionParticipantRef;
-  botProfile: SessionBotProfile | null;
   title: string | null;
   titleSource: SessionTitleSource | null;
   titleGenerationAvailable: boolean;
@@ -336,14 +335,6 @@ export interface SessionDetailSnapshot {
   isGenerating: boolean;
   historyRevision: number;
   mutationEpoch: number;
-}
-
-export interface SessionBotProfile {
-  name?: string;
-  identity?: string;
-  background?: string;
-  temperament?: string;
-  voiceStyle?: string;
 }
 
 export interface SessionPacingPreferences {

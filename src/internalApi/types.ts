@@ -1,3 +1,5 @@
+import { characterRepository } from "../character/repository.ts";
+import { enqueueCharacterIntroduction } from "../character/introduction.ts";
 import type { SessionSkillsView } from '../types/skills.ts';
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
@@ -49,7 +51,6 @@ import type {
 } from "#conversation/session/sessionCapabilities.ts";
 import type { SessionParticipantRef, SessionTitleSource } from "#conversation/session/sessionTypes.ts";
 import type { SessionPacingPreferences } from "#conversation/session/sessionPacing.ts";
-import type { SessionBotProfile } from "#conversation/session/sessionBotProfile.ts";
 import {
   createEditorService,
   type EditorService
@@ -110,7 +111,6 @@ export interface InternalApiSessionDetail {
     source: "onebot" | "web";
     modeId: string;
     participantRef: SessionParticipantRef;
-    botProfile: SessionBotProfile | null;
     title: string | null;
     titleSource: SessionTitleSource | null;
     titleGenerationAvailable: boolean;
@@ -150,6 +150,7 @@ export interface InternalApiSessionReadDeps {
 }
 
 export interface InternalApiSessionWriteDeps extends InternalApiSessionReadDeps {
+  startCharacterSetup?: (sessionId: string) => Promise<void>;
   sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess;
   sessionPersistence: SessionPersistence;
   sessionSnapshotStore: SessionSnapshotStore;
@@ -167,6 +168,7 @@ export interface InternalApiSessionDeleteDeps extends InternalApiSessionReadDeps
 }
 
 export interface InternalApiPersonaDeps {
+  config: AppConfig;
   personaStore: PersonaStore;
 }
 
@@ -225,7 +227,7 @@ export interface InternalApiDeps {
   config: AppConfig;
   logger: Logger;
   oneBotClient: OneBotClient;
-  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess;
+  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess & Pick<import("#conversation/session/sessionCapabilities.ts").SessionDirectCommandAccess, "setOperationMode" | "appendSyntheticPendingMessage">;
   sessionCaptioner: SessionCaptioner;
   personaStore: PersonaStore;
   rpProfileStore: RpProfileStore;
@@ -303,6 +305,18 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
     basicRoutes: {
       config: {
         config: deps.config,
+        startCharacterSetup: async (sessionId: string) => {
+          const session = deps.sessionManager.getSession(sessionId);
+          // participantRef 使用内部身份；WebUI 新建私聊也固定绑定 owner。
+          // 管理端切换群聊或其他用户的模式，不代表允许在该会话配置全局角色。
+          if (session.type !== "private" || session.participantRef.kind !== "user" || session.participantRef.id !== "owner") return;
+          const draft = characterRepository(deps.config.dataDir).ensureSetup(sessionId, session.modeId);
+          if (!draft) return;
+          deps.sessionManager.setOperationMode(sessionId, { kind: "character_config", stage: draft.stage });
+          await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
+          enqueueCharacterIntroduction({ dataDir: deps.config.dataDir, sessionId, userId: session.participantRef.id, sessionManager: deps.sessionManager, flushSession: deps.flushSession,
+            persist: () => { void deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId)); } });
+        },
         whitelistStore: deps.whitelistStore,
         userIdentityStore: deps.userIdentityStore,
         sessionManager: deps.sessionManager,

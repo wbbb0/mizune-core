@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
-import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createConfiguredTestAppConfig as createTestAppConfig } from "../helpers/character-fixtures.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createInternalTriggerDispatcher } from "../../src/app/session-work/internalTriggerDispatcher.ts";
 import { createGenerationSessionOrchestrator } from "../../src/app/generation/generationSessionOrchestrator.ts";
@@ -525,7 +525,7 @@ function createOrchestratorDeps(input: {
     assert.equal(capturedPromptInput.modeId, "assistant");
     assert.deepEqual(capturedPromptInput.participantProfiles, []);
     assert.equal(capturedPromptInput.persona.name, "小满");
-    assert.equal(capturedPromptInput.persona.temperament, "冷静");
+    assert.equal(capturedPromptInput.persona.temperament, "冷静细致");
     assert.equal(capturedPromptInput.currentUser.userId, "owner");
     assert.ok(capturedRunInput);
     assert.equal(capturedRunInput.availableToolsets.some((item: { id: string }) => item.id === "memory_profile"), false);
