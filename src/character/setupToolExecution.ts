@@ -2,23 +2,22 @@ import type { BuiltinToolContext } from "../llm/tools/core/shared.ts";
 import { setupInputErrors, setupInputFailure } from "../llm/tools/setup/inputValidation.ts";
 import { characterRepository } from "./repository.ts";
 import { emptyValue, type JsonObject } from "./schemaCatalog.ts";
-import { selectedSetupSection, setupEditBindings, mergeSetupValue, hasGeneratedCollectionKey } from "./setupEditing.ts";
+import { stageSetupBindings, mergeSetupValue, hasGeneratedCollectionKey } from "./setupEditing.ts";
 
-/** 工具名称携带草稿/分块绑定。不能把旧调用自动重定向到当前草稿。 */
-export function executeCharacterSetupTool(name: string, args: unknown, context: BuiltinToolContext): string {
+/** 稳定工具对应固定分块；生成轮次绑定草稿，旧调用不能转写新草稿。 */
+export function executeCharacterSetupTool(name: string, args: unknown, context: BuiltinToolContext, expectedDraftId: string | null): string {
   if (context.relationship !== "owner") return JSON.stringify({ error: "角色配置仅 owner 可修改", saved: false });
   const sessionId = context.lastMessage.sessionId;
   const store = characterRepository(context.config.dataDir);
   const draft = store.draft(sessionId);
-  const selected = selectedSetupSection(context.config.dataDir, sessionId);
-  const stale = () => JSON.stringify({ error: "当前草稿或分块已变化，此工具绑定已失效", code: "stale_setup_tool", saved: false,
-    nextStep: "重新读取需要配置的分块，使用新返回的工具。不要改写旧工具名称后直接重试。" });
-  if (!draft || !selected) return stale();
+  const stale = () => JSON.stringify({ error: "当前配置草稿已变化，本轮工具调用已失效", code: "stale_setup_tool", saved: false,
+    nextStep: "请在新的配置轮次中继续操作。" });
+  if (!draft || draft.id !== expectedDraftId) return stale();
   try {
     const mode = context.sessionManager.getSession(sessionId).modeId;
-    const section = store.section(sessionId, mode, selected.sectionId);
-    const binding = setupEditBindings(section, draft.id).find(item => item.definition.function.name === name);
+    const binding = stageSetupBindings(draft.stage, draft.id).find(item => item.definition.function.name === name);
     if (!binding) return stale();
+    const section = store.section(sessionId, mode, binding.sectionId);
     const schema = binding.definition.function.parameters;
     const errors = setupInputErrors(schema, args);
     if (errors.length) return setupInputFailure(errors, schema);

@@ -177,8 +177,8 @@ export interface BuiltinToolContext extends
         tools: string[];
       }>;
       active_toolset_ids: string[];
-      request_limit_per_turn: number;
-      remaining_request_quota: number;
+      request_limit_per_turn: number | null;
+      remaining_request_quota: number | null;
     };
     requestToolsets: (toolsetIds: string[], reason: string) => {
       ok: boolean;

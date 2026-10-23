@@ -1,3 +1,4 @@
+import { characterRepository } from "../../character/repository.ts";
 import { executeCharacterSetupTool } from "../../character/setupToolExecution.ts";
 import { isCharacterSetupToolName } from "../../character/setupEditing.ts";
 import { executeSetupAttempt } from "./setup/retryGuard.ts";
@@ -67,6 +68,9 @@ function selectBuiltinToolDescriptors(options: BuiltinToolSelectionOptions) {
   const allowedToolNames = options.availableToolNames
     ? new Set(filterProfileToolNamesForScope(options.availableToolNames, options.profileToolScope))
     : null;
+  if (allowedToolNames && [...allowedToolNames].some(isCharacterSetupToolName)) {
+    allowedToolNames.add("edit_character_section");
+  }
   const hideExternalSearchTool = shouldHideExternalSearchTool(options.config, options.modelRef);
   const modelSupportsTools = !options.config || !options.modelRef
     ? true
@@ -122,7 +126,11 @@ export function getBuiltinTools(
     ...(options?.visibilityContext ? { visibilityContext: options.visibilityContext } : {}),
     profileToolScope: options?.profileToolScope ?? resolveProfileToolScopeFromOperationMode(options?.operationMode)
   })
-    .flatMap((tool) => options?.forCatalog ? [tool.definition] : initializationToolDefinition(tool.definition, resolvedConfig?.dataDir, options?.visibilityContext?.sessionId, options?.operationMode));
+    .flatMap((tool) => options?.forCatalog ? [tool.definition] : initializationToolDefinition(tool.definition, resolvedConfig?.dataDir, options?.visibilityContext?.sessionId, options?.operationMode))
+    .filter(tool => !isCharacterSetupToolName(tool.function.name)
+      || options?.availableToolNames === undefined
+      || options.availableToolNames.includes("edit_character_section")
+      || options.availableToolNames.includes(tool.function.name));
 }
 
 export function getBuiltinToolNames(
@@ -146,6 +154,7 @@ export function getBuiltinToolNames(
 export function createBuiltinToolExecutor(
   context: BuiltinToolContext,
   options?: {
+    expectedCharacterDraftId?: string | null;
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
@@ -171,9 +180,17 @@ export function createBuiltinToolExecutor(
       .map((tool) => tool.definition.function.name)
   );
 
+  const expectedDraftId = options?.expectedCharacterDraftId !== undefined
+    ? options.expectedCharacterDraftId
+    : allowedToolNames.has("edit_character_section")
+      ? characterRepository(context.config.dataDir).draft(context.lastMessage.sessionId)?.id ?? null
+      : null;
+
   const execute = async (toolCall: LlmToolCall, args: unknown): Promise<string | LlmToolExecutionResult> => {
-    if (isCharacterSetupToolName(toolCall.function.name) && allowedToolNames.has("edit_character_section")) {
-      return projectRawToolContent(toolCall.function.name, executeCharacterSetupTool(toolCall.function.name, args, context));
+    if (isCharacterSetupToolName(toolCall.function.name) && allowedToolNames.has("edit_character_section")
+      && (options?.availableToolNames === undefined || options.availableToolNames.includes("edit_character_section")
+        || options.availableToolNames.includes(toolCall.function.name))) {
+      return projectRawToolContent(toolCall.function.name, executeCharacterSetupTool(toolCall.function.name, args, context, expectedDraftId));
     }
     if (!allowedToolNames.has(toolCall.function.name)) {
       return projectRawToolContent(toolCall.function.name, JSON.stringify({

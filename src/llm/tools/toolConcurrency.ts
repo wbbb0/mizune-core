@@ -112,7 +112,8 @@ export function analyzeBuiltinToolConcurrency(toolCall: LlmToolCall): ToolExecut
         getStringArg(args, "resource_id") ? [browserPageKey(getStringArg(args, "resource_id"))] : ["web_download:*"],
         ["download:*", "chat_file:*"]
       );
-    case "read_character_section": // 配置阶段读取会选择下一次编辑的分块。
+    case "read_character_section":
+      return parallel(["character:*"], []);
     case "edit_character_section":
       return parallel([], ["character:*"]);
     default:

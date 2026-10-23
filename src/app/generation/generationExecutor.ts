@@ -1,3 +1,5 @@
+import { characterRepository } from "../../character/repository.ts";
+import { CHARACTER_SETUP_GROUP_PREFIX, loadedCharacterSetupGroups } from "../../character/setupToolsets.ts";
 import { resolveSkillTaskId } from "../../skills/skillTaskIdentity.ts";
 import { skillObservation, projectSkillObservations } from "../../skills/skillObservation.ts";
 import { beginSkillTask, readPreviousSkillTaskId } from '../../skills/skillRuntime.ts';
@@ -425,11 +427,16 @@ export function createGenerationExecutor(
           })).content
         }));
       };
-      const hasToolsetBoundary = !setupMode && Array.isArray(availableToolsets);
-      const isPlannerToolsetMode = hasToolsetBoundary && config.llm.turnPlanner.toolSelection === "planned";
+      const characterDraftId = setupMode ? characterRepository(config.dataDir).draft(sessionId)?.id ?? null : null;
+      const setupLoadedGroups = characterDraftId ? loadedCharacterSetupGroups(config.dataDir, sessionId, characterDraftId) : null;
+      const hasToolsetBoundary = Array.isArray(availableToolsets);
+      const isPlannerToolsetMode = hasToolsetBoundary && (setupMode || config.llm.turnPlanner.toolSelection === "planned");
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
         availableToolsets?.some((item) => item.id === id) ?? false
       )));
+      if (setupMode) for (const toolset of availableToolsets ?? []) {
+        if (!toolset.id.startsWith(CHARACTER_SETUP_GROUP_PREFIX) || setupLoadedGroups?.has(toolset.id)) activeToolsetIds.add(toolset.id);
+      }
       const taskSession = sessionManager.getSession(sessionId);
       const isSkillRuntimeActiveForTurn = (): boolean => (
         input.modeId !== "stateful_rp" || sessionManager.getOperationMode(sessionId).kind === "skill_config"
@@ -488,6 +495,7 @@ export function createGenerationExecutor(
             ? Array.from(new Set([...visibleAllowedToolNames, MODEL_SELF_UPGRADE_TOOL_NAME]))
             : visibleAllowedToolNames;
         return {
+          expectedCharacterDraftId: characterDraftId,
           operationMode: sessionManager.getOperationMode(sessionId),
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
@@ -565,8 +573,8 @@ export function createGenerationExecutor(
                 tools: toolset.toolNames
               })),
               active_toolset_ids: Array.from(activeToolsetIds),
-              request_limit_per_turn: 1,
-              remaining_request_quota: toolsetUpgradeUsed ? 0 : 1
+              request_limit_per_turn: setupMode ? null : 1,
+              remaining_request_quota: setupMode ? null : toolsetUpgradeUsed ? 0 : 1
             }),
             requestToolsets: (toolsetIds: string[], reason: string) => {
               const requested = Array.from(new Set(toolsetIds.map((item) => item.trim()).filter(Boolean)));
@@ -581,7 +589,7 @@ export function createGenerationExecutor(
                   message: "toolset_ids is empty"
                 };
               }
-              if (toolsetUpgradeUsed) {
+              if (!setupMode && toolsetUpgradeUsed) {
                 return {
                   ok: false,
                   requested_toolset_ids: requested,
@@ -600,6 +608,7 @@ export function createGenerationExecutor(
               }
               for (const id of approved) {
                 activeToolsetIds.add(id);
+                if (id.startsWith(CHARACTER_SETUP_GROUP_PREFIX)) setupLoadedGroups?.add(id);
               }
               toolsetUpgradeUsed = true;
               return {

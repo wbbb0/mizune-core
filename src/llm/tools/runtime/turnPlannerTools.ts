@@ -16,7 +16,6 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: (config) => config.llm.turnPlanner.toolSelection === "planned" || config.skills.enabled,
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
@@ -24,7 +23,7 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "request_toolset",
-        description: "申请启用一个或多个工具集。每轮最多允许一次升级申请；审批通过后再调用对应工具。",
+        description: "申请启用一个或多个工具集。普通对话每轮最多一次申请，配置阶段可按需多次加载；以 list_available_toolsets 返回的额度为准，null 表示不限次数。启用后再调用对应工具。",
         parameters: {
           type: "object",
           properties: {
@@ -40,7 +39,6 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    isEnabled: (config) => config.llm.turnPlanner.toolSelection === "planned" || config.skills.enabled,
     resultObservation: stateChangePolicy()
   }
 ];

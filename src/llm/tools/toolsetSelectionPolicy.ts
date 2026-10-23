@@ -1,3 +1,4 @@
+import { expandCharacterSetupToolsets } from "../../character/setupToolsets.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { BuiltinToolContext, Relationship, ToolVisibilityContext } from "./core/shared.ts";
@@ -86,11 +87,11 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
   );
 
   if (input.setupPhase) {
-    return applySetupToolsetOverrides(
+    return expandCharacterSetupToolsets(applySetupToolsetOverrides(
       input.setupPhase.setupToolsetOverrides ?? [],
       visibleToolNames,
       visibleSharedToolsets
-    );
+    ), input.config.dataDir, input.visibilityContext?.sessionId);
   }
 
   if (input.profileToolScope && input.profileToolScope !== "normal") {

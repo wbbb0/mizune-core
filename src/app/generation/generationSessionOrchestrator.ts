@@ -988,6 +988,7 @@ export function createGenerationSessionOrchestrator(
         ...(setupMode
           ? {
               availableToolNames: plannerToolsets.flatMap((t) => t.toolNames),
+              availableToolsets: plannerToolsets,
               setupMode: true,
               ...(activeDraftOperation?.phase === "setup"
                 ? {

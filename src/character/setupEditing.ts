@@ -1,20 +1,7 @@
 import { createHash } from "node:crypto";
 import type { LlmToolDefinition } from "../llm/llmClient.ts";
-import { characterRepository } from "./repository.ts";
-import { emptyValue, type CharacterSection, type JsonObject } from "./schemaCatalog.ts";
+import { characterSections, emptyValue, type CharacterSection, type JsonObject } from "./schemaCatalog.ts";
 
-// 仅保存读取位置，不保存角色内容。草稿 ID 隔离阶段；重启后重新读取即可。
-const selections = new Map<string, { draftId: string; sectionId: string }>();
-const key = (dataDir: string, sessionId: string) => JSON.stringify([dataDir, sessionId]);
-export function selectSetupSection(dataDir: string, sessionId: string, draftId: string, sectionId: string): void {
-  if (selections.size >= 1000) selections.delete(selections.keys().next().value!);
-  selections.set(key(dataDir, sessionId), { draftId, sectionId });
-}
-export function selectedSetupSection(dataDir: string, sessionId: string) {
-  const selected = selections.get(key(dataDir, sessionId));
-  if (selected?.draftId !== characterRepository(dataDir).draft(sessionId)?.id) return null;
-  return selected ?? null;
-}
 export function partialObjectSchema(schema: JsonObject): JsonObject {
   if (!schema.properties) return structuredClone(schema);
   const result = structuredClone(schema);
@@ -39,7 +26,7 @@ export interface SetupEditBinding {
   action: SetupEditAction;
   fieldName: string;
 }
-export const isCharacterSetupToolName = (name: string): boolean => /^setup_(fill|add|update|remove|skip|clear)_[a-zA-Z0-9_]+_[a-f0-9]{12}$/.test(name);
+export const isCharacterSetupToolName = (name: string): boolean => /^setup_(fill|add|update|remove|skip|clear)_[a-zA-Z0-9_]+$/.test(name);
 
 // participantId、穿戴记录的 instanceId 是业务引用，不能由系统随机生成。
 export function hasGeneratedCollectionKey(section: CharacterSection): boolean {
@@ -58,8 +45,8 @@ export function setupEditBindings(section: CharacterSection, draftId: string): S
   const generatedKey = hasGeneratedCollectionKey(section);
   const actions: SetupEditAction[] = section.collectionKey ? ["add", "update", "remove", "skip"] : ["fill", "skip"];
   if (isObject && Array.isArray(section.schema.type) && section.schema.type.includes("null")) actions.push("clear");
-  const token = createHash("sha256").update(JSON.stringify([draftId, section.id])).digest("hex").slice(0, 12);
-  const label = section.path.join("_").replace(/[^a-zA-Z0-9_]/g, "_").slice(-36);
+  const label = section.id.replace(/[^a-zA-Z0-9_]/g, "_");
+  const shortLabel = label.length <= 51 ? label : `${label.slice(0, 38)}_${createHash("sha256").update(section.id).digest("hex").slice(0, 12)}`;
   const texts: Record<SetupEditAction, string> = {
     fill: "填写本块的业务字段。只传要修改的字段，未提供的字段保持原值，null 明确清空可空字段；普通数组整体替换。",
     add: generatedKey ? "新增一条记录，直接填写业务字段，系统生成 ID。不要传现有记录 ID。" : `新增一条关联记录，必须填写 ${section.collectionKey}，引用对应参与者或已有衣物实例；不要随机编造引用 ID。`,
@@ -82,9 +69,16 @@ export function setupEditBindings(section: CharacterSection, draftId: string): S
     if (action === "fill" && !isObject) required.push(fieldName);
     const parameters = { type: "object", properties, required, additionalProperties: false };
     return { sectionId: section.id, draftId, action, fieldName, definition: { type: "function", function: {
-      name: `setup_${action}_${label}_${token}`,
-      description: `${section.description}（${section.id}）。${texts[action]}文本字段直接填文本，如名称填小满；不要将 JSON 对象、数组或代码块填入字符串。本工具已绑定当前草稿和分块，无需传草稿 ID、分块 ID、action 或 value。用户 .confirm 前不会发布。`,
+      name: `setup_${action}_${shortLabel}`,
+      description: `${section.description}（${section.id}）。${texts[action]}文本字段直接填文本，如名称填小满；不要将 JSON 对象、数组或代码块填入字符串。本工具固定对应此分块，直接写入当前配置草稿，无需先读取，无需传草稿 ID、分块 ID、action 或 value。用户 .confirm 前不会发布。`,
       parameters
     } } };
   });
+}
+
+/** 当前阶段的稳定工具定义；不依赖任何读取副作用。 */
+export function stageSetupBindings(stage: string, draftId: string): SetupEditBinding[] {
+  return characterSections
+    .filter(section => stage === "state" ? section.scope === "session" : section.scope === "character" && section.path[0] === stage)
+    .flatMap(section => setupEditBindings(section, draftId));
 }

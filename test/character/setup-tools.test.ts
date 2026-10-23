@@ -1,3 +1,5 @@
+import { setupEditBindings, stageSetupBindings } from "../../src/character/setupEditing.ts";
+import { getCharacterSection } from "../../src/character/schemaCatalog.ts";
 import { listTurnToolsets } from "../../src/llm/tools/toolsetSelectionPolicy.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -21,21 +23,21 @@ function fixture(stage = "social") {
   } as unknown as BuiltinToolContext;
   const availableToolNames = ["list_character_sections", "read_character_section", "edit_character_section"];
   const call = async (name: string, args: unknown, allowed = availableToolNames) => {
-    const execute = createBuiltinToolExecutor(ctx, { availableToolNames: allowed });
+    const execute = createBuiltinToolExecutor(ctx, { availableToolNames: allowed, expectedCharacterDraftId: draft.id });
     const result = await execute({ id: "test", type: "function", function: { name, arguments: JSON.stringify(args) } }, args);
     return JSON.parse(typeof result === "string" ? result : result.content);
   };
-  const read = (id: string) => call("read_character_section", { id });
+  let sectionId = stage === "persona" ? "persona.name" : "social.identity";
+  const read = (id: string) => { sectionId = id; return call("read_character_section", { id }); };
   const tools = () => getBuiltinTools("owner", null, config, { availableToolNames, visibilityContext: { sessionId: "s" } });
-  const tool = (action: string) => tools().find(tool => tool.function.name.startsWith(`setup_${action}_`))!.function;
+  const tool = (action: string) => tools().find(tool => tool.function.name === setupEditBindings(getCharacterSection(sectionId), draft.id).find(binding => binding.action === action)!.definition.function.name)!.function;
   const edit = (args: unknown, action = "fill") => call(tool(action).name, args);
   return { store, draft, ctx, call, read, edit, tools, tool };
 }
 
 test("名称直接填写业务字段，不再有 value/action/id/draftId 参数", async () => {
   const f = fixture("persona");
-  assert.equal(f.tools().some(tool => tool.function.name.startsWith("setup_")), false);
-  await f.read("persona.name");
+  assert.equal(f.tools().some(tool => tool.function.name.startsWith("setup_")), true);
   const schema: any = f.tool("fill").parameters;
   assert.deepEqual(Object.keys(schema.properties), ["name"]);
   assert.deepEqual(schema.required, ["name"]);
@@ -79,18 +81,18 @@ test("递归拒绝纯 JSON 对象/数组字符串和代码块，不误伤数字�
   assert.equal(jsonStringErrors({ "a/b~c": "[]" })[0]?.path, "/a~1b~0c");
 });
 
-test("工具绑定不会在换块、取消重建、确认换阶段之后转写，非 owner/未授权工具也不可写", async () => {
+test("读取不切换工具，取消重建及确认换阶段拒绝旧轮次写入，权限不变", async () => {
   const f = fixture(); await f.read("social.identity");
   const oldTool = f.tool("fill").name;
   await f.read("social.background");
-  assert.equal((await f.call(oldTool, { occupation: "x" })).code, "stale_setup_tool");
+  assert.equal((await f.call(oldTool, { occupation: "x" })).saved, true);
   await f.read("social.identity");
   f.ctx.relationship = "known";
   assert.match((await f.call(oldTool, { occupation: "x" })).error, /owner/);
   f.ctx.relationship = "owner";
   assert.ok((await f.call(oldTool, { occupation: "x" }, ["read_character_section"])).error);
   f.store.cancel("s"); f.store.ensureSetup("s", "stateful_rp"); await f.read("social.identity");
-  assert.notEqual(f.tool("fill").name, oldTool);
+  assert.equal(f.tool("fill").name, oldTool);
   assert.equal((await f.call(oldTool, { occupation: "x" })).code, "stale_setup_tool");
   const second = f.tool("fill").name;
   f.store.confirm("s", "stateful_rp"); f.store.ensureSetup("s", "stateful_rp");
@@ -168,20 +170,20 @@ test("Scenario 初始化执行器校验枚举/未知字段并拒绝编码对象�
 
 
 
-test("真实工具目录在读取前保留编辑能力，读取后可展开并执行专用工具", async () => {
+test("真实工具目录直接暴露稳定名字工具，无需先读取", async () => {
   const f = fixture("persona");
   const input = { config: f.ctx.config, relationship: "owner" as const, currentUser: null,
     modelRef: [] as string[], includeDebugTools: false, visibilityContext: { sessionId: "s" },
     setupPhase: { setupToolsetOverrides: [{ toolsetId: "memory_profile", title: "角色配置", description: "角色配置", plannerSignals: [], toolNames: ["list_character_sections", "read_character_section", "edit_character_section"] }] }
   };
   const allowed = listTurnToolsets(input).flatMap(toolset => toolset.toolNames);
-  assert.ok(allowed.includes("edit_character_section"));
-  await f.read("persona.name");
+  assert.ok(allowed.includes("setup_fill_persona_name"));
+  assert.ok(!allowed.includes("edit_character_section"));
   const tools = getBuiltinTools("owner", null, f.ctx.config, { availableToolNames: allowed, visibilityContext: { sessionId: "s" } });
   const fill = tools.find(tool => tool.function.name.startsWith("setup_fill_"))!;
   assert.ok(fill);
   assert.equal((await f.call(fill.function.name, { name: "小满" }, allowed)).saved, true);
-  assert.ok(listTurnToolsets(input).flatMap(toolset => toolset.toolNames).includes("edit_character_section"));
+  assert.ok(listTurnToolsets(input).flatMap(toolset => toolset.toolNames).includes("setup_fill_persona_name"));
 });
 
 
@@ -197,4 +199,33 @@ test("参与者与穿戴引用不自动生成随机 ID", async () => {
   await f.read("session.simulation.wardrobe.worn");
   assert.ok((f.tool("add").parameters as any).required.includes("instanceId"));
   assert.equal((await f.edit({ wearingWay: "normal" }, "add")).saved, false);
+});
+
+
+test("分组按需开放且执行不能越过未加载的组", async () => {
+  const f = fixture("social");
+  const groups = listTurnToolsets({
+    config: f.ctx.config, relationship: "owner", currentUser: null,
+    modelRef: [], includeDebugTools: false, visibilityContext: { sessionId: "s" },
+    setupPhase: { setupToolsetOverrides: [{ toolsetId: "memory_profile", toolNames: ["list_character_sections", "read_character_section", "edit_character_section"] }] }
+  });
+  const identity = groups.find(group => group.id === "character_setup_social_identity")!;
+  const background = groups.find(group => group.id === "character_setup_social_background")!;
+  assert.ok(identity && background);
+  const allowed = identity.toolNames;
+  const projected = getBuiltinTools("owner", null, f.ctx.config, { availableToolNames: allowed, visibilityContext: { sessionId: "s" } });
+  assert.deepEqual(projected.map(tool => tool.function.name).sort(), [...allowed].sort());
+  assert.equal((await f.call("setup_fill_social_identity", { occupation: "学生" }, allowed)).saved, true);
+  assert.ok((await f.call(background.toolNames[0]!, {}, allowed)).error);
+  await f.read("social.background");
+  assert.equal((await f.call("setup_fill_social_identity", { occupation: "教师" }, allowed)).saved, true);
+});
+
+test("所有阶段工具名称稳定、唯一并符合长度限制", () => {
+  for (const stage of ["persona", "social", "embodiment", "state"]) {
+    const names = stageSetupBindings(stage, "draft-a").map(binding => binding.definition.function.name);
+    assert.deepEqual(names, stageSetupBindings(stage, "draft-b").map(binding => binding.definition.function.name));
+    assert.equal(new Set(names).size, names.length);
+    for (const name of names) assert.ok(name.length <= 64 && /^[a-zA-Z0-9_]+$/.test(name), name);
+  }
 });

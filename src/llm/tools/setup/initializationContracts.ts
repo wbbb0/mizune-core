@@ -2,8 +2,7 @@ import type { LlmToolDefinition } from "../../llmClient.ts";
 import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import { createScenarioHostSetupToolsetOverrides } from "#modes/scenarioHost/setupToolsets.ts";
 import { characterRepository } from "../../../character/repository.ts";
-import { getCharacterSection } from "../../../character/schemaCatalog.ts";
-import { selectedSetupSection, setupEditBindings } from "../../../character/setupEditing.ts";
+import { stageSetupBindings } from "../../../character/setupEditing.ts";
 
 const scenarioSetupNames = new Set(createScenarioHostSetupToolsetOverrides().flatMap(group => group.toolNames));
 export const isScenarioSetupToolName = (name: string) => scenarioSetupNames.has(name);
@@ -15,10 +14,7 @@ export function initializationToolDefinition(tool: LlmToolDefinition, dataDir?: 
     const store = characterRepository(dataDir);
     const draft = store.draft(sessionId);
     if (draft) {
-      const selected = selectedSetupSection(dataDir, sessionId);
-      if (!selected) return [];
-      // 初始化只能访问当前草稿层，模式在执行时再按真实会话检查。
-      return setupEditBindings(getCharacterSection(selected.sectionId), draft.id).map(binding => binding.definition);
+      return stageSetupBindings(draft.stage, draft.id).map(binding => binding.definition);
     }
   }
   if (!isScenarioSetupTool(tool.function.name, operation)) return [tool];
