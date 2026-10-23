@@ -202,21 +202,21 @@ test("参与者与穿戴引用不自动生成随机 ID", async () => {
 });
 
 
-test("分组按需开放且执行不能越过未加载的组", async () => {
+test("当前阶段全部工具直接开放，显式工具白名单仍有效", async () => {
   const f = fixture("social");
   const groups = listTurnToolsets({
     config: f.ctx.config, relationship: "owner", currentUser: null,
     modelRef: [], includeDebugTools: false, visibilityContext: { sessionId: "s" },
     setupPhase: { setupToolsetOverrides: [{ toolsetId: "memory_profile", toolNames: ["list_character_sections", "read_character_section", "edit_character_section"] }] }
   });
-  const identity = groups.find(group => group.id === "character_setup_social_identity")!;
-  const background = groups.find(group => group.id === "character_setup_social_background")!;
-  assert.ok(identity && background);
-  const allowed = identity.toolNames;
+  const allNames = groups.flatMap(group => group.toolNames);
+  assert.ok(allNames.includes("setup_fill_social_identity"));
+  assert.ok(allNames.includes("setup_fill_social_background"));
+  const allowed = ["setup_fill_social_identity"];
   const projected = getBuiltinTools("owner", null, f.ctx.config, { availableToolNames: allowed, visibilityContext: { sessionId: "s" } });
   assert.deepEqual(projected.map(tool => tool.function.name).sort(), [...allowed].sort());
   assert.equal((await f.call("setup_fill_social_identity", { occupation: "学生" }, allowed)).saved, true);
-  assert.ok((await f.call(background.toolNames[0]!, {}, allowed)).error);
+  assert.ok((await f.call("setup_fill_social_background", {}, allowed)).error);
   await f.read("social.background");
   assert.equal((await f.call("setup_fill_social_identity", { occupation: "教师" }, allowed)).saved, true);
 });

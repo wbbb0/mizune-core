@@ -1,5 +1,5 @@
 import { characterRepository } from "../../src/character/repository.ts";
-import { expandCharacterSetupToolsets, loadedCharacterSetupGroups } from "../../src/character/setupToolsets.ts";
+import { expandCharacterSetupToolsets } from "../../src/character/setupToolsets.ts";
 import { getSkillStore } from "../../src/skills/skillStore.ts";
 import { getSessionSkillsView } from "../../src/skills/skillRuntime.ts";
 import test from "node:test";
@@ -2028,21 +2028,24 @@ test("stateful_rp 后置维护在回复发送与落盘之后执行，合并中�
 });
 
 
-test("配置生成按需多次加载稳定工具，跨分块读取不失效，旧轮次不能写入重建草稿", async () => {
+for (const stage of ["social", "embodiment"] as const) {
+test(`${stage} 配置生成无需加载即可使用全部稳定工具，跨分块读取不失效，旧轮次不能写入重建草稿`, async () => {
   const groups: ToolsetView[] = [];
   const sessionId = "qqbot:p:owner";
   let store: ReturnType<typeof characterRepository>;
-  let configForTest: ReturnType<typeof createTestAppConfig>;
   let completed = false;
   const harness = createExecutorHarness({
-    setupMode: true, modeId: "rp_assistant", availableToolsets: groups,
+    setupMode: true, modeId: "stateful_rp", availableToolsets: groups,
     configOverrides: { skills: { enabled: false } },
     prepareConfig: config => {
-      configForTest = config;
       store = characterRepository(config.dataDir);
-      store.begin(sessionId, "persona", "setup", "rp_assistant");
-      store.confirm(sessionId, "rp_assistant");
-      store.begin(sessionId, "social", "setup", "rp_assistant");
+      store.begin(sessionId, "persona", "setup", "stateful_rp");
+      store.confirm(sessionId, "stateful_rp");
+      if (stage === "embodiment") {
+        store.begin(sessionId, "social", "setup", "stateful_rp");
+        store.confirm(sessionId, "stateful_rp");
+      }
+      store.begin(sessionId, stage, "setup", "stateful_rp");
       groups.push(...expandCharacterSetupToolsets([{
         id: "memory_profile", title: "角色配置", description: "测试", toolNames: ["list_character_sections", "read_character_section", "edit_character_section"]
       }], config.dataDir, sessionId));
@@ -2051,19 +2054,21 @@ test("配置生成按需多次加载稳定工具，跨分块读取不失效，�
       const names = () => (typeof input.tools === "function" ? input.tools() : input.tools ?? []).map(tool => tool.function.name);
       const call = async (name: string, args: unknown) => toolPayload(await input.toolExecutor!({ id: name, type: "function", function: { name, arguments: JSON.stringify(args) } }));
       assert.ok(names().includes("request_toolset"));
-      assert.ok(!names().includes("setup_fill_social_identity"));
-      assert.equal((await call("list_available_toolsets", {})).request_limit_per_turn, null);
-      for (const group of ["character_setup_social_identity", "character_setup_social_background"]) {
-        assert.equal((await call("request_toolset", { toolset_ids: [group], reason: "填写角色" })).ok, true);
+      if (stage === "embodiment") {
+        for (const name of ["setup_fill_embodiment_body_constitution", "setup_fill_embodiment_physiology_sleep", "setup_fill_embodiment_intimacy_preferences", "setup_add_embodiment_wardrobe_items"]) assert.ok(names().includes(name), name);
+        completed = true;
+        return { text: "完成", usage: createUsage() };
       }
+      assert.ok(names().includes("setup_fill_social_identity"));
+      assert.ok(names().includes("setup_fill_social_background"));
+      assert.equal((await call("list_available_toolsets", {})).request_limit_per_turn, null);
       assert.ok(names().includes("setup_fill_social_identity"));
       assert.equal((await call("setup_fill_social_identity", { occupation: "学生" })).saved, true);
       await call("read_character_section", { id: "social.background" });
       assert.equal((await call("setup_fill_social_identity", { occupation: "教师" })).saved, true);
       assert.equal(store!.draft(sessionId)!.value.social.identity.occupation, "教师");
-      assert.ok(loadedCharacterSetupGroups(configForTest!.dataDir, sessionId, store!.draft(sessionId)!.id).has("character_setup_social_identity"));
       store!.cancel(sessionId);
-      store!.begin(sessionId, "social", "setup", "rp_assistant");
+      store!.begin(sessionId, "social", "setup", "stateful_rp");
       assert.equal((await call("setup_fill_social_identity", { occupation: "旧轮次" })).code, "stale_setup_tool");
       completed = true;
       return { text: "完成", usage: createUsage() };
@@ -2073,3 +2078,5 @@ test("配置生成按需多次加载稳定工具，跨分块读取不失效，�
   await harness.runPromise;
   assert.equal(completed, true);
 });
+
+}

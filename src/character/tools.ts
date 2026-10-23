@@ -1,4 +1,3 @@
-import { characterSetupToolsetId } from "./setupToolsets.ts";
 import { setupEditBindings } from "./setupEditing.ts";
 import type { ToolDescriptor, ToolHandler } from "#llm/tools/core/shared.ts";
 import { characterRepository } from "./repository.ts";
@@ -14,7 +13,7 @@ export const characterToolHandlers: Record<string, ToolHandler> = {
     const store = characterRepository(ctx.config.dataDir); const id = ctx.lastMessage.sessionId;
     const session = ctx.sessionManager.getSession(id); const draft = store.draft(id);
     if (draft && ctx.relationship !== "owner") return JSON.stringify({ error: "角色配置仅 owner 可访问" });
-    return JSON.stringify({ stage: draft?.stage ?? "playing", sections: store.sections(id, session.modeId).map(section => ({ id: section.id, ...(draft ? { toolsetId: characterSetupToolsetId(section) } : {}), description: section.description, collectionKey: section.collectionKey, valueType: section.schema.type, writable: !!draft || section.scope === "session", nextStep: "可直接使用对应编辑工具；按需读取当前值", touched: draft?.touched.includes(section.id) ?? false })) });
+    return JSON.stringify({ stage: draft?.stage ?? "playing", sections: store.sections(id, session.modeId).map(section => ({ id: section.id, description: section.description, collectionKey: section.collectionKey, valueType: section.schema.type, writable: !!draft || section.scope === "session", nextStep: "可直接使用对应编辑工具；按需读取当前值", touched: draft?.touched.includes(section.id) ?? false })) });
   },
   async read_character_section(_call, rawArgs, ctx) {
     const args = (rawArgs ?? {}) as Record<string, unknown>;
@@ -25,8 +24,8 @@ export const characterToolHandlers: Record<string, ToolHandler> = {
       const draft = store.draft(id);
       if (draft) {
         const editTools = setupEditBindings(section, draft.id).map(binding => binding.definition.function);
-        return JSON.stringify({ id: section.id, ...(draft ? { toolsetId: characterSetupToolsetId(section) } : {}), description: section.description, value: section.value, touched: section.touched, collectionKey: section.collectionKey, editTools,
-          nextStep: "若对应工具尚未加载，先通过 request_toolset 加载 toolsetId。使用本块对应的填写、新增、修改、删除或跳过工具，直接传业务字段，不需要 action、value、分块 ID 或草稿 ID。工具名由系统提供，不要自行拼接。" });
+        return JSON.stringify({ id: section.id, description: section.description, value: section.value, touched: section.touched, collectionKey: section.collectionKey, editTools,
+          nextStep: "使用本块对应的填写、新增、修改、删除或跳过工具，直接传业务字段，不需要 action、value、分块 ID 或草稿 ID。工具名由系统提供，不要自行拼接。" });
       }
       return JSON.stringify(section);
     }

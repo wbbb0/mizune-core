@@ -1,5 +1,4 @@
 import { characterRepository } from "../../character/repository.ts";
-import { CHARACTER_SETUP_GROUP_PREFIX, loadedCharacterSetupGroups } from "../../character/setupToolsets.ts";
 import { resolveSkillTaskId } from "../../skills/skillTaskIdentity.ts";
 import { skillObservation, projectSkillObservations } from "../../skills/skillObservation.ts";
 import { beginSkillTask, readPreviousSkillTaskId } from '../../skills/skillRuntime.ts';
@@ -428,14 +427,13 @@ export function createGenerationExecutor(
         }));
       };
       const characterDraftId = setupMode ? characterRepository(config.dataDir).draft(sessionId)?.id ?? null : null;
-      const setupLoadedGroups = characterDraftId ? loadedCharacterSetupGroups(config.dataDir, sessionId, characterDraftId) : null;
       const hasToolsetBoundary = Array.isArray(availableToolsets);
       const isPlannerToolsetMode = hasToolsetBoundary && (setupMode || config.llm.turnPlanner.toolSelection === "planned");
       const activeToolsetIds = new Set((plannedToolsetIds ?? []).filter((id) => (
         availableToolsets?.some((item) => item.id === id) ?? false
       )));
       if (setupMode) for (const toolset of availableToolsets ?? []) {
-        if (!toolset.id.startsWith(CHARACTER_SETUP_GROUP_PREFIX) || setupLoadedGroups?.has(toolset.id)) activeToolsetIds.add(toolset.id);
+        activeToolsetIds.add(toolset.id);
       }
       const taskSession = sessionManager.getSession(sessionId);
       const isSkillRuntimeActiveForTurn = (): boolean => (
@@ -608,7 +606,6 @@ export function createGenerationExecutor(
               }
               for (const id of approved) {
                 activeToolsetIds.add(id);
-                if (id.startsWith(CHARACTER_SETUP_GROUP_PREFIX)) setupLoadedGroups?.add(id);
               }
               toolsetUpgradeUsed = true;
               return {
