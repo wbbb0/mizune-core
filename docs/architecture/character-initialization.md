@@ -56,3 +56,9 @@ WebUI 的 Scenario 与 RP 状态面板共用存档入口。快照保存聊天及
 Scenario 初始化/配置工具使用同一输入校验与纠错规则。Scenario 资料修改直接使用 `theme` 等顶层字段，不使用 `profilePatch` 包装；既有玩家/NPC 归属和确认条件不变。普通游玩不应用此字符串规则。
 
 工具目录保留稳定的编辑能力标识，发给模型时才展开为当前分块工具；不能用本轮是否已读取分块决定下一轮是否允许编辑。这一调整不改变持久化格式，无需迁移既有角色或草稿，也不会自动清洗已有内容。
+
+## 配置阶段的辅助工具
+
+初始化和资料草稿编辑复用现有工具集。工具目录通过 `availableDuringSetup` 声明额外开放的 `asset_io`、`filesystem_io`、`web_research`、`conversation_navigation`、`image_generation`、`comfy_image`，与通用工具集一起供模型按需选择；不将所有工具定义一次性注入模型。身份权限、功能开关和会话显式禁用的辅助工具集仍然有效，阶段专属草稿工具继续由 setup override 决定。正常游玩阶段的默认工具集不受此标记影响。
+
+这些是完整的现有工具集，不代表只读权限。WebUI 上传附件已经登记，应通过 `asset_document_*` 等工具读取，无需调用 OneBot 文件下载工具。

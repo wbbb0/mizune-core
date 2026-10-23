@@ -7,6 +7,7 @@ export interface ToolsetDefinition {
   ownerOnly?: boolean;
   debugOnly?: boolean;
   modeUniversal?: { defaultEnabled: boolean };
+  availableDuringSetup?: boolean;
 }
 
 export interface ToolsetView {
@@ -100,6 +101,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     id: "conversation_navigation",
+    availableDuringSetup: true,
     title: "跨会话导航",
     description: "检索可访问会话并读取上下文。",
     plannerSignals: [
@@ -126,6 +128,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     id: "web_research",
+    availableDuringSetup: true,
     title: "网页检索与浏览",
     description: "搜索网页、打开页面、交互与截图。",
     plannerSignals: [
@@ -173,6 +176,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     id: "filesystem_io",
+    availableDuringSetup: true,
     title: "本地文件",
     description: "浏览、编辑、搜索和发送明确路径的文件，或创建一天有效的临时工作区处理下载文件。",
     plannerSignals: [
@@ -204,8 +208,9 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     id: "asset_io",
+    availableDuringSetup: true,
     title: "登记资源",
-    description: "查看和发送已登记 asset。",
+    description: "查看、解析、搜索和发送已登记附件，或管理资源下载。WebUI 上传文件已登记，使用 asset 文档工具读取，无需再次下载。",
     plannerSignals: [
       "查看聊天导入文件",
       "从 URL 下载文件并管理下载任务",
@@ -268,6 +273,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     id: "image_generation",
+    availableDuringSetup: true,
     title: "通用图片生成",
     description: "通过标准图像接口生成新图片，使用生图路由选择的模型。不用于下载已有图片。",
     plannerSignals: ["生成新图片或文生图"],
@@ -275,6 +281,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     id: "comfy_image",
+    availableDuringSetup: true,
     title: "ComfyUI 图片生成",
     description: "通过已配置的 ComfyUI 工作流模板异步生成图片。不用于下载已有图片。",
     plannerSignals: ["使用 ComfyUI 或指定工作流生成图片"],

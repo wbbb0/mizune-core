@@ -78,7 +78,12 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
       ...(input.profileToolScope !== undefined ? { profileToolScope: input.profileToolScope } : {})
     }
   ));
-  const visibleSharedToolsets = listVisibleSharedToolsets(visibleToolNames, input.relationship, input.includeDebugTools);
+  const inSetup = Boolean(input.setupPhase)
+    || Boolean(input.profileToolScope && input.profileToolScope !== "normal");
+  const visibleSharedToolsets = listVisibleSharedToolsets(
+    visibleToolNames, input.relationship, input.includeDebugTools,
+    inSetup, input.toolsetPreferences ?? createDefaultSessionToolsetPreferences()
+  );
 
   if (input.setupPhase) {
     return applySetupToolsetOverrides(
@@ -166,10 +171,14 @@ export function resolveToolNamesFromToolsets(
 function listVisibleSharedToolsets(
   visibleToolNames: Set<string>,
   relationship: Relationship,
-  includeDebugTools: boolean
+  includeDebugTools: boolean,
+  inSetup: boolean,
+  preferences: SessionToolsetPreferences
 ): ToolsetView[] {
   return TOOLSET_DEFINITIONS
-    .filter((toolset) => toolset.modeUniversal?.defaultEnabled === true)
+    .filter((toolset) => toolset.modeUniversal?.defaultEnabled === true
+      || (inSetup && toolset.availableDuringSetup === true
+        && resolveSessionToolsetEnabled(preferences, toolset.id, true)))
     .filter((toolset) => isToolsetVisible(toolset, relationship, includeDebugTools))
     .map((toolset) => toToolsetView(toolset, visibleToolNames))
     .filter((toolset): toolset is ToolsetView => toolset != null);

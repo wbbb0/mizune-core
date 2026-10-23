@@ -69,8 +69,34 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     const memoryProfile = toolsets.find((item) => item.id === "memory_profile");
     assert.deepEqual(memoryProfile?.toolNames, ["list_character_sections", "edit_character_section"]);
     assert.equal(toolsets.some((item) => item.id === "chat_context"), true);
-    assert.equal(toolsets.some((item) => item.id === "web_research"), false);
+    assert.equal(toolsets.some((item) => item.id === "web_research"), true);
     assert.equal(toolsets.some((item) => item.id === "shell_runtime"), false);
+    assert.ok(toolsets.find((item) => item.id === "asset_io")?.toolNames.includes("asset_document_read"));
+    assert.ok(toolsets.some((item) => item.id === "filesystem_io"));
+    assert.ok(!toolsets.some((item) => item.id === "social_admin"));
+    assert.ok(!toolsets.some((item) => item.id === "scheduler_admin"));
+  });
+
+  test("setup auxiliaries respect explicit disables and also serve profile drafts", () => {
+    for (const scope of [
+      { setupPhase: { setupToolsetOverrides: [] } },
+      { profileToolScope: "scenario" as const }
+    ]) {
+      const toolsets = listTurnToolsets({
+        config: createTestAppConfig(), relationship: "owner", currentUser: null,
+        modelRef: ["main"], includeDebugTools: false, modeId: "stateful_rp",
+        toolsetPreferences: { overrides: { filesystem_io: "disabled" } },
+        ...scope
+      });
+      assert.ok(toolsets.find((item) => item.id === "asset_io")?.toolNames.includes("asset_document_overview"));
+      assert.ok(!toolsets.some((item) => item.id === "filesystem_io"));
+      assert.ok(!toolsets.some((item) => item.id === "shell_runtime"));
+    }
+    const normal = listTurnToolsets({
+      config: createTestAppConfig(), relationship: "owner", currentUser: null,
+      modelRef: ["main"], includeDebugTools: false, modeId: "stateful_rp"
+    });
+    assert.ok(!normal.some((item) => item.id === "asset_io"));
   });
 
   test("mode defaults still scope non-universal toolsets", async () => {
