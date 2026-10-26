@@ -87,17 +87,7 @@ test("persona setup uses the current draft and snapshots output mode before asyn
       logger,
       historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-        async maybeCompress() {
-          sessionManager.setSettings(sessionId, {
-            pacingPreferences: {
-              ...sessionManager.getPacingPreferences(sessionId),
-              toolLoopOutput: "final_only"
-            },
-            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
-            modelRoutingPreferences: sessionManager.getSession(sessionId).modelRoutingPreferences
-          });
-          return false;
-        }
+        async compactForRequest() { return null; }
       },
       llmClient: {} as never,
       sessionCaptioner: {} as never,
@@ -108,6 +98,15 @@ test("persona setup uses the current draft and snapshots output mode before asyn
     identity: {
       userStore: {
         async getByUserId(userId: string) {
+          sessionManager.setSettings(sessionId, {
+            pacingPreferences: {
+              ...sessionManager.getPacingPreferences(sessionId),
+              toolLoopOutput: "final_only"
+            },
+            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
+            modelRoutingPreferences: sessionManager.getSession(sessionId).modelRoutingPreferences
+          });
+
           return {
             userId,
             relationship: "owner"
@@ -259,14 +258,7 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
       logger,
       historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-        async maybeCompress() {
-          sessionManager.setSettings(sessionId, {
-            pacingPreferences: sessionManager.getPacingPreferences(sessionId),
-            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
-            modelRoutingPreferences: { selfUpgradeEnabled: false }
-          });
-          return false;
-        }
+        async compactForRequest() { return null; }
       },
       llmClient: {} as never,
       sessionCaptioner: {} as never,
@@ -277,6 +269,12 @@ test("rp_assistant normal prompt receives the saved rp profile", async () => {
     identity: {
       userStore: {
         async getByUserId(userId: string) {
+          sessionManager.setSettings(sessionId, {
+            pacingPreferences: sessionManager.getPacingPreferences(sessionId),
+            toolsetPreferences: sessionManager.getToolsetPreferences(sessionId),
+            modelRoutingPreferences: { selfUpgradeEnabled: false }
+          });
+
           return {
             userId,
             relationship: "owner"
@@ -440,7 +438,7 @@ test("scenario_host normal prompt receives the saved scenario profile", async ()
       logger,
       historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-        async maybeCompress() {
+        async compactForRequest() {
           return false;
         }
       },
@@ -619,7 +617,7 @@ test("normal prompt provider replay excludes the active input batch", async () =
       logger,
       historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-        async maybeCompress() {
+        async compactForRequest() {
           return false;
         }
       },
@@ -777,7 +775,7 @@ test("normal prompt history excludes active transcript group instead of subtract
       logger,
       historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-        async maybeCompress() {
+        async compactForRequest() {
           return false;
         }
       },
@@ -934,7 +932,7 @@ test("normal prompt receives task tracker changes from the current user batch", 
       logger,
       historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-        async maybeCompress() {
+        async compactForRequest() {
           return false;
         }
       },
@@ -1093,7 +1091,7 @@ test("normal prompt receives task tracker changes from turn planner intent", asy
         logger,
         historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-          async maybeCompress() {
+          async compactForRequest() {
             return false;
           },
           async compactOldHistoryKeepingRecent() {
@@ -1308,7 +1306,7 @@ test("turn planner receives content-safety projected history and batch", async (
       logger,
       historyCompressor: {
         getTopicCompressionCandidate() { return { messageCount: 6, estimatedReclaimableTokens: 4000 }; },
-        async maybeCompress() {
+        async compactForRequest() {
           return false;
         },
         async compactOldHistoryKeepingRecent() {

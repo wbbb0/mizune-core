@@ -368,7 +368,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
         <span
           class="badge-pill bg-surface-muted text-text-muted"
           :class="{
-            'text-success': ['tool_calling', 'generating', 'delivering', 'requesting_llm', 'turn_planner_evaluating'].includes(session.phase.kind),
+            'text-success': ['tool_calling', 'generating', 'delivering', 'compressing_history', 'requesting_llm', 'turn_planner_evaluating'].includes(session.phase.kind),
             'text-warning': ['turn_planner_waiting', 'debouncing'].includes(session.phase.kind)
           }"
         >{{ session.phase.label }}</span>

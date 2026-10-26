@@ -209,7 +209,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
           maxImageReferences: 5
         },
         tokenLimits: {
-          triggerTokens: 150000,
+          contextTokens: 150000,
           retainTokens
         }
       });
@@ -265,7 +265,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
         maxImageReferences: 5
       });
       assert.deepEqual(getRoutingPresetTokenLimits(config), {
-        triggerTokens: 150000,
+        contextTokens: 150000,
         retainTokens: 7000
       });
 
@@ -284,7 +284,7 @@ import { sleep, withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/con
         maxImageReferences: 5
       });
       assert.deepEqual(getRoutingPresetTokenLimits(config), {
-        triggerTokens: 150000,
+        contextTokens: 150000,
         retainTokens: 3000
       });
     });

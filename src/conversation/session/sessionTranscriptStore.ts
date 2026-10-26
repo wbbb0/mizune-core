@@ -2,7 +2,7 @@ import { freezeTranscriptItem } from "./immutableTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
 import {
   projectCompressionHistorySnapshot,
-  projectCompressionHistorySnapshotByTokens,
+  selectRequestCompressionSnapshot,
   projectLlmVisibleHistoryFromTranscript,
   projectVisibleMessagesFromTranscript,
   isTranscriptRuntimeIncluded
@@ -27,11 +27,9 @@ export interface SessionTranscriptStore {
     triggerMessageCount: number,
     retainMessageCount: number
   ): ReturnType<typeof projectCompressionHistorySnapshot>;
-  projectCompressionSnapshotByTokens(
-    triggerTokens: number,
-    retainTokens: number,
-    reportedInputTokens?: number
-  ): ReturnType<typeof projectCompressionHistorySnapshotByTokens>;
+  selectRequestCompressionSnapshot(
+    retainTokens: number
+  ): ReturnType<typeof selectRequestCompressionSnapshot>;
   excludeItem(
     itemId: string,
     reason: TranscriptItemRuntimeExclusionReason,
@@ -82,8 +80,8 @@ export function createSessionTranscriptStore(session: SessionState, config: AppC
     projectCompressionSnapshot(triggerMessageCount, retainMessageCount) {
       return projectCompressionHistorySnapshot(session, config, triggerMessageCount, retainMessageCount);
     },
-    projectCompressionSnapshotByTokens(triggerTokens, retainTokens, reportedInputTokens) {
-      return projectCompressionHistorySnapshotByTokens(session, config, triggerTokens, retainTokens, reportedInputTokens);
+    selectRequestCompressionSnapshot(retainTokens) {
+      return selectRequestCompressionSnapshot(session, config, retainTokens);
     },
     excludeItem(itemId, reason, timestampMs) {
       return applyRuntimeExclusion(session, (item) => item.id === itemId, reason, timestampMs);

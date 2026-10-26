@@ -18,7 +18,7 @@ const loading = ref(false);
 const errorMessage = ref("");
 const sessionGenerating = computed(() => (
   detail.value?.session.isGenerating === true
-  || ["requesting_llm", "reasoning", "generating", "tool_calling", "delivering"].includes(props.session.phase.kind)
+  || ["compressing_history", "requesting_llm", "reasoning", "generating", "tool_calling", "delivering"].includes(props.session.phase.kind)
 ));
 let detailRequestSeq = 0;
 

@@ -192,6 +192,7 @@ export interface GenerationPromptBuilder {
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
+    historySummary?: string | null | undefined;
     phase: "setup" | "config";
     historyForPrompt: GenerationPromptHistoryMessage[];
     debugMarkers?: SessionDebugMarker[];
@@ -1550,6 +1551,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     currentTurnDirectives?: string[];
     replayMessages?: LlmMessage[];
     persona: PersonaState;
+    historySummary?: string | null | undefined;
     phase: "setup" | "config";
     historyForPrompt: GenerationPromptHistoryMessage[];
     debugMarkers?: SessionDebugMarker[];
@@ -1608,6 +1610,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     });
 
     const promptMessages = buildSetupPrompt({
+      historySummary: input.historySummary,
       sessionId: input.sessionId,
       interactionMode: input.interactionMode,
       lateSystemMessages: [...(input.lateSystemMessages ?? []), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
@@ -1629,7 +1632,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         systemMessages: extractSystemMessages(promptMessages),
         visibleToolNames: [],
         activeToolsets: [],
-        historySummary: null,
+        historySummary: input.historySummary ?? null,
         recentHistory: mediaContext.historyForPrompt,
         currentBatch: safetyProjected.batchMessages,
         liveResources: [],

@@ -4,7 +4,6 @@ import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 import { getCachedOrEstimatedInputTokens } from "./transcriptTokenStats.ts";
-import { estimatePromptTokenBudget, type PromptTokenBudgetEstimate } from "./promptTokenBudget.ts";
 export { estimateTokens } from "./tokenEstimator.ts";
 import type {
   InternalToolResultItem,
@@ -174,23 +173,17 @@ export function projectCompressionHistorySnapshot(
   return buildCompressionSnapshot(session, config, llmVisibleItems, recentMessages, visibleHistorySplitIndex);
 }
 
-export function projectCompressionHistorySnapshotByTokens(
+export function selectRequestCompressionSnapshot(
   session: SessionState,
   config: AppConfig,
-  triggerTokens: number,
-  retainTokens: number,
-  // Provider-reported input tokens from the last request. When provided, replaces
-  // the heuristic sum for the trigger check (more accurate than character estimation).
-  reportedInputTokens?: number
+  retainTokens: number
 ): {
   historySummary: string | null;
   messagesToCompress: SessionHistoryMessage[];
   retainedMessages: SessionHistoryMessage[];
   toolObservationsToCompress: ToolObservationSummary[];
   transcriptStartIndexToKeep: number;
-  estimatedTotalTokens: number;
-  totalTokens: number;
-  tokenBudget: PromptTokenBudgetEstimate;
+  compressedTimestamps: number[];
 } | null {
   const llmVisibleItems = session.internalTranscript.filter(isTranscriptLlmVisible);
   const historyItems = llmVisibleItems.filter(isTranscriptHistoryMessage);
@@ -200,44 +193,30 @@ export function projectCompressionHistorySnapshotByTokens(
     return null;
   }
 
-  const tokenBudget = estimatePromptTokenBudget({
-    session,
-    config,
-    reportedInputTokens,
-    retainTokens
-  });
-  if (tokenBudget.totalTokens <= triggerTokens) {
-    return null;
-  }
-  const minReclaimableTokens = Math.min(2000, Math.floor(triggerTokens * 0.02));
-  if (tokenBudget.reclaimableTranscriptTokens < minReclaimableTokens) {
-    return null;
-  }
-
-  // Find the split point: retain recent messages whose cumulative tokens (newest first)
-  // fit within the retainTokens budget, but always compress at least one message.
+  const turnStarts = historyItems.flatMap((item, index) => (
+    (item.kind === "user_message" || item.kind === "user_media_message")
+    && (index === 0 || recentMessages[index - 1]?.role !== "user") ? [index] : []
+  ));
+  if (turnStarts.length < 2) return null;
   let retainedTokens = 0;
-  let retainedMessageCount = 0;
-  for (let i = recentMessages.length - 1; i >= 1; i -= 1) {
-    const msgTokens = getCachedOrEstimatedInputTokens(historyItems[i]!, config);
-    if (retainedMessageCount > 0 && retainedTokens + msgTokens > retainTokens) {
-      break;
-    }
-    retainedTokens += msgTokens;
-    retainedMessageCount += 1;
+  let visibleHistorySplitIndex = turnStarts[turnStarts.length - 1]!;
+  for (let turn = turnStarts.length - 1; turn >= 1; turn -= 1) {
+    const start = turnStarts[turn]!;
+    const end = turnStarts[turn + 1];
+    const visibleStart = llmVisibleItems.indexOf(historyItems[start]!);
+    const visibleEnd = end == null ? llmVisibleItems.length : llmVisibleItems.indexOf(historyItems[end]!);
+    const turnTokens = llmVisibleItems.slice(visibleStart, visibleEnd)
+      .reduce((total, item) => total + getCachedOrEstimatedInputTokens(item, config), 0);
+    if (turn < turnStarts.length - 1 && retainedTokens + turnTokens > retainTokens) break;
+    retainedTokens += turnTokens;
+    visibleHistorySplitIndex = start;
   }
 
-  const visibleHistorySplitIndex = Math.max(1, recentMessages.length - retainedMessageCount);
-  const snapshot = buildCompressionSnapshot(session, config, llmVisibleItems, recentMessages, visibleHistorySplitIndex);
+  const snapshot = buildCompressionSnapshot(session, config, llmVisibleItems, recentMessages, visibleHistorySplitIndex, true);
   if (!snapshot) {
     return null;
   }
-  return {
-    ...snapshot,
-    estimatedTotalTokens: tokenBudget.estimatedTotalTokens,
-    totalTokens: tokenBudget.totalTokens,
-    tokenBudget
-  };
+  return snapshot;
 }
 
 function buildCompressionSnapshot(
@@ -245,37 +224,52 @@ function buildCompressionSnapshot(
   config: AppConfig,
   llmVisibleItems: InternalTranscriptItem[],
   recentMessages: SessionHistoryMessage[],
-  visibleHistorySplitIndex: number
+  visibleHistorySplitIndex: number,
+  protectRecentTurn = false
 ): {
   historySummary: string | null;
   messagesToCompress: SessionHistoryMessage[];
   retainedMessages: SessionHistoryMessage[];
   toolObservationsToCompress: ToolObservationSummary[];
   transcriptStartIndexToKeep: number;
+  compressedTimestamps: number[];
 } | null {
+  if (protectRecentTurn) {
+    let lastUserIndex = recentMessages.length - 1;
+    while (lastUserIndex >= 0 && recentMessages[lastUserIndex]?.role !== "user") lastUserIndex -= 1;
+    if (lastUserIndex < 1) return null;
+    visibleHistorySplitIndex = Math.min(visibleHistorySplitIndex, lastUserIndex);
+    while (visibleHistorySplitIndex > 0 && recentMessages[visibleHistorySplitIndex]?.role !== "user") visibleHistorySplitIndex -= 1;
+    if (visibleHistorySplitIndex === 0) return null;
+  }
   const llmVisibleSplitIndex = resolveLlmVisibleSplitIndex(llmVisibleItems, visibleHistorySplitIndex);
   const transcriptStartIndexToKeep = findTranscriptStartIndexForLlmVisibleOffset(
     session.internalTranscript,
     llmVisibleSplitIndex
   );
-  const retainedMessages = projectLlmVisibleHistoryFromTranscript(
-    session.internalTranscript.slice(transcriptStartIndexToKeep),
-    config
-  );
+  // Compression boundaries must not inherit the prompt's maxRecentMessages clipping.
+  const retainedMessages = session.internalTranscript.slice(transcriptStartIndexToKeep)
+    .filter(isTranscriptLlmVisible)
+    .filter(isTranscriptHistoryMessage)
+    .map(item => projectTranscriptMessageItemToHistoryMessage(item));
   const toolObservationsToCompress = collectToolObservationsToCompress(
     session.internalTranscript.slice(0, transcriptStartIndexToKeep)
   );
-  const compressedMessageCount = Math.max(1, recentMessages.length - retainedMessages.length);
+  const compressedMessageCount = Math.max(0, recentMessages.length - retainedMessages.length);
   if (compressedMessageCount === 0) {
     return null;
   }
 
+  const retainedTimestamps = new Set(session.internalTranscript.slice(transcriptStartIndexToKeep).map(item => item.timestampMs));
   return {
     historySummary: session.historySummary,
     messagesToCompress: recentMessages.slice(0, compressedMessageCount),
     retainedMessages,
     toolObservationsToCompress,
-    transcriptStartIndexToKeep
+    transcriptStartIndexToKeep,
+    // Equal timestamps can occur in batches; keep ambiguous records rather than dropping unsummarized context.
+    compressedTimestamps: [...new Set(session.internalTranscript.slice(0, transcriptStartIndexToKeep).filter(isTranscriptLlmVisible).map(item => item.timestampMs))]
+      .filter(timestamp => !retainedTimestamps.has(timestamp))
   };
 }
 

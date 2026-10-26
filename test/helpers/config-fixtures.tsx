@@ -230,7 +230,7 @@ const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
         maxImageReferences: 2
       },
       tokenLimits: {
-        triggerTokens: 2000,
+        contextTokens: 150000,
         retainTokens: 500
       }
     },

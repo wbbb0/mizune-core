@@ -1,3 +1,4 @@
+import { prepareGenerationRequestBudget } from "./generationRequestBudget.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { resolveSkillTaskId } from "../../skills/skillTaskIdentity.ts";
 import { skillObservation, projectSkillObservations } from "../../skills/skillObservation.ts";
@@ -62,7 +63,6 @@ import { maybeAutoCaptionSessionTitle, shouldAutoCaptionSessionTitle } from "./s
 import { createProviderOutputTokenStats } from "#conversation/session/transcriptTokenStats.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
-import { projectProviderWorkingMessagesForBudget } from "./providerWorkingMessageBudget.ts";
 import { sessionTaskTrackerService } from "#conversation/taskTracker/sessionTaskTrackerService.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import {
@@ -252,6 +252,7 @@ export function createGenerationExecutor(
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
     let lastProviderRequestUsage: LlmUsage | null = null;
     const consumedSteerTexts: string[] = [];
+    let historyCompressedForRequest = false;
     let statefulRpTurnBaseline: StatefulRpTurnBaseline | null = null;
     const checkpointObservations: ToolLoopCheckpointObservation[] = [];
     const runningProviderUsage = createEmptyUsage(resolvedModelRef[0] ?? null, null);
@@ -483,13 +484,10 @@ export function createGenerationExecutor(
         ]));
       };
 
-      let toolBudgetToolsDisabled = false;
       const buildToolSelectionOptions = (options?: { forExecution?: boolean }) => {
         const forExecution = options?.forExecution === true;
         const visibleAllowedToolNames = resolveDynamicAllowedToolNames();
-        const dynamicAllowedToolNames = forExecution && toolBudgetToolsDisabled
-          ? (modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
-          : forExecution && modelSelfUpgradePlan && visibleAllowedToolNames !== undefined
+        const dynamicAllowedToolNames = forExecution && modelSelfUpgradePlan && visibleAllowedToolNames !== undefined
             ? Array.from(new Set([...visibleAllowedToolNames, MODEL_SELF_UPGRADE_TOOL_NAME]))
             : visibleAllowedToolNames;
         return {
@@ -515,9 +513,7 @@ export function createGenerationExecutor(
         config,
         buildToolSelectionOptions()
       );
-      const resolveAllowedTools = () => toolBudgetToolsDisabled
-        ? resolveCandidateTools().filter((tool) => tool.function.name === MODEL_SELF_UPGRADE_TOOL_NAME)
-        : resolveCandidateTools();
+      const resolveAllowedTools = resolveCandidateTools;
 
       const modelRoutingAccess = modelSelfUpgradePlan
         ? {
@@ -783,30 +779,31 @@ export function createGenerationExecutor(
                 )
               });
               assertGenerationCurrent();
-              const projection = projectProviderWorkingMessagesForBudget({
-                messages: projectedMessages,
+              return projectedMessages;
+            },
+            prepareRequestForBudget: async (request) => {
+              assertGenerationCurrent();
+              const messages = await prepareGenerationRequestBudget({
+                ...request, config, sessionId, logger,
                 transcript: sessionManager.getSession(sessionId).internalTranscript,
-                tools: resolveCandidateTools(),
-                retainedToolsWhenDisabled: resolveCandidateTools().filter(
-                  (tool) => tool.function.name === MODEL_SELF_UPGRADE_TOOL_NAME
-                ),
-                config,
-                triggerTokens: getRoutingPresetTokenLimits(config).triggerTokens
+                compact: async () => {
+                  sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "compressing_history" });
+                  try {
+                    const result = await historyCompressor.compactForRequest(sessionId,
+                      Math.min(getRoutingPresetTokenLimits(config).retainTokens, Math.floor(request.budget.inputTokens / 2)), abortController.signal);
+                    assertGenerationCurrent();
+                    if (result) {
+                      historyCompressedForRequest = true;
+                      persistSession(sessionId, "request_budget_history_compressed");
+                    }
+                    return result;
+                  } finally {
+                    sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "requesting_llm" });
+                  }
+                }
               });
-              toolBudgetToolsDisabled = projection.toolsDisabled;
-              if (projection.compactedToolResults > 0 || projection.toolsDisabled) {
-                logger.info(
-                  {
-                    sessionId,
-                    beforeTokens: projection.beforeTokens,
-                    afterTokens: projection.afterTokens,
-                    compactedToolResults: projection.compactedToolResults,
-                    toolsDisabled: projection.toolsDisabled
-                  },
-                  "provider_working_messages_budget_projected"
-                );
-              }
-              return projection.messages;
+              assertGenerationCurrent();
+              return messages;
             },
             onProviderCallUsage: async (event) => {
               recordProviderCallUsage(event);
@@ -1256,22 +1253,7 @@ export function createGenerationExecutor(
       }
 
       if (sessionManager.completeResponse(sessionId, responseEpoch)) {
-        let captionForceRegenerate = forceRegenerateTitleAfterTurn === true;
-        if (
-          sendTarget.chatType === "private"
-          && sessionManager.getSession(sessionId).pendingMessages.length === 0
-          && !sessionManager.hasActiveResponse(sessionId)
-        ) {
-          try {
-            const compressed = await historyCompressor.maybeCompress(sessionId, { triggerReason: "post_response" });
-            if (compressed) {
-              captionForceRegenerate = true;
-              persistSession(sessionId, "post_response_history_compressed");
-            }
-          } catch (error: unknown) {
-            logger.warn({ err: error, sessionId }, "post_response_history_compression_failed");
-          }
-        }
+        const captionForceRegenerate = forceRegenerateTitleAfterTurn === true || historyCompressedForRequest;
         const sessionAfterCompletion = sessionManager.getSession(sessionId);
         if (shouldAutoCaptionSessionTitle(sessionAfterCompletion, { forceRegenerate: captionForceRegenerate })) {
           void maybeAutoCaptionSessionTitle({

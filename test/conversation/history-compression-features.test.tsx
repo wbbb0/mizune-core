@@ -132,7 +132,7 @@ test("topic compression candidates exclude summaries and reset after compaction"
       ["hi", "more", "later"]
     );
     assert.deepEqual(
-      session.internalTranscript.map((item) => item.kind === "user_message" || item.kind === "assistant_message" ? item.text : item.kind),
+      session.internalTranscript.filter(item => !item.runtimeExcluded).map((item) => item.kind === "user_message" || item.kind === "assistant_message" ? item.text : item.kind),
       ["hi", "more", "later"]
     );
     const captured = (capturedMessages ?? []) as Array<{ content?: unknown }>;
@@ -261,113 +261,6 @@ test("topic compression candidates exclude summaries and reset after compaction"
     assert.equal(sessionManager.getSession("qqbot:p:test").lastLlmUsage, null);
   });
 
-  test("maybeCompress skips repeated unchanged below-threshold token checks", async () => {
-    const sessionManager = new SessionManager(createConfig());
-    sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });
-    appendSimpleHistory(sessionManager, "qqbot:p:test", "user", "hello", 1);
-    let snapshotChecks = 0;
-    const originalGetSnapshot = sessionManager.getHistoryForCompressionByTokens.bind(sessionManager);
-    sessionManager.getHistoryForCompressionByTokens = ((...args: Parameters<typeof originalGetSnapshot>) => {
-      snapshotChecks += 1;
-      return originalGetSnapshot(...args);
-    }) as typeof sessionManager.getHistoryForCompressionByTokens;
-
-    const compressor = new HistoryCompressor(
-      createConfig(),
-      {
-        isConfigured() {
-          return true;
-        },
-        async generate() {
-          throw new Error("should not summarize below threshold");
-        }
-      } as any,
-      sessionManager,
-      {
-        async ensureReady() {
-          return new Map();
-        }
-      } as any,
-      pino({ level: "silent" })
-    );
-
-    assert.equal(await compressor.maybeCompress("qqbot:p:test"), false);
-    assert.equal(await compressor.maybeCompress("qqbot:p:test"), false);
-    assert.equal(snapshotChecks, 1);
-  });
-
-  test("token compression still triggers when reported usage is stale below threshold", () => {
-    const sessionManager = new SessionManager(createConfig());
-    const sessionId = "qqbot:p:test";
-    sessionManager.ensureSession({ id: sessionId, type: "private" });
-    appendSimpleHistory(sessionManager, sessionId, "user", "x".repeat(1200), 1);
-    appendSimpleHistory(sessionManager, sessionId, "assistant", "y".repeat(1200), 2);
-
-    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 500, 50, 1);
-
-    assert.ok(snapshot);
-    assert.equal(snapshot.tokenBudget.source, "estimated_with_provider_floor");
-    assert.ok(snapshot.totalTokens > 500);
-    assert.ok(snapshot.estimatedTotalTokens > 500);
-  });
-
-  test("token compression uses provider usage as a floor when estimate is lower", () => {
-    const sessionManager = new SessionManager(createConfig());
-    const sessionId = "qqbot:p:test";
-    sessionManager.ensureSession({ id: sessionId, type: "private" });
-    for (let index = 0; index < 8; index += 1) {
-      appendSimpleHistory(sessionManager, sessionId, index % 2 === 0 ? "user" : "assistant", "z".repeat(350), index + 1);
-    }
-
-    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 5000, 100, 6000);
-
-    assert.ok(snapshot);
-    assert.equal(snapshot.totalTokens, 6000);
-    assert.ok(snapshot.estimatedTotalTokens < 5000);
-  });
-
-  test("token compression ignores cumulative provider usage as prompt floor", () => {
-    const sessionManager = new SessionManager(createConfig());
-    const sessionId = "qqbot:p:test";
-    sessionManager.ensureSession({ id: sessionId, type: "private" });
-    appendSimpleHistory(sessionManager, sessionId, "user", "short", 1);
-    const epoch = sessionManager.getMutationEpoch(sessionId);
-    sessionManager.setLastLlmUsageIfEpochMatches(sessionId, epoch, {
-      inputTokens: 6000,
-      outputTokens: 20,
-      totalTokens: 6020,
-      reasoningTokens: null,
-      cachedTokens: null,
-      requestCount: 3,
-      providerReported: true,
-      modelRef: "main",
-      model: "fake",
-      capturedAt: 2
-    });
-
-    const snapshot = sessionManager.getHistoryForCompressionByTokens(
-      sessionId,
-      5000,
-      100,
-      sessionManager.getLastLlmUsage(sessionId)?.requestCount === 1
-        ? sessionManager.getLastLlmUsage(sessionId)?.inputTokens ?? undefined
-        : undefined
-    );
-
-    assert.equal(snapshot, null);
-  });
-
-  test("token compression skips when only fixed prompt overhead exceeds the trigger", () => {
-    const sessionManager = new SessionManager(createConfig());
-    const sessionId = "qqbot:p:test";
-    sessionManager.ensureSession({ id: sessionId, type: "private" });
-    appendSimpleHistory(sessionManager, sessionId, "user", "short", 1);
-
-    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 100, 1000);
-
-    assert.equal(snapshot, null);
-  });
-
   test("token compression keeps the newest oversized message raw", () => {
     const sessionManager = new SessionManager(createConfig());
     const sessionId = "qqbot:p:test";
@@ -376,7 +269,7 @@ test("topic compression candidates exclude summaries and reset after compaction"
     appendSimpleHistory(sessionManager, sessionId, "assistant", "middle".repeat(300), 2);
     appendSimpleHistory(sessionManager, sessionId, "user", "latest".repeat(1000), 3);
 
-    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 500, 10);
+    const snapshot = sessionManager.selectHistoryForRequestCompression(sessionId, 10);
 
     assert.ok(snapshot);
     assert.deepEqual(snapshot.retainedMessages.map((message) => message.content), ["latest".repeat(1000)]);
@@ -420,11 +313,11 @@ test("topic compression candidates exclude summaries and reset after compaction"
       }
     });
     appendSimpleHistory(sessionManager, sessionId, "assistant", "new answer", 4);
+    appendSimpleHistory(sessionManager, sessionId, "user", "下一轮请求", 5);
 
-    const snapshot = sessionManager.getHistoryForCompressionByTokens(sessionId, 500, 20);
+    const snapshot = sessionManager.selectHistoryForRequestCompression(sessionId, 20);
 
     assert.ok(snapshot);
-    assert.ok(snapshot.tokenBudget.toolReplayTokens >= 1200);
     assert.equal(snapshot.toolObservationsToCompress.length, 1);
     assert.equal(snapshot.toolObservationsToCompress[0]?.toolCallId, "tool-1");
   });
@@ -475,7 +368,8 @@ test("topic compression candidates exclude summaries and reset after compaction"
     assert.equal(changed, true);
     assert.equal(session.historySummary, "compressed summary");
     assert.deepEqual(llmVisibleHistory, []);
-    assert.deepEqual(session.internalTranscript, []);
+    assert.equal(session.internalTranscript.length, 3);
+    assert.ok(session.internalTranscript.every(item => item.runtimeExclusionReason === "history_compressed"));
   });
 
   test("compactOldHistoryKeepingRecent preserves the latest topic window", async () => {
@@ -545,7 +439,7 @@ test("topic compression candidates exclude summaries and reset after compaction"
       ["new-1", "new-2"]
     );
     assert.deepEqual(
-      session.internalTranscript.map((item) => item.kind === "status_message" ? item.content : item.kind),
+      session.internalTranscript.filter(item => !item.runtimeExcluded).map((item) => item.kind === "status_message" ? item.content : item.kind),
       ["user_message", "new-status", "assistant_message"]
     );
   });
@@ -623,7 +517,7 @@ test("topic compression candidates exclude summaries and reset after compaction"
       ["old-2", "new-1", "new-2"]
     );
     assert.deepEqual(
-      session.internalTranscript.map((item) => item.kind === "user_message" || item.kind === "assistant_message" ? item.text : item.kind),
+      session.internalTranscript.filter(item => !item.runtimeExcluded).map((item) => item.kind === "user_message" || item.kind === "assistant_message" ? item.text : item.kind),
       ["old-2", "new-1", "new-2"]
     );
   });
@@ -701,7 +595,7 @@ test("topic compression candidates exclude summaries and reset after compaction"
       ["new-1", "new-2"]
     );
     assert.deepEqual(
-      session.internalTranscript.map((item) => {
+      session.internalTranscript.filter(item => !item.runtimeExcluded).map((item) => {
         if (item.kind === "user_message" || item.kind === "assistant_message") {
           return item.text;
         }
@@ -857,20 +751,3 @@ test("topic compression candidates exclude summaries and reset after compaction"
     assert.equal(await compressor.forceCompact("qqbot:p:test", 1), false);
     assert.equal(sessionManager.getSession("qqbot:p:test").historySummary, null);
   });
-
-test("compression uses the last provider request instead of discarding multi-call usage", async () => {
-  const config = createConfig();
-  const manager = new SessionManager(config);
-  const id = "qqbot:p:usage";
-  manager.ensureSession({ id, type: "private" });
-  const requestUsage = { inputTokens: 12345, outputTokens: 1, totalTokens: 12346, cachedTokens: null,
-    reasoningTokens: null, requestCount: 1, providerReported: true, modelRef: "test:main", model: "fake" };
-  manager.setLastLlmUsageIfEpochMatches(id, manager.getMutationEpoch(id), {
-    ...requestUsage, inputTokens: 99999, requestCount: 4, capturedAt: 1, lastRequestUsage: requestUsage
-  });
-  let reported: number | undefined;
-  manager.getHistoryForCompressionByTokens = (_id, _trigger, _retain, tokens) => { reported = tokens; return null; };
-  const compressor = new HistoryCompressor(config, { isConfigured: () => true } as any, manager, {} as any, pino({ level: "silent" }));
-  await compressor.maybeCompress(id);
-  assert.equal(reported, 12345);
-});

@@ -26,7 +26,6 @@ test("provider working messages keep raw tool results below the token trigger", 
   });
 
   assert.equal(projection.compactedToolResults, 0);
-  assert.equal(projection.toolsDisabled, false);
   assert.strictEqual(projection.messages, messages);
 });
 
@@ -137,112 +136,14 @@ test("provider working messages do not preserve pinned raw tool results marked r
   assert.equal(projection.messages[1]?.content, "pinned unsafe compact");
 });
 
-test("provider working messages disable more tools when over budget cannot be compacted", () => {
+test("超限投影保留工具及其成本，由上层决定历史压缩", () => {
   const config = createTestAppConfig();
-  const projection = projectProviderWorkingMessagesForBudget({
-    messages: [
-      { role: "user" as const, content: "x".repeat(1000) }
-    ],
-    transcript: [],
-    config,
-    triggerTokens: 50
-  });
-
-  assert.equal(projection.compactedToolResults, 0);
-  assert.equal(projection.toolsDisabled, true);
-  assert.equal(projection.messages.at(-1)?.role, "system");
-  assert.match(String(projection.messages.at(-1)?.content), /不要继续调用工具/);
-});
-
-test("provider working message budget includes tool schemas and removes their cost after disabling tools", () => {
-  const config = createTestAppConfig();
-  const projection = projectProviderWorkingMessagesForBudget({
-    messages: [{ role: "user" as const, content: "hello" }],
-    transcript: [],
-    tools: [{
-      type: "function",
-      function: {
-        name: "large_tool",
-        description: "x".repeat(1000),
-        parameters: {
-          type: "object",
-          properties: {}
-        }
-      }
-    }],
-    config,
-    triggerTokens: 50
-  });
-
-  assert.equal(projection.toolsDisabled, true);
-  assert.ok(projection.beforeTokens > projection.afterTokens);
-  assert.match(String(projection.messages.at(-1)?.content), /不要继续调用工具/);
-});
-
-test("provider working message budget keeps afterTokens aligned after tools were already disabled", () => {
-  const config = createTestAppConfig();
-  const tools = [{
-    type: "function" as const,
-    function: {
-      name: "large_tool",
-      description: "x".repeat(1000),
-      parameters: { type: "object", properties: {} }
-    }
-  }];
-  const first = projectProviderWorkingMessagesForBudget({
-    messages: [{ role: "user" as const, content: "hello" }],
-    transcript: [],
-    tools,
-    config,
-    triggerTokens: 50
-  });
-  const second = projectProviderWorkingMessagesForBudget({
-    messages: first.messages,
-    transcript: [],
-    tools,
-    config,
-    triggerTokens: 50
-  });
-
-  assert.equal(second.toolsDisabled, true);
-  assert.equal(second.afterTokens, estimateLlmMessagesTokens(second.messages, config));
-});
-
-test("provider working message budget retains a system control tool and includes its schema cost", () => {
-  const config = createTestAppConfig();
-  const retainedTool = {
-    type: "function" as const,
-    function: {
-      name: "request_model_upgrade",
-      description: "upgrade control",
-      parameters: { type: "object", properties: {} }
-    }
-  };
-  const projection = projectProviderWorkingMessagesForBudget({
-    messages: [{ role: "user" as const, content: "x".repeat(1000) }],
-    transcript: [],
-    tools: [
-      retainedTool,
-      {
-        type: "function",
-        function: {
-          name: "large_business_tool",
-          description: "y".repeat(1000),
-          parameters: { type: "object", properties: {} }
-        }
-      }
-    ],
-    retainedToolsWhenDisabled: [retainedTool],
-    config,
-    triggerTokens: 50
-  });
-
-  assert.equal(projection.toolsDisabled, true);
-  assert.match(String(projection.messages.at(-1)?.content), /业务工具已停用/);
-  assert.equal(
-    projection.afterTokens,
-    estimateLlmMessagesTokens(projection.messages, config) + estimateLlmToolsTokens([retainedTool], config)
-  );
+  const messages = [{ role: "user" as const, content: "x".repeat(1000) }];
+  const tools = [createToolDefinition("large_tool")];
+  const projection = projectProviderWorkingMessagesForBudget({ messages, tools, transcript: [], config, triggerTokens: 50 });
+  assert.deepEqual(projection.messages, messages);
+  assert.equal(projection.afterTokens, estimateLlmMessagesTokens(messages, config) + estimateLlmToolsTokens(tools, config) + 4);
+  assert.ok(projection.afterTokens > 50);
 });
 
 function createObservedToolResult(
@@ -287,10 +188,9 @@ test("image transport size does not exhaust working message budget or disable to
   assert.equal(estimateLlmMessagesTokens(small, config), estimateLlmMessagesTokens(large, config));
   assert.ok(estimateLlmMessagesTokens(large, config) > 1000);
   const projection = projectProviderWorkingMessagesForBudget({ messages: large, transcript: [], config, triggerTokens: 8000 });
-  assert.equal(projection.toolsDisabled, false);
   assert.strictEqual(projection.messages, large);
   const manyImages = Array.from({ length: 10 }, () => large[0]!);
-  assert.equal(projectProviderWorkingMessagesForBudget({ messages: manyImages, transcript: [], config, triggerTokens: 8000 }).toolsDisabled, true);
+  assert.ok(projectProviderWorkingMessagesForBudget({ messages: manyImages, transcript: [], config, triggerTokens: 8000 }).afterTokens > 8000);
 });
 
 test("audio transport bytes are not estimated as text tokens", () => {
@@ -308,7 +208,6 @@ test("asset_media_view large image preserves send tool through the next provider
     chat: { capabilities: { supportsVision: true } }
   });
   const definitions = [createToolDefinition("asset_media_view"), createToolDefinition("asset_send_to_chat")];
-  let disabled = false;
   const call = (id: string, name: string) => ({ choices: [{ delta: { tool_calls: [{ index: 0, id, type: "function", function: { name, arguments: "{}" } }] } }] });
   await withMockFetch([
     { assertRequest() {}, payloads: [call("view-1", "asset_media_view")] },
@@ -324,10 +223,9 @@ test("asset_media_view large image preserves send tool through the next provider
   ], async () => {
     const result = await new LlmClient(config, pino({ level: "silent" })).generate({
       messages: [{ role: "user", content: "看图后发送图片。" }],
-      tools: () => disabled ? [] : definitions,
+      tools: definitions,
       projectMessagesBeforeProvider(messages) {
         const projection = projectProviderWorkingMessagesForBudget({ messages, tools: definitions, transcript: [], config, triggerTokens: 8000 });
-        disabled = projection.toolsDisabled;
         return projection.messages;
       },
       async toolExecutor(tool) {
@@ -340,6 +238,5 @@ test("asset_media_view large image preserves send tool through the next provider
       }
     });
     assert.equal(result.text, "已发送。");
-    assert.equal(disabled, false);
   });
 });

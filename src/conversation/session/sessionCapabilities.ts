@@ -53,20 +53,16 @@ export interface SessionCompressionAccess {
     toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
   } | null;
-  getHistoryForCompressionByTokens(
+  selectHistoryForRequestCompression(
     sessionId: string,
-    triggerTokens: number,
-    retainTokens: number,
-    reportedInputTokens?: number
+    retainTokens: number
   ): {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
-    estimatedTotalTokens: number;
-    totalTokens: number;
-    tokenBudget: import("./promptTokenBudget.ts").PromptTokenBudgetEstimate;
+    compressedTimestamps: number[];
   } | null;
   applyCompressedHistoryIfHistoryRevisionMatches(
     sessionId: string,

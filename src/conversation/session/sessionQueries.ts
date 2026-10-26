@@ -9,7 +9,7 @@ import type {
   SessionUsageSnapshot
 } from "./sessionTypes.ts";
 import { cloneSessionOperationMode } from "./sessionOperationMode.ts";
-import { projectCompressionHistorySnapshot, projectCompressionHistorySnapshotByTokens, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
+import { projectCompressionHistorySnapshot, projectLlmVisibleHistoryFromTranscript } from "./sessionTranscript.ts";
 import type { AppConfig } from "#config/config.ts";
 import { normalizeTranscriptItems } from "./transcriptMetadata.ts";
 import { resolveSessionParticipantLabel } from "./sessionIdentity.ts";
@@ -65,25 +65,6 @@ export function getHistoryForCompressionSnapshot(
   return projectCompressionHistorySnapshot(session, config, triggerMessageCount, retainMessageCount);
 }
 
-// Builds a compression snapshot using estimated token counts as the trigger threshold.
-export function getHistoryForCompressionSnapshotByTokens(
-  session: SessionState,
-  config: AppConfig,
-  triggerTokens: number,
-  retainTokens: number,
-  reportedInputTokens?: number
-): {
-  historySummary: string | null;
-  messagesToCompress: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
-    retainedMessages: ReturnType<typeof projectLlmVisibleHistoryFromTranscript>;
-    transcriptStartIndexToKeep: number;
-    estimatedTotalTokens: number;
-    totalTokens: number;
-    tokenBudget: import("./promptTokenBudget.ts").PromptTokenBudgetEstimate;
-  } | null {
-  return projectCompressionHistorySnapshotByTokens(session, config, triggerTokens, retainTokens, reportedInputTokens);
-}
-
 // Builds a minimal session view for APIs and diagnostics.
 export function getSessionViewSnapshot(session: SessionState): {
   id: string;
@@ -131,6 +112,7 @@ export function getSessionViewSnapshot(session: SessionState): {
 export function isSessionGenerating(session: SessionState): boolean {
   return [
     "turn_planner_evaluating",
+    "compressing_history",
     "requesting_llm",
     "reasoning",
     "generating",
@@ -141,6 +123,7 @@ export function isSessionGenerating(session: SessionState): boolean {
 export function isSessionResponding(session: SessionState): boolean {
   return [
     "turn_planner_evaluating",
+    "compressing_history",
     "requesting_llm",
     "reasoning",
     "generating",

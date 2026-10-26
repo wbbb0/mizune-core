@@ -892,28 +892,22 @@ export class SessionManager {
     return this.historyService.getHistoryForCompression(session, triggerMessageCount, retainMessageCount);
   }
 
-  // Returns a compression snapshot when the estimated token count exceeds the trigger threshold.
-  getHistoryForCompressionByTokens(
+  // Selects older complete turns after the assembled request has exceeded its input budget.
+  selectHistoryForRequestCompression(
     sessionId: string,
-    triggerTokens: number,
-    retainTokens: number,
-    reportedInputTokens?: number
+    retainTokens: number
   ): {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     toolObservationsToCompress: ToolObservationSummary[];
     transcriptStartIndexToKeep: number;
-    estimatedTotalTokens: number;
-    totalTokens: number;
-    tokenBudget: import("./promptTokenBudget.ts").PromptTokenBudgetEstimate;
+    compressedTimestamps: number[];
   } | null {
     const session = this.requireSession(sessionId);
-    return this.historyService.getHistoryForCompressionByTokens(
+    return this.historyService.selectHistoryForRequestCompression(
       session,
-      triggerTokens,
-      retainTokens,
-      reportedInputTokens
+      retainTokens
     );
   }
 

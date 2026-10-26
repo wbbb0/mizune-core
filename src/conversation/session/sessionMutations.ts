@@ -235,8 +235,10 @@ export function applyCompressedHistoryState(
 ): void {
   session.historySummary = payload.historySummary;
   const startIndex = Math.max(0, Math.min(payload.transcriptStartIndexToKeep, session.internalTranscript.length));
-  session.internalTranscript = session.internalTranscript.slice(startIndex);
-  session.historyBackfillBoundaryMs = session.internalTranscript[0]?.timestampMs ?? Date.now();
+  session.historyBackfillBoundaryMs = session.internalTranscript[startIndex]?.timestampMs ?? Date.now();
+  session.internalTranscript = session.internalTranscript.map((item, index) => index < startIndex && !item.runtimeExcluded
+    ? freezeTranscriptItem({ ...item, runtimeExcluded: true, runtimeExclusionReason: "history_compressed" })
+    : item);
   // Provider usage describes the prompt before compression; discard it so the
   // next compression check does not reuse stale input token counts.
   session.lastLlmUsage = null;

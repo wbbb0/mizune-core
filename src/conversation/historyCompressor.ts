@@ -4,10 +4,9 @@ import type { TopicCompressionCandidate } from "./turnPlannerPolicy.ts";
 import type { AppConfig } from "#config/config.ts";
 import { annotateStructuredMediaReferences, extractStructuredMediaIds } from "#images/imageReferences.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
-import { buildHistorySummaryPrompt } from "#llm/prompts/history-summary.prompt.ts";
-import { getModelRefsForRole, getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
+import { generateHistorySummary } from "./historySummaryGeneration.ts";
+import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { SessionCompressionAccess } from "#conversation/session/sessionCapabilities.ts";
-import { resolvePromptBudgetReportedInputTokens } from "#conversation/session/promptTokenBudget.ts";
 import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import type { ToolObservationSummary } from "#conversation/session/toolObservation.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
@@ -24,25 +23,12 @@ interface CompressionLogContext {
   triggerReason: string;
   triggerKind: "tokens" | "message_count";
   expectedHistoryRevision: number;
-  triggerTokens?: number | undefined;
-  retainTokens?: number | undefined;
-  reportedInputTokens?: number | undefined;
-  estimatedTotalTokens?: number | undefined;
-  totalTokens?: number | undefined;
-  tokenBudgetSource?: string | undefined;
-  summaryTokens?: number | undefined;
-  historyMessageTokens?: number | undefined;
-  toolReplayTokens?: number | undefined;
-  fixedOverheadTokens?: number | undefined;
-  historyContextTokens?: number | undefined;
-  reclaimableTranscriptTokens?: number | undefined;
   triggerMessageCount?: number | undefined;
   retainMessageCount?: number | undefined;
 }
 
 export class HistoryCompressor {
   private readonly inFlightSessions = new Set<string>();
-  private readonly skippedTokenChecks = new Map<string, string>();
 
   constructor(
     private readonly config: AppConfig,
@@ -67,14 +53,25 @@ export class HistoryCompressor {
     return { messageCount: snapshot.messagesToCompress.length, estimatedReclaimableTokens: Math.floor(rawTokens / 2) };
   }
 
-  async maybeCompress(sessionId: string, options?: HistoryCompressionOptions): Promise<boolean> {
-    const tokenLimits = getRoutingPresetTokenLimits(this.config);
-    return this.compressByTokens(sessionId, {
-      triggerTokens: tokenLimits.triggerTokens,
-      retainTokens: tokenLimits.retainTokens,
-      expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
-      triggerReason: options?.triggerReason ?? "maybe_compress"
-    });
+  /** Triggered only from the complete, candidate-specific request budget. */
+  async compactForRequest(sessionId: string, retainTokens: number, abortSignal: AbortSignal): Promise<{ summary: string; compressedTimestamps: number[] } | null> {
+    if (this.inFlightSessions.has(sessionId) || !this.config.conversation.historyCompression.enabled
+      || !this.config.llm.summarizer.enabled || !this.llmClient.isConfigured(this.resolveModelRefs())) return null;
+    abortSignal.throwIfAborted();
+    const revision = this.sessionManager.getHistoryRevision(sessionId);
+    const snapshot = this.sessionManager.selectHistoryForRequestCompression(sessionId, retainTokens);
+    const retained = snapshot?.retainedMessages[0];
+    if (!snapshot || !retained) return null;
+    this.inFlightSessions.add(sessionId);
+    let summary = "";
+    try {
+      const applied = await this.runCompression(sessionId, snapshot, revision, true, {
+        triggerReason: "request_budget", triggerKind: "tokens", expectedHistoryRevision: revision
+      }, { abortSignal, onSummary: value => { summary = value; } });
+      return applied ? { summary, compressedTimestamps: snapshot.compressedTimestamps } : null;
+    } finally {
+      this.inFlightSessions.delete(sessionId);
+    }
   }
 
   async forceCompact(sessionId: string, retainMessageCount?: number, options?: HistoryCompressionOptions): Promise<boolean> {
@@ -99,85 +96,6 @@ export class HistoryCompressor {
       force: true,
       triggerReason: options?.triggerReason ?? "compact_old_history_keep_recent"
     });
-  }
-
-  private async compressByTokens(
-    sessionId: string,
-    options: {
-      triggerTokens: number;
-      retainTokens: number;
-      expectedHistoryRevision: number;
-      triggerReason: string;
-    }
-  ): Promise<boolean> {
-    if (this.inFlightSessions.has(sessionId)) {
-      return false;
-    }
-    if (!this.config.conversation.historyCompression.enabled) {
-      return false;
-    }
-    if (
-      !this.config.llm.enabled
-      || !this.config.llm.summarizer.enabled
-      || !this.llmClient.isConfigured(this.resolveModelRefs())
-    ) {
-      return false;
-    }
-    this.inFlightSessions.add(sessionId);
-    try {
-      // Use provider-reported input tokens from the last request as a more accurate
-      // trigger signal when available, falling back to the heuristic estimate otherwise.
-      const lastUsage = this.sessionManager.getLastLlmUsage(sessionId);
-      const requestUsage = lastUsage?.lastRequestUsage ?? lastUsage;
-      const reportedInputTokens = resolvePromptBudgetReportedInputTokens({
-        inputTokens: requestUsage?.inputTokens,
-        requestCount: requestUsage?.requestCount
-      });
-      const skipKey = [
-        options.expectedHistoryRevision,
-        lastUsage?.capturedAt ?? "no_usage",
-        options.triggerTokens,
-        options.retainTokens
-      ].join(":");
-      if (this.skippedTokenChecks.get(sessionId) === skipKey) {
-        return false;
-      }
-      const logContext: CompressionLogContext = {
-        triggerReason: options.triggerReason,
-        triggerKind: "tokens",
-        expectedHistoryRevision: options.expectedHistoryRevision,
-        triggerTokens: options.triggerTokens,
-        retainTokens: options.retainTokens,
-        reportedInputTokens
-      };
-      this.logger.debug({ sessionId, ...logContext }, "history_compression_evaluating");
-      const snapshot = this.sessionManager.getHistoryForCompressionByTokens(
-        sessionId,
-        options.triggerTokens,
-        options.retainTokens,
-        reportedInputTokens
-      );
-      if (!snapshot) {
-        this.skippedTokenChecks.set(sessionId, skipKey);
-        this.logger.debug({ sessionId, ...logContext }, "history_compression_skipped_below_threshold");
-        return false;
-      }
-      this.skippedTokenChecks.delete(sessionId);
-      return await this.runCompression(sessionId, snapshot, options.expectedHistoryRevision, false, {
-        ...logContext,
-        estimatedTotalTokens: snapshot.estimatedTotalTokens,
-        totalTokens: snapshot.totalTokens,
-        tokenBudgetSource: snapshot.tokenBudget.source,
-        summaryTokens: snapshot.tokenBudget.summaryTokens,
-        historyMessageTokens: snapshot.tokenBudget.historyMessageTokens,
-        toolReplayTokens: snapshot.tokenBudget.toolReplayTokens,
-        fixedOverheadTokens: snapshot.tokenBudget.fixedOverheadTokens,
-        historyContextTokens: snapshot.tokenBudget.historyContextTokens,
-        reclaimableTranscriptTokens: snapshot.tokenBudget.reclaimableTranscriptTokens
-      });
-    } finally {
-      this.inFlightSessions.delete(sessionId);
-    }
   }
 
   private async compressByMessageCount(
@@ -242,7 +160,8 @@ export class HistoryCompressor {
     },
     expectedHistoryRevision: number,
     force: boolean,
-    logContext: CompressionLogContext
+    logContext: CompressionLogContext,
+    request?: { abortSignal: AbortSignal; onSummary: (summary: string) => void }
   ): Promise<boolean> {
     const imageIds = Array.from(new Set(snapshot.messagesToCompress.flatMap((message) => extractStructuredMediaIds(message.content))));
     const fallbackCaptions = imageIds.length > 0
@@ -267,20 +186,20 @@ export class HistoryCompressor {
     );
 
     const modeId = this.sessionManager.getModeId(sessionId);
-    const summaryResult = await this.llmClient.generate({
-      modelRefOverride: this.resolveModelRefs(),
-      timeoutMsOverride: this.config.llm.summarizer.timeoutMs,
-      enableThinkingOverride: this.config.llm.summarizer.enableThinking,
-      skipDebugDump: true,
-      messages: buildHistorySummaryPrompt({
-        sessionId,
-        modeId,
-        existingSummary: snapshot.historySummary,
-        messagesToCompress,
-        toolObservationsToCompress: snapshot.toolObservationsToCompress
-      })
+    const summary = await generateHistorySummary({
+      config: this.config, llmClient: this.llmClient,
+      ...(request ? { abortSignal: request.abortSignal } : {}),
+      prompt: { sessionId, modeId, existingSummary: snapshot.historySummary, messagesToCompress,
+        toolObservationsToCompress: snapshot.toolObservationsToCompress }
     });
-    const summary = summaryResult.text;
+    request?.abortSignal.throwIfAborted();
+    const sourceTokens = estimateTokens(snapshot.historySummary ?? "", this.config.conversation.historyCompression.tokenEstimation)
+      + messagesToCompress.reduce((total, message) => total + estimateTokens(message.content, this.config.conversation.historyCompression.tokenEstimation), 0)
+      + snapshot.toolObservationsToCompress.reduce((total, observation) => total + estimateTokens(JSON.stringify(observation), this.config.conversation.historyCompression.tokenEstimation), 0);
+    if (!summary || (request && estimateTokens(summary, this.config.conversation.historyCompression.tokenEstimation) >= sourceTokens)) {
+      this.logger.warn({ sessionId }, "history_compression_rejected_no_reduction");
+      return false;
+    }
 
     const currentModeId = this.sessionManager.getModeId(sessionId);
     if (currentModeId !== modeId) {
@@ -307,6 +226,7 @@ export class HistoryCompressor {
       return false;
     }
 
+    request?.onSummary(summary);
     this.logger.info(
       {
         sessionId,

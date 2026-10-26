@@ -1,3 +1,4 @@
+import { migrateRoutingPresetContextBudgets } from "#config/contextBudgetMigration.ts";
 import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
 import { readEmbeddingConfigLayers, mutateEmbeddingConfigReference } from "#config/embeddingConfigReferences.ts";
 import { supportsStandardImageGeneration } from "#config/llmProviderDefinitions.ts";
@@ -351,7 +352,7 @@ export function createEditorService(input: {
         readConfigFileRaw(input.config.configRuntime.llmRoutingPresetCatalogPath).catch(() => ({}))
       ]);
       const catalog = parseConfig(llmCatalogFileSchema, catalogRaw, { cloneInput: true });
-      const routingPresets = parseConfig(llmRoutingPresetCatalogFileSchema, routingRaw, { cloneInput: true });
+      const routingPresets = parseConfig(llmRoutingPresetCatalogFileSchema, migrateRoutingPresetContextBudgets(routingRaw), { cloneInput: true });
       const impact = summarizeLlmProviderMutationImpact(catalog, routingPresets, provider);
       const layers = await readEmbeddingConfigLayers(input.config.configRuntime);
       impact.embeddingReferences = layers.filter(layer => layer.value.context?.embedding?.model?.provider === provider).map(layer => layer.path);
@@ -546,7 +547,8 @@ async function readSingleResource<TSchema extends BaseSchema<any>>(
   resource: SingleFileEditorResource<TSchema>
 ): Promise<Infer<TSchema>> {
   try {
-    return parseConfig(resource.schema, await readStructuredFileRaw(resource.filePath));
+    const raw = await readStructuredFileRaw(resource.filePath);
+    return parseConfig(resource.schema, resource.key === "llm_routing_preset_catalog" ? migrateRoutingPresetContextBudgets(raw) : raw);
   } catch (error: unknown) {
     const nodeError = error as NodeJS.ErrnoException;
     if (nodeError.code === "ENOENT") {
@@ -675,7 +677,7 @@ async function saveLlmCatalogDraft(input: {
       readConfigFileRaw(input.configRuntime.llmRoutingPresetCatalogPath).catch(() => ({}))
     ]);
     const previousCatalog = parseConfig(llmCatalogFileSchema, previousCatalogRaw, { cloneInput: true });
-    const previousRouting = parseConfig(llmRoutingPresetCatalogFileSchema, previousRoutingRaw, { cloneInput: true });
+    const previousRouting = parseConfig(llmRoutingPresetCatalogFileSchema, migrateRoutingPresetContextBudgets(previousRoutingRaw), { cloneInput: true });
 
     validateLlmCatalogProviderMutations(previousCatalog, nextCatalog, input.mutations);
     const nextRouting = applyLlmCatalogProviderMutations(previousRouting, input.mutations);

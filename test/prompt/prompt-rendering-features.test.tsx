@@ -467,7 +467,8 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       assert.equal(prompt[0]?.role, "system");
       assert.equal(prompt[1]?.role, "system");
       assert.equal(prompt[2]?.role, "system");
-      assert.equal(prompt[3]?.role, "user");
+      assert.equal(prompt[3]?.contextHistorySummary, true);
+      assert.equal(prompt[4]?.role, "user");
       assert.equal(stableSystem, String(changedToolPrompt[0]?.content ?? ""));
       assert.equal(hasPromptSection(stableSystem, "global_persona"), true);
       assert.equal(hasPromptSection(stableSystem, "reply_rules"), true);
@@ -478,7 +479,8 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       assert.equal(hasPromptSection(volatileSystem, "reply_rules"), false);
       assert.equal(hasPromptSection(volatileSystem, "memory_write_decision"), false);
       assert.equal(hasPromptSection(volatileSystem, "context_rules"), false);
-      assert.equal(hasPromptSection(volatileSystem, "history_summary"), true);
+      assert.equal(hasPromptSection(volatileSystem, "history_summary"), false);
+      assert.equal(hasPromptSection(String(prompt[3]?.content), "history_summary"), true);
       assert.equal(hasPromptSection(volatileSystem, "current_session_context"), true);
       assert.equal(hasPromptSection(volatileSystem, "current_user_memories"), true);
       assert.equal(hasPromptSection(volatileSystem, "tool_hints"), false);

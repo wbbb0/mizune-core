@@ -583,7 +583,6 @@ export function createGenerationSessionOrchestrator(
       const interactionMode: PromptInteractionMode = sessionManager.consumeDebugMode(sessionId) ? "debug" : "normal";
       const user = await userStore.getByUserId(last.userId);
       const relationship: Relationship = user?.relationship ?? "known";
-      await historyCompressor.maybeCompress(sessionId, { triggerReason: "pre_generation" });
       let refreshedSession = sessionManager.getSession(sessionId);
       const hasRunningResources = await hasRunningResourcesForTaskTracker(toolRuntime);
       const trackerAfterUserBatch = sessionTaskTrackerService.observeUserBatch({
@@ -912,6 +911,7 @@ export function createGenerationSessionOrchestrator(
       const crossConversation = setupMode ? null : await crossConversationPreparation;
       const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
+            historySummary: sessionManager.getSession(sessionId).historySummary,
             sessionId,
             interactionMode,
             persona: promptPersona,
@@ -1124,7 +1124,6 @@ export function createGenerationSessionOrchestrator(
           ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]
       });
-      await historyCompressor.maybeCompress(sessionId, { triggerReason: "scheduled_pre_generation" });
       const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
       const transcriptStore = createSessionTranscriptStore(session, config);
       const projectedHistory = transcriptStore.projectRuntimeHistory();
@@ -1338,7 +1337,6 @@ export function createGenerationSessionOrchestrator(
           ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]
       });
-      await historyCompressor.maybeCompress(sessionId, { triggerReason: "inline_batch_pre_generation" });
       const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
       const transcriptStore = createSessionTranscriptStore(session, config);
       const projectedHistory = transcriptStore.projectRuntimeHistory();

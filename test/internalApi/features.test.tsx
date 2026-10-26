@@ -758,7 +758,7 @@ other:
             maxImageReferences: 5
           },
           tokenLimits: {
-            triggerTokens: 150000,
+            contextTokens: 150000,
             retainTokens: 4000
           }
         }
@@ -780,7 +780,7 @@ other:
           maxImageReferences: 5
         },
         tokenLimits: {
-          triggerTokens: 150000,
+          contextTokens: 150000,
           retainTokens: 4000
         }
       });
@@ -803,7 +803,7 @@ other:
           maxImageReferences: 5
         },
         tokenLimits: {
-          triggerTokens: 150000,
+          contextTokens: 150000,
           retainTokens: 4000
         }
       });
@@ -823,7 +823,7 @@ other:
           maxImageReferences: 5
         },
         tokenLimits: {
-          triggerTokens: 150000,
+          contextTokens: 150000,
           retainTokens: 4000
         }
       });
@@ -859,7 +859,7 @@ other:
           maxImageReferences: 5
         },
         tokenLimits: {
-          triggerTokens: 150000,
+          contextTokens: 150000,
           retainTokens: 4000
         }
       });

@@ -393,25 +393,19 @@ export class SessionHistoryService {
     return this.getTranscriptStore(session).projectCompressionSnapshot(triggerMessageCount, retainMessageCount);
   }
 
-  getHistoryForCompressionByTokens(
+  selectHistoryForRequestCompression(
     session: SessionState,
-    triggerTokens: number,
-    retainTokens: number,
-    reportedInputTokens?: number
+    retainTokens: number
   ): {
     historySummary: string | null;
     messagesToCompress: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
     retainedMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
-      toolObservationsToCompress: ToolObservationSummary[];
-      transcriptStartIndexToKeep: number;
-      estimatedTotalTokens: number;
-      totalTokens: number;
-      tokenBudget: import("./promptTokenBudget.ts").PromptTokenBudgetEstimate;
-    } | null {
-    return this.getTranscriptStore(session).projectCompressionSnapshotByTokens(
-      triggerTokens,
-      retainTokens,
-      reportedInputTokens
+    toolObservationsToCompress: ToolObservationSummary[];
+    transcriptStartIndexToKeep: number;
+    compressedTimestamps: number[];
+  } | null {
+    return this.getTranscriptStore(session).selectRequestCompressionSnapshot(
+      retainTokens
     );
   }
 

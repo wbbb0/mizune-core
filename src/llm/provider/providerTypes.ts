@@ -51,6 +51,8 @@ export interface LlmToolCall {
 
 export interface LlmMessage {
   role: "system" | "user" | "assistant" | "tool";
+  contextHistoryTimestampMs?: number;
+  contextHistorySummary?: boolean;
   content: string | LlmContentPart[];
   tool_call_id?: string;
   tool_calls?: LlmToolCall[];
@@ -66,6 +68,12 @@ export interface LlmGenerateParams {
   consumeSteerMessages?: () => Promise<LlmMessage[]> | LlmMessage[];
   consumeInlineTriggers?: () => Promise<LlmMessage[]> | LlmMessage[];
   projectMessagesBeforeProvider?: (messages: LlmMessage[]) => Promise<LlmMessage[]> | LlmMessage[];
+  prepareRequestForBudget?: (input: {
+    messages: LlmMessage[];
+    tools: LlmToolDefinition[];
+    modelRef: string;
+    budget: import("../shared/requestTokenBudget.ts").RequestTokenBudget;
+  }) => Promise<LlmMessage[]>;
   // Provisional text is display-only and must be cleared on reset; never deliver it as a committed message.
   onPreviewTextDelta?: (delta: string) => Promise<void> | void;
   onPreviewReset?: () => Promise<void> | void;

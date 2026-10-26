@@ -42,7 +42,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       turnPlanner: {} as never,
         debounceManager: {} as never,
         historyCompressor: {
-          async maybeCompress() {
+          async compactForRequest() {
             return false;
           }
         } as never,

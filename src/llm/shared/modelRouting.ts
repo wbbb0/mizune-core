@@ -1,4 +1,3 @@
-import { getModelInputBudget } from "./requestTokenBudget.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { LlmRoutingPreset, ModelProfile } from "#config/configModel.ts";
 import {
@@ -37,7 +36,7 @@ export interface RoutingPresetHistoryWindow {
 }
 
 export interface RoutingPresetTokenLimits {
-  triggerTokens: number;
+  contextTokens: number;
   retainTokens: number;
 }
 
@@ -54,7 +53,7 @@ const DEFAULT_ROUTING_PRESET_HISTORY_WINDOW: RoutingPresetHistoryWindow = {
 };
 
 const DEFAULT_ROUTING_PRESET_TOKEN_LIMITS: RoutingPresetTokenLimits = {
-  triggerTokens: 150000,
+  contextTokens: 150000,
   retainTokens: 4000
 };
 
@@ -308,12 +307,7 @@ export function getRoutingPresetHistoryWindow(config: AppConfig): RoutingPresetH
 
 export function getRoutingPresetTokenLimits(config: AppConfig): RoutingPresetTokenLimits {
   const preset = getEffectiveRoutingPreset(config) ?? getDefaultRoutingPreset(config);
-  const budgets = [preset.mainSmall[0], preset.mainLarge[0]].flatMap(ref => {
-    const profile = ref ? config.llm.models[ref] : undefined;
-    return profile?.chat ? [getModelInputBudget(profile)] : [];
-  });
-  const triggerTokens = Math.min(preset.tokenLimits.triggerTokens, ...budgets);
-  return { triggerTokens, retainTokens: Math.min(preset.tokenLimits.retainTokens, triggerTokens) };
+  return preset.tokenLimits;
 }
 
 export function getModelRefsForRole(config: AppConfig, role: LlmRoutingRole): string[] {

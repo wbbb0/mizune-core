@@ -57,7 +57,7 @@ function createOrchestratorDeps(input: {
     sessionRuntime: {
       logger: pino({ level: "silent" }),
       sessionManager: input.sessionManager,
-      historyCompressor: input.historyCompressor ?? ({ async maybeCompress() { return false; } } as never),
+      historyCompressor: input.historyCompressor ?? ({ async compactForRequest() { return false; } } as never),
       llmClient: input.llmClient ?? ({} as never),
       turnPlanner: input.turnPlanner ?? ({} as never),
       debounceManager: input.debounceManager ?? ({} as never)
@@ -607,7 +607,7 @@ function createOrchestratorDeps(input: {
       config,
       sessionManager,
       historyCompressor: {
-        async maybeCompress() {
+        async compactForRequest() {
           throw new Error("compress failed");
         }
       } as never,

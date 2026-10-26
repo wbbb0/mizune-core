@@ -15,10 +15,11 @@ const numberFields = new Set([
   "imageCount", "audioCount", "imageIdCount", "emojiIdCount", "attachmentCount",
   "rawSegmentCount", "fileSegmentCount", "fileSourceCount", "forwardCount", "mentionUserCount",
   "userCount", "groupCount", "deletedCount", "skippedCount", "fileCount", "memoryCount",
+  "contextTokens", "safetyTokens", "beforeTokens", "afterTokens", "compactedToolResults",
   "contentLength", "inputTokens", "outputTokens", "totalTokens", "cachedTokens", "reasoningTokens"
 ]);
 const booleanFields = new Set([
-  "streaming", "shouldFallback", "cancelled", "interrupted", "force", "atMentioned",
+  "summaryApplied", "streaming", "shouldFallback", "cancelled", "interrupted", "force", "atMentioned",
   "userMatched", "groupMatched", "directlyAddressed", "mentionedAll"
 ]);
 const errorNames = new Set([

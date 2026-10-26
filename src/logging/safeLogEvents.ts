@@ -1,6 +1,9 @@
 // 仅登记代码中的固定事件名称；禁止加入运行时文本、模板插值或用户输入。
 // 未登记的消息在内容过滤模式下统一隐藏，避免自由文本或格式化参数泄漏。
 export const safeLogEvents: ReadonlySet<string> = new Set([
+  "generation_request_budget",
+  "generation_request_budget_compacting",
+  "history_compression_rejected_no_reduction",
   "Failed to write provider exchange dump",
   "application_started",
   "application_stopped",

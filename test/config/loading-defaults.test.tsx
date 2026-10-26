@@ -74,7 +74,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
             maxImageReferences: 5
           },
           tokenLimits: {
-            triggerTokens: 150000,
+            contextTokens: 150000,
             retainTokens: 4000
           }
         }
@@ -84,7 +84,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         maxImageReferences: 5
       });
       assert.deepEqual(getRoutingPresetTokenLimits(config), {
-        triggerTokens: 150000,
+        contextTokens: 150000,
         retainTokens: 4000
       });
       assert.equal(config.dataDir, "data/default");

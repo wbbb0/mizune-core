@@ -435,6 +435,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
     assert.deepEqual(projection.replayMessages, [{
       role: "assistant",
       content: "上一轮回答",
+      contextHistoryTimestampMs: 1,
       providerMetadata: {
         openAiResponses: {
           outputItems

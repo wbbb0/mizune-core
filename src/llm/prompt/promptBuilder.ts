@@ -77,6 +77,7 @@ export function buildPrompt(input: PromptInput): LlmMessage[] {
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
+    ...(message.timestampMs != null ? { contextHistoryTimestampMs: message.timestampMs } : {}),
     content: formatConversationHistoryPromptMessage(
       message,
       input.modeId ? { modeId: input.modeId } : undefined
@@ -146,6 +147,7 @@ export function buildScheduledTaskPrompt(
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
+    ...(message.timestampMs != null ? { contextHistoryTimestampMs: message.timestampMs } : {}),
     content: formatScheduledHistoryPromptMessage(
       message,
       input.modeId ? { modeId: input.modeId } : undefined
@@ -174,13 +176,15 @@ function buildSystemMessages(
   const allSections = [...baseSections, ...extraVolatileSections];
   for (const placement of SYSTEM_MESSAGE_PLACEMENT_ORDER) {
     const content = allSections
-      .filter((section) => section.placement === placement)
+      .filter((section) => section.placement === placement && section.name !== "history_summary")
       .map((section) => section.content)
       .join("\n");
     if (content.length > 0) {
       messages.push({ role: "system", content });
     }
   }
+  const summary = allSections.find(section => section.name === "history_summary");
+  if (summary) messages.push({ role: "system", content: summary.content, contextHistorySummary: true });
   return messages;
 }
 
@@ -282,9 +286,12 @@ export function buildSetupPrompt(input: SetupPromptInput): LlmMessage[] {
     missingFields: input.missingFields
   });
   const systemMessages = buildSystemMessages(setupSystemSections);
+  if (input.historySummary) systemMessages.push({ role: "system", contextHistorySummary: true,
+    content: renderPromptSection("history_summary", [input.historySummary])! });
 
   const historyMessages: LlmMessage[] = input.recentMessages.map((message) => ({
     role: message.role,
+    ...(message.timestampMs != null ? { contextHistoryTimestampMs: message.timestampMs } : {}),
     content: formatConversationHistoryPromptMessage(message)
   }));
   const userBatchContent = input.batchMessages.length > 0

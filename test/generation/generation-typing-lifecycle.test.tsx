@@ -238,6 +238,8 @@ function createExecutorHarness(options?: {
         tools?: Array<{ function: { name: string } }> | (() => Array<{ function: { name: string } }>);
         modelRefOverride?: string | string[];
         resolveModelRefOverride?: () => string | string[];
+        messages: LlmMessage[];
+        prepareRequestForBudget?: import("../../src/llm/provider/providerTypes.ts").LlmGenerateParams["prepareRequestForBudget"];
         projectMessagesBeforeProvider?: (messages: LlmMessage[]) => Promise<LlmMessage[]>;
         toolExecutor?: (toolCall: {
           id: string;
@@ -260,6 +262,10 @@ function createExecutorHarness(options?: {
         if (options?.customGenerate) {
           return await options.customGenerate(input);
         }
+        if (options?.historyCompressed) await input.prepareRequestForBudget?.({
+          messages: [{ role: "system", content: "规则" }, { role: "user", content: "旧话题".repeat(100), contextHistoryTimestampMs: 1 }, { role: "user", content: "现在继续" }], tools: [], modelRef: "main",
+          budget: { contextTokens: 100, inputTokens: 50, outputTokens: 40, safetyTokens: 10 }
+        });
         input.onReasoningDelta?.("先想一下");
         if (options?.failAfterReasoning) {
           throw new Error("LLM failed after reasoning");
@@ -276,12 +282,12 @@ function createExecutorHarness(options?: {
       turnPlanner: {} as never,
       debounceManager: {} as never,
       historyCompressor: {
-        async maybeCompress() {
+        async compactForRequest() {
           if (options?.historyCompressed) {
             events.push("history:compressed");
-            return true;
+            return { summary: "已压缩", compressedTimestamps: [1] };
           }
-          return false;
+          return null;
         }
       } as never,
       sessionCaptioner: {
@@ -1567,7 +1573,7 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
       "Timed out waiting for compressed web title caption"
     );
 
-    assert.deepEqual(harness.events, ["send:你好", "history:compressed", "title:generate"]);
+    assert.deepEqual(harness.events, ["history:compressed", "send:你好", "title:generate"]);
     assert.equal(harness.sessionManager.getSession(harness.sessionId).title, "压缩后标题");
     assert.equal(harness.sessionManager.getSession(harness.sessionId).titleSource, "auto");
   });

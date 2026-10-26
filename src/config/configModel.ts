@@ -40,9 +40,9 @@ const routingPresetHistoryWindowSchema = s.object({
 }).title("历史窗口").describe("控制该模型路由预设参与本轮生成的近期消息与图片引用范围。");
 
 const routingPresetTokenLimitsSchema = s.object({
-  triggerTokens: s.number().int().positive().title("触发 Token").optional(),
+  contextTokens: s.number().int().positive().title("总上下文 Token").optional(),
   retainTokens: s.number().int().positive().title("保留 Token").optional()
-}).title("Token 上下限").describe("控制该模型路由预设触发历史压缩的 Token 上限，以及压缩后保留的 Token 预算。");
+}).title("Token 上下限").describe("预设的总上下文兜底上限（输入、输出预留和安全余量之和），与实际候选模型上限取较小值；保留 Token 为压缩后近期完整交互的目标。");
 
 const llmRoutingPresetSchema = s.object({
   mainSmall: createModelRefListSchema().title("主路由轻量模型"),

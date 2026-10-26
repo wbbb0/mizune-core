@@ -423,3 +423,12 @@ function createUserMessageEntry(): ChatTimelineTranscriptEntry {
     assert.equal(items[3]?.kind, "image");
     assert.equal(items[4]?.kind, "image");
   });
+
+test("压缩后的原消息继续显示，手动失效的消息仍隐藏", () => {
+  const entry = createUserMessageEntry();
+  entry.item.runtimeExcluded = true;
+  entry.item.runtimeExclusionReason = "history_compressed";
+  assert.equal(buildChatTimelineItems([entry], { activeComposerUserId: "10001" }).length, 4);
+  entry.item.runtimeExclusionReason = "manual_single";
+  assert.deepEqual(buildChatTimelineItems([entry], { activeComposerUserId: "10001" }), []);
+});

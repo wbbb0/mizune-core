@@ -294,7 +294,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
               maxImageReferences: 3
             },
             tokenLimits: {
-              triggerTokens: 120000,
+              contextTokens: 120000,
               retainTokens: 6000
             }
           },
@@ -331,7 +331,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         maxImageReferences: 3
       });
       assert.deepEqual(getRoutingPresetTokenLimits(config), {
-        triggerTokens: 120000,
+        contextTokens: 120000,
         retainTokens: 6000
       });
     });
@@ -369,7 +369,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
           maxImageReferences: 5
         },
         tokenLimits: {
-          triggerTokens: 150000,
+          contextTokens: 150000,
           retainTokens: 4000
         }
       });
@@ -391,7 +391,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
               maxImageReferences: 3
             },
             tokenLimits: {
-              triggerTokens: 120000,
+              contextTokens: 120000,
               retainTokens: 6000
             }
           },
@@ -420,7 +420,7 @@ import { withConfigDir, writeLlmCatalog, writeDefaultInstanceYaml, writeYaml } f
         maxImageReferences: 3
       });
       assert.deepEqual(getRoutingPresetTokenLimits(config), {
-        triggerTokens: 120000,
+        contextTokens: 120000,
         retainTokens: 3000
       });
     });

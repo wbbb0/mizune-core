@@ -110,6 +110,7 @@ function createOpenAiStyleProjector(
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({
             role: historyMessage.role,
+            contextHistoryTimestampMs: item.timestampMs,
             content: historyMessage.content,
             ...(options.preserveVisibleReasoning !== false && item.kind === "assistant_message" && item.reasoningContent
               ? { reasoning_content: item.reasoningContent }
@@ -153,7 +154,7 @@ function createOpenAiStyleProjector(
 
           replayMessages.push({
             role: "assistant",
-            content: item.content,
+            contextHistoryTimestampMs: item.timestampMs,            content: item.content,
             tool_calls: item.toolCalls.map((toolCall) => ({
               id: toolCall.id,
               type: "function",
@@ -173,6 +174,7 @@ function createOpenAiStyleProjector(
             }
             replayMessages.push({
               role: "tool",
+              contextHistoryTimestampMs: item.timestampMs,
               tool_call_id: toolResult.toolCallId,
               content: toolResultReplayContent.get(toolResult.toolCallId) ?? rawToolResultContent(toolResult)
             });
@@ -344,6 +346,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({
             role: historyMessage.role,
+            contextHistoryTimestampMs: item.timestampMs,
             content: historyMessage.content
           });
           replayCoversVisibleHistory = true;
@@ -363,7 +366,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
             }
             replayMessages.push({
               role: "assistant",
-              content: item.content,
+            contextHistoryTimestampMs: item.timestampMs,              content: item.content,
               tool_calls: item.toolCalls.map((toolCall) => ({
                 id: toolCall.id,
                 type: "function",
@@ -394,6 +397,7 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
           ) {
             replayMessages.push({
               role: "tool",
+              contextHistoryTimestampMs: item.timestampMs,
               tool_call_id: item.toolCallId,
               content: toolResultReplayContent.get(item.toolCallId) ?? rawToolResultContent(item)
             });

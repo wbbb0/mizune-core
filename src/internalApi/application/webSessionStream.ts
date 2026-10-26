@@ -338,6 +338,8 @@ function deriveWebSessionPhase(snapshot: WebSessionStreamSnapshot): WebSessionPh
       return { ...phase, label: "正在分析上下文" };
     case "turn_planner_waiting":
       return { ...phase, label: "暂不回复，等待触发" };
+    case "compressing_history":
+      return { ...phase, label: "正在压缩历史上下文" };
     case "requesting_llm":
       return { ...phase, label: "正在发起请求" };
     case "reasoning":

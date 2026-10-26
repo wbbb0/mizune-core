@@ -70,12 +70,12 @@ test("Qwen3 查询加任务说明而文档保持原文，两者共享空间；�
 });
 
 test("硬输出上限不作为默认预留，小窗口备用模型不压低主模型压缩阈值", async () => {
-  const { getModelInputBudget, estimateLlmMessagesTokens } = await import("#llm/shared/requestTokenBudget.ts");
+  const { resolveModelRequestBudget, estimateLlmMessagesTokens } = await import("#llm/shared/requestTokenBudget.ts");
   const { getRoutingPresetTokenLimits } = await import("#llm/shared/modelRouting.ts");
   const config = createLlmTestConfig([{ chat: { limits: { contextTokens: 8192, maxOutputTokens: 8192 } } }, { chat: { limits: { contextTokens: 512 } } }]);
-  assert.equal(getModelInputBudget(config.llm.models.main!), 6144);
-  config.llm.routingPresets.test!.tokenLimits = { triggerTokens: 7000, retainTokens: 1000 };
-  assert.equal(getRoutingPresetTokenLimits(config).triggerTokens, 6144);
+  assert.equal(resolveModelRequestBudget(config.llm.models.main!, 150000).inputTokens, 5980);
+  config.llm.routingPresets.test!.tokenLimits = { contextTokens: 7000, retainTokens: 1000 };
+  assert.equal(getRoutingPresetTokenLimits(config).contextTokens, 7000);
   const plain = [{ role: "assistant" as const, content: "结果" }];
   const replay = [{ ...plain[0]!, providerMetadata: { openRouterReasoningDetails: [{ index: 0, type: "reasoning.encrypted", data: "a".repeat(10000) }] } }];
   assert.ok(estimateLlmMessagesTokens(replay, config) > estimateLlmMessagesTokens(plain, config) + 1000);

@@ -378,6 +378,7 @@ export type SessionPhase =
   | { kind: "debouncing" }
   | { kind: "turn_planner_evaluating" }
   | { kind: "turn_planner_waiting" }
+  | { kind: "compressing_history" }
   | { kind: "requesting_llm" }
   | { kind: "reasoning" }
   | { kind: "generating" }

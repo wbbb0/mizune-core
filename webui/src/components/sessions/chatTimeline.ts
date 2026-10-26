@@ -88,7 +88,7 @@ function toChatTimelineItems(
   entry: ChatTimelineTranscriptEntry,
   activeComposerUserId: string | null
 ): ChatTimelineItem[] {
-  if (entry.item.runtimeExcluded) {
+  if (entry.item.runtimeExcluded && entry.item.runtimeExclusionReason !== "history_compressed") {
     return [];
   }
 

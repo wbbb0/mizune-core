@@ -1069,3 +1069,29 @@ test("schema version 10 adds published context without losing existing session d
     assert.equal(loaded?.publishedConversation, null);
   });
 });
+
+test("历史摘要与已压缩的原消息共同落库，重载不丢失原文及排除标记", async () => {
+  await withDataDir("llm-bot-compressed-history", async dataDir => {
+    const { SessionManager } = await import("../../src/conversation/session/sessionManager.ts");
+    const { createTestAppConfig } = await import("../helpers/config-fixtures.tsx");
+    const { applyCompressedHistoryState } = await import("../../src/conversation/session/sessionMutations.ts");
+    const manager = new SessionManager(createTestAppConfig());
+    const id = "web:compressed-history";
+    manager.ensureSession({ id, type: "private", source: "web" });
+    manager.appendUserHistory(id, { chatType: "private", userId: "owner", senderName: "测试", text: "需要保留的原记录" }, 1);
+    manager.appendAssistantHistory(id, { chatType: "private", userId: "bot", senderName: "助手", text: "需要保留的回答" }, 2);
+    manager.appendUserHistory(id, { chatType: "private", userId: "owner", senderName: "测试", text: "新请求" }, 3);
+    const session = manager.getSession(id);
+    applyCompressedHistoryState(session, { historySummary: "旧任务已完成", transcriptStartIndexToKeep: 2 });
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+    await persistence.save(toPersistedSessionState(session));
+    const [loaded] = await persistence.loadAll();
+    assert.ok(loaded);
+    assert.equal(loaded.historySummary, "旧任务已完成");
+    assert.equal(loaded.internalTranscript.length, 3);
+    assert.equal(loaded.internalTranscript[0]!.runtimeExclusionReason, "history_compressed");
+    const restored = restoreSessionState(loaded);
+    assert.deepEqual(restored.internalTranscript, session.internalTranscript);
+  });
+});

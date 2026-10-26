@@ -1,4 +1,4 @@
-import { estimateLlmMessagesTokens, estimateLlmToolsTokens } from "#llm/shared/requestTokenBudget.ts";
+import { estimateRequestTokens } from "#llm/shared/requestTokenBudget.ts";
 export { estimateLlmMessagesTokens, estimateLlmToolsTokens } from "#llm/shared/requestTokenBudget.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { InternalToolResultItem, InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
@@ -7,34 +7,28 @@ import type { LlmToolDefinition } from "#llm/provider/providerTypes.ts";
 import { shouldUseToolResultReplayContent } from "./toolResultReplayPolicy.ts";
 
 const DEFAULT_RECENT_RAW_TOOL_RESULT_COUNT = 5;
-const TOOL_BUDGET_WARNING = "当前工具链上下文已接近上限。不要继续调用工具，请基于已有工具结果直接回复用户；如果任务仍未完成，请简要说明已完成内容、未完成部分和下一步建议。";
-const RETAINED_CONTROL_TOOL_BUDGET_WARNING = "当前业务工具链上下文已接近上限，业务工具已停用。若仍有系统级控制工具可用，只能按该工具的适用条件调用；否则请基于已有工具结果直接回复用户。";
 
 export interface ProviderWorkingMessageBudgetProjection {
   messages: LlmMessage[];
   beforeTokens: number;
   afterTokens: number;
   compactedToolResults: number;
-  toolsDisabled: boolean;
 }
 
 export function projectProviderWorkingMessagesForBudget(input: {
   messages: LlmMessage[];
   transcript: InternalTranscriptItem[];
   tools?: LlmToolDefinition[];
-  retainedToolsWhenDisabled?: LlmToolDefinition[];
   config: AppConfig;
   triggerTokens: number;
 }): ProviderWorkingMessageBudgetProjection {
-  const toolTokens = estimateLlmToolsTokens(input.tools ?? [], input.config);
-  const beforeTokens = estimateLlmMessagesTokens(input.messages, input.config) + toolTokens;
+  const beforeTokens = estimateRequestTokens(input.messages, input.tools ?? [], input.config);
   if (beforeTokens <= input.triggerTokens) {
     return {
       messages: input.messages,
       beforeTokens,
       afterTokens: beforeTokens,
-      compactedToolResults: 0,
-      toolsDisabled: false
+      compactedToolResults: 0
     };
   }
 
@@ -71,25 +65,11 @@ export function projectProviderWorkingMessagesForBudget(input: {
     };
   });
 
-  const afterCompactionTokens = estimateLlmMessagesTokens(projected, input.config) + toolTokens;
-  const toolsDisabled = afterCompactionTokens > input.triggerTokens;
-  const retainedTools = toolsDisabled ? (input.retainedToolsWhenDisabled ?? []) : [];
-  const warning = retainedTools.length > 0
-    ? RETAINED_CONTROL_TOOL_BUDGET_WARNING
-    : TOOL_BUDGET_WARNING;
-  const finalMessages = toolsDisabled && !hasToolBudgetWarning(projected)
-    ? [...projected, { role: "system" as const, content: warning }]
-    : projected;
-  const afterTokens = toolsDisabled
-    ? estimateLlmMessagesTokens(finalMessages, input.config) + estimateLlmToolsTokens(retainedTools, input.config)
-    : afterCompactionTokens;
-
   return {
-    messages: finalMessages,
+    messages: projected,
     beforeTokens,
-    afterTokens,
-    compactedToolResults,
-    toolsDisabled
+    afterTokens: estimateRequestTokens(projected, input.tools ?? [], input.config),
+    compactedToolResults
   };
 }
 
@@ -126,11 +106,4 @@ function shouldKeepRawToolResult(
   }
   const preserveCount = observation.preserveRecentRawCount ?? DEFAULT_RECENT_RAW_TOOL_RESULT_COUNT;
   return toolPosition >= Math.max(0, totalToolMessages - preserveCount);
-}
-
-function hasToolBudgetWarning(messages: LlmMessage[]): boolean {
-  return messages.some((message) => (
-    message.role === "system"
-    && (message.content === TOOL_BUDGET_WARNING || message.content === RETAINED_CONTROL_TOOL_BUDGET_WARNING)
-  ));
 }

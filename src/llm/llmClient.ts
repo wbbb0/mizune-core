@@ -1,11 +1,11 @@
-import { ModelRequestBudgetError, resolveRequestOutputBudget } from "./shared/requestTokenBudget.ts";
+import { ModelRequestBudgetError, resolveRequestOutputBudget, resolveModelRequestBudget } from "./shared/requestTokenBudget.ts";
 import { getEmbeddingModelRefs } from "./shared/embeddingTarget.ts";
 import { resolveModelRefsForType } from "./shared/modelProfiles.ts";
 import { LlmProviderPolicyError } from "./provider/providerProtocolError.ts";
 import { withProviderExchangeDump } from "./provider/providerExchangeDump.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile, normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
-import { getModelRefsForRole, resolveModelRefsForRole } from "#llm/shared/modelRouting.ts";
+import { getModelRefsForRole, getRoutingPresetTokenLimits, resolveModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { Logger } from "pino";
 import { getLlmProvider, hasLlmProvider } from "./provider/providerRegistry.ts";
 import { executeToolCallsWithDependencies } from "./toolExecutionScheduler.ts";
@@ -250,6 +250,7 @@ export class LlmClient {
         streamed = await this.streamChatCompletion({
           ...(params.operation ? { operation: params.operation } : {}),
           messages: workingMessages,
+          ...(params.prepareRequestForBudget ? { prepareRequestForBudget: params.prepareRequestForBudget } : {}),
           tools,
           ...(params.onPreviewTextDelta ? { onPreviewTextDelta: params.onPreviewTextDelta } : {}),
           ...(params.onPreviewReset ? { onPreviewReset: params.onPreviewReset } : {}),
@@ -630,9 +631,17 @@ export class LlmClient {
       const candidateDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
 
       try {
-        const maxOutputTokens = resolveRequestOutputBudget(providerContext, messageProjection.messages, resolvedTools ?? [], params.maxOutputTokensOverride);
+        const budget = resolveModelRequestBudget(providerContext.modelProfile, getRoutingPresetTokenLimits(this.config).contextTokens, params.maxOutputTokensOverride, providerContext.operation);
+        const preparedMessages = params.prepareRequestForBudget
+          ? await params.prepareRequestForBudget({ messages: messageProjection.messages, tools: resolvedTools ?? [], modelRef: providerContext.modelRef, budget })
+          : messageProjection.messages;
+        throwIfAbortSignalAborted(params.abortSignal);
+        // Keep the accepted projection across tool iterations and fallback candidates.
+        params.messages.splice(0, params.messages.length, ...preparedMessages);
+        messageProjection.messages = preparedMessages;
+        const maxOutputTokens = resolveRequestOutputBudget(providerContext, preparedMessages, resolvedTools ?? [], params.maxOutputTokensOverride);
         const result = await withProviderExchangeDump(providerContext, params.skipDebugDump, () => provider.generate(providerContext, {
-          messages: messageProjection.messages,
+          messages: preparedMessages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
           onTextDelta: async (delta) => {
@@ -1081,6 +1090,8 @@ function cloneMessagesForRequest(messages: LlmMessage[], preserveAssistantReason
 function cloneMessageForRequest(message: LlmMessage, preserveAssistantReasoning: boolean): LlmMessage {
   return {
     role: message.role,
+    ...(message.contextHistoryTimestampMs != null ? { contextHistoryTimestampMs: message.contextHistoryTimestampMs } : {}),
+    ...(message.contextHistorySummary ? { contextHistorySummary: true } : {}),
     content: Array.isArray(message.content) ? [...message.content] : message.content,
     ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
     ...(message.tool_calls ? { tool_calls: message.tool_calls.map(cloneToolCall) } : {}),

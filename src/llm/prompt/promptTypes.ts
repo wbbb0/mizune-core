@@ -323,6 +323,7 @@ export interface InternalSessionTriggerPromptInput {
 export type ScheduledTaskPromptInput = InternalSessionTriggerPromptInput;
 
 export interface SetupPromptInput {
+  historySummary?: string | null | undefined;
   sessionId: string;
   interactionMode?: PromptInteractionMode;
   includeBatchMediaCaptions?: boolean | undefined;

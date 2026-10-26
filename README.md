@@ -320,3 +320,5 @@ Agent 可按需收藏、检索、维护和发送表情。`stickers.enabled` 默�
 ### 三层角色初始化
 
 角色配置采用 `persona`、`social`、`embodiment` 三层；沉浸模式开局再确认本会话 `state`。模型按分块推荐填写，每阶段使用 `.confirm` 保存，允许留空；`.config <阶段>` 修改，`.cancel` 放弃草稿。进入阶段会自动触发一次引导。详见 [角色初始化与状态边界](docs/architecture/character-initialization.md)。旧角色数据不迁移，新配置保存在实例 `character.sqlite`。
+
+上下文容量统一由实际候选模型限制与路由预设 `tokenLimits.contextTokens` 取较小值；预设限制包含输入、输出预留与安全余量。完整请求超限时先缩短旧工具回放，再总结历史，保留原始会话记录。[预算计算、压缩边界与旧配置迁移](docs/architecture/context-budget.md)。

@@ -1,3 +1,4 @@
+import { migrateRoutingPresetContextBudgets } from "./contextBudgetMigration.ts";
 import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -113,7 +114,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     llmRoutingPresetCatalogFileSchema,
     sanitizeSchemaLayer(
       llmRoutingPresetCatalogFileSchema,
-      loadYamlFile(llmRoutingPresetCatalogPath),
+      migrateRoutingPresetContextBudgets(loadYamlFile(llmRoutingPresetCatalogPath)),
       llmRoutingPresetCatalogPath
     )
   );
