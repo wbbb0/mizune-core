@@ -1,3 +1,5 @@
+import type { EditorFeatures } from "../schema/types.ts";
+
 export type DataResourceShape = "singleton" | "collection" | "log" | "file" | "directory";
 
 export type DataResourceDurability = "source_of_truth" | "cache" | "derived" | "ephemeral";
@@ -89,10 +91,12 @@ export interface DataResourceSummary {
   schemaMeta?: unknown;
   rowSchemaMeta?: unknown;
   uiTree?: unknown;
+  editorFeatures?: EditorFeatures;
   rowUiTree?: unknown;
   model?: DataResourceModel;
   rowIdentity?: DataResourceIdentity;
   rowOperations?: DataResourceRowOperations;
+  singletonOperations?: { validate: boolean };
   navigation?: DataResourceNavigation;
   export?: DataResourceExportDefinition;
 }
@@ -128,6 +132,7 @@ export interface DataResourceDirectoryItem {
 export interface SingletonDataResourceAdapter {
   get: () => Promise<unknown>;
   patch?: (value: unknown) => Promise<unknown>;
+  validate?: (value: unknown) => Promise<unknown>;
 }
 
 export interface CollectionDataResourceAdapter {
@@ -165,6 +170,7 @@ export interface DataResourceDefinition {
   schemaMeta?: unknown;
   rowSchemaMeta?: unknown;
   uiTree?: unknown;
+  editorFeatures?: EditorFeatures;
   rowUiTree?: unknown;
   model?: DataResourceModel;
   rowIdentity?: DataResourceIdentity;

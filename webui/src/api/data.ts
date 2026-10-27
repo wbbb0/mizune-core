@@ -1,5 +1,5 @@
 import { api } from "./client";
-import type { SchemaMeta, UiNode } from "@workbench-kit/vue";
+import type { SchemaMeta, UiNode, EditorFeatures } from "@workbench-kit/vue";
 
 export type DataResourceShape = "singleton" | "collection" | "log" | "file" | "directory";
 export type DataResourceDurability = "source_of_truth" | "cache" | "derived" | "ephemeral";
@@ -59,12 +59,14 @@ export interface DataResourceSummary {
   schemaMeta?: SchemaMeta;
   rowSchemaMeta?: SchemaMeta;
   uiTree?: UiNode;
+  editorFeatures?: EditorFeatures;
   rowUiTree?: UiNode;
   model?: DataResourceModel;
   rowIdentity?: {
     fields: string[];
     encode: "single" | "json_base64url";
   };
+  singletonOperations?: { validate: boolean };
   rowOperations?: {
     get: boolean;
     create: boolean;
@@ -126,6 +128,9 @@ export const dataApi = {
   },
   get(key: string): Promise<{ resource: DataResource }> {
     return api.get(`/api/data/registry/resources/${encodeURIComponent(key)}`);
+  },
+  validateSingleton(key: string, value: unknown): Promise<{ ok: true }> {
+    return api.post(`/api/data/registry/resources/${encodeURIComponent(key)}/validate`, { value });
   },
   patchSingleton(key: string, value: unknown): Promise<{ resource: DataResourceSummary; value: unknown }> {
     return api.patch(`/api/data/registry/resources/${encodeURIComponent(key)}`, { value });

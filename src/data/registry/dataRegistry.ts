@@ -76,6 +76,15 @@ export class DataRegistry {
     return { resource: summary };
   }
 
+  async validateSingleton(resourceKey: string, value: unknown): Promise<{ ok: true }> {
+    const definition = this.getResourceDefinition(resourceKey);
+    if (definition.shape !== "singleton" || definition.accessMode !== "editable") throw new Error("此资源不可编辑");
+    const adapter = asSingletonAdapter(definition);
+    if (!adapter.validate) throw new Error("此资源不支持单独验证");
+    await adapter.validate(value);
+    return { ok: true };
+  }
+
   async patchSingleton(resourceKey: string, value: unknown): Promise<unknown> {
     const definition = this.getResourceDefinition(resourceKey);
     if (definition.shape !== "singleton") {
@@ -277,6 +286,7 @@ function toSummary(definition: DataResourceDefinition): DataResourceSummary {
     ...(definition.schemaMeta !== undefined ? { schemaMeta: definition.schemaMeta } : {}),
     ...(definition.rowSchemaMeta !== undefined ? { rowSchemaMeta: definition.rowSchemaMeta } : {}),
     ...(definition.uiTree !== undefined ? { uiTree: definition.uiTree } : {}),
+    ...(definition.editorFeatures !== undefined ? { editorFeatures: definition.editorFeatures } : {}),
     ...(definition.rowUiTree !== undefined ? { rowUiTree: definition.rowUiTree } : {}),
     ...(definition.model !== undefined ? { model: definition.model } : {}),
     ...(definition.rowIdentity !== undefined ? { rowIdentity: definition.rowIdentity } : {}),
@@ -289,6 +299,7 @@ function toSummary(definition: DataResourceDefinition): DataResourceSummary {
         delete: hasAccess(definition.accessMode, "deletable") && collectionAdapter.deleteRow !== undefined
       }
     } : {}),
+    ...(definition.shape === "singleton" ? { singletonOperations: { validate: asSingletonAdapter(definition).validate !== undefined } } : {}),
     ...(definition.export !== undefined ? { export: definition.export } : {})
   };
 }

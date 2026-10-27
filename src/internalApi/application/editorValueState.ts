@@ -5,23 +5,8 @@ import {
   normalizeRoutingPresetCatalog
 } from "#llm/shared/modelRouting.ts";
 
-export type EditorDraftEffectiveMode =
-  | "draft_only"
-  | "merge_reference"
-  | "record_inheritance";
-
-export type EditorUnsetMode =
-  | "disabled"
-  | "optional"
-  | "reference";
-
-export interface EditorFeatures {
-  showReferenceBackdrop: boolean;
-  unsetMode: EditorUnsetMode;
-  unsetActionLabel: string | null;
-  draftEffectiveMode: EditorDraftEffectiveMode;
-  recordInheritance?: { sourceKey: string; defaults: Record<string, unknown> };
-}
+import type { EditorFeatures } from "#data/schema/types.ts";
+export type { EditorDraftEffectiveMode, EditorUnsetMode, EditorFeatures } from "#data/schema/types.ts";
 
 export interface EditorValueState<TValue = unknown> {
   currentValue: TValue;

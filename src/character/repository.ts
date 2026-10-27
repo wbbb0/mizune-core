@@ -33,6 +33,31 @@ export class CharacterRepository {
     this.db.prepare("INSERT OR IGNORE INTO character_documents(id,value) VALUES ('profile',?)").run(JSON.stringify(value));
     return this.read<CharacterProfile>("profile")!;
   }
+  /** Data 编辑与聊天确认共用固定档案校验；系统元数据只能由仓库维护。 */
+  validateProfile(value: unknown): CharacterProfile {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("角色档案必须是对象");
+    const candidate = structuredClone(value) as CharacterProfile;
+    const keys = Object.keys(candidate);
+    if (keys.length !== 5 || !["revision", "confirmed", "persona", "social", "embodiment"].every(key => keys.includes(key))) throw new Error("角色档案字段不完整或包含未知字段");
+    const current = this.profile();
+    if (typeof candidate.revision !== "string" || candidate.revision !== current.revision) throw new Error("角色设定已被其他保存更新，请重新读取后再保存");
+    if (JSON.stringify(candidate.confirmed) !== JSON.stringify(current.confirmed)) throw new Error("确认状态由系统维护，不能直接修改");
+    for (const layer of ["persona", "social", "embodiment"] as const) validateJson(layerSchemas[layer], candidate[layer], layer);
+    validateFixed(candidate);
+    return candidate;
+  }
+  saveProfile(value: unknown): CharacterProfile {
+    return this.transaction(() => {
+      const next = this.validateProfile(value);
+      const previous = this.profile();
+      for (const layer of ["persona", "social", "embodiment"] as const) {
+        if (JSON.stringify(next[layer]) !== JSON.stringify(previous[layer]) && !next.confirmed.includes(layer)) next.confirmed.push(layer);
+      }
+      next.revision = randomUUID();
+      this.write("profile", next);
+      return next;
+    });
+  }
   findState(sessionId: string): CharacterSession | null { return this.read(`state:${sessionId}`); }
   deleteState(sessionId: string): boolean { this.cancel(sessionId); return this.db.prepare("DELETE FROM character_documents WHERE id = ?").run(`state:${sessionId}`).changes > 0; }
   restoreState(sessionId: string, value: CharacterSession): CharacterSession {

@@ -1,3 +1,5 @@
+import { jsonSchemaToMeta } from "#data/schema/jsonSchemaMeta.ts";
+import { personaJsonSchema, socialJsonSchema, embodimentJsonSchema } from "../../character/schemaCatalog.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -82,6 +84,7 @@ export interface DataRegistryService {
   listResources: DataRegistry["listResources"];
   getResource: DataRegistry["getResource"];
   patchSingleton: DataRegistry["patchSingleton"];
+  validateSingleton: DataRegistry["validateSingleton"];
   listRows: DataRegistry["listRows"];
   getRow: DataRegistry["getRow"];
   createRow: DataRegistry["createRow"];
@@ -155,13 +158,7 @@ function createInitialDataResourceDefinitions(input: {
   statefulRpStateStore?: Pick<StatefulRpStateStore, "listRows">;
 }): DataResourceDefinition[] {
   const definitions: DataResourceDefinition[] = [
-    {
-      key: "character_profile", title: "三层角色档案", description: "实例共享固定设定；通过会话中的 .config 和 .confirm 修改。",
-      shape: "singleton", accessMode: "readonly", durability: "source_of_truth",
-      storage: { kind: "sqlite", path: "character.sqlite", tables: ["character_documents"] },
-      export: { enabled: true, fileName: "character-profile.json", format: "json" },
-      adapter: { get: async () => characterRepository(input.config.dataDir).profile() }
-    },
+    createCharacterProfileResource(input.config.dataDir),
     singletonSqliteResource({
       key: "setup_state",
       title: "初始化状态",
@@ -1782,4 +1779,29 @@ async function listDirectoryItems(dirPath: string): Promise<Array<{
     }
     throw error;
   }
+}
+
+function createCharacterProfileResource(dataDir: string): DataResourceDefinition {
+  const schemaMeta = jsonSchemaToMeta({
+    type: "object", required: ["persona", "social", "embodiment"],
+    properties: {
+      persona: { ...personaJsonSchema, title: "基础人格" },
+      social: { ...socialJsonSchema, title: "社交设定" },
+      embodiment: { ...embodimentJsonSchema, title: "具身设定" }
+    }
+  });
+  return {
+    key: "character_profile", title: "三层角色档案",
+    description: "实例共享固定设定。保存会发布修改，并确认有实际改动的设定层；其他会话的旧配置草稿需要重新开始。",
+    shape: "singleton", accessMode: "editable", durability: "source_of_truth",
+    storage: { kind: "sqlite", path: "character.sqlite", tables: ["character_documents"] },
+    schemaMeta, uiTree: buildUiTreeFromMeta(schemaMeta),
+    editorFeatures: { showReferenceBackdrop: false, unsetMode: "disabled", unsetActionLabel: null, draftEffectiveMode: "draft_only", initializeFromDefaults: true },
+    export: { enabled: true, fileName: "character-profile.json", format: "json" },
+    adapter: {
+      get: async () => characterRepository(dataDir).profile(),
+      validate: async (value: unknown) => characterRepository(dataDir).validateProfile(value),
+      patch: async (value: unknown) => characterRepository(dataDir).saveProfile(value)
+    }
+  };
 }

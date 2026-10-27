@@ -139,3 +139,36 @@ test("缩短周期参数仍保留当前结束日期，不提前开启重叠周�
   advanceCycle(profile, state);
   assert.deepEqual(state.events.map(event => event.kind), ["cycle_ended", "cycle_started"]);
 });
+
+test("Data 发布固定档案只确认改动层，拒绝元数据篡改并使旧聊天草稿过期", t => {
+  const store = fixture(t);
+  store.begin("chat", "persona", "setup", "assistant");
+  const candidate = store.profile();
+  candidate.persona.name = "测试名字";
+  const oldRevision = candidate.revision;
+  const saved = store.saveProfile(candidate);
+  assert.deepEqual(saved.confirmed, ["persona"]);
+  assert.notEqual(saved.revision, oldRevision);
+  assert.equal(store.requiredStage("new", "stateful_rp"), "social");
+  assert.throws(() => store.confirm("chat", "assistant"), /其他会话/);
+  assert.throws(() => store.saveProfile(candidate), /其他保存/);
+  const tampered = store.profile(); tampered.confirmed.push("embodiment");
+  assert.throws(() => store.saveProfile(tampered), /确认状态/);
+  const extra = { ...store.profile(), unexpected: true };
+  assert.throws(() => store.saveProfile(extra), /未知字段/);
+});
+
+test("Data 验证不发布，固定跨字段校验失败不改变档案和已有动态状态", t => {
+  const store = fixture(t); confirmAll(store);
+  const before = store.profile(), state = store.state("s");
+  const next = store.profile(); next.persona.name = "草稿名字";
+  store.validateProfile(next);
+  assert.deepEqual(store.profile(), before);
+  next.embodiment.wardrobe.outfits.push({ id: "outfit", name: null, itemIds: ["missing"], occasionTags: [], notes: null });
+  assert.throws(() => store.saveProfile(next), /引用不存在/);
+  assert.deepEqual(store.profile(), before);
+  assert.deepEqual(store.state("s"), state);
+  next.embodiment.wardrobe.outfits = [];
+  store.saveProfile(next);
+  assert.deepEqual(store.state("s"), state);
+});

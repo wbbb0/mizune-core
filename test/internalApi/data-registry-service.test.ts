@@ -1049,7 +1049,7 @@ test("DataRegistryService exposes editable persona singleton and whitelist colle
 
     const profile = await service.getResource("character_profile") as { resource: { shape: string; accessMode: string } };
     assert.equal(profile.resource.shape, "singleton");
-    assert.equal(profile.resource.accessMode, "readonly");
+    assert.equal(profile.resource.accessMode, "editable");
     await assert.rejects(service.patchSingleton("character_profile", {}));
 
     const created = await service.createRow("whitelist", {
@@ -1470,6 +1470,27 @@ test("DataRegistryService does not start disabled scheduler after scheduled job 
     });
     await service.deleteRow("scheduled_jobs", "job-1");
     assert.equal(service.getSchedulerReloadCount(), 0);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("三层角色 Data 树编辑使用统一校验和 revision 保存，验证不写正式档案", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-bot-character-editor-"));
+  try {
+    const service = createRegistryService(dataDir);
+    const loaded = await service.getResource("character_profile") as { resource: { value: ReturnType<ReturnType<typeof characterRepository>["profile"]>; uiTree: { children: Record<string, unknown> }; singletonOperations: { validate: boolean }; editorFeatures: { initializeFromDefaults?: boolean } } };
+    assert.deepEqual(Object.keys(loaded.resource.uiTree.children), ["persona", "social", "embodiment"]);
+    assert.equal(loaded.resource.editorFeatures.initializeFromDefaults, true);
+    assert.equal(loaded.resource.singletonOperations.validate, true);
+    loaded.resource.value.social.identity.occupation = "测试职业";
+    await service.validateSingleton("character_profile", loaded.resource.value);
+    assert.equal(characterRepository(dataDir).profile().social.identity.occupation, null);
+    const result = await service.patchSingleton("character_profile", loaded.resource.value) as { value: { revision: string; confirmed: string[] } };
+    assert.deepEqual(result.value.confirmed, ["social"]);
+    assert.notEqual(result.value.revision, loaded.resource.value.revision);
+    await assert.rejects(service.patchSingleton("character_profile", loaded.resource.value), /其他保存/);
+    await assert.rejects(service.validateSingleton("setup_state", {}), /不可编辑/);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

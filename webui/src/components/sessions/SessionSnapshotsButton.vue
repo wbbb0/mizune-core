@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { Save } from "lucide-vue-next";
-import { useWorkbenchWindows } from "@workbench-kit/vue";
+import { WorkbenchButton, useWorkbenchWindows } from "@workbench-kit/vue";
 import ScenarioHostSnapshotDialogContent from "./ScenarioHostSnapshotDialogContent.vue";
 import { createSessionWindowContext } from "./sessionWindowContext";
 
@@ -24,8 +24,5 @@ function openSnapshotsDialog() {
 </script>
 
 <template>
-  <button class="btn-ghost flex items-center gap-1 px-1.5 py-0.5 text-small text-text-muted hover:text-text-primary" title="打开存档读档" @click="openSnapshotsDialog">
-    <Save :size="12" :stroke-width="2" />
-    存档/读档
-  </button>
+  <WorkbenchButton variant="ghost" :icon="Save" :icon-size="12" label="存档/读档" title="打开存档读档" class="text-small" @click="openSnapshotsDialog" />
 </template>

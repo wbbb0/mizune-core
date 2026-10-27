@@ -108,6 +108,8 @@ type DataSectionState = {
   getRegistryExistingRowDraft: (row: unknown) => unknown;
   canSaveRegistryRow: (row: unknown) => boolean;
   saveRegistrySingleton: () => Promise<void>;
+  validateRegistrySingleton: () => Promise<void>;
+  discardRegistryDraft: () => void;
   formatSize: (bytes: number | undefined) => string;
   formatTime: (ms: number | undefined) => string;
   formatContextMeta: (item: ContextManagementItem) => string;
@@ -165,6 +167,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       && resource.value.accessMode === "editable"
       && JSON.stringify(registryDraftValue.value) !== JSON.stringify(registryStoredValue.value)
       && !saving.value
+      && !validating.value
       && !loading.value
     );
 
@@ -267,7 +270,15 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     }
 
     watch(selectedKey, async (key) => {
-        const requestVersion = stateVersion;
+        const requestVersion = ++stateVersion;
+        loading.value = false;
+        loadingItem.value = false;
+        loadingMoreRows.value = false;
+        saving.value = false;
+        validating.value = false;
+        contextMaintenanceBusy.value = false;
+        deletingContextItemId.value = null;
+        pinningContextItemId.value = null;
         const requestKey = key;
         resource.value = null;
         model.value = null;
@@ -326,7 +337,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
             loading.value = false;
           }
         }
-    });
+    }, { flush: "sync" });
 
     watch(selectedItemKey, async (itemKey) => {
         const requestVersion = stateVersion;
@@ -409,6 +420,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
     }
 
     async function refreshSelected() {
+      if (loading.value || saving.value || validating.value) return;
       const requestVersion = stateVersion;
       const requestResourceId = selectedKey.value;
       const requestResource = selectedResource.value;
@@ -900,6 +912,7 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
           return;
         }
         toast.push({ type: "success", message: `已保存 → ${res.path}` });
+        saving.value = false;
         await refreshSelected();
       } catch (error: unknown) {
         if (isStale(requestVersion)) {
@@ -1166,6 +1179,26 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       }
     }
 
+    function discardRegistryDraft() {
+      if (saving.value || validating.value) return;
+      registryDraftValue.value = JSON.parse(JSON.stringify(registryStoredValue.value));
+    }
+
+    async function validateRegistrySingleton() {
+      const requestVersion = stateVersion;
+      const requestResource = selectedResource.value;
+      if (requestResource?.source !== "registry" || !registryCanSubmit.value) return;
+      validating.value = true;
+      try {
+        await dataApi.validateSingleton(requestResource.key, registryDraftValue.value);
+        if (!isStale(requestVersion)) toast.push({ type: "success", message: "验证通过，尚未保存" });
+      } catch (error: unknown) {
+        if (!isStale(requestVersion)) toast.push({ type: "error", message: error instanceof Error ? error.message : "验证失败" });
+      } finally {
+        if (!isStale(requestVersion)) validating.value = false;
+      }
+    }
+
     async function saveRegistrySingleton() {
       const requestVersion = stateVersion;
       const requestResourceId = selectedKey.value;
@@ -1321,6 +1354,8 @@ export const useDataSection = createSharedSectionState<DataSectionState>(() => {
       getRegistryExistingRowDraft,
       canSaveRegistryRow,
       saveRegistrySingleton,
+      validateRegistrySingleton,
+      discardRegistryDraft,
       formatSize,
       formatTime,
       formatContextMeta,

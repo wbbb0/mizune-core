@@ -193,3 +193,23 @@ export type UiNode =
     schema: Extract<SchemaMeta, { kind: "union" }>;
     options: UiNode[];
   };
+
+export type EditorDraftEffectiveMode =
+  | "draft_only"
+  | "merge_reference"
+  | "record_inheritance";
+
+export type EditorUnsetMode =
+  | "disabled"
+  | "optional"
+  | "reference";
+
+export interface EditorFeatures {
+  showReferenceBackdrop: boolean;
+  unsetMode: EditorUnsetMode;
+  unsetActionLabel: string | null;
+  draftEffectiveMode: EditorDraftEffectiveMode;
+  /** 为新增集合项与普通 union 分支从 Schema 默认值初始化；未开启时保持清空行为。 */
+  initializeFromDefaults?: boolean;
+  recordInheritance?: { sourceKey: string; defaults: Record<string, unknown> };
+}

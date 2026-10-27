@@ -5,7 +5,7 @@ import { SchemaNode } from "@workbench-kit/vue";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import { useElementWidth } from "@/composables/useElementWidth";
 import DataModelExplorerPane from "./DataModelExplorerPane.vue";
-import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem } from "@workbench-kit/vue";
+import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem, WorkbenchButton } from "@workbench-kit/vue";
 
 const {
   selectedKey,
@@ -56,6 +56,8 @@ const {
   validate,
   save,
   saveRegistrySingleton,
+  validateRegistrySingleton,
+  discardRegistryDraft,
   updateDraft,
   updateRegistryDraft,
   updateRegistryExistingRowDraft,
@@ -248,7 +250,7 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
         <span class="rounded-full bg-surface-muted px-1.5 text-small text-text-subtle">{{ resource.shape }}</span>
         <span class="truncate font-mono text-small text-text-subtle">{{ resource.storage.path || resource.storage.tables?.join(", ") || resource.storage.tableGroup || resource.storage.database }}</span>
         <template #actions>
-        <button class="btn-ghost ml-auto" :disabled="loading" @click="refreshSelected">
+        <button class="btn-ghost ml-auto" :disabled="loading || saving || validating" @click="refreshSelected">
           <RefreshCw :size="13" :stroke-width="2" :class="{ spin: loading }" />
         </button>
         <button
@@ -260,20 +262,19 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
           <Plus :size="13" :stroke-width="1.5" />
           新增
         </button>
-        <button
-          v-if="resource.shape === 'singleton' && resource.accessMode === 'editable'"
-          class="btn btn-primary"
-          :disabled="!registryCanSubmit"
-          @click="saveRegistrySingleton"
-        >
-          <Save :size="13" :stroke-width="1.5" />
-          {{ saving ? "保存中…" : "保存" }}
-        </button>
+        <template v-if="resource.shape === 'singleton' && resource.accessMode === 'editable'">
+          <WorkbenchButton label="放弃修改" variant="secondary" :disabled="!registryCanSubmit" @click="discardRegistryDraft" />
+          <WorkbenchButton v-if="resource.singletonOperations?.validate" :label="validating ? '验证中…' : '验证'" variant="secondary" :disabled="!registryCanSubmit" @click="validateRegistrySingleton" />
+          <WorkbenchButton :icon="Save" :label="saving ? '保存中…' : '保存'" variant="primary" :disabled="!registryCanSubmit" @click="saveRegistrySingleton" />
+        </template>
         </template>
       </WorkbenchAreaHeader>
 
       <div v-if="resource.shape === 'singleton' && resource.accessMode === 'editable' && resource.uiTree" class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
+        <p v-if="resource.description" class="mb-3 text-small text-text-muted">{{ resource.description }}</p>
         <SchemaNode
+          :read-only="saving || validating"
+          :editor-features="resource.editorFeatures"
           :node="resource.uiTree"
           :model-value="registryDraftValue"
           :stored-value="registryStoredValue"
