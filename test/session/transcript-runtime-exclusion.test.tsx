@@ -76,6 +76,32 @@ function createRuntimeAssistantMessage(id: string, groupId: string, timestampMs:
   } as any as InternalTranscriptItem;
 }
 
+test("压缩保留的记录可按单条、整组及截断转为手动删除，重复删除保持幂等", () => {
+  for (const operation of ["single", "group", "after"] as const) {
+    const manager = new SessionManager(createTestAppConfig());
+    const id = `synthetic:${operation}`;
+    const session = manager.ensureSession({ id, type: "private" });
+    session.internalTranscript.push(
+      createRuntimeUserMessage("boundary", 1),
+      createExcludedUserMessage({ id: "compressed", groupId: "target", runtimeExclusionReason: "history_compressed" }),
+      createRuntimeAssistantMessage("reply", "target", 3)
+    );
+    const reason = operation === "single" ? "manual_single" : operation === "group" ? "manual_group" : "manual_truncate_after";
+    const remove = () => operation === "single"
+      ? manager.excludeTranscriptItem(id, "compressed", reason, 100)
+      : operation === "group"
+        ? manager.excludeTranscriptGroup(id, "target", reason, 100)
+        : manager.excludeTranscriptItemsAfter(id, "boundary", reason, 100);
+    assert.deepEqual(remove().map(item => item.id), operation === "single" ? ["compressed"] : ["compressed", "reply"]);
+    const compressed = manager.getSession(id).internalTranscript[1]!;
+    assert.equal(compressed.runtimeExclusionReason, reason);
+    assert.equal(compressed.runtimeExcludedAt, 100);
+    assert.equal(manager.getSession(id).internalTranscript.length, 3);
+    assert.equal(manager.getSession(id).internalTranscript[0]!.runtimeExcluded, false);
+    assert.deepEqual(remove(), []);
+  }
+});
+
   test("runtimeExcluded transcript items are excluded from llm-visible history but remain in raw session view", () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const session = sessionManager.ensureSession({ id: "qqbot:p:test", type: "private" });

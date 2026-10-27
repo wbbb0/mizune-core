@@ -301,7 +301,7 @@ function buildTranscriptActionTarget(entry: TranscriptEntry): TranscriptActionTa
     groupId: entry.item.groupId,
     title: describeTranscriptItem(entry.item),
     detail: `#${entry.index}`,
-    alreadyInvalidated: entry.item.runtimeExcluded === true,
+    alreadyInvalidated: entry.item.runtimeExcluded === true && entry.item.runtimeExclusionReason !== "history_compressed",
     canResend: entry.item.runtimeExcluded !== true && (entry.item.kind === "user_message" || entry.item.kind === "user_media_message")
   };
 }

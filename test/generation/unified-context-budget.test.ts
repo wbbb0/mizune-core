@@ -143,3 +143,45 @@ test("固定输入已超限时不浪费摘要调用", async () => {
   });
   assert.deepEqual(result, messages);
 });
+
+test("摘要备用模型独立预留输出并重新分块，失败候选不消费来源内容", async () => {
+  const { setFetchImplementationForTests } = await import("#services/proxy/index.ts");
+  const { createSseResponse } = await import("../helpers/llm-test-support.tsx");
+  for (const source of ["合成历史", "待保留事实".repeat(3000)]) {
+    const config = createLlmTestConfig([
+      { model: "large", chat: { limits: { contextTokens: 20000 }, defaults: { maxOutputTokens: 7000 } } },
+      { model: "small", chat: { limits: { contextTokens: 6000 }, defaults: { maxOutputTokens: 500 } } }
+    ]);
+    config.llm.routingPresets.test!.summarizer = ["main", "candidate_2"];
+    let largeRequests = 0;
+    let smallRequests = 0;
+    const summarized: string[] = [];
+    setFetchImplementationForTests(async (_url, init = {}) => {
+      const body = JSON.parse(String(init.body));
+      if (body.model === "large") {
+        largeRequests++;
+        return new Response("overloaded", { status: 503 });
+      }
+      assert.equal(body.model, "small");
+      assert.equal(body.max_tokens, 500);
+      const budget = resolveModelRequestBudget(config.llm.models.candidate_2!, 150000);
+      assert.ok(estimateRequestTokens(body.messages, [], config) <= budget.inputTokens);
+      const content = String(body.messages[1].content);
+      if (smallRequests > 0) assert.match(content, /已处理分块/);
+      summarized.push(...[...content.matchAll(/%%llmbot:summary_source_message[^\n]*\n([\s\S]*?)\n%%llmbot:\/summary_source_message/g)].map(match => match[1]!));
+      smallRequests++;
+      return createSseResponse([{ choices: [{ delta: { content: "已处理分块" } }] }]);
+    });
+    try {
+      const summary = await generateHistorySummary({ config, llmClient: new LlmClient(config, logger), prompt: {
+        sessionId: "synthetic:fallback", existingSummary: null, messagesToCompress: [{ role: "user", content: source, timestampMs: 1 }]
+      } });
+      assert.equal(summary, "已处理分块");
+      assert.equal(largeRequests, 1);
+      assert.ok(smallRequests >= (source.length > 100 ? 2 : 1));
+      assert.equal(summarized.join(""), source);
+    } finally {
+      setFetchImplementationForTests(null);
+    }
+  }
+});

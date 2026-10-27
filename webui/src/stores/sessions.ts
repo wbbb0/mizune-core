@@ -228,8 +228,8 @@ export const useSessionsStore = defineStore("sessions", () => {
       entry.item = {
         ...entry.item,
         runtimeExcluded: true,
-        runtimeExcludedAt: entry.item.runtimeExcludedAt ?? runtimeExcludedAt,
-        runtimeExclusionReason: entry.item.runtimeExclusionReason ?? reason
+        runtimeExcludedAt,
+        runtimeExclusionReason: reason
       };
     }
   }

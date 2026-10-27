@@ -112,9 +112,11 @@ function applyRuntimeExclusion(
 ): InternalTranscriptItem[] {
   const affected: InternalTranscriptItem[] = [];
   const deletedMessageIds = new Set<number>();
+  const manuallyHidden = reason === "manual_single" || reason === "manual_group" || reason === "manual_truncate_after";
 
   for (const [index, item] of session.internalTranscript.entries()) {
-    if (!predicate(item, index) || item.runtimeExcluded === true) {
+    const canHideCompressed = manuallyHidden && item.runtimeExclusionReason === "history_compressed";
+    if (!predicate(item, index) || (item.runtimeExcluded === true && !canHideCompressed)) {
       continue;
     }
     const updated = freezeTranscriptItem({ ...item, runtimeExcluded: true, runtimeExcludedAt: timestampMs, runtimeExclusionReason: reason });
