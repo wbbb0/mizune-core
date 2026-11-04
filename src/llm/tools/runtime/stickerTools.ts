@@ -27,6 +27,7 @@ const descriptions: Record<keyof typeof schemas, string> = {
   sticker_qq_list: "只读获取当前NapCat账号已有收藏的图片URL清单，返回可用于sticker_collect的qq_url；不自动导入、不修改QQ收藏。按需挑选收藏，收藏时再进行图片理解。"
 };
 export const stickerToolDescriptors: ToolDescriptor[] = (Object.keys(schemas) as Array<keyof typeof schemas>).map((name) => ({
+  requiresOneBot: name === "sticker_qq_list",
   definition: { type: "function", function: { name, description: descriptions[name], parameters: z.toJSONSchema(schemas[name], { io: "input" }) } },
   isEnabled: (config) => config.stickers.enabled && config.chatFiles.enabled && (name !== "sticker_qq_list" || config.onebot.provider === "napcat"),
   resultObservation: keepRawUnlessLargePolicy({ replaySafe: name === "sticker_search" || name === "sticker_qq_list" })

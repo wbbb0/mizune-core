@@ -5,7 +5,7 @@ import { DebounceManager } from "../../src/conversation/debounceManager.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
-function createHarness(source: "onebot" | "web") {
+function createHarness(source: "onebot" | "qq_official" | "web") {
   const config = createTestAppConfig({
     conversation: {
       debounce: {
@@ -37,15 +37,17 @@ function wait(ms: number): Promise<void> {
 test("session pacing defaults follow the session source", () => {
   const web = createHarness("web");
   const oneBot = createHarness("onebot");
+  const official = createHarness("qq_official");
 
   assert.deepEqual(web.sessionManager.getPacingPreferences(web.sessionId), {
     inputDebounce: { mode: "immediate" },
-    oneBotOutbound: "immediate",
+    outbound: "immediate",
     toolLoopOutput: "progressive"
   });
+  assert.equal(official.sessionManager.getPacingPreferences(official.sessionId).outbound, "immediate");
   assert.deepEqual(oneBot.sessionManager.getPacingPreferences(oneBot.sessionId), {
     inputDebounce: { mode: "adaptive" },
-    oneBotOutbound: "humanized",
+    outbound: "humanized",
     toolLoopOutput: "progressive"
   });
 });
@@ -66,7 +68,7 @@ test("fixed session debounce overrides normal input scheduling", async () => {
   harness.sessionManager.setSettings(harness.sessionId, {
     pacingPreferences: {
       inputDebounce: { mode: "fixed", delayMs: 25 },
-      oneBotOutbound: "immediate",
+      outbound: "immediate",
       toolLoopOutput: "final_only"
     },
     toolsetPreferences: harness.sessionManager.getToolsetPreferences(harness.sessionId),

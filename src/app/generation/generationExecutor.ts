@@ -1,3 +1,4 @@
+import type { QqReplyPermit } from "#services/qqOfficial/types.ts";
 import { prepareGenerationRequestBudget } from "./generationRequestBudget.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { resolveSkillTaskId } from "../../skills/skillTaskIdentity.ts";
@@ -82,6 +83,7 @@ import {
 import { buildOutfitSignature } from "#modes/statefulRp/postTurnMaintainer.ts";
 
 export interface GenerationRuntimeBatchMessage {
+  replyContext?: QqReplyPermit;
   chatType: "private" | "group";
   userId: string;
   senderName: string;
@@ -106,7 +108,8 @@ export interface GenerationRuntimeBatchMessage {
 }
 
 export interface GenerationSendTarget {
-  delivery: "onebot" | "web";
+  replyContext?: QqReplyPermit;
+  delivery: "onebot" | "qq_official" | "web";
   chatType: "private" | "group";
   userId: string;
   groupId?: string;
@@ -340,12 +343,13 @@ export function createGenerationExecutor(
         return;
       }
       let summary = "";
-      const disableStreamingSplit = config.conversation.outbound.disableStreamingSplit === true;
+      const disableStreamingSplit = sendTarget.delivery === "qq_official" || config.conversation.outbound.disableStreamingSplit === true;
       const outbound = createGenerationOutbound(
         {
           logger,
           messageQueue,
           oneBotClient,
+          ...(toolRuntime.messaging ? { messaging: toolRuntime.messaging } : {}),
           sessionManager,
           persistSession
         },
@@ -403,6 +407,15 @@ export function createGenerationExecutor(
         for (const message of steerMessages) {
           if (message.text.trim()) {
             consumedSteerTexts.push(message.text);
+          }
+        }
+        await outbound.interruptStream();
+        const replyContext = steerMessages.at(-1)?.replyContext;
+        if (replyContext) {
+          sendTarget.replyContext = replyContext;
+          if (typeof builtinToolContext !== "undefined") {
+            builtinToolContext.replyContext = replyContext;
+            builtinToolContext.outboundSignal = sessionManager.getOutboundAbortSignal(sessionId)!;
           }
         }
         await segmentCoordinator.discardPendingOutput();
@@ -631,6 +644,10 @@ export function createGenerationExecutor(
         },
         currentUser,
         oneBotClient,
+        ...(toolRuntime.messaging ? { messaging: toolRuntime.messaging } : {}),
+        ...(sendTarget.replyContext ? { replyContext: sendTarget.replyContext } : {}),
+        beforeExternalDelivery: () => outbound.finishStream(),
+        ...(sessionManager.getOutboundAbortSignal(sessionId) ? { outboundSignal: sessionManager.getOutboundAbortSignal(sessionId)! } : {}),
         audioStore,
         chatFileStore,
         downloadRuntime,
@@ -814,7 +831,7 @@ export function createGenerationExecutor(
               maxConcurrency: 4
             },
             onProviderResponseComplete: async (event) => {
-              if (event.phase === "tool_call") {
+              if (event.phase === "tool_call" && !(sendTarget.delivery === "qq_official" && sendTarget.chatType === "group")) {
                 await segmentCoordinator.flushBufferedChunk();
               }
             },
@@ -945,6 +962,12 @@ export function createGenerationExecutor(
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "reasoning" });
                     void typingWindow.startIfNeeded();
                   },
+                  ...(outbound.nativeStreaming ? {
+                    onIrreversibleTextDelta: (delta: string) => {
+                      assertGenerationCurrent();
+                      outbound.appendNativeDelta(delta);
+                    }
+                  } : {}),
                   onTextDelta: async (delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
                     await segmentCoordinator.onTextDelta(delta);
@@ -1076,6 +1099,7 @@ export function createGenerationExecutor(
       }
 
       await segmentCoordinator.flushSummary(summary, streamResponse);
+      await outbound.finishStream();
       await draftOverlaySink?.complete();
       outboundDrainPromise = outbound.getDrainPromise();
 

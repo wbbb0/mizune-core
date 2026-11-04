@@ -9,7 +9,7 @@ export const sessionPacingPreferencesSchema = z.object({
       delayMs: z.number().int().min(0).max(120_000)
     })
   ]),
-  oneBotOutbound: z.enum(["humanized", "immediate"]),
+  outbound: z.enum(["humanized", "immediate"]),
   toolLoopOutput: z.enum(["progressive", "final_only"]).default("progressive")
 });
 
@@ -17,19 +17,13 @@ export type SessionPacingPreferences = z.infer<typeof sessionPacingPreferencesSc
 export type SessionInputDebouncePreference = SessionPacingPreferences["inputDebounce"];
 
 export function createDefaultSessionPacingPreferences(
-  source: "onebot" | "web"
+  source: "onebot" | "qq_official" | "web"
 ): SessionPacingPreferences {
-  return source === "web"
-    ? {
-        inputDebounce: { mode: "immediate" },
-        oneBotOutbound: "immediate",
-        toolLoopOutput: "progressive"
-      }
-    : {
-        inputDebounce: { mode: "adaptive" },
-        oneBotOutbound: "humanized",
-        toolLoopOutput: "progressive"
-      };
+  return {
+    inputDebounce: source === "web" ? { mode: "immediate" } : { mode: "adaptive" },
+    outbound: source === "onebot" ? "humanized" : "immediate",
+    toolLoopOutput: "progressive"
+  };
 }
 
 export function cloneSessionPacingPreferences(
@@ -37,7 +31,7 @@ export function cloneSessionPacingPreferences(
 ): SessionPacingPreferences {
   return {
     inputDebounce: { ...preferences.inputDebounce },
-    oneBotOutbound: preferences.oneBotOutbound,
+    outbound: preferences.outbound,
     toolLoopOutput: preferences.toolLoopOutput
   };
 }

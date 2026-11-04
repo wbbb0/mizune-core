@@ -1,5 +1,3 @@
-import type { ChatAttachment } from "#services/workspace/types.ts";
-import type { MessageContentPart } from "#messages/contentParts.ts";
 
 export interface OneBotMessageSegment {
   type: string;
@@ -237,30 +235,4 @@ export interface OneBotFileResult {
   fileName: string | null;
   fileSize: number | null;
   [key: string]: unknown;
-}
-
-export interface ParsedIncomingMessage {
-  channelId?: string;
-  externalUserId?: string;
-  chatType: "private" | "group";
-  userId: string;
-  groupId?: string;
-  senderName: string;
-  text: string;
-  contentParts?: MessageContentPart[];
-  images: string[];
-  audioSources: string[];
-  audioIds: string[];
-  emojiSources: string[];
-  imageIds: string[];
-  emojiIds: string[];
-  attachments?: ChatAttachment[];
-  messageFiles?: OneBotMessageFileSummary[];
-  specialSegments?: OneBotSpecialSegmentSummary[];
-  forwardIds: string[];
-  replyMessageId: string | null;
-  mentionUserIds: string[];
-  mentionedAll: boolean;
-  isAtMentioned: boolean;
-  rawEvent?: OneBotMessageEvent | undefined;
 }

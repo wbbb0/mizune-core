@@ -2,7 +2,8 @@ import type { AppConfig } from "#config/config.ts";
 import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import { extractEventMessageText, parseIncomingMessage } from "./messageParsing.ts";
-import type { ParsedIncomingMessage, OneBotMessageEvent, OneBotMessageSegment } from "./types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
+import type { OneBotMessageEvent, OneBotMessageSegment } from "./types.ts";
 
 export class EventRouter {
   constructor(

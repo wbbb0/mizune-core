@@ -139,7 +139,8 @@ test("表情发送进入队列，实际发送后才计数，保留emoji transcri
       relationship: "known", replyDelivery: "onebot", lastMessage: { sessionId: "qqbot:p:10001" },
       messageQueue: { enqueueTextDetached: (job: { send: () => Promise<void> }) => queued.push(job.send) },
       oneBotClient: { sendMessage: async (payload: unknown) => { sent.push(payload); return { data: { message_id: 42 } }; } },
-      sessionManager: { recordSentMessage() {}, appendInternalTranscript: (_id: string, data: unknown) => transcript.push(data) }
+      sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; }, recordSentMessage() {}, appendInternalTranscript: (_id: string, data: unknown) => transcript.push(data) }
     } as any;
     const response = await stickerToolHandlers.sticker_send!({} as any, { id: item.id }, context);
     assert.equal(typeof response, "object", JSON.stringify(response));
@@ -200,7 +201,8 @@ test("商城参数按原协议发送；失败不计数，Web发送保留表情�
         if (fail) throw new Error("发送失败");
         return { data: { message_id: 1 } };
       } },
-      sessionManager: { recordSentMessage() {}, appendInternalTranscript: (_id: string, data: unknown) => transcript.push(data) }
+      sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; }, recordSentMessage() {}, appendInternalTranscript: (_id: string, data: unknown) => transcript.push(data) }
     } as any;
     await stickerToolHandlers.sticker_send!({} as any, { id: item.id }, context);
     await assert.rejects(queue.shift()!(), /发送失败/);

@@ -97,7 +97,7 @@ function createExecutorHarness(options?: {
   failAfterReasoning?: boolean;
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
   configOverrides?: Parameters<typeof createTestAppConfig>[0];
-  sessionSource?: "onebot" | "web";
+  sessionSource?: "onebot" | "qq_official" | "web";
   sessionId?: string;
   titleSource?: "default" | "auto" | "manual" | null;
   modeId?: string;
@@ -1079,7 +1079,7 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     const harness = createExecutorHarness({
       pacingPreferences: {
         inputDebounce: { mode: "adaptive" },
-        oneBotOutbound: "immediate",
+        outbound: "immediate",
         toolLoopOutput: "progressive"
       }
     });
@@ -1095,7 +1095,7 @@ test("an explicitly empty direct tool boundary exposes no builtin tools", async 
     const harness = createExecutorHarness({
       pacingPreferences: {
         inputDebounce: { mode: "adaptive" },
-        oneBotOutbound: "immediate",
+        outbound: "immediate",
         toolLoopOutput: "progressive"
       },
       customGenerate: async (input) => {

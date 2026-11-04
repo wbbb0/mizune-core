@@ -14,6 +14,7 @@ const isNapCatAvatarToolEnabled: ToolDescriptor["isEnabled"] = (config) => (
 
 export const selfAccountToolDescriptors: ToolDescriptor[] = [
   {
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -30,6 +31,7 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
     isEnabled: isSelfAccountToolEnabled
   },
   {
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -53,6 +55,7 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
     isEnabled: isNapCatAvatarToolEnabled
   },
   {
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {

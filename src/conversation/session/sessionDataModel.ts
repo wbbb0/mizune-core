@@ -3,7 +3,7 @@ import { booleanColumn, defineDataDomain, defineTable, integerColumn, jsonColumn
 export const sessionDataDomain = defineDataDomain({
   database: "sessions",
   tableGroup: "sessions.persisted_sessions",
-  schemaVersion: 11,
+  schemaVersion: 12,
   minReadableSchemaVersion: 6,
   tables: {
     sessions: defineTable({

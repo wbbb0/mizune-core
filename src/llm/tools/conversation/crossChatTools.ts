@@ -16,6 +16,7 @@ type GroupListItem = Awaited<ReturnType<BuiltinToolContext["oneBotClient"]["getG
 export const crossChatToolDescriptors: ToolDescriptor[] = [
   {
     accessLevel: "operator",
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -34,6 +35,7 @@ export const crossChatToolDescriptors: ToolDescriptor[] = [
   },
   {
     accessLevel: "operator",
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {

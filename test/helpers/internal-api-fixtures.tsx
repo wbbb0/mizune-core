@@ -40,7 +40,7 @@ export interface InternalApiFixtureState {
   sessions: Array<{
     id: string;
     type: "private" | "group";
-    source: "onebot" | "web";
+    source: "onebot" | "qq_official" | "web";
     modeId: string;
     operationMode: NonNullable<PersistedSessionState["operationMode"]>;
     participantRef: {
@@ -525,7 +525,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       ensureSession(target: {
         id: string;
         type: "private" | "group";
-        source?: "onebot" | "web";
+        source?: "onebot" | "qq_official" | "web";
         participantRef?: {
           kind: "user" | "group";
           id: string;

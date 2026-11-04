@@ -138,7 +138,7 @@ export const rulesDataDomain = defineDataDomain({
 export const userIdentitiesDataDomain = defineDataDomain({
   database: "state",
   tableGroup: "state.user_identities",
-  schemaVersion: 1,
+  schemaVersion: 2,
   resetPolicy: "block_reset",
   tables: {
     user_identities: defineTable({
@@ -151,7 +151,6 @@ export const userIdentitiesDataDomain = defineDataDomain({
         textColumn("internalUserId", { title: "Internal User", role: "title", primary: true, storageName: "internal_user_id", notNull: true }),
         integerColumn("createdAt", { title: "Created", role: "time", primary: true, storageName: "created_at_ms", notNull: true })
       ],
-      unique: [["internalUserId"]],
       defaultSort: [{ column: "channelId", direction: "asc" }, { column: "externalId", direction: "asc" }]
     })
   }

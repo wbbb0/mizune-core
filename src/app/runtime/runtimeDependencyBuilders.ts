@@ -76,6 +76,7 @@ export function buildGenerationIdentityDeps(services: AppServiceBootstrap): Gene
 export function buildGenerationToolRuntimeDeps(services: AppServiceBootstrap): GenerationToolRuntimeDeps {
   return {
     oneBotClient: services.oneBotClient,
+    messaging: services.messaging,
     audioStore: services.audioStore,
     requestStore: services.requestStore,
     scheduledJobStore: services.scheduledJobStore,

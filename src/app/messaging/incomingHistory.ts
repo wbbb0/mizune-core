@@ -5,8 +5,9 @@ import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import type { MessageProcessingContext } from "./messageHandlerTypes.ts";
 
 export function resolveIncomingOneBotSourceRef(
-  message: Pick<MessageProcessingContext["enrichedMessage"], "rawEvent">
+  message: Pick<MessageProcessingContext["enrichedMessage"], "rawEvent" | "sourceRef">
 ): TranscriptItemSourceRef | undefined {
+  if (message.sourceRef) return message.sourceRef;
   const messageId = normalizeOneBotMessageId(message.rawEvent?.message_id);
   return messageId == null
     ? undefined

@@ -1,3 +1,5 @@
+import { QqOfficialClient } from "#services/qqOfficial/client.ts";
+import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { StickerService } from "#services/stickers/stickerService.ts";
 import { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import { ConversationAccessService } from "#identity/conversationAccessService.ts";
@@ -83,6 +85,9 @@ export function createBootstrapServices(
     isOwnerBootstrapCommandText
   );
   const oneBotClient = options.oneBotClient ?? new OneBotClient(config, logger);
+  const qqOfficialClient = config.qqOfficial.enabled
+    ? new QqOfficialClient({ ...config.qqOfficial }, logger)
+    : undefined;
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
   const llmClient = new LlmClient(config, logger);
@@ -119,6 +124,15 @@ export function createBootstrapServices(
   const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger, mediaCaptionService);
   const messageQueue = new MessageQueue(logger, config);
   const sessionPersistence = new SessionPersistence(dataDir, logger);
+  const messaging = new DeliveryCoordinator(oneBotClient, qqOfficialClient, (address, status) => {
+    sessionManager.appendInternalTranscript(address.sessionId, {
+      kind: "status_message", llmVisible: false, role: "assistant", statusType: "system",
+      content: status === "unknown" ? "消息投递结果未知，未自动重发。" : "消息投递失败，请检查回复授权及平台权限。",
+      timestampMs: Date.now()
+    });
+    void sessionPersistence.save(sessionManager.getPersistedSession(address.sessionId))
+      .catch(() => logger.warn("delivery_status_persistence_failed"));
+  });
   const sessionSnapshotStore = new SessionSnapshotStore(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger, stateDatabase);
   const requestStore = new RequestStore(dataDir, logger, stateDatabase);
@@ -171,6 +185,8 @@ export function createBootstrapServices(
     npcDirectory,
     router,
     oneBotClient,
+    qqOfficialClient,
+    messaging,
     sessionManager,
     debounceManager,
     llmClient,

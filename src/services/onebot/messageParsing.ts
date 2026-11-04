@@ -10,7 +10,8 @@ import {
   extractSpecialSegments,
   extractText
 } from "./messageSegments.ts";
-import type { OneBotMessageEvent, ParsedIncomingMessage } from "./types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
+import type { OneBotMessageEvent } from "./types.ts";
 
 export function extractEventMessageText(event: OneBotMessageEvent): string {
   const text = extractText(event.message).trim();

@@ -82,6 +82,8 @@ function createSessionMessage(
     mentionedAll: boolean;
     isAtMentioned: boolean;
     rawEvent?: OneBotMessageEvent | undefined;
+    replyContext?: SessionMessage["replyContext"];
+    sourceRef?: SessionMessage["sourceRef"];
   },
   receivedAt: number
 ): SessionMessage {
@@ -104,6 +106,8 @@ function createSessionMessage(
     mentionUserIds: [...(message.mentionUserIds ?? [])],
     mentionedAll: message.mentionedAll ?? false,
     isAtMentioned: message.isAtMentioned ?? false,
+    ...(message.replyContext ? { replyContext: message.replyContext } : {}),
+    ...(message.sourceRef ? { sourceRef: message.sourceRef } : {}),
     receivedAt
   };
   if (message.rawEvent != null) {
@@ -145,6 +149,8 @@ export function appendSessionMessage(
     mentionedAll: boolean;
     isAtMentioned: boolean;
     rawEvent?: OneBotMessageEvent | undefined;
+    replyContext?: SessionMessage["replyContext"];
+    sourceRef?: SessionMessage["sourceRef"];
   }
 ): SessionState {
   const now = Date.now();
@@ -178,6 +184,8 @@ export function appendSteerMessageState(
     mentionedAll: boolean;
     isAtMentioned: boolean;
     rawEvent?: OneBotMessageEvent | undefined;
+    replyContext?: SessionMessage["replyContext"];
+    sourceRef?: SessionMessage["sourceRef"];
   }
 ): SessionState {
   const now = Date.now();
@@ -369,7 +377,7 @@ export function setSessionSettingsState(
 ): Pick<SessionState, "pacingPreferences" | "toolsetPreferences" | "modelRoutingPreferences"> {
   session.pacingPreferences = {
     inputDebounce: { ...settings.pacingPreferences.inputDebounce },
-    oneBotOutbound: settings.pacingPreferences.oneBotOutbound,
+    outbound: settings.pacingPreferences.outbound,
     toolLoopOutput: settings.pacingPreferences.toolLoopOutput
   };
   session.toolsetPreferences = {

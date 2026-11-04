@@ -14,6 +14,7 @@ import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.
 export interface AppSetupSupportDeps {
   logger: Logger;
   oneBotClient: OneBotClient;
+  channelId: string;
   sessionManager: SessionPersistenceAccess & SessionOutboundHistoryAccess;
   sessionPersistence: SessionPersistence;
   setupStore: SetupStateStore;
@@ -26,6 +27,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
   const {
     logger,
     oneBotClient,
+    channelId,
     sessionManager,
     sessionPersistence,
     setupStore,
@@ -142,7 +144,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
   const notifyOwnerSetupIfNeeded = async (options?: { force?: boolean; ownerExternalId?: string }): Promise<void> => {
     const currentState = await setupStore.get();
     const ownerExternalId = options?.ownerExternalId
-      ?? (await userIdentityStore.findIdentityByInternalUserId("owner"))?.externalId;
+      ?? (await userIdentityStore.findIdentityByInternalUserId("owner", { channelId: channelId }))?.externalId;
     if (!ownerExternalId || currentState.state !== "needs_persona") {
       return;
     }
@@ -170,7 +172,7 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     if (currentState.state === "ready") {
       return "当前实例已完成 OneBot 初始化，`.own` 不再可用。";
     }
-    const currentOwnerIdentity = await userIdentityStore.findIdentityByInternalUserId("owner");
+    const currentOwnerIdentity = await userIdentityStore.findIdentityByInternalUserId("owner", { channelId: channelId });
     if (currentOwnerIdentity) {
       return `当前实例已绑定管理者：${currentOwnerIdentity.externalId}。请由该管理者继续完成设定。`;
     }

@@ -1,4 +1,4 @@
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getSessionSummary, isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
 import {
@@ -115,6 +115,7 @@ export class SessionManager {
     const created = createSessionState({
       id: sessionId,
       type: message.chatType,
+      ...(message.source ? { source: message.source } : {}),
       participantRef: resolveSessionParticipantRef({
         sessionId,
         type: message.chatType,
@@ -167,7 +168,7 @@ export class SessionManager {
   ensureSession(target: {
     id: string;
     type: "private" | "group";
-    source?: "onebot" | "web";
+    source?: "onebot" | "qq_official" | "web";
     participantRef?: SessionState["participantRef"];
     title?: string | null;
     titleSource?: "default" | "auto" | "manual" | null;
@@ -471,7 +472,7 @@ export class SessionManager {
     const preferences = this.requireSession(sessionId).pacingPreferences;
     return {
       inputDebounce: { ...preferences.inputDebounce },
-      oneBotOutbound: preferences.oneBotOutbound,
+      outbound: preferences.outbound,
       toolLoopOutput: preferences.toolLoopOutput
     };
   }
@@ -583,7 +584,7 @@ export class SessionManager {
     return {
       pacingPreferences: {
         inputDebounce: { ...state.pacingPreferences.inputDebounce },
-        oneBotOutbound: state.pacingPreferences.oneBotOutbound,
+        outbound: state.pacingPreferences.outbound,
         toolLoopOutput: state.pacingPreferences.toolLoopOutput
       },
       toolsetPreferences: {
@@ -964,7 +965,7 @@ export class SessionManager {
   getSessionView(sessionId: string): {
     id: string;
     type: "private" | "group";
-    source: "onebot" | "web";
+    source: "onebot" | "qq_official" | "web";
     modeId: string;
     participantUserId: string;
     participantLabel: string | null;

@@ -75,7 +75,7 @@ interface ProjectedChatTimelineMedia {
   sourcePath: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
-  messageId: number | null;
+  messageId: number | string | null;
   toolName: "asset_send_to_chat" | "filesystem_send_to_chat" | "sticker_send";
   captionText: string | null;
   timestampMs: number;

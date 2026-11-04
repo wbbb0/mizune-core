@@ -422,7 +422,7 @@ export class SessionHistoryService {
   getSessionView(session: SessionState): {
     id: string;
     type: "private" | "group";
-    source: "onebot" | "web";
+    source: "onebot" | "qq_official" | "web";
     modeId: string;
     participantUserId: string;
     participantLabel: string | null;

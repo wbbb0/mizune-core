@@ -1,3 +1,4 @@
+import { isOfficialMessageAllowed } from "./officialMessageAdmission.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import { createAppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
 import type { AppServiceBootstrapOptions } from "../bootstrap/appServiceBootstrap.ts";
@@ -41,6 +42,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     npcDirectory,
     router,
     oneBotClient,
+    qqOfficialClient,
+    messaging,
     sessionManager,
     debounceManager,
     llmClient,
@@ -106,6 +109,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     notifyOwnerSetupIfNeeded,
     assignOwner
   } = createAppSetupSupport({
+    channelId: config.configRuntime.instanceName,
     logger,
     oneBotClient,
     sessionManager,
@@ -226,6 +230,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       persistSession,
       flushSession: (sessionId, options) => sessionWorkCoordinator.flushSession(sessionId, options),
       onebotSendImmediateText: sendImmediateText,
+      messaging,
       assignOwner: async ({ channelId, requesterUserId, targetUserId, chatType }) => assignOwner({
         channelId,
         requesterUserId,
@@ -237,7 +242,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
   });
 
   const handleWebIncomingMessage = async (
-    incomingMessage: import("#services/onebot/types.ts").ParsedIncomingMessage,
+    incomingMessage: import("#services/messaging/incomingMessage.ts").ParsedIncomingMessage,
     options: {
       committedTextSink: import("../generation/generationOutputContracts.ts").GenerationCommittedTextSink;
       draftOverlaySink?: import("../generation/generationOutputContracts.ts").GenerationDraftOverlaySink;
@@ -333,6 +338,17 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       logger.info("onebot_disabled_startup_skipped");
     }
 
+    if (qqOfficialClient) {
+      qqOfficialClient.on("message", (event) => {
+        const message = event.message;
+        const allowed = isOfficialMessageAllowed(message, config.whitelist.enabled, whitelistStore, userIdentityStore);
+        if (!allowed) return;
+        void messageIngress.handleIncomingMessage(message, { kind: "qq_official", replyContext: event.permit })
+          .catch((error: unknown) => logger.error({ error }, "qq_official_ingress_failed"));
+      });
+      await qqOfficialClient.start();
+    }
+
     if (!options.disableBackgroundServices) {
       schedulerStarted = await startSchedulerIfEnabled(config, scheduler, logger);
       contextMaintenanceService.start();
@@ -382,6 +398,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     return {
       services,
       shutdown: async () => {
+        await qqOfficialClient?.stop();
         await shutdownRuntime({
           configManager,
           oneBotClient,
@@ -402,6 +419,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       }
     };
   } catch (error) {
+    await qqOfficialClient?.stop();
     await singleInstanceLock.release();
     throw error;
   }

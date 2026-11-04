@@ -1,3 +1,4 @@
+import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { sendAudioBytesToChat, sendImageBytesToChat, parseSessionTarget, enqueueToolSend, recordDeliveredMessage } from "../core/chatMediaDelivery.ts";
 import { withFilesystemScopeDescriptors, withFilesystemScopeHandlers } from "../core/filesystemScope.ts";
 import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
@@ -854,7 +855,7 @@ async function sendGenericFileToChat(
   if (context.replyDelivery !== "web" && !target) {
     return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
   }
-  if (context.replyDelivery !== "web" && context.config.onebot.provider !== "napcat") {
+  if (context.replyDelivery === "onebot" && context.config.onebot.provider !== "napcat") {
     return JSON.stringify({
       error: "filesystem/asset file sending requires onebot.provider=napcat for non-image files",
       deliveredAs: "unsupported"
@@ -887,17 +888,20 @@ async function sendGenericFileToChat(
     if (!target) {
       throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
     }
-    const payload = await context.oneBotClient.sendFile({
-      ...target,
-      filePath: input.absolutePath,
-      name: input.sourceName
+    await context.beforeExternalDelivery?.();
+    context.outboundSignal?.throwIfAborted();
+    const reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendMedia({
+      sessionId: context.lastMessage.sessionId, replyContext: context.replyContext, signal: context.outboundSignal
+    }, { filePath: input.absolutePath, kind: "file", name: input.sourceName });
+    const messageId = reference?.messageId ?? null;
+    if (reference) context.sessionManager.recordSentMessage(context.lastMessage.sessionId, {
+      messageId: reference.messageId, text: input.previewText, sentAt: Date.now()
     });
-    const messageId = recordDeliveredMessage(context, input.previewText, payload.data?.message_id);
     context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
       kind: "outbound_media_message",
       llmVisible: false,
       role: "assistant",
-      delivery: "onebot",
+      delivery: reference?.platform ?? context.replyDelivery,
       mediaKind: "file",
       fileId: input.fileId,
       fileRef: input.fileRef,

@@ -13,7 +13,7 @@ import {
   type SqliteDatabase,
   type SqliteDatabaseHandle
 } from "#data/sqlite/sqliteService.ts";
-import { createTableGroupsFromDataDomain, listDataModelRows } from "#data/model/index.ts";
+import { createTableGroupsFromDataDomain, migrateDataDomainSchema, listDataModelRows } from "#data/model/index.ts";
 import { chatAttachmentSchema } from "#types/chatContracts.ts";
 import { internalTranscriptItemSchema, transcriptMessageContentPartSchema } from "./transcriptContract.ts";
 import { sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "./sessionDataModel.ts";
@@ -118,7 +118,7 @@ const persistedSessionMessageSchema = z.object({
 export const persistedSessionStateSchema = z.object({
   id: z.string().min(1),
   type: z.enum(["private", "group"]),
-  source: z.enum(["onebot", "web"]).default("onebot"),
+  source: z.enum(["onebot", "qq_official", "web"]).default("onebot"),
   modeId: z.string().min(1).default(getDefaultSessionModeId()),
   operationMode: sessionOperationModeSchema.default(createNormalSessionOperationMode()),
   participantRef: z.object({
@@ -127,7 +127,7 @@ export const persistedSessionStateSchema = z.object({
   }),
   title: z.string().nullable(),
   titleSource: z.enum(["default", "auto", "manual"]).nullable(),
-  replyDelivery: z.enum(["onebot", "web"]).default("onebot"),
+  replyDelivery: z.enum(["onebot", "qq_official", "web"]).default("onebot"),
   pacingPreferences: sessionPacingPreferencesSchema.optional(),
   toolsetPreferences: sessionToolsetPreferencesSchema.optional(),
   modelRoutingPreferences: sessionModelRoutingPreferencesSchema.optional(),
@@ -192,7 +192,7 @@ export const persistedSessionStateSchema = z.object({
     }).nullable().optional()
   }).nullable(),
   sentMessages: z.array(z.object({
-    messageId: z.number().int().nonnegative(),
+    messageId: z.union([z.number().int().nonnegative(), z.string().min(1)]),
     text: z.string(),
     sentAt: z.number().int().nonnegative()
   })),
@@ -489,14 +489,14 @@ export class SessionPersistence {
 type PersistedSessionRow = {
   session_id: string;
   type: "private" | "group";
-  source: "onebot" | "web" | null;
+  source: "onebot" | "qq_official" | "web" | null;
   mode_id: string | null;
   operation_mode_json: string | null;
   participant_kind: "user" | "group";
   participant_id: string;
   title: string | null;
   title_source: "default" | "auto" | "manual" | null;
-  reply_delivery: "onebot" | "web" | null;
+  reply_delivery: "onebot" | "qq_official" | "web" | null;
   pacing_preferences_json: string | null;
   toolset_preferences_json: string | null;
   model_routing_preferences_json: string | null;
@@ -524,13 +524,13 @@ type PersistedSessionRow = {
 export interface SessionRegistryRow {
   sessionId: string;
   type: "private" | "group";
-  source: "onebot" | "web" | null;
+  source: "onebot" | "qq_official" | "web" | null;
   modeId: string | null;
   participantKind: "user" | "group";
   participantId: string;
   title: string | null;
   titleSource: "default" | "auto" | "manual" | null;
-  replyDelivery: "onebot" | "web" | null;
+  replyDelivery: "onebot" | "qq_official" | "web" | null;
   transcriptCount: number;
   lastActiveAtMs: number;
   lastMessageAtMs: number | null;
@@ -762,7 +762,20 @@ function parseQueuedGroupReplyTargets(value: string): Pick<PersistedSessionState
     : {};
 }
 
-const SESSION_TABLE_GROUPS = createTableGroupsFromDataDomain(sessionDataDomain);
+const SESSION_TABLE_GROUPS = createTableGroupsFromDataDomain(sessionDataDomain).map((group) => ({
+  ...group,
+  migrateSchema(db: SqliteDatabase) {
+    migrateDataDomainSchema(db, sessionDataDomain);
+    // Preserve explicit session preferences during the field rename; no runtime legacy reader.
+    db.exec(`UPDATE sessions
+      SET pacing_preferences_json = json_remove(
+        json_set(pacing_preferences_json, '$.outbound', json_extract(pacing_preferences_json, '$.oneBotOutbound')),
+        '$.oneBotOutbound')
+      WHERE json_type(pacing_preferences_json, '$.oneBotOutbound') = 'text'
+        AND json_type(pacing_preferences_json, '$.outbound') IS NULL`);
+    return true;
+  }
+}));
 
 const validatedTranscriptItems = new WeakMap<InternalTranscriptItem, InternalTranscriptItem>();
 const serializedTranscriptItems = new WeakMap<InternalTranscriptItem, { itemJson: string; itemHash: string }>();

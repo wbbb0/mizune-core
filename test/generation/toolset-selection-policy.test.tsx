@@ -208,7 +208,7 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
 
   test("chat context toolset filters current group tools by session visibility", async () => {
     const config = createTestAppConfig();
-    const selectChatContextTools = (sessionId: string, replyDelivery: "onebot" | "web") => (
+    const selectChatContextTools = (sessionId: string, replyDelivery: "onebot" | "qq_official" | "web") => (
       listTurnToolsets({
         config,
         relationship: "owner",

@@ -5,6 +5,7 @@ import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 
 export const forwardToolDescriptors: ToolDescriptor[] = [
   {
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {

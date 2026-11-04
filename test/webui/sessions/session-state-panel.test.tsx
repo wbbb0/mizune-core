@@ -74,7 +74,7 @@ test("session settings panel edits toolset boundary and pacing as one atomic dra
   assert.match(pacingControl, /全局自适应/);
   assert.match(pacingControl, /立即处理/);
   assert.match(pacingControl, /固定等待秒数/);
-  assert.match(pacingControl, /OneBot 回复模拟输入延迟/);
+  assert.match(pacingControl, /模拟人工发送间隔/);
   assert.match(pacingControl, /模型回复输出方式/);
   assert.match(pacingControl, /仅输出最终回复/);
   assert.match(pacingControl, /所有回复都会等待整轮生成完成后一次投递/);

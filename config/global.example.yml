@@ -27,6 +27,12 @@ onebot:
     maxMessagesPerSession: 20
     maxTotalMessages: 100
     requestDelayMs: 100
+# 官方 Bot 与 OneBot 独立配置；可关闭 OneBot 后单独运行。
+qqOfficial:
+  enabled: false
+  appId: ""
+  appSecret: ""
+  requestTimeoutMs: 15000
 llm:
   enabled: false
   routingPreset: balanced

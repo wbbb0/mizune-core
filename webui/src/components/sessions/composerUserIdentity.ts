@@ -1,6 +1,6 @@
 export interface ComposerIdentitySession {
   type: "private" | "group";
-  source: "onebot" | "web";
+  source: "onebot" | "qq_official" | "web";
   participantRef: {
     kind: "user" | "group";
     id: string;

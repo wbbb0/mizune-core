@@ -1,3 +1,4 @@
+import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { characterPersonaView } from "../../character/prompt.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { enqueueCharacterIntroduction } from "../../character/introduction.ts";
@@ -81,6 +82,7 @@ interface DirectCommandIncomingMessage {
 }
 
 interface DirectCommandHandlerInput {
+  messaging?: DeliveryCoordinator;
   config: AppConfig;
   stickerService?: Pick<StickerService, "init" | "store">;
   sessionManager: SessionDirectCommandAccess;
@@ -414,7 +416,7 @@ async function syncSelfAccountNicknameFromPersona(
   persona: Persona
 ): Promise<void> {
   const nickname = persona.name.trim();
-  if (!nickname || !hasOneBotSelfAccountCapability(ctx.input.config, "nickname_update")) {
+  if (ctx.session.source !== "onebot" || !nickname || !hasOneBotSelfAccountCapability(ctx.input.config, "nickname_update")) {
     return;
   }
   try {
@@ -797,7 +799,9 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       );
       for (const item of targets) {
         try {
-          await ctx.input.oneBotClient.deleteMessage(item.messageId);
+          if (ctx.input.messaging) await ctx.input.messaging.retract(ctx.session.id, item.messageId);
+          else if (ctx.session.source === "onebot" && typeof item.messageId === "number") await ctx.input.oneBotClient.deleteMessage(item.messageId);
+          else throw new Error("当前连接不支持撤回。");
         } catch (error: unknown) {
           ctx.input.logger.warn({ error, sessionId: ctx.session.id, messageId: item.messageId }, "retract_failed_ignored");
         }
@@ -1351,7 +1355,7 @@ export function createDirectCommandHandler(
           timestampMs: Date.now()
         },
         recordForRetract: false,
-        autoRetractAfterMs: 60_000
+        ...(session.source === "onebot" ? { autoRetractAfterMs: 60_000 } : {})
       })
     };
 

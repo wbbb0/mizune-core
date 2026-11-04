@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
+import Database from "better-sqlite3";
 import {
   persistedSessionStateSchema,
   SessionPersistence
@@ -57,7 +58,7 @@ test("session persistence round-trips session settings", async () => {
     });
     session.pacingPreferences = {
       inputDebounce: { mode: "fixed", delayMs: 2_500 },
-      oneBotOutbound: "humanized",
+      outbound: "humanized",
       toolLoopOutput: "final_only"
     };
     session.toolsetPreferences = {
@@ -102,12 +103,12 @@ test("sessions without settings derive defaults", () => {
 
   assert.deepEqual(restoreSessionState(web).pacingPreferences, {
     inputDebounce: { mode: "immediate" },
-    oneBotOutbound: "immediate",
+    outbound: "immediate",
     toolLoopOutput: "progressive"
   });
   assert.deepEqual(restoreSessionState(oneBot).pacingPreferences, {
     inputDebounce: { mode: "adaptive" },
-    oneBotOutbound: "humanized",
+    outbound: "humanized",
     toolLoopOutput: "progressive"
   });
   assert.deepEqual(restoreSessionState(web).toolsetPreferences, { overrides: {} });
@@ -126,7 +127,7 @@ test("persisted sessions accept the previous pacing shape and strip legacy evide
     ...persisted,
     pacingPreferences: {
       inputDebounce: { mode: "immediate" },
-      oneBotOutbound: "immediate"
+      outbound: "immediate"
     },
     taskTracker: {
       ...persisted.taskTracker,
@@ -1093,5 +1094,63 @@ test("历史摘要与已压缩的原消息共同落库，重载不丢失原文�
     assert.equal(loaded.internalTranscript[0]!.runtimeExclusionReason, "history_compressed");
     const restored = restoreSessionState(loaded);
     assert.deepEqual(restored.internalTranscript, session.internalTranscript);
+  });
+});
+
+
+test("official group settings survive persistence and explicit pacing overrides source defaults", async () => {
+  await withDataDir("llm-bot-official-pacing", async (dataDir) => {
+    const session = createSessionState({ id: "qq_official.app:g:opaque-group", type: "group" });
+    assert.equal(session.source, "qq_official");
+    assert.equal(session.pacingPreferences.outbound, "immediate");
+    session.pacingPreferences.outbound = "humanized";
+    const persistence = new SessionPersistence(dataDir, pino({ level: "silent" }));
+    await persistence.init();
+    await persistence.save(toPersistedSessionState(session));
+    const [loaded] = await persistence.loadAll();
+    assert.ok(loaded);
+    const restored = restoreSessionState(loaded);
+    assert.equal(restored.source, "qq_official");
+    assert.equal(restored.pacingPreferences.outbound, "humanized");
+  });
+});
+
+test("session v11 pacing migration preserves each explicit artificial delay preference", async () => {
+  await withDataDir("llm-bot-outbound-rename-migration", async (dataDir) => {
+    const logger = pino({ level: "silent" });
+    const seed = new SessionPersistence(dataDir, logger);
+    await seed.init();
+    for (const outbound of ["humanized", "immediate"] as const) {
+      const session = createSessionState({ id: `qqbot:p:${outbound}`, type: "private", source: "onebot" });
+      await seed.save(toPersistedSessionState(session));
+    }
+    // v11 has the same table columns; only its JSON pacing property differs.
+    const db = new Database(join(dataDir, "sessions", "sessions.sqlite"));
+    try {
+      for (const oneBotOutbound of ["humanized", "immediate"] as const) {
+        db.prepare("UPDATE sessions SET pacing_preferences_json = ? WHERE session_id = ?").run(
+          JSON.stringify({ inputDebounce: { mode: "fixed", delayMs: 2500 }, oneBotOutbound, toolLoopOutput: "final_only" }),
+          `qqbot:p:${oneBotOutbound}`
+        );
+      }
+      db.prepare("UPDATE __sqlite_schema_groups SET schema_version = 11 WHERE group_id = ?").run(sessionDataDomain.tableGroup);
+    } finally { db.close(); }
+    const migrated = new SessionPersistence(dataDir, logger);
+    await migrated.init();
+    const sessions = await migrated.loadAll();
+    assert.equal(sessions.length, 2);
+    for (const outbound of ["humanized", "immediate"] as const) {
+      const loaded = sessions.find((session) => session.id === `qqbot:p:${outbound}`);
+      assert.ok(loaded);
+      assert.deepEqual(loaded.pacingPreferences, { inputDebounce: { mode: "fixed", delayMs: 2500 }, outbound, toolLoopOutput: "final_only" });
+      assert.equal(restoreSessionState(loaded).pacingPreferences.outbound, outbound);
+    }
+    const verify = new Database(join(dataDir, "sessions", "sessions.sqlite"));
+    try {
+      const rows = verify.prepare("SELECT pacing_preferences_json FROM sessions").all() as Array<{ pacing_preferences_json: string }>;
+      assert.equal(rows.some((row) => row.pacing_preferences_json.includes("oneBotOutbound")), false);
+      const meta = verify.prepare("SELECT schema_version FROM __sqlite_schema_groups WHERE group_id = ?").get(sessionDataDomain.tableGroup) as { schema_version: number };
+      assert.equal(meta.schema_version, 12);
+    } finally { verify.close(); }
   });
 });

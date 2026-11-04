@@ -23,7 +23,7 @@ import type { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { SessionSnapshotStore } from "#conversation/session/sessionSnapshotStore.ts";
 import type { ConfigManager } from "#config/configManager.ts";
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
@@ -95,7 +95,7 @@ export interface InternalApiContextDeps {
 export interface InternalApiSessionSummary {
   id: string;
   type: "private" | "group";
-  source: "onebot" | "web";
+  source: "onebot" | "qq_official" | "web";
   modeId: string;
   participantRef: SessionParticipantRef;
   title: string | null;
@@ -108,7 +108,7 @@ export interface InternalApiSessionDetail {
   session: {
     id: string;
     type: "private" | "group";
-    source: "onebot" | "web";
+    source: "onebot" | "qq_official" | "web";
     modeId: string;
     participantRef: SessionParticipantRef;
     title: string | null;

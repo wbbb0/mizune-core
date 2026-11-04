@@ -1,5 +1,6 @@
 import { resolvePreRouterSetupDecision } from "./messageAdmission.ts";
-import type { OneBotMessageEvent, ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
+import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import {
   type MessageEventHandlerDeps,
   type MessageFlushSession,
@@ -126,7 +127,7 @@ export async function processIncomingMessage(
         replyDecision: "reply_small" as const,
         interruptPolicy: "soft_interrupt" as const,
         priority: "normal" as const,
-        reason: "Web 输入默认回复"
+        reason: "已准入消息直接回复"
       }
     : await resolveTriggerDecision(
         { config, whitelistStore, conversationAccess, sessionManager },

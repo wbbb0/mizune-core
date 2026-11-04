@@ -1,5 +1,5 @@
 import { marketFaceSourceContext } from "#services/onebot/messageSegments.ts";
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { MessageContentPart, MessageMediaContentPart } from "#messages/contentParts.ts";
 import {
   dedupeResolvedChatAttachments,
@@ -15,7 +15,7 @@ export async function createMessageProcessingContext(
   incomingMessage: ParsedIncomingMessage,
   options?: {
     targetSessionId?: string;
-    delivery?: "onebot" | "web";
+    delivery?: "onebot" | "qq_official" | "web";
   }
 ): Promise<MessageProcessingContext> {
   const channelId = incomingMessage.channelId ?? "qqbot";
@@ -24,10 +24,12 @@ export async function createMessageProcessingContext(
   const resolvedUserId = options?.delivery === "web"
     ? incomingMessage.userId
     : (await services.userIdentityStore.ensureUserIdentity({
-        channelId,
+        channelId: incomingMessage.source === "qq_official" && incomingMessage.chatType === "group"
+          ? `${channelId}.group.${incomingMessage.groupId}` : channelId,
+        scope: incomingMessage.source === "qq_official" && incomingMessage.chatType === "group" ? "group_member" : "private_user",
         externalId: externalUserId
       })).internalUserId;
-  const [setupState, user, registeredAudios, importedImageAssets] = await Promise.all([
+  const [setupState, user, registeredAudios, importedImageAssets, importedAttachments] = await Promise.all([
     services.setupStore.get(),
     services.userStore.touchSeenUser({
       userId: resolvedUserId
@@ -48,7 +50,12 @@ export async function createMessageProcessingContext(
         })
           .then((asset) => ({ part, asset }))
           .catch(() => ({ part, asset: null })))
-    )
+    ),
+    Promise.all((incomingMessage.remoteAttachments ?? []).map(async (attachment) => {
+      try {
+        return await services.chatFileStore.importRemoteSource({ ...attachment, origin: "chat_message", sourceContext: { userId: resolvedUserId, senderName: incomingMessage.senderName } });
+      } catch { return null; }
+    }))
   ]);
 
   const preservedImageIds = (incomingMessage.imageIds ?? []).filter((fileId) => !isPendingChatAttachmentId(fileId));
@@ -81,6 +88,10 @@ export async function createMessageProcessingContext(
     ])),
     attachments: dedupeResolvedChatAttachments([
       ...preservedAttachments,
+      ...importedAttachments.filter((asset) => asset != null).map((asset) => ({
+        fileId: asset.fileId, kind: asset.kind, source: "chat_message" as const,
+        sourceName: asset.sourceName, mimeType: asset.mimeType
+      })),
       ...importedImageRecords
         .map(({ asset }) => ({
           fileId: asset.fileId,

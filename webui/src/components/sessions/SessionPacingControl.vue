@@ -3,7 +3,7 @@ import { computed } from "vue";
 import type { SessionPacingPreferences } from "@/api/types";
 
 const props = defineProps<{
-  source: "onebot" | "web";
+  source: "onebot" | "qq_official" | "web";
   modelValue: SessionPacingPreferences;
   disabled?: boolean;
 }>();
@@ -35,11 +35,11 @@ function updateFixedDebounceSeconds(event: Event) {
   });
 }
 
-function updateOneBotOutboundPacing(event: Event) {
+function updateOutboundPacing(event: Event) {
   const enabled = (event.target as HTMLInputElement).checked;
   emit("update:modelValue", {
     ...props.modelValue,
-    oneBotOutbound: enabled ? "humanized" : "immediate"
+    outbound: enabled ? "humanized" : "immediate"
   });
 }
 
@@ -55,7 +55,7 @@ function updateToolLoopOutput(event: Event) {
   <section class="rounded-lg border border-border-default bg-surface-panel p-4">
     <div class="mb-4">
       <h3 class="text-ui font-medium text-text-primary">会话调度与回复输出</h3>
-      <p class="mt-1 text-small leading-5 text-text-subtle">控制用户消息的聚合等待、OneBot 投递节奏以及模型回复的输出方式。</p>
+      <p class="mt-1 text-small leading-5 text-text-subtle">控制用户消息的聚合等待、消息投递节奏以及模型回复的输出方式。</p>
     </div>
     <p class="mb-4 text-small leading-5 text-text-subtle">
       运行中发送的新消息按全局配置「会话 → 新消息打断方式」处理：直接打断会取消当前回复；工具调用后插入会立即作废未发送的旧回复，保留当前工具，并在下一次模型请求前加入新消息。若无后续工具调用，则在本轮结束后处理。停止命令始终立即生效。
@@ -92,15 +92,15 @@ function updateToolLoopOutput(event: Event) {
       </label>
       <label class="flex items-start justify-between gap-4 rounded-lg border border-border-default bg-surface-sidebar px-3 py-2.5">
         <span class="min-w-0">
-          <span class="block text-small text-text-secondary">OneBot 回复模拟输入延迟</span>
-          <span class="mt-0.5 block text-small text-text-subtle">仅影响模型回复的 OneBot 投递；WebUI 回复始终即时。</span>
+          <span class="block text-small text-text-secondary">模拟人工发送间隔</span>
+          <span class="mt-0.5 block text-small text-text-subtle">按会话保存；Web 与 QQ 官方会话默认关闭，OneBot 会话默认开启。平台限流与流式分片合并独立生效。</span>
         </span>
         <input
           class="mt-0.5 size-4 shrink-0 accent-[var(--accent)]"
           type="checkbox"
-          :checked="modelValue.oneBotOutbound === 'humanized'"
-          :disabled="disabled || source === 'web'"
-          @change="updateOneBotOutboundPacing"
+          :checked="modelValue.outbound === 'humanized'"
+          :disabled="disabled"
+          @change="updateOutboundPacing"
         />
       </label>
       <label class="grid gap-1.5 text-small text-text-secondary">
@@ -115,11 +115,11 @@ function updateToolLoopOutput(event: Event) {
           <option value="final_only">仅输出最终回复</option>
         </select>
         <span class="text-small leading-5 text-text-subtle">
-          仅输出最终回复时，所有回复都会等待整轮生成完成后一次投递；工具调用期间的模型文本仍保留供内部回放，但不会显示在聊天页或发送到 OneBot。
+          仅输出最终回复时，所有回复都会等待整轮生成完成后一次投递；工具调用期间的模型文本仍保留供内部回放，但不会显示在聊天页或投递到聊天平台。
         </span>
       </label>
       <div class="text-small leading-5 text-text-subtle">
-        修改对下一次调度生效；进行中的生成不会切换输出方式。Web 会话默认立即处理并关闭 OneBot 延迟。
+        修改对下一次调度生效；进行中的生成不会切换输出方式。会话来源只决定初始默认值，保存后以此会话设置为准。
       </div>
     </div>
   </section>

@@ -6,7 +6,7 @@ import type {
 } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem, SessionPhase } from "#conversation/session/sessionTypes.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { ChatFileRecord } from "#services/workspace/types.ts";
@@ -90,7 +90,7 @@ export function createAdminMessagingService(input: {
   ) => Promise<void>;
   flushSession?: (sessionId: string, options?: {
     skipReplyGate?: boolean;
-    delivery?: "onebot" | "web";
+    delivery?: "onebot" | "qq_official" | "web";
     committedTextSink?: GenerationCommittedTextSink;
     draftOverlaySink?: GenerationDraftOverlaySink;
   }) => void;
@@ -296,10 +296,10 @@ async function performTranscriptDeletionSideEffects(
   for (const item of items) {
     const messageId = item.deliveryRef?.platform === "onebot"
       ? item.deliveryRef.messageId
-      : item.kind === "outbound_media_message"
+      : item.kind === "outbound_media_message" && item.delivery === "onebot"
       ? item.messageId
       : null;
-    if (messageId == null) {
+    if (typeof messageId !== "number") {
       continue;
     }
     try {
@@ -439,7 +439,7 @@ async function runTranscriptResendInBackground(input: {
   oneBotClient: Pick<OneBotClient, "deleteMessage">;
   flushSession: (sessionId: string, options?: {
     skipReplyGate?: boolean;
-    delivery?: "onebot" | "web";
+    delivery?: "onebot" | "qq_official" | "web";
     committedTextSink?: GenerationCommittedTextSink;
     draftOverlaySink?: GenerationDraftOverlaySink;
   }) => void;

@@ -38,15 +38,17 @@ export const storedToolCallSchema = z.object({
   providerMetadata: z.record(z.string(), z.unknown()).optional()
 });
 
-export const transcriptItemDeliveryRefSchema = z.object({
-  platform: z.literal("onebot"),
-  messageId: z.number().int().nonnegative()
-});
-
-export const transcriptItemSourceRefSchema = z.object({
-  platform: z.literal("onebot"),
-  messageId: z.number().int().nonnegative()
-});
+// Native message identifiers stay opaque; only the OneBot connector uses numeric IDs.
+const platformMessageRefSchema = z.discriminatedUnion("platform", [
+  z.object({ platform: z.literal("onebot"), messageId: z.number().int().nonnegative() }),
+  z.object({
+    platform: z.literal("qq_official"),
+    connectionId: z.string().min(1),
+    messageId: z.string().min(1)
+  })
+]);
+export const transcriptItemDeliveryRefSchema = platformMessageRefSchema;
+export const transcriptItemSourceRefSchema = platformMessageRefSchema;
 
 export const transcriptSpecialSegmentSchema = z.object({
   type: z.string().min(1),
@@ -289,7 +291,7 @@ export const transcriptOutboundMediaMessageItemSchema = z.object({
   kind: z.literal("outbound_media_message"),
   llmVisible: z.literal(false),
   role: z.literal("assistant"),
-  delivery: z.enum(["onebot", "web"]),
+  delivery: z.enum(["onebot", "qq_official", "web"]),
   mediaKind: z.enum(["image", "emoji", "audio", "file"]),
   aiGenerated: z.boolean().optional(),
   fileId: z.string().min(1).nullable(),
@@ -299,7 +301,7 @@ export const transcriptOutboundMediaMessageItemSchema = z.object({
   sourcePath: z.string().nullable(),
   mimeType: z.string().nullable().optional(),
   sizeBytes: z.number().int().nonnegative().nullable().optional(),
-  messageId: z.number().int().nonnegative().nullable(),
+  messageId: z.union([z.number().int().nonnegative(), z.string().min(1)]).nullable(),
   toolName: z.enum(transcriptOutboundMediaToolNameValues),
   captionText: z.string().nullable().optional(),
   timestampMs: z.number().int().nonnegative()

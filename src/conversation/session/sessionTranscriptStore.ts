@@ -111,7 +111,7 @@ function applyRuntimeExclusion(
   timestampMs: number
 ): InternalTranscriptItem[] {
   const affected: InternalTranscriptItem[] = [];
-  const deletedMessageIds = new Set<number>();
+  const deletedMessageIds = new Set<number | string>();
   const manuallyHidden = reason === "manual_single" || reason === "manual_group" || reason === "manual_truncate_after";
 
   for (const [index, item] of session.internalTranscript.entries()) {

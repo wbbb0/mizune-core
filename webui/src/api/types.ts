@@ -20,7 +20,7 @@ export type SessionTitleSource = "default" | "auto" | "manual";
 export interface SessionListItem {
   id: string;
   type: "private" | "group";
-  source: "onebot" | "web";
+  source: "onebot" | "qq_official" | "web";
   modeId: string;
   participantRef: SessionParticipantRef;
   title: string | null;
@@ -193,7 +193,7 @@ export interface SessionTaskTracker {
 }
 
 export interface SessionSentMessage {
-  messageId: number;
+  messageId: number | string;
   text: string;
   sentAt: number;
 }
@@ -316,7 +316,7 @@ export interface SessionDetailSnapshot {
   skills?: SessionSkillsView;
   id: string;
   type: "private" | "group";
-  source: "onebot" | "web";
+  source: "onebot" | "qq_official" | "web";
   modeId: string;
   participantRef: SessionParticipantRef;
   title: string | null;
@@ -343,7 +343,7 @@ export interface SessionPacingPreferences {
     | { mode: "adaptive" }
     | { mode: "immediate" }
     | { mode: "fixed"; delayMs: number };
-  oneBotOutbound: "humanized" | "immediate";
+  outbound: "humanized" | "immediate";
   toolLoopOutput: "progressive" | "final_only";
 }
 

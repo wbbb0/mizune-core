@@ -1,6 +1,6 @@
 import type { Relationship } from "#identity/relationship.ts";
 import type { AppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { SessionMessagingAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { SessionDelivery, SessionState } from "#conversation/session/sessionTypes.ts";
@@ -62,7 +62,7 @@ export interface MessageEventHandlerDeps {
   }) => Promise<void>;
   flushSession: (sessionId: string, options?: {
     skipReplyGate?: boolean;
-    delivery?: "onebot" | "web";
+    delivery?: "onebot" | "qq_official" | "web";
     committedTextSink?: GenerationCommittedTextSink;
     draftOverlaySink?: GenerationDraftOverlaySink;
   }) => void;

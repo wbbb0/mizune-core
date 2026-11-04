@@ -3,7 +3,7 @@ import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 
 interface GenerationTypingTarget {
-  delivery: "onebot" | "web";
+  delivery: "onebot" | "qq_official" | "web";
   chatType: "private" | "group";
   userId: string;
   groupId?: string;

@@ -99,7 +99,7 @@ export function buildTranscriptItemPatch(
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
-export function getTranscriptDeleteMessageId(item: InternalTranscriptItem): number | null {
+export function getTranscriptDeleteMessageId(item: InternalTranscriptItem): number | string | null {
   if (item.deliveryRef?.platform === "onebot") {
     return item.deliveryRef.messageId;
   }

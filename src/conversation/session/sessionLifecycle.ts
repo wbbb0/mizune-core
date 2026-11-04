@@ -51,6 +51,7 @@ function resolveReplyTarget(messages: SessionState["pendingMessages"]): SessionS
     userId: first.userId,
     senderName: first.senderName,
     ...(first.groupId ? { groupId: first.groupId } : {}),
+    ...(first.replyContext ? { replyContext: first.replyContext } : {}),
     firstMessageAt: first.receivedAt
   };
 }

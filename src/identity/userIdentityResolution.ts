@@ -42,7 +42,9 @@ export async function resolveStoredUserForSessionPrivateTarget(input: {
 
 export async function resolveExternalUserIdForInternalUser(input: {
   internalUserId: string;
+  channelId: string;
+  scope?: import("./userIdentitySchema.ts").UserIdentityScope;
   userIdentityStore: Pick<UserIdentityStore, "findIdentityByInternalUserId">;
 }): Promise<string | null> {
-  return (await input.userIdentityStore.findIdentityByInternalUserId(input.internalUserId))?.externalId ?? null;
+  return (await input.userIdentityStore.findIdentityByInternalUserId(input.internalUserId, { channelId: input.channelId, ...(input.scope ? { scope: input.scope } : {}) }))?.externalId ?? null;
 }

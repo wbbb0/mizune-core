@@ -20,7 +20,7 @@ import type {
   TranscriptItemSourceRef
 } from "./sessionTypes.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 import type { SessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import type { SessionBotProfile, SessionBotProfileField } from "./sessionBotProfile.ts";
@@ -105,7 +105,7 @@ export interface SessionToolRuntimeAccess extends SessionOperationModeAccess {
   ensureSession(target: {
     id: string;
     type: "private" | "group";
-    source?: "onebot" | "web";
+    source?: "onebot" | "qq_official" | "web";
     participantRef?: SessionParticipantRef;
     title?: string | null;
     titleSource?: "default" | "auto" | "manual" | null;
@@ -211,7 +211,7 @@ export interface SessionTaskTrackerAccess {
 export interface SessionViewSnapshot {
   id: string;
   type: "private" | "group";
-  source: "onebot" | "web";
+  source: "onebot" | "qq_official" | "web";
   modeId: string;
   participantUserId: string;
   participantLabel: string | null;
@@ -244,7 +244,7 @@ export interface SessionAdminMutationAccess {
   ensureSession(target: {
     id: string;
     type: "private" | "group";
-    source?: "onebot" | "web";
+    source?: "onebot" | "qq_official" | "web";
     participantRef?: SessionParticipantRef;
     title?: string | null;
     titleSource?: "default" | "auto" | "manual" | null;
@@ -314,7 +314,7 @@ export interface SessionInternalTriggerDispatchAccess {
   ensureSession(target: {
     id: string;
     type: "private" | "group";
-    source?: "onebot" | "web";
+    source?: "onebot" | "qq_official" | "web";
     participantRef?: SessionParticipantRef;
     title?: string | null;
     titleSource?: "default" | "auto" | "manual" | null;
@@ -332,7 +332,7 @@ export interface SessionDirectCommandAccess {
   ensureSession(target: {
     id: string;
     type: "private" | "group";
-    source?: "onebot" | "web";
+    source?: "onebot" | "qq_official" | "web";
     participantRef?: SessionParticipantRef;
     title?: string | null;
     titleSource?: "default" | "auto" | "manual" | null;

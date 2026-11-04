@@ -101,6 +101,13 @@ const onebotConfigSchema = s.object({
   historyBackfill: onebotHistoryBackfillConfigSchema
 }).title("OneBot").describe("配置 OneBot 连接方式与消息发送行为。").default(emptyObject);
 
+const qqOfficialConfigSchema = s.object({
+  enabled: s.boolean().title("启用").default(false),
+  appId: s.string().trim().title("应用 ID").default(""),
+  appSecret: s.string().title("应用密钥").default(""),
+  requestTimeoutMs: s.number().int().positive().title("请求超时毫秒").default(15000)
+}).title("腾讯官方 Bot").describe("接收私聊与群 @ 消息；群聊仅在有效回复授权内发送，私聊使用原生流式输出。").default(emptyObject);
+
 function createProxyDetailSchema() {
   return s.object({
     type: s.enum(["http", "https", "socks5"] as const).title("类型"),
@@ -707,6 +714,7 @@ export const fileConfigSchema = s.object({
   dataDir: s.string().trim().nonempty().title("数据目录").default("data"),
   proxy: proxyConfigSchema,
   onebot: onebotConfigSchema,
+  qqOfficial: qqOfficialConfigSchema,
   llm: llmRuntimeConfigSchema,
   conversation: conversationConfigSchema,
   context: contextConfigSchema,

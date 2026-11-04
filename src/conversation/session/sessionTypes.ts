@@ -1,3 +1,4 @@
+import type { MessageReplyContext } from "#services/messaging/incomingMessage.ts";
 import type { OneBotMessageEvent, OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { SessionOperationMode } from "./sessionOperationMode.ts";
@@ -21,8 +22,8 @@ import type {
 } from "./transcriptContract.ts";
 // Defines the public session data contracts shared across conversation modules.
 
-export type SessionDelivery = "onebot" | "web";
-export type SessionSource = "onebot" | "web";
+export type SessionDelivery = "onebot" | "qq_official" | "web";
+export type SessionSource = "onebot" | "qq_official" | "web";
 export interface SessionParticipantRef {
   kind: "user" | "group";
   id: string;
@@ -31,6 +32,8 @@ export interface SessionParticipantRef {
 export type SessionTitleSource = "default" | "auto" | "manual";
 
 export interface SessionMessage {
+  replyContext?: MessageReplyContext;
+  sourceRef?: TranscriptItemSourceRefContract;
   chatType: "private" | "group";
   userId: string;
   groupId?: string | undefined;
@@ -175,6 +178,7 @@ export interface ActiveAssistantResponse {
 }
 
 export interface SessionReplyTarget {
+  replyContext?: MessageReplyContext;
   chatType: "private" | "group";
   userId: string;
   senderName: string;
@@ -192,7 +196,7 @@ export interface QueuedGroupReplyTarget {
 }
 
 export interface SessionSentMessage {
-  messageId: number;
+  messageId: number | string;
   text: string;
   sentAt: number;
 }

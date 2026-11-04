@@ -1,3 +1,4 @@
+import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { characterPersonaView } from "../../../character/prompt.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
@@ -116,7 +117,7 @@ export const debugToolHandlers: Record<string, ToolHandler> = {
     }
 
     const bodies = await Promise.all(literals.map((literal) => renderDebugLiteral(literal, context)));
-    const sentMessageIds: number[] = [];
+    const sentMessageIds: Array<number | string> = [];
     const sessionId = context.lastMessage.sessionId;
     const parsedSession = parseChatSessionIdentity(sessionId);
 
@@ -127,22 +128,14 @@ export const debugToolHandlers: Record<string, ToolHandler> = {
         if (!parsedSession) {
           return JSON.stringify({ error: `unsupported session target: ${sessionId}` });
         }
-        const payload = parsedSession.kind === "group"
-          ? await context.oneBotClient.sendText({
-              groupId: parsedSession.groupId,
-              text: body
-            })
-          : await context.oneBotClient.sendText({
-              userId: parsedSession.userId,
-              text: body
-            });
-        const messageId = normalizeOneBotMessageId(payload.data?.message_id);
-        if (messageId != null) {
-          sentMessageIds.push(messageId);
-          context.sessionManager.recordSentMessage(sessionId, {
-            messageId,
-            text: body,
-            sentAt: Date.now()
+        await context.beforeExternalDelivery?.();
+        const reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendText({
+          sessionId, replyContext: context.replyContext, signal: context.outboundSignal
+        }, body);
+        if (reference) {
+          sentMessageIds.push(reference.messageId);
+          if (reference.platform === "onebot") context.sessionManager.recordSentMessage(sessionId, {
+            messageId: reference.messageId, text: body, sentAt: Date.now()
           });
         }
       }

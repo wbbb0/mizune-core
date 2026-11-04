@@ -1,3 +1,5 @@
+import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
+import type { QqReplyPermit } from "#services/qqOfficial/types.ts";
 import type { LlmClient } from "../../llmClient.ts";
 import type { SkillAccess } from '../../../skills/skillRuntime.ts';
 import type { StickerService } from "#services/stickers/stickerService.ts";
@@ -73,6 +75,7 @@ export interface ToolVisibilityContext {
 }
 
 export interface ToolDescriptor {
+  requiresOneBot?: boolean;
   definition: LlmToolDefinition;
   accessLevel?: ToolAccessLevel;
   ownerOnly?: boolean;
@@ -96,6 +99,10 @@ export interface BuiltinToolActorContext {
 }
 
 export interface BuiltinToolCommunicationDeps {
+  messaging?: DeliveryCoordinator;
+  replyContext?: QqReplyPermit;
+  outboundSignal?: AbortSignal;
+  beforeExternalDelivery?: () => Promise<void>;
   oneBotClient: OneBotClient;
   audioStore: AudioStore;
   chatFileStore: ChatFileStore;

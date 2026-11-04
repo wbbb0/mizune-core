@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
 import type { SessionState } from "#conversation/session/sessionTypes.ts";
 import { collectVisualAttachmentFileIds } from "#services/workspace/chatAttachments.ts";
@@ -23,7 +23,7 @@ export async function resolveTriggerDecision(
 ): Promise<TriggerDecision> {
   const groupMatched = context.enrichedMessage.groupId != null
     && services.whitelistStore.hasGroup(context.enrichedMessage.groupId);
-  if (context.enrichedMessage.groupId) {
+  if (context.enrichedMessage.groupId && context.enrichedMessage.source !== "qq_official") {
     await services.conversationAccess.recordSeenGroupMember(
       context.enrichedMessage.groupId,
       context.enrichedMessage.userId

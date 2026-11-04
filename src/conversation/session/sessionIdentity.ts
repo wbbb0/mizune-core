@@ -1,4 +1,4 @@
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { SessionParticipantRef, SessionSource } from "./sessionTypes.ts";
 import { resolveSessionDisplayTitle } from "./sessionTitle.ts";
 
@@ -7,7 +7,7 @@ export interface PrivateSessionIdentity {
   kind: "private";
   channelId: string;
   userId: string;
-  source: "onebot";
+  source: "onebot" | "qq_official";
 }
 
 export interface GroupSessionIdentity {
@@ -15,7 +15,7 @@ export interface GroupSessionIdentity {
   kind: "group";
   channelId: string;
   groupId: string;
-  source: "onebot";
+  source: "onebot" | "qq_official";
 }
 
 export interface WebSessionIdentity {
@@ -42,7 +42,7 @@ export type ChatSessionIdentity = PrivateSessionIdentity | GroupSessionIdentity;
 
 export interface SessionDisplayInfo {
   participantLabel: string;
-  sourceLabel: "OneBot" | "Web";
+  sourceLabel: "OneBot" | "QQ 官方" | "Web";
   kindLabel: "私聊" | "群聊" | "Web" | "未知";
   sessionLabel: string;
   displayTitle: string;
@@ -82,7 +82,7 @@ export function parseSessionIdentity(sessionId: string): SessionIdentity {
         kind,
         channelId,
         userId: targetId,
-        source: "onebot"
+        source: channelId.startsWith("qq_official.") ? "qq_official" : "onebot"
       };
     }
     return {
@@ -90,7 +90,7 @@ export function parseSessionIdentity(sessionId: string): SessionIdentity {
       kind,
       channelId,
       groupId: targetId,
-      source: "onebot"
+      source: channelId.startsWith("qq_official.") ? "qq_official" : "onebot"
     };
   }
 
@@ -137,10 +137,10 @@ export function getSessionSource(sessionId: string): SessionSource {
   return parseSessionIdentity(sessionId).source;
 }
 
-export function getSessionSourceLabel(sessionId: string): "OneBot" | "Web" {
+export function getSessionSourceLabel(sessionId: string): "OneBot" | "QQ 官方" | "Web" {
   return getSessionSource(sessionId) === "web"
     ? "Web"
-    : "OneBot";
+    : getSessionSource(sessionId) === "qq_official" ? "QQ 官方" : "OneBot";
 }
 
 export function resolveSessionParticipantLabel(input: {

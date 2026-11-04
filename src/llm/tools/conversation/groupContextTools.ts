@@ -25,6 +25,7 @@ const MAX_ANNOUNCEMENT_DETAIL_CHARS = 8000;
 export const groupContextToolDescriptors: ToolDescriptor[] = [
   {
     isVisible: isVisibleInCurrentOneBotGroupChat,
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -41,6 +42,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
   },
   {
     isVisible: isVisibleInCurrentOneBotGroupChat,
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -62,6 +64,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
   {
     isVisible: isVisibleInCurrentOneBotGroupChat,
     isEnabled: (config) => config.chatFiles.enabled,
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -84,6 +87,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
   },
   {
     isVisible: isVisibleInCurrentOneBotGroupChat,
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -103,6 +107,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
   },
   {
     isVisible: isVisibleInCurrentOneBotGroupChat,
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -126,6 +131,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
   },
   {
     isVisible: isVisibleInCurrentOneBotGroupChat,
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {

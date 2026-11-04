@@ -84,6 +84,9 @@ export interface LlmGenerateParams {
   onPreviewTextDelta?: (delta: string) => Promise<void> | void;
   onPreviewReset?: () => Promise<void> | void;
   onTextDelta?: (delta: string) => Promise<void> | void;
+  // Opt-in irreversible delivery of provider body text. Once invoked, this candidate cannot be replayed through fallback.
+  // Reasoning and structured-output responses never enter this channel.
+  onIrreversibleTextDelta?: (delta: string) => Promise<void> | void;
   onReasoningDelta?: (delta: string) => void;
   toolExecutor?: (toolCall: LlmToolCall) => Promise<string | LlmToolExecutionResult>;
   onAssistantToolCalls?: (message: LlmMessage, usage?: LlmProviderCallUsage) => Promise<void> | void;

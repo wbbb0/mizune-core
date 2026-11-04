@@ -1,3 +1,5 @@
+import type { MessageReplyContext } from "#services/messaging/incomingMessage.ts";
+import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { createDirectCommandHandler } from "../messaging/directCommands.ts";
 import type {
   SessionDirectCommandAccess,
@@ -12,7 +14,7 @@ import {
   type MessageSendImmediateText
 } from "../messaging/messageEventHandler.ts";
 import type { AppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
@@ -48,11 +50,16 @@ type DirectCommandDeps = Pick<
   }) => Promise<string>;
   flushSession: MessageFlushSession;
   onebotSendImmediateText: MessageSendImmediateText;
+  messaging: DeliveryCoordinator;
 };
 
 type DeliveryContext =
   | {
       kind: "onebot";
+    }
+  | {
+      kind: "qq_official";
+      replyContext: MessageReplyContext;
     }
   | {
       kind: "web";
@@ -80,10 +87,7 @@ export function createRuntimeMessageIngress(input: {
       const deps = delivery.kind === "onebot"
         ? onebotDeps
         : buildMessageHandlerDeps(input.services, input.directCommandDeps, input.persistSession, {
-            kind: "web",
-            committedTextSink: delivery.committedTextSink,
-            ...(delivery.draftOverlaySink ? { draftOverlaySink: delivery.draftOverlaySink } : {}),
-            ...(delivery.sessionId ? { sessionId: delivery.sessionId } : {}),
+            ...delivery,
             handleDirectCommand: createDeliveryHandleDirectCommand(input.directCommandDeps, delivery)
           });
       await processIncomingMessage(
@@ -124,11 +128,12 @@ function createDeliveryHandleDirectCommand(
   deps: DirectCommandDeps,
   delivery: DeliveryContext
 ): MessageEventHandlerDeps["handleDirectCommand"] {
-  return createDirectCommandHandler({
+  const handler = createDirectCommandHandler({
     config: deps.config,
     stickerService: deps.stickerService,
     sessionManager: deps.sessionManager,
     oneBotClient: deps.oneBotClient,
+    messaging: deps.messaging,
     logger: deps.logger,
     sessionCaptioner: deps.sessionCaptioner,
     scenarioHostStateStore: deps.scenarioHostStateStore,
@@ -147,7 +152,8 @@ function createDeliveryHandleDirectCommand(
     sendImmediateText: createDeliverySendImmediateText(
       deps.onebotSendImmediateText,
       {
-        sessionManager: deps.sessionManager
+        sessionManager: deps.sessionManager,
+        messaging: deps.messaging
       },
       deps.persistSession,
       delivery
@@ -161,12 +167,23 @@ function createDeliveryHandleDirectCommand(
       chatType
     })
   });
+  return async (input) => {
+    if (delivery.kind === "qq_official" && input.command.name === "own") {
+      await createDeliverySendImmediateText(deps.onebotSendImmediateText, { sessionManager: deps.sessionManager, messaging: deps.messaging }, deps.persistSession, delivery)({
+        sessionId: input.sessionId, userId: input.incomingMessage.userId,
+        text: input.command.name === "own" ? "请通过已认证的 WebUI 身份管理绑定官方账号。" : "当前官方连接暂不提供此命令。"
+      });
+      return;
+    }
+    await handler(input);
+  };
 }
 
 function createDeliverySendImmediateText(
   onebotSendImmediateText: MessageSendImmediateText,
   services: {
     sessionManager: Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
+    messaging?: DeliveryCoordinator;
   },
   persistSession: (sessionId: string, reason: string) => void,
   delivery: DeliveryContext
@@ -176,13 +193,17 @@ function createDeliverySendImmediateText(
   }
 
   return async (params) => {
+    const deliveryRef = delivery.kind === "qq_official"
+      ? await services.messaging!.sendText({ sessionId: params.sessionId, replyContext: delivery.replyContext }, params.text)
+      : undefined;
     const timestampMs = Date.now();
     if (params.recordInHistory ?? true) {
       services.sessionManager.appendAssistantHistory(params.sessionId, {
         chatType: params.groupId ? "group" : "private",
         userId: params.userId,
         senderName: params.userId,
-        text: params.text
+        text: params.text,
+        ...(deliveryRef ? { deliveryRef } : {})
       }, timestampMs);
     } else {
       services.sessionManager.appendInternalTranscript(params.sessionId, params.transcriptItem ?? {
@@ -202,8 +223,8 @@ function createDeliveryFlushSession(
   flushSession: MessageFlushSession,
   delivery: DeliveryContext
 ): MessageFlushSession {
-  if (delivery.kind === "onebot") {
-    return flushSession;
+  if (delivery.kind !== "web") {
+    return (sessionId, options) => flushSession(sessionId, { ...options, delivery: delivery.kind });
   }
 
   return (sessionId, options) => {

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMessageProcessingContext } from "../../src/app/messaging/messageContextBuilder.ts";
-import type { ParsedIncomingMessage } from "../../src/services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 
   test("web message context preserves pre-resolved attachments and image ids", async () => {
     const incomingMessage: ParsedIncomingMessage = {

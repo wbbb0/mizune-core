@@ -105,7 +105,7 @@ export class UserIdentityStore {
   }
 
   async hasOwnerIdentity(): Promise<boolean> {
-    return (await this.findIdentityByInternalUserId("owner")) != null;
+    return (await this.readAll()).some((record) => record.internalUserId === "owner");
   }
 
   hasOwnerIdentitySync(): boolean {
@@ -113,15 +113,17 @@ export class UserIdentityStore {
   }
 
   async findIdentityByInternalUserId(
-    internalUserId: string
+    internalUserId: string,
+    target: { channelId: string; scope?: UserIdentityScope }
   ): Promise<UserIdentityRecord | undefined> {
-    return (await this.readAll()).find((record) => record.internalUserId === internalUserId);
+    return selectIdentity(await this.readAll(), internalUserId, target);
   }
 
   findIdentityByInternalUserIdSync(
-    internalUserId: string
+    internalUserId: string,
+    target: { channelId: string; scope?: UserIdentityScope }
   ): UserIdentityRecord | undefined {
-    return this.current.find((record) => record.internalUserId === internalUserId);
+    return selectIdentity(this.current, internalUserId, target);
   }
 
   findInternalUserIdSync(input: {
@@ -183,10 +185,6 @@ export class UserIdentityStore {
       }
       throw new Error(`External identity ${next.channelId}:${next.externalId} is already bound`);
     }
-    const sameInternal = records.find((record) => record.internalUserId === next.internalUserId);
-    if (sameInternal) {
-      throw new Error(`Internal user ${next.internalUserId} already has an external identity`);
-    }
     await this.insertIdentity(next);
     this.current = await this.readAllFromDb();
     this.logger.info({
@@ -212,10 +210,6 @@ export class UserIdentityStore {
     const sameExternal = records.find((record) => matchesExternal(record, next));
     if (sameExternal) {
       throw new Error(`External identity ${next.channelId}:${next.externalId} is already bound`);
-    }
-    const sameInternal = records.find((record) => record.internalUserId === next.internalUserId);
-    if (sameInternal) {
-      throw new Error(`Internal user ${next.internalUserId} already has an external identity`);
     }
   }
 
@@ -326,4 +320,11 @@ function sortRecords(records: UserIdentityRecord[]): UserIdentityRecord[] {
     || left.scope.localeCompare(right.scope)
     || left.externalId.localeCompare(right.externalId)
   ));
+}
+
+function selectIdentity(records: UserIdentityRecord[], internalUserId: string, target: { channelId: string; scope?: UserIdentityScope }): UserIdentityRecord | undefined {
+  const matches = records.filter((record) => record.internalUserId === internalUserId
+    && record.channelId === target.channelId && record.scope === (target.scope ?? "private_user"));
+  if (matches.length > 1) throw new Error("Multiple external identities match the target connection; select an explicit external identity");
+  return matches[0];
 }

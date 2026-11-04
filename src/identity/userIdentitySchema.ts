@@ -1,6 +1,6 @@
 import { s, type Infer } from "#data/schema/index.ts";
 
-export const userIdentityScopeSchema = s.enum(["private_user"] as const);
+export const userIdentityScopeSchema = s.enum(["private_user", "group_member"] as const);
 
 export const userIdentityRecordSchema = s.object({
   channelId: s.string().trim().nonempty(),

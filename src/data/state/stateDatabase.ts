@@ -487,14 +487,21 @@ function createUserIdentitiesSchema(db: SqliteDatabase): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_identities (
       channel_id TEXT NOT NULL CHECK (channel_id = trim(channel_id) AND length(channel_id) > 0),
-      scope TEXT NOT NULL CHECK (scope IN ('private_user')),
+      scope TEXT NOT NULL CHECK (scope IN ('private_user', 'group_member')),
       external_id TEXT NOT NULL CHECK (external_id = trim(external_id) AND length(external_id) > 0),
       internal_user_id TEXT NOT NULL CHECK (internal_user_id = trim(internal_user_id) AND length(internal_user_id) > 0),
       created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-      PRIMARY KEY (channel_id, scope, external_id),
-      UNIQUE (internal_user_id)
+      PRIMARY KEY (channel_id, scope, external_id)
     );
   `);
+}
+
+function migrateUserIdentitiesSchema(db: SqliteDatabase): boolean {
+  db.exec("ALTER TABLE user_identities RENAME TO user_identities_previous");
+  createUserIdentitiesSchema(db);
+  db.exec("INSERT INTO user_identities SELECT * FROM user_identities_previous");
+  db.exec("DROP TABLE user_identities_previous");
+  return true;
 }
 
 function validateUserIdentitiesSchema(db: SqliteDatabase): void {
@@ -704,7 +711,9 @@ const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "state.user_identities",
-    schemaVersion: 1,
+    schemaVersion: 2,
+    minReadableSchemaVersion: 1,
+    migrateSchema: migrateUserIdentitiesSchema,
     resetPolicy: "block_reset",
     ownedTables: ["user_identities"],
     createSchema: createUserIdentitiesSchema,

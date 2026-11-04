@@ -19,6 +19,7 @@ import { projectToolResult, type JsonObject } from "../core/toolResultProjection
 
 export const messageToolDescriptors: ToolDescriptor[] = [
   {
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {
@@ -37,6 +38,7 @@ export const messageToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+    requiresOneBot: true,
     definition: {
       type: "function",
       function: {

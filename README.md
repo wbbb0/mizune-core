@@ -1,6 +1,6 @@
 # Mizune Core
 
-Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代理服务。它既可以作为 OneBot 机器人的后端，也可以不接入任何 bot，仅通过内置 WebUI 在本地或内网管理会话、配置与运行数据。
+Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代理服务。它可以接入 OneBot 或腾讯官方 Bot，也可以不接入任何 bot，仅通过内置 WebUI 在本地或内网管理会话、配置与运行数据。
 
 项目重点不只是“转发消息给模型”，而是围绕长期会话运行做了一整套编排：会话状态、历史压缩、回复门控、发送队列、persona / 用户资料 / 记忆持久化、工具调用、内部 API 与 WebUI。
 
@@ -13,7 +13,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 
 ## 功能概览
 
-- OneBot 事件接入与消息发送
+- OneBot 与腾讯官方 Bot 事件接入与消息发送
 - WebUI 会话与 OneBot 会话并存
 - 会话级模式切换，当前内置 `rp_assistant`、`assistant`、`scenario_host` 与 `stateful_rp`（沉浸状态 RP，复用 Persona/RP 资料并维护会话状态；[资料分层与维护约定](docs/architecture/session-and-profile-model.md)）
 - persona、RP / Scenario 资料、用户资料、记忆和规则持久化
@@ -146,6 +146,16 @@ internalApi:
 llm:
   enabled: true
 ```
+
+### 腾讯官方 Bot + WebUI
+
+官方连接与 OneBot 平级，配置 `qqOfficial.enabled: true` 并填写 `appId`、`appSecret`；仅运行官方 Bot 时将 `onebot.enabled` 设为 `false`。连接通过官方 WebSocket 接收事件，无需暴露公网回调端口。
+
+首期仅接收私聊与群 @ 消息。官方群回复绑定触发消息的授权，定时任务、跨会话和管理端不能绕过授权主动发送；授权过期后不自动改成主动消息。私聊回答使用官方原生流式接口。账号需要在官方后台取得相应权限。
+
+创建会话时按来源设置发送节奏：Web 与官方 Bot 默认即时，OneBot 默认模拟人工间隔；之后由会话级设置控制，与输入消息合并等待独立。身份按连接及私聊/群成员作用域隔离，可在已认证的 WebUI 身份管理中明确绑定同一内部用户；官方入口不开放 `.own` 抢占绑定。
+
+协议、投递状态与限制见 [腾讯官方 Bot 接入](docs/architecture/qq-official-messaging.md)。
 
 ### OneBot + WebUI
 

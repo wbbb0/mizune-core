@@ -1,3 +1,4 @@
+import { getProviderFeatureFromContext } from "./provider/providerFeatures.ts";
 import { renderNativeSearchCitations } from "./shared/nativeSearchCitations.ts";
 import { runModelCapability, transcribeWithChat } from "./provider/modelCapabilityClient.ts";
 import type { LlmTranscribeParams, LlmTranscribeResult, LlmSynthesizeParams, LlmSynthesizeResult, LlmDecideParams, LlmDecideResult } from "./provider/nativeCapabilityTypes.ts";
@@ -285,6 +286,7 @@ export class LlmClient {
           ? params.tools()
           : (params.tools ?? []);
       const pendingDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
+      let irreversibleOutputStarted = false;
       let streamed: LlmProviderGenerateResult & { modelRef: string | null };
       try {
         streamed = await this.streamChatCompletion({
@@ -296,6 +298,13 @@ export class LlmClient {
           ...(params.onPreviewTextDelta ? { onPreviewTextDelta: params.onPreviewTextDelta } : {}),
           ...(params.onPreviewReset ? { onPreviewReset: params.onPreviewReset } : {}),
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
+          ...(params.onIrreversibleTextDelta && !params.responseFormat ? {
+            onIrreversibleTextDelta: async (delta: string) => {
+              if (!delta) return;
+              irreversibleOutputStarted = true;
+              await params.onIrreversibleTextDelta!(delta);
+            }
+          } : {}),
           onTextDelta: (delta) => {
             pendingDeltas.push({ kind: "text", delta });
           },
@@ -315,7 +324,7 @@ export class LlmClient {
           ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
         });
       } catch (error: unknown) {
-        if (!(error instanceof LlmInvalidProviderResponseError)) {
+        if (irreversibleOutputStarted || !(error instanceof LlmInvalidProviderResponseError)) {
           throw error;
         }
         const invalidUsage = createUnknownProviderResponseUsage(
@@ -363,6 +372,7 @@ export class LlmClient {
         toolCalls: streamed.toolCalls
       });
       if (!envelopeValidation.ok) {
+        if (irreversibleOutputStarted) throw new Error("已提交流式正文后收到无效工具协议，停止自动恢复以避免重放正文。");
         const invalidUsage = buildProviderCallUsage(iteration, "invalid_response", streamed);
         providerCallUsages.push(invalidUsage);
         await params.onProviderCallUsage?.(invalidUsage);
@@ -421,6 +431,7 @@ export class LlmClient {
         )
       );
       if (rejectedToolCalls.length > 0) {
+        if (irreversibleOutputStarted) throw new Error("已提交流式正文后收到被拒绝的工具调用，停止自动恢复以避免重放正文。");
         protocolRecoveries += 1;
         this.logger.warn({
           rejectedToolNames: rejectedToolCalls.map((item) => item.toolCall.function.name),
@@ -665,11 +676,15 @@ export class LlmClient {
       }
 
       providerContext.operation = params.operation ?? "chat";
+      // Enabled native search can rewrite citations only after completion; keep that candidate buffered.
+      const allowIrreversibleText = Boolean(params.onIrreversibleTextDelta && !params.responseFormat
+        && !getProviderFeatureFromContext(providerContext, "search"));
       const provider = getLlmProvider(providerContext);
       const resolvedTools = typeof params.tools === "function"
         ? params.tools()
         : params.tools;
       const candidateDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
+      let irreversibleOutputStarted = false;
 
       try {
         if (params.responseFormat && !provider.supportsStructuredOutput) throw new Error("Provider does not support structured output");
@@ -689,6 +704,11 @@ export class LlmClient {
           ...(resolvedTools ? { tools: resolvedTools } : {}),
           onTextDelta: async (delta) => {
             candidateDeltas.push({ kind: "text", delta });
+            if (delta && allowIrreversibleText) {
+              // Mark before awaiting the observer: its own delivery error must not trigger candidate replay.
+              irreversibleOutputStarted = true;
+              await params.onIrreversibleTextDelta!(delta);
+            }
             await params.onPreviewTextDelta?.(delta);
           },
           onReasoningDelta: (delta) => {
@@ -717,7 +737,7 @@ export class LlmClient {
       } catch (error: unknown) {
         await params.onPreviewReset?.();
         lastError = error;
-        const shouldFallback = index < providerContexts.length - 1 && shouldFallbackToNextModel(error);
+        const shouldFallback = !irreversibleOutputStarted && index < providerContexts.length - 1 && shouldFallbackToNextModel(error);
         const nextProviderContext = shouldFallback ? providerContexts[index + 1] : null;
         this.logger.warn(
           {

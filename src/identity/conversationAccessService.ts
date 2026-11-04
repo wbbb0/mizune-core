@@ -58,7 +58,10 @@ export class ConversationAccessService {
       return null;
     }
 
+    // Official group membership cannot be proven through OneBot; deny cross-chat access.
+    if (parsed.source === "qq_official") return null;
     const requesterExternalUserId = await resolveExternalUserIdForInternalUser({
+      channelId: parsed.channelId,
       internalUserId: requesterUserId,
       userIdentityStore: this.userIdentityStore
     });

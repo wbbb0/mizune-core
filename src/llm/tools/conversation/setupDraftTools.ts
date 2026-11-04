@@ -1,3 +1,4 @@
+import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 import { stateChangePolicy } from "../core/resultObservationPresets.ts";
@@ -47,7 +48,8 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
     context.messageQueue.enqueueTextDetached({
       sessionId,
       text: content,
-      pacing: context.replyDelivery === "web" ? "immediate" : "humanized",
+      pacing: session.pacingPreferences.outbound,
+      ...(context.outboundSignal ? { abortSignals: [context.outboundSignal] } : {}),
       send: async () => {
         if (context.replyDelivery === "web") {
           await context.committedTextSink?.commitText(content);
@@ -64,29 +66,19 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
         if (!parsedSession) {
           throw new Error(`unsupported session target: ${sessionId}`);
         }
-        const sendTarget = parsedSession.kind === "private"
-          ? { userId: parsedSession.userId, text: content }
-          : { groupId: parsedSession.groupId, text: content };
-        const payload = await context.oneBotClient.sendText(sendTarget);
-        const messageId = normalizeOneBotMessageId(payload.data?.message_id);
-        if (messageId != null) {
-          context.sessionManager.recordSentMessage(sessionId, {
-            messageId,
-            text: content,
-            sentAt: Date.now()
-          });
+        await context.beforeExternalDelivery?.();
+        const deliveryRef = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendText({
+          sessionId, replyContext: context.replyContext, signal: context.outboundSignal
+        }, content);
+        if (deliveryRef?.platform === "onebot") {
+          context.sessionManager.recordSentMessage(sessionId, { messageId: deliveryRef.messageId, text: content, sentAt: Date.now() });
         }
         context.sessionManager.appendAssistantHistory(sessionId, {
           chatType: session.type,
           userId: context.lastMessage.userId,
           senderName: context.lastMessage.senderName,
           text: content,
-          ...(messageId != null ? {
-            deliveryRef: {
-              platform: "onebot" as const,
-              messageId
-            }
-          } : {})
+          ...(deliveryRef ? { deliveryRef } : {})
         });
       }
     });

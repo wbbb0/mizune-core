@@ -30,7 +30,7 @@ export interface ModerationResult {
 
 export interface ModerationContext {
   sessionId?: string | undefined;
-  delivery?: "onebot" | "web" | undefined;
+  delivery?: "onebot" | "qq_official" | "web" | undefined;
   userId?: string | undefined;
   groupId?: string | undefined;
   source?: string | undefined;

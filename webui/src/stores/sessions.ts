@@ -84,7 +84,7 @@ export interface ActiveSession {
   skills?: SessionSkillsView | null;
   id: string;
   type: "private" | "group";
-  source: "onebot" | "web";
+  source: "onebot" | "qq_official" | "web";
   modeId: string;
   participantRef: SessionParticipantRef;
   title: string | null;

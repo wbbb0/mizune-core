@@ -15,7 +15,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     sessionId: string,
     options?: {
       skipReplyGate?: boolean;
-      delivery?: "onebot" | "web";
+      delivery?: "onebot" | "qq_official" | "web";
       committedTextSink?: import("./generationOutputContracts.ts").GenerationCommittedTextSink;
       draftOverlaySink?: import("./generationOutputContracts.ts").GenerationDraftOverlaySink;
     }
@@ -171,7 +171,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     sessionId: string,
     options?: {
       skipReplyGate?: boolean;
-      delivery?: "onebot" | "web";
+      delivery?: "onebot" | "qq_official" | "web";
       committedTextSink?: import("./generationOutputContracts.ts").GenerationCommittedTextSink;
       draftOverlaySink?: import("./generationOutputContracts.ts").GenerationDraftOverlaySink;
     }

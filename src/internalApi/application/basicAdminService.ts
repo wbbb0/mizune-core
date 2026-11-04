@@ -96,7 +96,7 @@ export function getHealthStatus(config: AppConfig) {
 export function getConfigSummary(deps: InternalApiConfigSummaryDeps) {
   const whitelist = deps.whitelistStore.getSnapshot();
   const runtimeMode = deps.config.onebot.enabled ? "onebot" : "webui_only";
-  const ownerIdentity = deps.userIdentityStore.findIdentityByInternalUserIdSync("owner");
+  const ownerIdentity = deps.userIdentityStore.findIdentityByInternalUserIdSync("owner", { channelId: deps.config.configRuntime.instanceName });
   return {
     runtimeMode,
     onebot: {

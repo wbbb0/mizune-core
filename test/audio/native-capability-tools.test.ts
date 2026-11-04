@@ -140,6 +140,7 @@ test("生成语音资产沿音频消息链路投递到 OneBot 与 Web 并可播�
           async sendFile() { throw new Error("音频不应当作为普通文件上传"); }
         },
         sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
           recordSentMessage() {},
           appendInternalTranscript(_sessionId: string, item: unknown) { transcripts.push(item); }
         }
@@ -188,7 +189,7 @@ test("语音排队后取消不会投递或写入已发送事件，预取消不�
     const context = {
       config: c, abortSignal: controller.signal, replyDelivery: "onebot", lastMessage: { sessionId: "qqbot:p:123" }, chatFileStore: store, messageQueue: queue,
       oneBotClient: { async sendMessage() { sends++; return { data: { message_id: 42 } }; } },
-      sessionManager: { recordSentMessage() { events++; }, appendInternalTranscript() { events++; } }
+      sessionManager: { getSession() { return { pacingPreferences: { outbound: "humanized" } }; }, recordSentMessage() { events++; }, appendInternalTranscript() { events++; } }
     } as unknown as BuiltinToolContext;
     const result = await chatFileToolHandlers.asset_send_to_chat!(call("asset_send_to_chat"), { asset_ref: source.fileRef }, context);
     assert.equal(JSON.parse(typeof result === "string" ? result : result.content).queued, true);

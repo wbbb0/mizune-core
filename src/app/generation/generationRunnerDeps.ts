@@ -1,3 +1,4 @@
+import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
 import type { Logger } from "pino";
@@ -113,6 +114,7 @@ export interface GenerationIdentityDeps {
 }
 
 export interface GenerationToolRuntimeDeps {
+  messaging?: DeliveryCoordinator;
   oneBotClient: OneBotClient;
   audioStore: AudioStore;
   requestStore: RequestStore;
@@ -163,7 +165,7 @@ export type GenerationTurnPlannerDeps =
 
 export type GenerationOutboundDeps =
   Pick<GenerationSessionRuntimeDeps, "logger" | "messageQueue">
-  & Pick<GenerationToolRuntimeDeps, "oneBotClient">
+  & Pick<GenerationToolRuntimeDeps, "oneBotClient" | "messaging">
   & Pick<GenerationLifecycleDeps, "persistSession">
   & {
     sessionManager: SessionGenerationOutboundAccess;

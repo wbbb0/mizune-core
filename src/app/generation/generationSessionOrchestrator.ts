@@ -544,7 +544,7 @@ export function createGenerationSessionOrchestrator(
     sessionId: string,
     options?: {
       skipReplyGate?: boolean;
-      delivery?: "onebot" | "web";
+      delivery?: "onebot" | "qq_official" | "web";
       committedTextSink?: GenerationCommittedTextSink;
       draftOverlaySink?: GenerationDraftOverlaySink;
     }
@@ -974,6 +974,7 @@ export function createGenerationSessionOrchestrator(
         batchMessages: promptSafety.runtimeBatchMessages,
         sendTarget: {
           delivery: resolvedDelivery,
+          ...(last.replyContext ? { replyContext: last.replyContext } : {}),
           chatType: last.chatType,
           userId: last.userId,
           ...(last.groupId ? { groupId: last.groupId } : {}),

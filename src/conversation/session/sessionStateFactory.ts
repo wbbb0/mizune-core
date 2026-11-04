@@ -1,4 +1,4 @@
-import type { ParsedIncomingMessage } from "#services/onebot/types.ts";
+import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import type { SessionParticipantRef, SessionState, PersistedSessionState, SessionTitleSource } from "./sessionTypes.ts";
 import {
@@ -34,7 +34,7 @@ import {
 export function createSessionState(target: {
   id: string;
   type: "private" | "group";
-  source?: "onebot" | "web";
+  source?: "onebot" | "qq_official" | "web";
   participantRef?: SessionParticipantRef;
   title?: string | null;
   titleSource?: SessionTitleSource | null;
@@ -208,7 +208,7 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
       ...(target.groupId ? { groupId: target.groupId } : {}),
       transcriptGroupId: target.transcriptGroupId,
       firstAtMs: target.firstAtMs,
-      messages: target.messages.map((message) => ({ ...message }))
+      messages: target.messages.map(({ replyContext: _replyContext, ...message }) => message)
     })),
     currentReplyTarget: null,
     pendingTranscriptGroupId: item.pendingTranscriptGroupId ?? null,
@@ -260,14 +260,14 @@ export function toPersistedSessionState(session: SessionState): PersistedSession
     debugControl: {
       enabled: session.debugControl.enabled
     },
-    pendingMessages: [...session.pendingMessages],
+    pendingMessages: session.pendingMessages.map(({ replyContext: _replyContext, ...message }) => message),
     queuedGroupReplyTargets: session.queuedGroupReplyTargets.map((target) => ({
       userId: target.userId,
       senderName: target.senderName,
       ...(target.groupId ? { groupId: target.groupId } : {}),
       transcriptGroupId: target.transcriptGroupId,
       firstAtMs: target.firstAtMs,
-      messages: target.messages.map((message) => ({ ...message }))
+      messages: target.messages.map(({ replyContext: _replyContext, ...message }) => message)
     })),
     pendingTranscriptGroupId: session.pendingTranscriptGroupId,
     activeTranscriptGroupId: session.activeTranscriptGroupId,

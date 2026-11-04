@@ -376,7 +376,7 @@ function createOrchestratorDeps(input: {
     const sessionId = "web:test";
     sessionManager.ensureSession({ id: sessionId, type: "private", source: "web" });
     sessionManager.setReplyDelivery(sessionId, "onebot");
-    const deliveries: Array<"onebot" | "web"> = [];
+    const deliveries: Array<"onebot" | "qq_official" | "web"> = [];
 
     const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
       config,
@@ -418,7 +418,7 @@ function createOrchestratorDeps(input: {
     const sessionId = "qqbot:p:owner";
     sessionManager.ensureSession({ id: sessionId, type: "private" });
     sessionManager.setReplyDelivery(sessionId, "web");
-    const deliveries: Array<"onebot" | "web"> = [];
+    const deliveries: Array<"onebot" | "qq_official" | "web"> = [];
 
     const orchestrator = createGenerationSessionOrchestrator(createOrchestratorDeps({
       config,

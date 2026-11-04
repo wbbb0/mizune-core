@@ -242,6 +242,15 @@ function createScenarioState(input: {
     assert.match(firstCall.text, /\.own \[userId\]/);
   });
 
+  test("official direct command replies do not request automatic retraction", async () => {
+    const { calls, handler } = createDirectCommandFixture({ session: { source: "qq_official" } });
+    await handler({ command: { name: "help" }, sessionId: "qq_official.app:p:owner",
+      incomingMessage: { chatType: "private", userId: "owner" } });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.autoRetractAfterMs, undefined);
+    assert.equal(calls[0]!.recordInHistory, false);
+  });
+
   test("error command sends recent owner-only diagnostics from private chat", async () => {
     const formatCalls: Array<{ count: number; timeZone: string }> = [];
     const { calls, handler } = createDirectCommandFixture({

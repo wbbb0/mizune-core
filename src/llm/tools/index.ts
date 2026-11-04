@@ -79,6 +79,7 @@ function selectBuiltinToolDescriptors(options: BuiltinToolSelectionOptions) {
   return modelSupportsTools
     ? descriptors
     .filter((tool) => tool.modelVisible !== false)
+    .filter((tool) => !tool.requiresOneBot || options.visibilityContext?.replyDelivery !== "qq_official")
     .filter((tool) => !options.config || !tool.isEnabled || tool.isEnabled(
       options.config,
       options.modelRef ? { modelRef: options.modelRef } : {}
@@ -210,7 +211,7 @@ export function createBuiltinToolExecutor(
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
       try {
-        const result = await handler(toolCall, args, context);
+        const result = await handler(toolCall, args, { ...context });
         if (typeof result !== "string") return result;
         let parsed: { error?: unknown };
         try { parsed = JSON.parse(result); } catch { return projectRawToolContent(toolCall.function.name, result); }
@@ -226,7 +227,7 @@ export function createBuiltinToolExecutor(
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
     }
-    const result = await handler(toolCall, args, context);
+    const result = await handler(toolCall, args, { ...context });
     return typeof result === "string"
       ? projectRawToolContent(toolCall.function.name, result)
       : result;

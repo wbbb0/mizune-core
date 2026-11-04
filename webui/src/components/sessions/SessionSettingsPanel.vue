@@ -94,7 +94,7 @@ function cloneSessionSettings(settings: SessionSettings): SessionSettings {
   return {
     pacingPreferences: {
       inputDebounce: { ...settings.pacingPreferences.inputDebounce },
-      oneBotOutbound: settings.pacingPreferences.oneBotOutbound,
+      outbound: settings.pacingPreferences.outbound,
       toolLoopOutput: settings.pacingPreferences.toolLoopOutput
     },
     toolsetPreferences: {

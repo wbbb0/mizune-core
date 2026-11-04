@@ -124,7 +124,7 @@ async function sendWebSetupDraftForText(operationMode: unknown): Promise<string>
       },
       sessionManager: {
         getSession() {
-          return { type: "private" };
+          return { pacingPreferences: { outbound: "humanized" }, type: "private" };
         },
         getOperationMode() {
           return operationMode;
@@ -252,7 +252,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       "download_current_group_file",
       "list_current_group_members"
     ];
-    const getNames = (sessionId: string, replyDelivery: "onebot" | "web") => new Set(
+    const getNames = (sessionId: string, replyDelivery: "onebot" | "qq_official" | "web") => new Set(
       getBuiltinTools("owner", config, undefined, {
         visibilityContext: { sessionId, replyDelivery }
       }).map((tool) => tool.function.name)
@@ -593,7 +593,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         },
         sessionManager: {
           getSession() {
-            return { type: "private" };
+            return { pacingPreferences: { outbound: "humanized" }, type: "private" };
           },
           getOperationMode() {
             return { kind: "normal" };
@@ -661,7 +661,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         },
         sessionManager: {
           getSession() {
-            return { id: "web:scenario-draft", type: "private", participantRef: { kind: "user", id: "owner" } };
+            return { pacingPreferences: { outbound: "humanized" }, id: "web:scenario-draft", type: "private", participantRef: { kind: "user", id: "owner" } };
           },
           getOperationMode(sessionId: string) {
             assert.equal(sessionId, "web:scenario-draft");
@@ -795,7 +795,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         },
         sessionManager: {
           getSession() {
-            return { id: "web:scenario-draft-note", type: "private", participantRef: { kind: "user", id: "owner" } };
+            return { pacingPreferences: { outbound: "humanized" }, id: "web:scenario-draft-note", type: "private", participantRef: { kind: "user", id: "owner" } };
           },
           getOperationMode() {
             return operationMode;
@@ -905,7 +905,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         },
         sessionManager: {
           getSession() {
-            return { type: "private" };
+            return { pacingPreferences: { outbound: "humanized" }, type: "private" };
           },
           getOperationMode() {
             return { kind: "normal" };
@@ -1395,7 +1395,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         }],
         sessionManager: {
           getSession() {
-            return {
+            return { pacingPreferences: { outbound: "humanized" },
               id: "qqbot:p:owner",
               type: "private",
               participantUserId: "owner",
@@ -1431,7 +1431,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         },
         sessionManager: {
           getSession() {
-            return {
+            return { pacingPreferences: { outbound: "humanized" },
               id: "qqbot:g:1000",
               type: "group"
             };
@@ -1488,7 +1488,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return "scenario_host";
         },
         getSession() {
-          return {
+          return { pacingPreferences: { outbound: "humanized" },
             id: "qqbot:p:owner",
             participantUserId: "owner",
             participantLabel: "Owner"
@@ -1694,7 +1694,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         sessionManager: {
           getModeId() { return "scenario_host"; },
           getSession() {
-            return {
+            return { pacingPreferences: { outbound: "humanized" },
               participantUserId: "u1",
               participantLabel: "Alice"
             };
@@ -1730,7 +1730,8 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         currentUser: null,
         oneBotClient: {},
         requestStore: {},
-        sessionManager: {},
+        sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },},
         whitelistStore: {},
         scheduledJobStore: {},
         scheduler: {},
@@ -4512,6 +4513,7 @@ function createRuntimeWaitToolContext() {
           }
         },
         sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
           recordSentMessage(_sessionId: string, message: unknown) {
             sentMetaCalls.push({ kind: "sent", message });
           },
@@ -4620,6 +4622,7 @@ function createRuntimeWaitToolContext() {
           }
         },
         sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
           recordSentMessage(_sessionId: string, message: unknown) {
             sentMetaCalls.push(message);
           },
@@ -4729,6 +4732,7 @@ function createRuntimeWaitToolContext() {
           }
         },
         sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
           recordSentMessage(_sessionId: string, message: unknown) {
             sentMetaCalls.push(message);
           },
@@ -4831,6 +4835,7 @@ function createRuntimeWaitToolContext() {
           }
         },
         sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
           appendInternalTranscript(_sessionId: string, item: unknown) {
             transcriptCalls.push(item);
           }
@@ -4883,6 +4888,7 @@ function createRuntimeWaitToolContext() {
         { id: "tool_workspace_send_generic_file", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
         { asset_ref: "file_bead1234.txt" },
         {
+          replyDelivery: "onebot",
           config: createTestAppConfig(),
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
@@ -4966,6 +4972,7 @@ function createRuntimeWaitToolContext() {
             }
           },
           sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
             appendInternalTranscript(_sessionId: string, item: unknown) {
               transcriptCalls.push(item);
             }
@@ -5068,6 +5075,7 @@ function createRuntimeWaitToolContext() {
             }
           },
           sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
             recordSentMessage() {},
             appendInternalTranscript() {}
           }
@@ -5129,6 +5137,7 @@ function createRuntimeWaitToolContext() {
             }
           },
           sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
             recordSentMessage() {},
             appendInternalTranscript() {}
           }
@@ -5189,6 +5198,7 @@ function createRuntimeWaitToolContext() {
             }
           },
           sessionManager: {
+          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
             recordSentMessage() {},
             appendInternalTranscript(_sessionId: string, item: unknown) {
               transcriptCalls.push(item);
@@ -5245,6 +5255,8 @@ function createRuntimeWaitToolContext() {
       { id: "tool_workspace_send_path_rel_resolve", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
       { path: "outputs/demo.txt" },
       {
+        replyDelivery: "onebot",
+        sessionManager: { getSession() { return { pacingPreferences: { outbound: "humanized" } }; } },
         config: createNapcatTestConfig(),
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         localFileService: {

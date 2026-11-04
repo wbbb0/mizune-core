@@ -282,7 +282,7 @@ conversation:
 
 “允许模型自行升级”默认开启。只有当前轮仍使用 `mainSmall`，并且 `mainSmall` 与 `mainLarge` 的全部 fallback 候选均属于同一个 provider、都是支持工具的聊天模型，且两个首选项实际模型不同时，轻量模型才会看到 `request_model_upgrade`。该控制工具不由 Turn Planner 选择，也不属于任何业务工具集；调用后只把同一工具循环的后续 provider 请求切到 `mainLarge`，不会重新运行 Planner、改变身份权限或扩大本轮业务工具集合。关闭开关或修改设置从下一轮生成起生效。
 
-回复节奏可以覆盖用户消息聚合等待，并可单独开关 OneBot 模型回复的模拟输入延迟。OneBot 会话默认使用自适应输入聚合和 `conversation.outbound` 延迟参数；新建 Web 会话默认立即处理输入，回复形成正式分段后也会立即显示。复制会话到 Web 时会完整继承源会话的全部设置。Turn Planner 主动等待更多输入的 `gate_wait` 不受会话级输入聚合设置影响。
+回复节奏使用会话级 `pacingPreferences.outbound` 独立控制模拟人工发送间隔。OneBot 会话默认开启，使用 `conversation.outbound` 延迟参数；Web 和腾讯官方 Bot 会话默认关闭。来源只决定创建时的默认值，之后以会话保存的设置为准；平台频控和原生流式分片合并独立生效。输入聚合另由 `inputDebounce` 控制，Web 默认立即处理，OneBot 与官方默认自适应。复制会话到 Web 时会完整继承源会话的全部设置。Turn Planner 主动等待更多输入的 `gate_wait` 不受会话级输入聚合设置影响。
 
 群聊中普通消息会进入会话历史作为上下文；只有明确 @ bot 或回复 bot 已发送消息才会触发回复。触发时会在当前轮输入中追加本轮回复目标，避免模型在多人群聊里切换回复对象。
 

@@ -1,3 +1,4 @@
+import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { readFile } from "node:fs/promises";
 import type { BuiltinToolContext } from "./shared.ts";
 import type { OneBotMessageSegment } from "#services/onebot/types.ts";
@@ -22,7 +23,8 @@ export function enqueueToolSend(
   context.messageQueue.enqueueTextDetached({
     sessionId: context.lastMessage.sessionId,
     text: previewText,
-    pacing: "humanized",
+    pacing: context.sessionManager.getSession(context.lastMessage.sessionId).pacingPreferences.outbound,
+    ...(context.outboundSignal ? { abortSignals: [context.outboundSignal] } : {}),
     send,
     ...(context.abortSignal ? { abortSignal: context.abortSignal } : {})
   });
@@ -78,7 +80,7 @@ async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMedi
       ...(input.semanticKind === "emoji" ? { sub_type: 1, summary: "[表情]" } : {})
     }
   }];
-  const appendTranscript = (delivery: "web" | "onebot", messageId: number | null) => {
+  const appendTranscript = (delivery: "web" | "onebot" | "qq_official", messageId: number | string | null) => {
     context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
       kind: "outbound_media_message",
       llmVisible: false,
@@ -106,8 +108,15 @@ async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMedi
       return;
     }
     if (!target) throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
-    const payload = await context.oneBotClient.sendMessage({ ...target, message: segments });
-    appendTranscript("onebot", recordDeliveredMessage(context, input.previewText, payload.data?.message_id));
+    await context.beforeExternalDelivery?.();
+    context.outboundSignal?.throwIfAborted();
+    const reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendMedia({
+      sessionId: context.lastMessage.sessionId, replyContext: context.replyContext, signal: context.outboundSignal
+    }, { filePath: input.absolutePath, kind: input.semanticKind, segments, name: input.sourceName });
+    if (reference) context.sessionManager.recordSentMessage(context.lastMessage.sessionId, {
+      messageId: reference.messageId, text: input.previewText, sentAt: Date.now()
+    });
+    appendTranscript(reference?.platform ?? context.replyDelivery, reference?.messageId ?? null);
   });
   return {
     content: JSON.stringify({
