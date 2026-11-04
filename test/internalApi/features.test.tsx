@@ -1276,7 +1276,7 @@ other:
         method: "GET",
         url: `/api/sessions/${encodeURIComponent(copiedSessionId)}/settings`
       });
-      assert.equal(copiedSettingsResponse.statusCode, 200);
+      assert.equal(copiedSettingsResponse.statusCode, 200, copiedSettingsResponse.body);
       assert.deepEqual(copiedSettingsResponse.json().settings.toolsetPreferences, {
         overrides: { web_research: "disabled" }
       });
@@ -2044,6 +2044,7 @@ other:
 
   test("internal api reads and updates all session settings in one request", async () => {
     const deps = createInternalApiDeps();
+    deps.config.browser.enabled = true;
     const app = await createInternalApiApp(deps);
     try {
       const createResponse = await app.inject({
@@ -2062,7 +2063,7 @@ other:
         method: "GET",
         url: `/api/sessions/${encodeURIComponent(sessionId)}/settings`
       });
-      assert.equal(initialSettings.statusCode, 200);
+      assert.equal(initialSettings.statusCode, 200, initialSettings.body);
       assert.deepEqual(initialSettings.json().settings.pacingPreferences, {
         inputDebounce: { mode: "immediate" },
         outbound: "immediate",
@@ -2085,7 +2086,7 @@ other:
             toolLoopOutput: "final_only"
           },
           toolsetPreferences: {
-            overrides: { web_research: "disabled" }
+            overrides: { web_research: "disabled", comfy_image: "enabled" }
           },
           modelRoutingPreferences: {
             selfUpgradeEnabled: false
@@ -2099,10 +2100,10 @@ other:
         toolLoopOutput: "final_only"
       });
       assert.deepEqual(response.json().settings.toolsetPreferences, {
-        overrides: { web_research: "disabled" }
+        overrides: { web_research: "disabled", comfy_image: "enabled" }
       });
       assert.deepEqual(runtimeSession.toolsetPreferences, {
-        overrides: { web_research: "disabled" }
+        overrides: { web_research: "disabled", comfy_image: "enabled" }
       });
       assert.deepEqual(response.json().settings.modelRoutingPreferences, { selfUpgradeEnabled: false });
       assert.deepEqual(runtimeSession.modelRoutingPreferences, { selfUpgradeEnabled: false });
@@ -2110,6 +2111,12 @@ other:
         response.json().toolsetOptions.find((item: { id: string }) => item.id === "web_research")?.effectiveEnabled,
         false
       );
+      const unavailable = response.json().toolsetOptions.find((item: { id: string }) => item.id === "comfy_image");
+      assert.equal(unavailable.override, "enabled");
+      assert.equal(unavailable.available, false);
+      assert.equal(unavailable.effectiveEnabled, false);
+      assert.ok(unavailable.unavailableReason);
+
 
       const updatedSettings = await app.inject({
         method: "GET",

@@ -130,6 +130,8 @@ test("重读才改变客观观察，安全阻断或非法输出不能覆盖资�
 
 test("表情发送进入队列，实际发送后才计数，保留emoji transcript", async () => {
   const f = await fixture();
+  f.config.onebot.enabled = true;
+  f.config.configRuntime.instanceName = "qqbot";
   try {
     const file = await f.image("red");
     const item = (await f.service.collect({ fileId: file.fileId, reason: "收藏" })).item;
@@ -187,6 +189,8 @@ test("重新装配读取已有收藏而不调用模型；降额保留现有库�
 
 test("商城参数按原协议发送；失败不计数，Web发送保留表情语义", async () => {
   const f = await fixture();
+  f.config.onebot.enabled = true;
+  f.config.configRuntime.instanceName = "qqbot";
   try {
     const file = await f.image("red", { emojiId: "abc", emojiPackageId: 123, emojiKey: "key", emojiSummary: "笑" });
     const item = (await f.service.collect({ fileId: file.fileId, reason: "收藏" })).item;

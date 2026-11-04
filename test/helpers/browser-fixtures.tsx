@@ -1,3 +1,4 @@
+import { createTestAppConfig } from "./config-fixtures.tsx";
 import { withMediaServices } from "./media-import-fixtures.ts";
 import type { BuiltinToolContext } from "../../src/llm/tools/core/shared.ts";
 import type { BrowserService } from "../../src/services/web/browser/browserService.ts";
@@ -103,11 +104,12 @@ export function createBrowserToolContext(
   };
   return withMediaServices<Omit<BuiltinToolContext, "mediaImportService">>({
     browserService: resolvedBrowserService as unknown as BuiltinToolContext["browserService"],
-    config: null as unknown as BuiltinToolContext["config"],
+    config: createTestAppConfig(),
+    projectionToolNames: ["asset_send_to_chat", "asset_media_view", "asset_media_inspect"],
     relationship: "owner",
-    replyDelivery: "onebot",
+    replyDelivery: "web",
     lastMessage: {
-      sessionId: "qqbot:p:test",
+      sessionId: "web:test",
       userId: "10001",
       senderName: "Tester"
     },

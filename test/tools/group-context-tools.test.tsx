@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { groupContextToolDescriptors, groupContextToolHandlers } from "../../src/llm/tools/conversation/groupContextTools.ts";
 import type { LlmToolCall } from "../../src/llm/llmClient.ts";
+import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 
 function parseToolJson<T>(result: unknown): T {
   return JSON.parse(typeof result === "string" ? result : (result as { content: string }).content) as T;
@@ -268,6 +269,8 @@ test("list_current_group_files lists folders and files from current group", asyn
 });
 
 test("download_current_group_file resolves url and registers download handle", async () => {
+  const config = createTestAppConfig({ onebot: { enabled: true, provider: "napcat" } });
+  config.configRuntime.instanceName = "qqbot";
   const result = await groupContextToolHandlers.download_current_group_file!(
     toolCall("download_current_group_file"),
     { fileId: "file-1", busid: 1, sourceName: "report.pdf", kind: "file" },
@@ -281,6 +284,8 @@ test("download_current_group_file resolves url and registers download handle", a
           return { url: "https://example.com/report.pdf" };
         }
       },
+      config,
+      debugSnapshot: { visibleToolNames: ["asset_send_to_chat"] },
       downloadRuntime: {
         async start(input: any) {
           assert.equal(input.sourceUrl, "https://example.com/report.pdf");

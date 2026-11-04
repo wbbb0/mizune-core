@@ -17,6 +17,7 @@ import {
 
 interface HistoryCompressionOptions {
   triggerReason?: string | undefined;
+  abortSignal?: AbortSignal | undefined;
 }
 
 interface CompressionLogContext {
@@ -83,6 +84,7 @@ export class HistoryCompressor {
       retainMessageCount: safeRetainCount,
       expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
       force: true,
+      abortSignal: options?.abortSignal,
       triggerReason: options?.triggerReason ?? "force_compact"
     });
   }
@@ -94,6 +96,7 @@ export class HistoryCompressor {
       retainMessageCount: safeKeepCount,
       expectedHistoryRevision: this.sessionManager.getHistoryRevision(sessionId),
       force: true,
+      abortSignal: options?.abortSignal,
       triggerReason: options?.triggerReason ?? "compact_old_history_keep_recent"
     });
   }
@@ -101,6 +104,7 @@ export class HistoryCompressor {
   private async compressByMessageCount(
     sessionId: string,
     options: {
+      abortSignal?: AbortSignal | undefined;
       triggerMessageCount: number;
       retainMessageCount: number;
       expectedHistoryRevision: number;
@@ -143,7 +147,8 @@ export class HistoryCompressor {
         this.logger.debug({ sessionId, ...logContext, force: options.force ?? false }, "history_compression_skipped_below_threshold");
         return false;
       }
-      return await this.runCompression(sessionId, snapshot, options.expectedHistoryRevision, options.force ?? false, logContext);
+      options.abortSignal?.throwIfAborted();
+      return await this.runCompression(sessionId, snapshot, options.expectedHistoryRevision, options.force ?? false, logContext, undefined, options.abortSignal);
     } finally {
       this.inFlightSessions.delete(sessionId);
     }
@@ -161,8 +166,10 @@ export class HistoryCompressor {
     expectedHistoryRevision: number,
     force: boolean,
     logContext: CompressionLogContext,
-    request?: { abortSignal: AbortSignal; onSummary: (summary: string) => void }
+    request?: { abortSignal: AbortSignal; onSummary: (summary: string) => void },
+    abortSignal: AbortSignal | undefined = request?.abortSignal
   ): Promise<boolean> {
+    abortSignal?.throwIfAborted();
     const imageIds = Array.from(new Set(snapshot.messagesToCompress.flatMap((message) => extractStructuredMediaIds(message.content))));
     const fallbackCaptions = imageIds.length > 0
       ? await this.mediaCaptionService.ensureReady(imageIds, { reason: "history_compression" })
@@ -188,11 +195,11 @@ export class HistoryCompressor {
     const modeId = this.sessionManager.getModeId(sessionId);
     const summary = await generateHistorySummary({
       config: this.config, llmClient: this.llmClient,
-      ...(request ? { abortSignal: request.abortSignal } : {}),
+      ...(abortSignal ? { abortSignal } : {}),
       prompt: { sessionId, modeId, existingSummary: snapshot.historySummary, messagesToCompress,
         toolObservationsToCompress: snapshot.toolObservationsToCompress }
     });
-    request?.abortSignal.throwIfAborted();
+    abortSignal?.throwIfAborted();
     const sourceTokens = estimateTokens(snapshot.historySummary ?? "", this.config.conversation.historyCompression.tokenEstimation)
       + messagesToCompress.reduce((total, message) => total + estimateTokens(message.content, this.config.conversation.historyCompression.tokenEstimation), 0)
       + snapshot.toolObservationsToCompress.reduce((total, observation) => total + estimateTokens(JSON.stringify(observation), this.config.conversation.historyCompression.tokenEstimation), 0);

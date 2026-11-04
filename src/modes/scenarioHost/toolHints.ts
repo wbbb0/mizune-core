@@ -34,7 +34,10 @@ export function buildScenarioHostToolHintLines(visibleToolNames: Set<string>): s
     "manage_relation",
     "append_journal_entry"
   ])) {
-    lines.push("玩家行动导致局势、地点、目标、玩家/NPC 角色状态、穿着、持有物、关系或事实发生持久变化时，必须用对应场景状态工具同步状态；NPC 用 manage_npc，非角色对象用 manage_entity，重大事件、线索确认或场景切换后用 append_journal_entry 留剧情日志；纯氛围描写或未确认猜测不要写入状态。");
+    lines.push("玩家行动导致局势、地点、目标、玩家/NPC 角色状态、穿着、持有物、关系或事实发生持久变化时，必须用对应场景状态工具同步状态；纯氛围描写或未确认猜测不要写入状态。");
+    if (visibleToolNames.has("manage_npc")) lines.push("NPC 用 manage_npc 维护。");
+    if (visibleToolNames.has("manage_entity")) lines.push("非角色对象用 manage_entity 维护。");
+    if (visibleToolNames.has("append_journal_entry")) lines.push("重大事件、线索确认或场景切换后用 append_journal_entry 留剧情日志。");
   }
 
   if (visibleToolNames.has("suggest_scenario_details")) {

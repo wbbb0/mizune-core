@@ -20,6 +20,7 @@ export interface GenerationOutboundInput {
   responseAbortController: AbortController;
   sendTarget: GenerationSendTarget;
   committedTextSink?: GenerationCommittedTextSink | undefined;
+  isCurrent?: (() => boolean) | undefined;
 }
 
 // Sends outbound assistant text and mirrors successful chunks into session history.
@@ -38,7 +39,7 @@ export function createGenerationOutbound(
   const messaging = deps.messaging ?? new DeliveryCoordinator(oneBotClient);
   const nativeStreaming = input.sendTarget.delivery === "qq_official" && input.sendTarget.chatType === "private";
   const appendAccepted = (text: string, deliveryRef?: DeliveryReference) => {
-    if (!text) return;
+    if (!text || input.isCurrent?.() === false) return;
     const appended = sessionManager.appendHistoryIfResponseEpochMatches(input.sessionId, input.responseEpoch, {
       chatType: input.sendTarget.chatType, userId: input.sendTarget.userId,
       senderName: input.sendTarget.senderName, text, ...(deliveryRef ? { deliveryRef } : {})
@@ -52,6 +53,7 @@ export function createGenerationOutbound(
   };
   const resolvePacing = (): GenerationDeliveryPacing => sessionManager.getPacingPreferences(input.sessionId).outbound;
   const native = new NativeStreamDelivery({
+    isCurrent: input.isCurrent,
     // A previous response's failed media must finish before this response, but cannot poison a fresh reply permit.
     initialBarrier: (messageQueue.getDrainPromise(input.sessionId) ?? Promise.resolve()).catch(() => undefined),
     signals: () => {
@@ -60,7 +62,10 @@ export function createGenerationOutbound(
     },
     captureOpen: () => {
       const replyContext = input.sendTarget.replyContext;
-      return () => messaging.openTextStream({ sessionId: input.sessionId, replyContext });
+      return () => {
+        if (input.isCurrent?.() === false) throw new Error("当前回复已被更新的会话取代。");
+        return messaging.openTextStream({ sessionId: input.sessionId, replyContext });
+      };
     },
     scheduleStart: (text, signal, send) => messageQueue.enqueueText({
       sessionId: `native-stream-start:${input.sessionId}`, text, pacing: resolvePacing(), abortSignal: signal, send
@@ -181,6 +186,7 @@ export function createGenerationOutbound(
       pacing: resolvePacing(),
       abortSignals: [input.abortController.signal, input.responseAbortController.signal, ...(outboundSignal ? [outboundSignal] : [])],
       send: async () => {
+        if (input.isCurrent?.() === false) return;
         if (input.sendTarget.delivery === "web") {
           await input.committedTextSink?.commitText(storedText);
           const sentAt = Date.now();

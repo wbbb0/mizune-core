@@ -1,3 +1,4 @@
+import { resolveConnectorCapabilities, mediaSendCapability, type ConnectorCapability } from "#services/messaging/connectorCapabilities.ts";
 import type { ChatFileKind, ChatFileRecord, LocalFileItemStat } from "#services/workspace/types.ts";
 import { inferSendableFileKind } from "#services/workspace/sendablePath.ts";
 import type { BuiltinToolContext } from "./shared.ts";
@@ -80,6 +81,7 @@ export interface LocalFileHandle {
 
 export interface FileHandleOptions {
   visibleToolNames?: Iterable<string> | undefined;
+  connectorCapabilities?: ReadonlySet<ConnectorCapability> | undefined;
   nextActionMode?: "default" | "none";
   defaultVisible?: boolean;
 }
@@ -169,7 +171,7 @@ export function buildChatFileHandleResult(
 ): ChatFileHandleResult {
   const visibleToolNames = resolveVisibleToolNames(options.visibleToolNames, DEFAULT_VISIBLE_CHAT_FILE_TOOLS, options.defaultVisible ?? true);
   const view = mapWorkspaceFileToView(file);
-  const assetHandle = buildAssetHandle(view, visibleToolNames);
+  const assetHandle = buildAssetHandle(view, visibleToolNames, options.connectorCapabilities);
   const nextActions = options.nextActionMode === "none"
     ? []
     : assetHandle.next_actions ?? [];
@@ -186,7 +188,8 @@ export function buildChatFileHandleResultFromContext(
 ): ChatFileHandleResult {
   return buildChatFileHandleResult(file, {
     ...options,
-    visibleToolNames: context.debugSnapshot?.visibleToolNames
+    visibleToolNames: context.projectionToolNames ?? context.debugSnapshot?.visibleToolNames ?? [],
+    connectorCapabilities: resolveConnectorCapabilities(context.config, { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery })
   });
 }
 
@@ -195,7 +198,7 @@ export function buildLocalFileHandleResult(
   options: FileHandleOptions = {}
 ): LocalFileHandleResult {
   const visibleToolNames = resolveVisibleToolNames(options.visibleToolNames, DEFAULT_VISIBLE_LOCAL_FILE_TOOLS, options.defaultVisible ?? true);
-  const capabilities = buildLocalFileHandleCapabilities(file, visibleToolNames);
+  const capabilities = buildLocalFileHandleCapabilities(file, visibleToolNames, options.connectorCapabilities);
   const nextActions = options.nextActionMode === "none"
     ? []
     : buildLocalFileHandleNextActions(capabilities);
@@ -214,13 +217,15 @@ export function buildLocalFileHandleResultFromContext(
 ): LocalFileHandleResult {
   return buildLocalFileHandleResult(file, {
     ...options,
-    visibleToolNames: context.debugSnapshot?.visibleToolNames
+    visibleToolNames: context.projectionToolNames ?? context.debugSnapshot?.visibleToolNames ?? [],
+    connectorCapabilities: resolveConnectorCapabilities(context.config, { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery })
   });
 }
 
 export function buildLocalFileHandleCapabilities(
   file: LocalFileItemStat,
-  visibleToolNamesInput?: Iterable<string> | undefined
+  visibleToolNamesInput?: Iterable<string> | undefined,
+  connectorCapabilities?: ReadonlySet<ConnectorCapability>
 ): LocalFileHandleCapability[] {
   const visibleToolNames = visibleToolNamesInput instanceof Set
     ? visibleToolNamesInput
@@ -261,20 +266,20 @@ export function buildLocalFileHandleCapabilities(
       capability: "send_to_chat",
       tool: "filesystem_send_to_chat",
       reason: "把该本地文件发送到当前聊天",
-      available: visibleToolNames.has("filesystem_send_to_chat"),
-      args: { path: file.path },
-      ...(mediaKind === "image" || mediaKind === "animated_image" ? {} : { requires: ["webui_or_napcat_file_upload"] })
+      available: visibleToolNames.has("filesystem_send_to_chat") && connectorCapabilities?.has(mediaSendCapability(mediaKind)) === true,
+      args: { path: file.path }
     });
   }
 
-  return capabilities;
+  return capabilities.filter((capability) => capability.available);
 }
 
 function buildAssetHandle(
   file: WorkspaceFileView,
-  visibleToolNames: Set<string>
+  visibleToolNames: Set<string>,
+  connectorCapabilities?: ReadonlySet<ConnectorCapability>
 ): AssetHandle {
-  const assetCapabilities = buildAssetFileCapabilities(file, visibleToolNames);
+  const assetCapabilities = buildAssetFileCapabilities(file, visibleToolNames, connectorCapabilities);
   if (isDocumentAsset(file)) {
     assetCapabilities.push(...buildDocumentAssetCapabilities(file, visibleToolNames));
   }
@@ -296,14 +301,15 @@ function buildAssetHandle(
     created_at_ms: file.created_at_ms,
     caption: file.caption,
     caption_status: file.caption_status,
-    capabilities: assetCapabilities,
+    capabilities: assetCapabilities.filter((capability) => capability.available),
     usage_hints: assetInternalPathUsageHints()
   }, nextActions);
 }
 
 function buildAssetFileCapabilities(
   file: WorkspaceFileView,
-  visibleToolNames: Set<string>
+  visibleToolNames: Set<string>,
+  connectorCapabilities?: ReadonlySet<ConnectorCapability>
 ): AssetHandleCapability[] {
   const selector = { asset_ref: file.file_ref };
   const capabilities: AssetHandleCapability[] = [];
@@ -332,9 +338,8 @@ function buildAssetFileCapabilities(
     capability: "send_to_chat",
     tool: "asset_send_to_chat",
     reason: "把该 asset 发送到当前聊天",
-    available: visibleToolNames.has("asset_send_to_chat"),
-    args: selector,
-    ...(MEDIA_VIEW_KINDS.has(file.kind) || file.kind === "audio" ? {} : { requires: ["webui_or_napcat_file_upload"] })
+    available: visibleToolNames.has("asset_send_to_chat") && connectorCapabilities?.has(mediaSendCapability(file.kind)) === true,
+    args: selector
   });
   capabilities.push({
     capability: "local_path",
@@ -351,12 +356,13 @@ function buildAssetFileCapabilities(
     args: selector,
     requires: ["to_path"]
   });
-  return capabilities;
+  return capabilities.filter((capability) => capability.available);
 }
 
 function buildDocumentAssetCapabilities(
   file: WorkspaceFileView,
-  visibleToolNames: Set<string>
+  visibleToolNames: Set<string>,
+  connectorCapabilities?: ReadonlySet<ConnectorCapability>
 ): AssetHandleCapability[] {
   const selector = { asset_ref: file.file_ref };
   return [

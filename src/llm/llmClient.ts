@@ -1,3 +1,4 @@
+import { getRequestDiagnostic, diagnosticFromToolResult } from "./provider/requestDiagnostics.ts";
 import { getProviderFeatureFromContext } from "./provider/providerFeatures.ts";
 import { renderNativeSearchCitations } from "./shared/nativeSearchCitations.ts";
 import { runModelCapability, transcribeWithChat } from "./provider/modelCapabilityClient.ts";
@@ -540,7 +541,8 @@ export class LlmClient {
             {
               toolName: toolCall.function.name,
               toolCallId: toolCall.id,
-              reason: toolError
+              reason: toolError,
+              requestDiagnostic: diagnosticFromToolResult(toolResult)
             },
             "tool_call_returned_error"
           );
@@ -747,6 +749,7 @@ export class LlmClient {
             provider: providerContext.providerName,
             model: providerContext.model,
             shouldFallback,
+            requestDiagnostic: getRequestDiagnostic(error),
             error: serializeError(error)
           },
           shouldFallback ? "llm_candidate_failed_fallback_next" : "llm_candidate_failed"

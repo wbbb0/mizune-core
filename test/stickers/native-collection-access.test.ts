@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { stickerToolDescriptors, stickerToolHandlers } from "../../src/llm/tools/runtime/stickerTools.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { resolveToolAvailability } from "../../src/llm/tools/core/toolAvailability.ts";
 
 test("native QQ collections require the current NapCat session source even when invoked directly", async () => {
   const config = createTestAppConfig();
@@ -24,6 +25,7 @@ test("native QQ collections require the current NapCat session source even when 
   assert.match(String(await stickerToolHandlers.sticker_qq_list!({} as any, {}, context)), /仅限/);
   assert.equal(reads, 1);
   const descriptor = stickerToolDescriptors.find(tool => tool.definition.function.name === "sticker_qq_list")!;
-  assert.equal(descriptor.isVisible!({ sessionId: "qq_official.app:p:user" }), false);
-  assert.equal(descriptor.isVisible!({ sessionId: "web:test" }), false);
+  for (const sessionId of ["qq_official.app:p:user", "web:test"]) {
+    assert.equal(resolveToolAvailability(descriptor, { config, relationship: "owner", currentUser: null, visibilityContext: { sessionId } }).available, false);
+  }
 });

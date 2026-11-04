@@ -4,6 +4,7 @@ export interface ToolsetDefinition {
   description: string;
   toolNames: string[];
   plannerSignals?: string[];
+  features?: Array<{ toolNames: string[]; description: string; signals?: string[] }>;
   ownerOnly?: boolean;
   debugOnly?: boolean;
   modeUniversal?: { defaultEnabled: boolean };
@@ -30,6 +31,11 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     plannerSignals: ["按固定选项分类、条件概率或评分"], toolNames: ["make_decision"]
   },
   {
+    features: [
+      { toolNames: ["sticker_collect", "sticker_update", "sticker_remove"], description: "收藏、整理和淘汰已有表情", signals: ["整理已有表情"] },
+      { toolNames: ["sticker_qq_list"], description: "查看并导入 QQ 收藏", signals: ["查看 QQ 收藏"] },
+      { toolNames: ["sticker_search", "sticker_send"], description: "查找和发送精选表情", signals: ["使用精选表情"] }
+    ],
     id: "sticker_library",
     title: "精选表情库",
     description: "按需收藏、整理和淘汰值得复用的表情，或从QQ收藏导入；不是每轮都需要整理。",
@@ -39,14 +45,24 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   },
   {
     modeUniversal: { defaultEnabled: true },
+    features: [
+      { toolNames: ["view_message", "download_message_file"], description: "读取原生消息及消息附件", signals: ["查看原生消息"] },
+      { toolNames: ["view_forward_record"], description: "展开缓存转发记录", signals: ["展开转发上下文"] },
+      { toolNames: ["resolve_media_reference", "asset_media_view", "asset_media_inspect"], description: "恢复、查看和精读媒体", signals: ["查看媒体上下文"] },
+      { toolNames: ["view_current_group_info"], description: "查询当前群资料", signals: ["群资料"] },
+      { toolNames: ["list_current_group_announcements", "view_current_group_announcement"], description: "读取当前群公告", signals: ["群公告"] },
+      { toolNames: ["list_current_group_files", "download_current_group_file"], description: "查找和下载当前群文件", signals: ["群文件"] },
+      { toolNames: ["list_current_group_members"], description: "查询当前群成员", signals: ["群成员"] },
+      { toolNames: ["sticker_search", "sticker_send"], description: "使用精选表情" },
+      { toolNames: ["end_turn_without_reply"], description: "按需结束本轮回复" }
+    ],
     id: "chat_context",
     title: "会话上下文",
     description: "查看消息、转发、媒体和当前群聊上下文，必要时结束本轮回复。",
     plannerSignals: [
       "查看 reply/forward/image 上下文",
       "查看当前群资料、群公告全文、群文件或群成员",
-      "先展开上下文再回复",
-      "为当前聊天设置、修改或清除 bot 身份"
+      "先展开上下文再回复"
     ],
     toolNames: [
       "sticker_search",
@@ -138,6 +154,16 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    features: [
+      { toolNames: ["ground_with_google_search"], description: "搜索外部网页" },
+      { toolNames: ["search_with_iqs_lite_advanced"], description: "执行可控网页检索" },
+      { toolNames: ["open_page"], description: "打开并阅读网页" },
+      { toolNames: ["inspect_page"], description: "检查页面结构" },
+      { toolNames: ["interact_with_page"], description: "与页面交互" },
+      { toolNames: ["capture_screenshot"], description: "截取页面图片" },
+      { toolNames: ["download_asset"], description: "下载页面资源" },
+      { toolNames: ["list_browser_profiles", "inspect_browser_profile", "save_browser_profile", "clear_browser_profile"], description: "管理浏览器配置" }
+    ],
     id: "web_research",
     availableDuringSetup: true,
     title: "网页检索与浏览",
@@ -186,6 +212,16 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    features: [
+      { toolNames: ["filesystem_list"], description: "浏览本地文件" },
+      { toolNames: ["filesystem_read"], description: "读取本地文本" },
+      { toolNames: ["filesystem_write", "filesystem_patch", "filesystem_move", "filesystem_copy", "filesystem_delete"], description: "编辑和整理本地文件" },
+      { toolNames: ["filesystem_search"], description: "搜索本地文件" },
+      { toolNames: ["filesystem_media_view", "filesystem_media_inspect"], description: "查看和精读本地图片" },
+      { toolNames: ["filesystem_send_to_chat"], description: "发送本地文件" },
+      { toolNames: ["workspace_create", "workspace_close", "workspace_export", "workspace_clone", "workspace_extract", "workspace_pack"], description: "创建和管理临时工作区" },
+      { toolNames: ["asset_export_to_filesystem"], description: "将登记资源导出到本地" }
+    ],
     id: "filesystem_io",
     availableDuringSetup: true,
     title: "本地文件",
@@ -218,6 +254,17 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    features: [
+      { toolNames: ["asset_list"], description: "查找已登记资源" },
+      { toolNames: ["start_download_resource", "read_download_resource", "pause_download_resource", "resume_download_resource", "cancel_download_resource"], description: "启动并管理资源下载" },
+      { toolNames: ["asset_document_overview", "asset_document_read", "asset_document_search"], description: "浏览和搜索登记文档" },
+      { toolNames: ["asset_document_inspect"], description: "精读登记文档" },
+      { toolNames: ["asset_media_view", "asset_media_inspect"], description: "查看和精读媒体" },
+      { toolNames: ["asset_image_transform"], description: "变换图片" },
+      { toolNames: ["asset_local_path"], description: "获取资源本地路径" },
+      { toolNames: ["asset_export_to_filesystem"], description: "导出资源到本地" },
+      { toolNames: ["asset_send_to_chat"], description: "发送已登记资源" }
+    ],
     id: "asset_io",
     availableDuringSetup: true,
     title: "登记资源",
@@ -249,6 +296,13 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ]
   },
   {
+    features: [
+      { toolNames: ["self_account_view"], description: "查看当前账号资料", signals: ["查看账号资料"] },
+      { toolNames: ["self_account_avatar_set", "self_account_signature_set"], description: "更新当前账号资料", signals: ["修改账号资料"] },
+      { toolNames: ["search_friends", "search_joined_groups"], description: "查找好友或已加入群", signals: ["查找联系人"] },
+      { toolNames: ["list_pending_friend_requests", "list_pending_group_requests", "respond_request"], description: "查看并处理好友或群请求", signals: ["好友或群申请审批"] },
+      { toolNames: ["set_chat_permission"], description: "设置聊天白名单权限", signals: ["聊天白名单"] }
+    ],
     id: "social_admin",
     title: "社交管理",
     description: "处理好友/群请求和聊天白名单。",
@@ -394,13 +448,20 @@ export function toToolsetView(
   if (filteredToolNames.length === 0) {
     return null;
   }
+  const partial = filteredToolNames.length !== toolset.toolNames.length;
+  const features = toolset.features?.filter((feature) => feature.toolNames.every((name) => visibleToolNames.has(name)));
+  const descriptions = features?.map((feature) => feature.description) ?? [];
+  const signals = features?.flatMap((feature) => feature.signals ?? [feature.description]) ?? [];
   return {
     id: toolset.id,
     title: toolset.title,
-    description: toolset.description,
+    description: !partial ? toolset.description
+      : descriptions.length ? `${descriptions.join("；")}。`
+      : `${toolset.title}；当前可用操作：${filteredToolNames.join("、")}。`,
     toolNames: filteredToolNames,
     ...(toolset.plannerSignals && toolset.plannerSignals.length > 0
-      ? { plannerSignals: toolset.plannerSignals }
+      ? { plannerSignals: !partial ? toolset.plannerSignals
+        : signals.length ? signals : filteredToolNames.map((name) => `使用 ${name}`) }
       : {})
   };
 }

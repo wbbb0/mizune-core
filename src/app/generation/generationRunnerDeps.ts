@@ -184,9 +184,9 @@ export type GenerationSessionOrchestratorDeps =
   Pick<GenerationRunnerDeps, "lifecycle">
   & {
     promptBuilder: Pick<GenerationPromptBuilderDeps, "config" | "contentSafetyService">;
-    sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager"> & {
+    sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager" | "messageQueue"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };
     identity: Pick<GenerationIdentityDeps, "userStore" | "personaStore" | "rpProfileStore" | "setupStore" | "scenarioHostStateStore" | "statefulRpStateStore" | "globalProfileReadinessStore" | "conversationAccess">;
-    toolRuntime: Pick<GenerationToolRuntimeDeps, "shellRuntime" | "browserService" | "downloadRuntime">;
+    toolRuntime: Pick<GenerationToolRuntimeDeps, "shellRuntime" | "browserService" | "downloadRuntime" | "oneBotClient" | "messaging">;
   };

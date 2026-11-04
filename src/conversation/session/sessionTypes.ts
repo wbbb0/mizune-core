@@ -32,6 +32,7 @@ export interface SessionParticipantRef {
 export type SessionTitleSource = "default" | "auto" | "manual";
 
 export interface SessionMessage {
+  actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
   replyContext?: MessageReplyContext;
   sourceRef?: TranscriptItemSourceRefContract;
   chatType: "private" | "group";

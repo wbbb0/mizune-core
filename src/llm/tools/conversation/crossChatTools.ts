@@ -1,3 +1,4 @@
+import { hasConnectorCapability } from "#services/messaging/connectorCapabilities.ts";
 import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOperator } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
@@ -16,7 +17,7 @@ type GroupListItem = Awaited<ReturnType<BuiltinToolContext["oneBotClient"]["getG
 export const crossChatToolDescriptors: ToolDescriptor[] = [
   {
     accessLevel: "operator",
-    requiresOneBot: true,
+    capabilities: { all: ["message.targets.read"] },
     definition: {
       type: "function",
       function: {
@@ -35,7 +36,7 @@ export const crossChatToolDescriptors: ToolDescriptor[] = [
   },
   {
     accessLevel: "operator",
-    requiresOneBot: true,
+    capabilities: { all: ["message.delegate"] },
     definition: {
       type: "function",
       function: {
@@ -86,6 +87,7 @@ export const crossChatToolHandlers: Record<string, ToolHandler> = {
 
     const deduped = new Map<string, { sessionId: string; source: string; title: string; type: "private" | "group" }>();
     for (const item of [...sessions, ...friends, ...groups]) {
+      if (!hasConnectorCapability(context.config, { sessionId: item.sessionId }, "message.delegate")) continue;
       if (!deduped.has(item.sessionId)) {
         deduped.set(item.sessionId, item);
       }
@@ -114,8 +116,8 @@ export const crossChatToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "sessionId and instruction are required" });
     }
     const parsed = parseChatSessionIdentity(sessionId);
-    if (!parsed) {
-      return JSON.stringify({ error: "Unsupported sessionId" });
+    if (!parsed || !hasConnectorCapability(context.config, { sessionId }, "message.delegate")) {
+      return JSON.stringify({ error: "目标会话连接不支持主动委派消息。" });
     }
 
     if (parsed.kind === "private") {

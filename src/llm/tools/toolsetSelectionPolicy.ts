@@ -1,8 +1,11 @@
+import { getBuiltinToolDescriptors } from "./toolRegistry.ts";
+import { resolveToolAvailability, type ToolAvailabilityContext } from "./core/toolAvailability.ts";
+import { resolveModeToolsetDefaults } from "./toolsetBoundary.ts";
 import { expandCharacterSetupToolsets } from "../../character/setupToolsets.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { BuiltinToolContext, Relationship, ToolVisibilityContext } from "./core/shared.ts";
-import { getDefaultSessionModeId, requireSessionModeDefinition } from "#modes/registry.ts";
+import { getDefaultSessionModeId } from "#modes/registry.ts";
 import type { SessionModeSetupToolsetOverride } from "#modes/types.ts";
 import { TOOLSET_DEFINITIONS, toToolsetView } from "./toolsetCatalog.ts";
 import type { ToolsetView } from "./toolsetCatalog.ts";
@@ -41,6 +44,8 @@ export interface ConfigurableSessionToolset {
   toolNames: string[];
   defaultEnabled: boolean;
   effectiveEnabled: boolean;
+  available: boolean;
+  unavailableReason: string | null;
   override: SessionToolsetOverride | null;
   ownerOnly: boolean;
   debugOnly: boolean;
@@ -120,22 +125,33 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
 
 export function listConfigurableSessionToolsets(
   modeId: string,
-  preferences: SessionToolsetPreferences
+  preferences: SessionToolsetPreferences,
+  availability?: ToolAvailabilityContext & { includeDebugTools?: boolean }
 ): ConfigurableSessionToolset[] {
   const modeDefaults = resolveModeToolsetDefaults(modeId);
+  const descriptors = availability ? getBuiltinToolDescriptors(availability.config) : [];
   return TOOLSET_DEFINITIONS.flatMap((toolset) => {
     const defaultEnabled = modeDefaults.get(toolset.id);
     if (defaultEnabled == null) {
       return [];
     }
     const override = preferences.overrides[toolset.id] ?? null;
+    const checks = availability ? descriptors
+      .filter((tool) => toolset.toolNames.includes(tool.definition.function.name))
+      .map((tool) => tool.debugOnly && !availability.includeDebugTools
+        ? { available: false, reason: "仅调试模式可用" }
+        : resolveToolAvailability(tool, availability)) : [];
+    const available = !availability || checks.some((check) => check.available);
+    const unavailableReason = available ? null : checks.find((check) => check.reason)?.reason ?? "当前会话没有可用工具";
     return [{
       id: toolset.id,
       title: toolset.title,
       description: toolset.description,
       toolNames: [...toolset.toolNames],
       defaultEnabled,
-      effectiveEnabled: resolveSessionToolsetEnabled(preferences, toolset.id, defaultEnabled),
+      effectiveEnabled: available && resolveSessionToolsetEnabled(preferences, toolset.id, defaultEnabled),
+      available,
+      unavailableReason,
       override,
       ownerOnly: toolset.ownerOnly === true,
       debugOnly: toolset.debugOnly === true
@@ -143,19 +159,6 @@ export function listConfigurableSessionToolsets(
   });
 }
 
-function resolveModeToolsetDefaults(modeId: string): Map<string, boolean> {
-  const mode = requireSessionModeDefinition(modeId);
-  const defaults = new Map<string, boolean>();
-  for (const toolset of TOOLSET_DEFINITIONS) {
-    if (toolset.modeUniversal) {
-      defaults.set(toolset.id, toolset.modeUniversal.defaultEnabled);
-    }
-  }
-  for (const policy of mode.toolsets) {
-    defaults.set(policy.toolsetId, policy.defaultEnabled);
-  }
-  return defaults;
-}
 
 export function resolveToolNamesFromToolsets(
   toolsets: ToolsetView[],
@@ -177,9 +180,9 @@ function listVisibleSharedToolsets(
   preferences: SessionToolsetPreferences
 ): ToolsetView[] {
   return TOOLSET_DEFINITIONS
-    .filter((toolset) => toolset.modeUniversal?.defaultEnabled === true
-      || (inSetup && toolset.availableDuringSetup === true
-        && resolveSessionToolsetEnabled(preferences, toolset.id, true)))
+    .filter((toolset) => (toolset.modeUniversal?.defaultEnabled === true
+      || inSetup && toolset.availableDuringSetup === true)
+      && resolveSessionToolsetEnabled(preferences, toolset.id, true))
     .filter((toolset) => isToolsetVisible(toolset, relationship, includeDebugTools))
     .map((toolset) => toToolsetView(toolset, visibleToolNames))
     .filter((toolset): toolset is ToolsetView => toolset != null);
@@ -199,9 +202,13 @@ function applySetupToolsetOverrides(
       .map((item) => ({
         id: item.toolsetId,
         title: item.title ?? item.toolsetId,
-        description: item.description ?? "",
+        description: item.toolNames.every((name) => visibleToolNames.has(name))
+          ? item.description ?? ""
+          : `当前可用操作：${item.toolNames.filter((name) => visibleToolNames.has(name)).join("、")}。`,
         toolNames: item.toolNames.filter((toolName) => visibleToolNames.has(toolName)),
-        ...(item.plannerSignals && item.plannerSignals.length > 0 ? { plannerSignals: item.plannerSignals } : {})
+        ...(item.plannerSignals && item.plannerSignals.length > 0 ? { plannerSignals: item.toolNames.every((name) => visibleToolNames.has(name))
+          ? item.plannerSignals
+          : item.toolNames.filter((name) => visibleToolNames.has(name)).map((name) => `使用 ${name}`) } : {})
       }))
       .filter((toolset) => toolset.toolNames.length > 0),
     ...visibleSharedToolsets.filter((toolset) => !overrideIds.has(toolset.id))

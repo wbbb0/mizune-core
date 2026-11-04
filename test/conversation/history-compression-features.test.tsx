@@ -751,3 +751,39 @@ test("topic compression candidates exclude summaries and reset after compaction"
     assert.equal(await compressor.forceCompact("qqbot:p:test", 1), false);
     assert.equal(sessionManager.getSession("qqbot:p:test").historySummary, null);
   });
+
+test("failed topic and required compression preserve history and release the in-flight lock", async () => {
+  const config = createConfig();
+  const manager = new SessionManager(config);
+  const id = "qqbot:p:compression-failure";
+  manager.ensureSession({ id, type: "private" });
+  for (let i = 0; i < 8; i++) appendSimpleHistory(manager, id, i % 2 ? "assistant" : "user", "历史正文".repeat(300), i + 1);
+  let fail = true;
+  const compressor = new HistoryCompressor(config, {
+    isConfigured: () => true,
+    async generate() { if (fail) throw new Error("summary unavailable"); return { text: "摘要" }; }
+  } as never, manager, { ensureReady: async () => new Map() } as never, pino({ level: "silent" }));
+  const revision = manager.getHistoryRevision(id);
+  await assert.rejects(compressor.compactOldHistoryKeepingRecent(id, 1), /summary unavailable/);
+  assert.equal(manager.getHistoryRevision(id), revision);
+  await assert.rejects(compressor.compactForRequest(id, 100, new AbortController().signal), /summary unavailable/);
+  assert.equal(manager.getHistoryRevision(id), revision);
+  fail = false;
+  assert.equal(await compressor.compactOldHistoryKeepingRecent(id, 1), true);
+});
+
+test("cancelled topic compression never applies a late summary", async () => {
+  const config = createConfig();
+  const manager = new SessionManager(config);
+  const id = "qqbot:p:compression-abort";
+  manager.ensureSession({ id, type: "private" });
+  for (let i = 0; i < 6; i++) appendSimpleHistory(manager, id, i % 2 ? "assistant" : "user", "旧消息".repeat(100), i + 1);
+  const abort = new AbortController();
+  const compressor = new HistoryCompressor(config, {
+    isConfigured: () => true,
+    async generate() { abort.abort(); return { text: "迟到的摘要" }; }
+  } as never, manager, { ensureReady: async () => new Map() } as never, pino({ level: "silent" }));
+  const revision = manager.getHistoryRevision(id);
+  await assert.rejects(compressor.compactOldHistoryKeepingRecent(id, 1, { abortSignal: abort.signal }), { name: "AbortError" });
+  assert.equal(manager.getHistoryRevision(id), revision);
+});

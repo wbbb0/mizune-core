@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { crossChatToolHandlers } from "../../src/llm/tools/conversation/crossChatTools.ts";
 
 import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-test-support.tsx";
+import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+
+function config(instanceName = "qqbot") {
+  const config = createTestAppConfig({ onebot: { enabled: true } });
+  config.configRuntime.instanceName = instanceName;
+  return config;
+}
 
   test("delegate_message_to_chat injects natural current-chat phrasing guidance", async () => {
     const createdJobs: any[] = [];
@@ -38,7 +45,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
             createdJobs.push({ scheduled: job.id });
           }
         } as any,
-        config: { scheduler: { defaultTimezone: "Asia/Shanghai" } } as any
+        config: config()
       } as any
     );
 
@@ -97,7 +104,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
             throw new Error("should not schedule job for npc target");
           }
         } as any,
-        config: { scheduler: { defaultTimezone: "Asia/Shanghai" } } as any
+        config: config()
       } as any
     );
 
@@ -149,7 +156,7 @@ import { createFunctionToolCall, parseJsonToolResult } from "../helpers/tool-tes
             throw new Error("should not schedule job for npc target");
           }
         } as any,
-        config: { scheduler: { defaultTimezone: "Asia/Shanghai" } } as any
+        config: config("dev")
       } as any
     );
 

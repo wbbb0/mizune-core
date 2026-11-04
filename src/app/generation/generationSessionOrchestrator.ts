@@ -1,3 +1,5 @@
+import { createGenerationFailureLifecycle } from "./generationFailureLifecycle.ts";
+import { createGenerationOutbound } from "./generationOutbound.ts";
 import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import { characterPersonaView } from "../../character/prompt.ts";
 import { characterRepository } from "../../character/repository.ts";
@@ -32,7 +34,7 @@ import {
   getProviderTranscriptProjectorForRequest,
   resolveProviderTranscriptProjectorName
 } from "./providerTranscriptProjector.ts";
-import { createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
+import { createGenerationFailureFallbackEvent, formatErrorDetails, createInternalTriggerEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { renderInlineTriggerBatchMessage } from "#llm/prompt/promptBuilder.ts";
 import { createSessionTranscriptStore } from "#conversation/session/sessionTranscriptStore.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
@@ -521,6 +523,57 @@ export function createGenerationSessionOrchestrator(
   const { shellRuntime } = toolRuntime;
   const { persistSession } = lifecycle;
 
+  const handlePreparationFailure = async (input: {
+    sessionId: string;
+    expectedEpoch: number;
+    responseEpoch: number;
+    abortController: AbortController;
+    responseAbortController: AbortController;
+    target: import("./generationExecutor.ts").GenerationSendTarget;
+    error: unknown;
+    committedTextSink?: GenerationCommittedTextSink | undefined;
+    draftOverlaySink?: GenerationDraftOverlaySink | undefined;
+  }): Promise<void> => {
+    const { sessionId, expectedEpoch, responseEpoch, abortController, responseAbortController } = input;
+    const failure = createGenerationFailureLifecycle({
+      logger, sessionId, stage: "prepare",
+      isCurrent: () => !abortController.signal.aborted && !responseAbortController.signal.aborted
+        && sessionManager.getMutationEpoch(sessionId) === expectedEpoch && sessionManager.isResponseOpen(sessionId, responseEpoch),
+      record: (error, failureMessage) => {
+        if (sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch,
+          createGenerationFailureFallbackEvent({ details: formatErrorDetails(error), failureMessage }))) {
+          persistSession(sessionId, "internal_transcript_updated");
+        }
+      }
+    });
+    try {
+      await failure.report(input.error, async message => {
+        // Synthetic official turns have no inbound reply permit. Keep the diagnostic locally.
+        if (input.target.delivery === "qq_official" && !input.target.replyContext) return;
+        const outbound = createGenerationOutbound({ logger, sessionManager, persistSession,
+          messageQueue: sessionRuntime.messageQueue, oneBotClient: toolRuntime.oneBotClient,
+          ...(toolRuntime.messaging ? { messaging: toolRuntime.messaging } : {}) }, {
+          sessionId, responseEpoch, abortController, responseAbortController,
+          sendTarget: input.target, committedTextSink: input.committedTextSink,
+          isCurrent: () => sessionManager.getMutationEpoch(sessionId) === expectedEpoch && sessionManager.isResponseOpen(sessionId, responseEpoch)
+        });
+        await outbound.enqueueChunk(message);
+        await outbound.finishStream();
+        await outbound.getDrainPromise();
+        await input.draftOverlaySink?.fail(message);
+      });
+    } finally {
+      if (sessionManager.finishGeneration(sessionId, abortController)) {
+        sessionManager.finalizeActiveAssistantResponseIfResponseEpochMatches(sessionId, responseEpoch, Date.now());
+        try { persistSession(sessionId, "generation_finished"); }
+        finally {
+          sessionManager.completeResponse(sessionId, responseEpoch);
+          services.processNextSessionWork(sessionId);
+        }
+      }
+    }
+  };
+
   const resolveSessionReplyDelivery = (
     sessionId: string,
     options?: {
@@ -742,11 +795,19 @@ export function createGenerationSessionOrchestrator(
           return;
         }
         if (gateResult.topicSwitchCompression) {
-          const compressed = await historyCompressor.compactOldHistoryKeepingRecent(
-            sessionId,
-            gateResult.topicSwitchCompression.preservedMessageCount,
-            { triggerReason: "turn_planner_topic_switch" }
-          );
+          let compressed = false;
+          try {
+            compressed = await historyCompressor.compactOldHistoryKeepingRecent(
+              sessionId,
+              gateResult.topicSwitchCompression.preservedMessageCount,
+              { triggerReason: "turn_planner_topic_switch", abortSignal: abortController.signal }
+            );
+          } catch (error) {
+            abortController.signal.throwIfAborted();
+            responseAbortController.signal.throwIfAborted();
+            // This optimization is optional. The executor still enforces every candidate's full request budget.
+            logger.warn({ err: error, sessionId }, "turn_planner_topic_switch_compression_failed");
+          }
           logger.info({
             sessionId,
             preservedMessageCount: gateResult.topicSwitchCompression.preservedMessageCount,
@@ -912,6 +973,7 @@ export function createGenerationSessionOrchestrator(
       const crossConversation = setupMode ? null : await crossConversationPreparation;
       const promptBuildResult = isPersonaSetupMode
         ? await services.promptBuilder.buildSetupPromptMessages({
+        replyDelivery: resolvedDelivery,
             historySummary: sessionManager.getSession(sessionId).historySummary,
             sessionId,
             interactionMode,
@@ -931,6 +993,7 @@ export function createGenerationSessionOrchestrator(
             contentSafetyAlreadyProjected: true
           })
         : await services.promptBuilder.buildChatPromptMessages({
+        replyDelivery: resolvedDelivery,
             crossConversationContext: crossConversation?.render,
             sessionId,
             modeId: sessionModeId,
@@ -976,6 +1039,7 @@ export function createGenerationSessionOrchestrator(
         sendTarget: {
           delivery: resolvedDelivery,
           ...(last.replyContext ? { replyContext: last.replyContext } : {}),
+          ...(last.actorAuthorization ? { actorAuthorization: last.actorAuthorization } : {}),
           chatType: last.chatType,
           userId: last.userId,
           ...(last.groupId ? { groupId: last.groupId } : {}),
@@ -1008,15 +1072,13 @@ export function createGenerationSessionOrchestrator(
         ...(options?.committedTextSink ? { committedTextSink: options.committedTextSink } : {}),
         ...(options?.draftOverlaySink ? { draftOverlaySink: options.draftOverlaySink } : {})
       });
-    })().catch((error: unknown) => {
-      if (sessionManager.isGenerating(sessionId)) {
-        logger.error({ err: error, sessionId }, "generation_prepare_failed");
-        if (sessionManager.finishGeneration(sessionId, abortController)) {
-          persistSession(sessionId, "generation_finished");
-          sessionManager.completeResponse(sessionId, responseEpoch);
-          services.processNextSessionWork(sessionId);
-        }
-      }
+    })().catch(async (error: unknown) => {
+      const last = messages[messages.length - 1]!;
+      await handlePreparationFailure({ sessionId, expectedEpoch, responseEpoch, abortController, responseAbortController, error,
+        target: { delivery: resolvedDelivery, chatType: last.chatType, userId: last.userId,
+          senderName: last.senderName, ...(last.groupId ? { groupId: last.groupId } : {}),
+          ...(last.replyContext ? { replyContext: last.replyContext } : {}) },
+        committedTextSink: options?.committedTextSink, draftOverlaySink: options?.draftOverlaySink });
     });
   };
 
@@ -1046,6 +1108,7 @@ export function createGenerationSessionOrchestrator(
       responseEpoch
     } = sessionManager.beginSyntheticGeneration(sessionId);
     const modelSelfUpgradeEnabled = generationSession.modelRoutingPreferences.selfUpgradeEnabled;
+    const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger });
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
       trigger,
@@ -1089,7 +1152,6 @@ export function createGenerationSessionOrchestrator(
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = characterPersonaView(config.dataDir);
-      const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger });
       const scheduledAvailableToolsets = listTurnToolsets({
         config,
         relationship: "owner",
@@ -1162,6 +1224,7 @@ export function createGenerationSessionOrchestrator(
         : undefined;
       const crossConversation = await crossConversationPreparation;
       const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
+        replyDelivery: scheduledReplyDelivery,
         crossConversationContext: crossConversation?.render,
         sessionId,
         modeId: session.modeId,
@@ -1228,15 +1291,12 @@ export function createGenerationSessionOrchestrator(
         availableToolsets: scheduledAvailableToolsets,
         streamResponse: false
       });
-    })().catch((error: unknown) => {
-      if (sessionManager.isGenerating(sessionId)) {
-        logger.error({ err: error, sessionId, triggerKind: trigger.kind, jobName: trigger.jobName }, "scheduled_generation_prepare_failed");
-        if (sessionManager.finishGeneration(sessionId, abortController)) {
-          persistSession(sessionId, "generation_finished");
-          sessionManager.completeResponse(sessionId, responseEpoch);
-          services.processNextSessionWork(sessionId);
-        }
-      }
+    })().catch(async (error: unknown) => {
+      await handlePreparationFailure({ sessionId, expectedEpoch, responseEpoch, abortController, responseAbortController, error,
+        target: { delivery: scheduledReplyDelivery, chatType: trigger.targetType,
+          userId: trigger.targetUserId ?? trigger.targetGroupId ?? sessionId,
+          senderName: trigger.targetSenderName,
+          ...(trigger.targetGroupId ? { groupId: trigger.targetGroupId } : {}) } });
       throw error;
     });
   };
@@ -1257,6 +1317,7 @@ export function createGenerationSessionOrchestrator(
       responseEpoch
     } = sessionManager.beginSyntheticGeneration(sessionId);
     const modelSelfUpgradeEnabled = generationSession.modelRoutingPreferences.selfUpgradeEnabled;
+    const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger: primaryTrigger });
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
     for (const trigger of triggers) {
       sessionManager.appendInternalTranscript(sessionId, createInternalTriggerEvent({
@@ -1302,7 +1363,6 @@ export function createGenerationSessionOrchestrator(
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = characterPersonaView(config.dataDir);
-      const scheduledReplyDelivery = resolveSessionReplyDelivery(sessionId, { trigger: primaryTrigger });
       const scheduledAvailableToolsets = listTurnToolsets({
         config,
         relationship: "owner",
@@ -1376,6 +1436,7 @@ export function createGenerationSessionOrchestrator(
       const inlineBatchMessage = renderInlineTriggerBatchMessage(triggers);
       const crossConversation = await crossConversationPreparation;
       const promptBuildResult = await services.promptBuilder.buildScheduledPromptMessages({
+        replyDelivery: scheduledReplyDelivery,
         crossConversationContext: crossConversation?.render,
         sessionId,
         modeId: session.modeId,
@@ -1443,15 +1504,12 @@ export function createGenerationSessionOrchestrator(
         availableToolsets: scheduledAvailableToolsets,
         streamResponse: false
       });
-    })().catch((error: unknown) => {
-      if (sessionManager.isGenerating(sessionId)) {
-        logger.error({ err: error, sessionId, triggerKinds: triggers.map((t) => t.kind) }, "inline_batch_generation_prepare_failed");
-        if (sessionManager.finishGeneration(sessionId, abortController)) {
-          persistSession(sessionId, "generation_finished");
-          sessionManager.completeResponse(sessionId, responseEpoch);
-          services.processNextSessionWork(sessionId);
-        }
-      }
+    })().catch(async (error: unknown) => {
+      await handlePreparationFailure({ sessionId, expectedEpoch, responseEpoch, abortController, responseAbortController, error,
+        target: { delivery: scheduledReplyDelivery, chatType: primaryTrigger.targetType,
+          userId: primaryTrigger.targetUserId ?? primaryTrigger.targetGroupId ?? sessionId,
+          senderName: primaryTrigger.targetSenderName,
+          ...(primaryTrigger.targetGroupId ? { groupId: primaryTrigger.targetGroupId } : {}) } });
       throw error;
     });
   };

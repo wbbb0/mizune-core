@@ -4,9 +4,11 @@ import assert from "node:assert/strict";
 import pino from "pino";
 import { createGenerationExecutor } from "../../src/app/generation/generationExecutor.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
 
-test("unrecoverable model failures send and persist an assistant fallback reply", async () => {
+for (const failureStage of ["model", "delivery"] as const) {
+test(`unrecoverable ${failureStage} failures send and persist an assistant fallback reply`, async () => {
   const config = createTestAppConfig({
     llm: {
       enabled: true
@@ -21,6 +23,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
   });
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const sentTexts: string[] = [];
+  const sendAttempts: string[] = [];
   const persistedReasons: string[] = [];
   let processNextCalled = 0;
 
@@ -37,7 +40,8 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
             return true;
         },
         async generate() {
-          throw new Error("LLM API error: 400 Bad Request {\"error\":{\"type\":\"content_filter\"}}");
+          if (failureStage === "model") throw new Error("LLM API error: 400 Bad Request {\"error\":{\"type\":\"content_filter\"}}");
+          return { text: "原始正文", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedTokens: null, reasoningTokens: 0, providerReported: false, requestCount: 1, modelRef: "main", model: "fake" } };
         }
       } as never,
       turnPlanner: {} as never,
@@ -67,6 +71,8 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
     toolRuntime: withMediaServices({
       oneBotClient: {
         async sendText(params: { text: string }) {
+          sendAttempts.push(params.text);
+          if (failureStage === "delivery" && sendAttempts.length === 1) throw new Error("injected body send failure");
           sentTexts.push(params.text);
           return {
             status: "ok",
@@ -130,7 +136,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
     }
   });
 
-  await executor.runGeneration({
+  const runInput = {
     sessionId,
     expectedEpoch: session.mutationEpoch,
     responseAbortController: started.responseAbortController,
@@ -142,7 +148,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
     internalTranscript: [],
     debugMarkers: [],
     currentUser: null as never,
-    persona: null as never,
+    persona: createEmptyPersona(),
     batchMessages: [{
       chatType: "private",
       userId: "owner",
@@ -185,7 +191,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       liveResources: [],
       debugMarkers: [],
       toolTranscript: [],
-      persona: null as never,
+      persona: createEmptyPersona(),
       globalRules: [],
       toolsetRules: [],
       currentUser: null as never,
@@ -195,7 +201,9 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
     },
     availableToolNames: [],
     streamResponse: true
-  });
+  } satisfies Parameters<typeof executor.runGeneration>[0];
+  if (failureStage === "delivery") await assert.rejects(executor.runGeneration(runInput), /injected body send failure/);
+  else await executor.runGeneration(runInput);
 
   assert.equal(processNextCalled, 1);
   assert.equal(sentTexts.length, 1);
@@ -217,8 +225,18 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
   assert.ok(fallbackEvent);
   assert.equal(fallbackEvent?.fallbackType, "generation_failure_reply");
   assert.equal(fallbackEvent?.failureMessage, sentTexts[0]);
-  assert.match(fallbackEvent?.details ?? "", /LLM API error: 400 Bad Request/);
+  assert.match(fallbackEvent?.details ?? "", failureStage === "model" ? /LLM API error: 400 Bad Request/ : /injected body send failure/);
   assert.ok(persistedReasons.includes("assistant_response_finalized"));
   assert.ok(persistedReasons.includes("generation_finished"));
   assert.ok(persistedReasons.includes("internal_transcript_updated"));
+  if (failureStage === "delivery") {
+    assert.deepEqual(sendAttempts, ["原始正文", sentTexts[0]]);
+    assert.equal(sessionManager.isGenerating(sessionId), false);
+    const next = sessionManager.beginSyntheticGeneration(sessionId);
+    await executor.runGeneration({ ...runInput, expectedEpoch: sessionManager.getMutationEpoch(sessionId),
+      abortController: next.abortController, responseAbortController: next.responseAbortController, responseEpoch: next.responseEpoch });
+    assert.equal(processNextCalled, 2);
+    assert.deepEqual(sentTexts, [fallbackEvent?.failureMessage, "原始正文"]);
+  }
 });
+}

@@ -209,19 +209,21 @@ test("self account avatar tool only exposes asset selectors and sends the resolv
 test("NapCat owner tools expose account management while hiding it from known users", async () => {
   const config = createTestAppConfig({
     onebot: {
+      enabled: true,
       provider: "napcat"
     },
     chatFiles: {
       enabled: true
     }
   });
-  const ownerNames = getBuiltinTools("owner", config).map((tool) => tool.function.name);
+  const options = { visibilityContext: { sessionId: `${config.configRuntime.instanceName}:p:owner`, replyDelivery: "onebot" as const } };
+  const ownerNames = getBuiltinTools("owner", config, undefined, options).map((tool) => tool.function.name);
   assert.ok(ownerNames.includes("self_account_view"));
   assert.ok(ownerNames.includes("self_account_avatar_set"));
   assert.ok(ownerNames.includes("self_account_signature_set"));
   assert.ok(ownerNames.includes("asset_image_transform"));
 
-  const knownNames = getBuiltinTools("known", config).map((tool) => tool.function.name);
+  const knownNames = getBuiltinTools("known", config, undefined, options).map((tool) => tool.function.name);
   assert.ok(!knownNames.includes("self_account_view"));
   assert.ok(!knownNames.includes("self_account_avatar_set"));
   assert.ok(!knownNames.includes("self_account_signature_set"));
@@ -340,6 +342,8 @@ async function createImageToolHarness() {
   const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir);
   await chatFileStore.init();
   const context = {
+    lastMessage: { sessionId: "web:image-transform", userId: "owner", senderName: "Owner" },
+    replyDelivery: "web",
     config,
     relationship: "owner",
     chatFileStore,

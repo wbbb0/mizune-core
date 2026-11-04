@@ -362,6 +362,8 @@ export interface SessionToolsetOption {
   toolNames: string[];
   defaultEnabled: boolean;
   effectiveEnabled: boolean;
+  available: boolean;
+  unavailableReason: string | null;
   override: "enabled" | "disabled" | null;
   ownerOnly: boolean;
   debugOnly: boolean;

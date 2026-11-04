@@ -26,6 +26,9 @@ function parseCanonicalToolJson<T>(result: unknown): T {
       { asset_ids: ["file_test_1"] },
       {
         config: createForwardFeatureConfig(),
+        lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" },
+        replyDelivery: "web",
+        projectionToolNames: ["asset_media_view", "asset_media_inspect", "asset_send_to_chat", "asset_local_path", "asset_export_to_filesystem"],
         audioStore: {
           async getTranscriptionMap() {
             return new Map();
@@ -106,6 +109,9 @@ function parseCanonicalToolJson<T>(result: unknown): T {
       { asset_ref: "chat_test0001.png" },
       {
         config: createForwardFeatureConfig(),
+        lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" },
+        replyDelivery: "web",
+        projectionToolNames: ["asset_media_view", "asset_media_inspect", "asset_send_to_chat", "asset_local_path", "asset_export_to_filesystem"],
         audioStore: {
           async getTranscriptionMap() {
             return new Map();
@@ -209,6 +215,9 @@ function parseCanonicalToolJson<T>(result: unknown): T {
       createFunctionToolCall("asset_media_view", "tool_visible_actions_1"),
       { asset_ids: ["file_test_1"] },
       {
+        config: createForwardFeatureConfig(),
+        lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" },
+        replyDelivery: "web",
         debugSnapshot: {
           visibleToolNames: ["asset_media_view"]
         },
@@ -256,7 +265,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
     assert.deepEqual(payload.next_actions, []);
     assert.deepEqual(
       payload.asset_handles[0].capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", true], ["inspect_media", false], ["send_to_chat", false], ["local_path", false], ["export_to_filesystem", false]]
+      [["view_media", true]]
     );
   });
 
@@ -414,6 +423,9 @@ function parseCanonicalToolJson<T>(result: unknown): T {
         createFunctionToolCall("filesystem_media_view", "tool_local_view_1"),
         { path: filePath },
         {
+          config: createForwardFeatureConfig(),
+          lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" },
+          replyDelivery: "web",
           debugSnapshot: {
             visibleToolNames: ["filesystem_media_view", "filesystem_media_inspect", "filesystem_send_to_chat"]
           },
@@ -448,7 +460,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
       assert.equal("asset_handle" in payload, false);
       assert.deepEqual(
         payload.handle_capabilities.map((item: { capability: string }) => item.capability),
-        ["read_text", "view_media", "inspect_media", "send_to_chat"]
+        ["view_media", "inspect_media", "send_to_chat"]
       );
       assert.deepEqual(
         payload.next_actions.map((item: { tool: string }) => item.tool),
@@ -468,6 +480,9 @@ function parseCanonicalToolJson<T>(result: unknown): T {
         createFunctionToolCall("filesystem_media_view", "tool_local_view_hidden"),
         { path: filePath },
         {
+          config: createForwardFeatureConfig(),
+          lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" },
+          replyDelivery: "web",
           debugSnapshot: {
             visibleToolNames: ["filesystem_media_view"]
           },
@@ -498,7 +513,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
       assert.deepEqual(payload.next_actions, []);
       assert.deepEqual(
         payload.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-        [["read_text", false], ["view_media", true], ["inspect_media", false], ["send_to_chat", false]]
+        [["view_media", true]]
       );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -625,6 +640,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
       createFunctionToolCall("download_message_file", "tool_file_download"),
       { file_id: "onebot-file-1", source_name: "report.pdf" },
       {
+        config: createForwardFeatureConfig(),
         lastMessage: {
           sessionId: "qqbot:p:10001",
           userId: "u1",

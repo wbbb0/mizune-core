@@ -23,7 +23,7 @@ async function fixture(run: (context: BuiltinToolContext, input: Parameters<type
   const dir = await mkdtemp(join(tmpdir(), "delivery-lifecycle-"));
   try {
     const file = join(dir, "image.png"); await writeFile(file, image);
-    const config = createTestAppConfig();
+    const config = createTestAppConfig({ qqOfficial: { enabled: true, appId: "test-app" } });
     const sessionManager = new SessionManager(config), messageQueue = new MessageQueue(logger, config);
     const sessionId = "qq_official.test-app:p:user";
     const session = sessionManager.ensureSession({ id: sessionId, type: "private", source: "qq_official" });
@@ -37,7 +37,7 @@ async function fixture(run: (context: BuiltinToolContext, input: Parameters<type
 }
 function response(body: unknown): QqHttpResponse { return { ok: true, status: 200, async json() { return body; } }; }
 
-for (const action of ["clear", "delete", "restore"] as const) test(`${action} during official upload aborts submission and never revives delivery or usage`, async () => fixture(async (context, input, manager, queue) => {
+for (const action of ["clear", "delete", "restore"] as const) test(`${action} during official upload aborts submission and never revives delivery or usage`, { timeout: 5000 }, async () => fixture(async (context, input, manager, queue) => {
   const started = deferred(), release = deferred();
   const calls: string[] = [];
   const client = new QqOfficialClient({ appId: "test-app", appSecret: "test-secret" }, logger, { fetch: async url => {
@@ -70,7 +70,7 @@ for (const action of ["clear", "delete", "restore"] as const) test(`${action} du
   assert.equal(result.status, action === "restore" ? "unknown" : "unavailable");
 }));
 
-test("bounded wait preserves the live send; scoped status query observes one accepted receipt", async () => fixture(async (context, input, manager) => {
+test("bounded wait preserves the live send; scoped status query observes one accepted receipt", { timeout: 5000 }, async () => fixture(async (context, input, manager) => {
   const started = deferred(), release = deferred(); let usage = 0, persisted = 0;
   context.persistSession = () => { persisted++; };
   context.messaging = { async sendMedia() { started.resolve(); await release.promise; return { platform: "qq_official", connectionId: "qq_official.test-app", messageId: "accepted" }; } } as any;

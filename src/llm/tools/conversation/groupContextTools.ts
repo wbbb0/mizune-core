@@ -5,7 +5,7 @@ import type {
   OneBotGroupFolderItem,
   OneBotGroupMemberItem
 } from "#services/onebot/types.ts";
-import type { BuiltinToolContext, ToolDescriptor, ToolHandler, ToolVisibilityContext } from "../core/shared.ts";
+import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
 import { currentGroupContextPolicy } from "../core/resultObservationPresets.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
@@ -24,8 +24,7 @@ const MAX_ANNOUNCEMENT_DETAIL_CHARS = 8000;
 
 export const groupContextToolDescriptors: ToolDescriptor[] = [
   {
-    isVisible: isVisibleInCurrentOneBotGroupChat,
-    requiresOneBot: true,
+    capabilities: { all: ["group.info.read"] },
     definition: {
       type: "function",
       function: {
@@ -41,8 +40,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
-    isVisible: isVisibleInCurrentOneBotGroupChat,
-    requiresOneBot: true,
+    capabilities: { all: ["group.files.read"] },
     definition: {
       type: "function",
       function: {
@@ -62,9 +60,8 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
-    isVisible: isVisibleInCurrentOneBotGroupChat,
     isEnabled: (config) => config.chatFiles.enabled,
-    requiresOneBot: true,
+    capabilities: { all: ["group.files.read"] },
     definition: {
       type: "function",
       function: {
@@ -86,8 +83,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
-    isVisible: isVisibleInCurrentOneBotGroupChat,
-    requiresOneBot: true,
+    capabilities: { all: ["group.announcements.read"] },
     definition: {
       type: "function",
       function: {
@@ -106,8 +102,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
-    isVisible: isVisibleInCurrentOneBotGroupChat,
-    requiresOneBot: true,
+    capabilities: { all: ["group.announcements.read"] },
     definition: {
       type: "function",
       function: {
@@ -130,8 +125,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
-    isVisible: isVisibleInCurrentOneBotGroupChat,
-    requiresOneBot: true,
+    capabilities: { all: ["group.members.read"] },
     definition: {
       type: "function",
       function: {
@@ -150,17 +144,6 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   }
 ];
-
-function isVisibleInCurrentOneBotGroupChat(context: ToolVisibilityContext): boolean {
-  if (!context.sessionId) {
-    return true;
-  }
-  if (context.replyDelivery === "web") {
-    return false;
-  }
-  const parsed = parseChatSessionIdentity(context.sessionId);
-  return parsed?.kind === "group" && parsed.source === "onebot";
-}
 
 export const groupContextToolHandlers: Record<string, ToolHandler> = {
   async view_current_group_info(_toolCall, _args, context) {

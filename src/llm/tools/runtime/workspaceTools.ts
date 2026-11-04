@@ -211,6 +211,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileMutationPolicy()
   },
   {
+    capabilities: { any: ["media.image.send", "media.audio.send", "media.file.send"] },
     definition: {
       type: "function",
       function: {
@@ -256,6 +257,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDesc
     resultObservation: chatFileListPolicy()
   },
   {
+    capabilities: { any: ["media.image.send", "media.audio.send", "media.file.send"] },
     definition: {
       type: "function",
       function: {

@@ -1,3 +1,6 @@
+import { resolveSessionBoundaryToolNames } from "./toolsetBoundary.ts";
+import { filterToolNextActions } from "./core/toolNextActions.ts";
+import { resolveToolAvailability, projectToolDefinition } from "./core/toolAvailability.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { executeCharacterSetupTool } from "../../character/setupToolExecution.ts";
 import { isCharacterSetupToolName } from "../../character/setupEditing.ts";
@@ -15,7 +18,7 @@ import type {
 import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { hasNativeSearchFeature } from "../provider/providerFeatures.ts";
-import { builtinToolHandlers, getBuiltinToolDescriptors } from "./toolRegistry.ts";
+import { executeBuiltinToolHandler, getBuiltinToolDescriptors } from "./toolRegistry.ts";
 import { projectRawToolContent } from "./core/toolResultProjection.ts";
 import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import {
@@ -23,21 +26,6 @@ import {
   resolveProfileToolScopeFromOperationMode,
   type ProfileToolScope
 } from "./profileToolScope.ts";
-
-function hasToolAccess(
-  tool: ToolDescriptor,
-  relationship: Relationship,
-  currentUser: BuiltinToolContext["currentUser"]
-): boolean {
-  const accessLevel = tool.accessLevel ?? (tool.ownerOnly ? "owner" : "any");
-  if (accessLevel === "any") {
-    return true;
-  }
-  if (accessLevel === "owner") {
-    return relationship === "owner";
-  }
-  return relationship === "owner" || currentUser?.specialRole === "npc";
-}
 
 interface BuiltinToolSelectionOptions {
   relationship: Relationship;
@@ -79,13 +67,7 @@ function selectBuiltinToolDescriptors(options: BuiltinToolSelectionOptions) {
   return modelSupportsTools
     ? descriptors
     .filter((tool) => tool.modelVisible !== false)
-    .filter((tool) => !tool.requiresOneBot || options.visibilityContext?.replyDelivery !== "qq_official")
-    .filter((tool) => !options.config || !tool.isEnabled || tool.isEnabled(
-      options.config,
-      options.modelRef ? { modelRef: options.modelRef } : {}
-    ))
-    .filter((tool) => hasToolAccess(tool, options.relationship, options.currentUser))
-    .filter((tool) => !tool.isVisible || tool.isVisible(options.visibilityContext ?? {}))
+    .filter((tool) => resolveToolAvailability(tool, options).available)
     .filter((tool) => options.includeDebugTools === true || tool.debugOnly !== true)
     .filter((tool) => !hideExternalSearchTool || !["ground_with_google_search", "search_with_iqs_lite_advanced"].includes(tool.definition.function.name))
     .filter((tool) => !profileScopedVisibleNames || profileScopedVisibleNames.has(tool.definition.function.name))
@@ -127,7 +109,7 @@ export function getBuiltinTools(
     ...(options?.visibilityContext ? { visibilityContext: options.visibilityContext } : {}),
     profileToolScope: options?.profileToolScope ?? resolveProfileToolScopeFromOperationMode(options?.operationMode)
   })
-    .flatMap((tool) => options?.forCatalog ? [tool.definition] : initializationToolDefinition(tool.definition, resolvedConfig?.dataDir, options?.visibilityContext?.sessionId, options?.operationMode))
+    .flatMap((tool) => options?.forCatalog ? [projectToolDefinition(tool, { config: resolvedConfig, visibilityContext: options?.visibilityContext })] : initializationToolDefinition(projectToolDefinition(tool, { config: resolvedConfig, visibilityContext: options?.visibilityContext }), resolvedConfig?.dataDir, options?.visibilityContext?.sessionId, options?.operationMode))
     .filter(tool => !isCharacterSetupToolName(tool.function.name)
       || options?.availableToolNames === undefined
       || options.availableToolNames.includes("edit_character_section")
@@ -172,22 +154,54 @@ export function createBuiltinToolExecutor(
       ...(options?.modelRef ? { modelRef: options.modelRef } : {}),
       ...(options?.availableToolNames ? { availableToolNames: options.availableToolNames } : {}),
       ...(options?.includeDebugTools === true ? { includeDebugTools: true } : {}),
-      visibilityContext: options?.visibilityContext ?? {
+      visibilityContext: {
         sessionId: context.lastMessage.sessionId,
-        replyDelivery: context.replyDelivery
+        replyDelivery: context.replyDelivery,
+        modelSelfUpgradeAvailable: options?.visibilityContext?.modelSelfUpgradeAvailable
       },
       profileToolScope: options?.profileToolScope ?? resolveProfileToolScopeFromOperationMode(options?.operationMode)
     })
       .map((tool) => tool.definition.function.name)
   );
 
+  const initialOperation = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
+  const operationKey = (operation: SessionOperationMode) => `${operation.kind}:${"modeId" in operation ? operation.modeId : ""}:${"stage" in operation ? operation.stage : ""}`;
   const expectedDraftId = options?.expectedCharacterDraftId !== undefined
     ? options.expectedCharacterDraftId
     : allowedToolNames.has("edit_character_section")
       ? characterRepository(context.config.dataDir).draft(context.lastMessage.sessionId)?.id ?? null
       : null;
 
+  const resolveCurrentToolNames = () => {
+    const currentMode = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
+    const currentTools = new Set(selectBuiltinToolDescriptors({
+      relationship: context.relationship, currentUser: context.currentUser, config: context.config,
+      ...(options?.modelRef ? { modelRef: options.modelRef } : {}),
+      includeDebugTools: options?.includeDebugTools === true,
+      visibilityContext: { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery, modelSelfUpgradeAvailable: options?.visibilityContext?.modelSelfUpgradeAvailable },
+      profileToolScope: resolveProfileToolScopeFromOperationMode(currentMode)
+    }).map(tool => tool.definition.function.name));
+    const session = context.sessionManager.getSession(context.lastMessage.sessionId);
+    if (session) {
+      const boundary = resolveSessionBoundaryToolNames(session.modeId, session.toolsetPreferences, currentMode);
+      for (const name of currentTools) if (!boundary.has(name) && !["list_available_toolsets", "request_toolset", "request_model_upgrade"].includes(name)) currentTools.delete(name);
+    }
+    return currentTools;
+  };
+
   const execute = async (toolCall: LlmToolCall, args: unknown): Promise<string | LlmToolExecutionResult> => {
+    if (context.resolveActorAuthorization) {
+      const actor = await context.resolveActorAuthorization();
+      if (!actor) return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: "触发者身份已变化，本轮工具授权失效。" }));
+      context.relationship = actor.relationship;
+      context.currentUser = actor.currentUser;
+    }
+    const currentMode = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
+    if (operationKey(currentMode) !== operationKey(initialOperation)) return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: "会话配置阶段已变化，本轮工具授权失效。" }));
+    const currentTools = resolveCurrentToolNames();
+    context.projectionToolNames = [...currentTools].filter(name => allowedToolNames.has(name));
+    const baseName = isCharacterSetupToolName(toolCall.function.name) ? "edit_character_section" : toolCall.function.name;
+    if (!currentTools.has(baseName)) return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: "当前权限、会话模式或连接能力已不允许此工具。" }));
     if (isCharacterSetupToolName(toolCall.function.name) && allowedToolNames.has("edit_character_section")
       && (options?.availableToolNames === undefined || options.availableToolNames.includes("edit_character_section")
         || options.availableToolNames.includes(toolCall.function.name))) {
@@ -198,12 +212,7 @@ export function createBuiltinToolExecutor(
         error: `Tool is not available in the current model toolset: ${toolCall.function.name}`
       }));
     }
-    const handler = builtinToolHandlers[toolCall.function.name];
-    if (!handler) {
-      return projectRawToolContent(toolCall.function.name, JSON.stringify({
-        error: `Unsupported contextual tool: ${toolCall.function.name}`
-      }));
-    }
+    const handler = executeBuiltinToolHandler;
     const operation = isScenarioSetupToolName(toolCall.function.name) ? context.sessionManager.getOperationMode(context.lastMessage.sessionId) : undefined;
     if (isScenarioSetupTool(toolCall.function.name, operation)) {
       const descriptor = getBuiltinToolDescriptors(context.config).find(tool => tool.definition.function.name === toolCall.function.name)!;
@@ -211,7 +220,7 @@ export function createBuiltinToolExecutor(
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
       try {
-        const result = await handler(toolCall, args, { ...context });
+        const result = await handler(toolCall, args, { ...context, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
         if (typeof result !== "string") return result;
         let parsed: { error?: unknown };
         try { parsed = JSON.parse(result); } catch { return projectRawToolContent(toolCall.function.name, result); }
@@ -227,7 +236,7 @@ export function createBuiltinToolExecutor(
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
     }
-    const result = await handler(toolCall, args, { ...context });
+    const result = await handler(toolCall, args, { ...context, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
     return typeof result === "string"
       ? projectRawToolContent(toolCall.function.name, result)
       : result;
@@ -235,9 +244,28 @@ export function createBuiltinToolExecutor(
   return async (toolCall, args) => {
     const name = toolCall.function.name;
     const candidate = isCharacterSetupToolName(name) || ["list_character_sections", "read_character_section", "edit_character_section"].includes(name) || isScenarioSetupToolName(name);
-    if (!candidate) return execute(toolCall, args);
+    const run = async () => {
+      const result = await execute(toolCall, args);
+      const content = typeof result === "string" ? result : result.content;
+      try {
+        const parsed: unknown = JSON.parse(content);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return result;
+        const nowAvailable = new Set([...resolveCurrentToolNames()].filter(name => allowedToolNames.has(name)));
+        const filtered = JSON.stringify(filterToolNextActions(parsed as Record<string, unknown>, nowAvailable));
+        if (typeof result === "string") return filtered;
+        let canonicalContent = result.canonicalContent;
+        if (canonicalContent) {
+          try {
+            const canonical: unknown = JSON.parse(canonicalContent);
+            if (canonical && typeof canonical === "object" && !Array.isArray(canonical)) canonicalContent = JSON.stringify(filterToolNextActions(canonical as Record<string, unknown>, nowAvailable));
+          } catch { /* Non-JSON canonical content has no controlled action envelope. */ }
+        }
+        return { ...result, content: filtered, ...(canonicalContent !== undefined ? { canonicalContent } : {}) };
+      } catch { return result; }
+    };
+    if (!candidate) return run();
     const operation = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
     const setup = operation.kind === "character_config" || isScenarioSetupTool(name, operation);
-    return setup ? executeSetupAttempt(context, name, args, () => execute(toolCall, args)) : execute(toolCall, args);
+    return setup ? executeSetupAttempt(context, name, args, run) : run();
   };
 }

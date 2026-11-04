@@ -429,7 +429,11 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       listSessionSummaries() { return state.sessions.map((session) => getSessionSummary(session as any)); },
       getSessionSummary(id: string) { const session = state.sessions.find((session) => session.id === id); return session ? getSessionSummary(session as any) : null; },
       listSessions() {
-        return state.sessions;
+        return state.sessions.map((session) => ({
+          ...session,
+          replyDelivery: session.source === "web" ? "web" : session.source,
+          debugControl: { enabled: false, oncePending: false }
+        }));
       },
       getSessionView(sessionId: string) {
         const session = state.sessions.find((item) => item.id === sessionId) ?? state.sessions[0]!;

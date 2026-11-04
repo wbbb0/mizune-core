@@ -1,3 +1,4 @@
+import { getRequestDiagnostic } from "#llm/provider/requestDiagnostics.ts";
 import { ImageGenerationError } from "#services/images/imageGenerationError.ts";
 import { generateConfiguredImage, isImageGenerationAvailable } from "#services/images/imageGeneration.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
@@ -76,7 +77,7 @@ export const imageGenerationToolHandlers: Record<string, ToolHandler> = {
       });
     } catch (error) {
       return JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error),
-        ...(error instanceof ImageGenerationError ? { detail: error.details } : {}) });
+        ...(error instanceof ImageGenerationError ? { detail: { ...error.details, ...(getRequestDiagnostic(error) ? { requestDiagnostic: getRequestDiagnostic(error) } : {}) } } : getRequestDiagnostic(error) ? { detail: { requestDiagnostic: getRequestDiagnostic(error) } } : {}) });
     }
   }
 };

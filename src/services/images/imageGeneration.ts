@@ -1,3 +1,4 @@
+import type { Logger } from "pino";
 import { ImageGenerationError, imageApiFailure, imageTransportFailure } from "./imageGenerationError.ts";
 import { buildImageRequestParameters } from "./imageRequestParameters.ts";
 import { fetchProviderResponse, withProviderExchangeDump } from "#llm/provider/providerExchangeDump.ts";
@@ -38,6 +39,7 @@ export interface GeneratedImage {
 /** 一次调用只生成一张图片，不自动重试或切换模型，以免重复生成及计费。 */
 export async function generateConfiguredImage(config: AppConfig, input: {
   prompt: string;
+  logger?: Logger;
   skipDebugDump?: boolean;
   size?: string;
   referenceImages?: ImageEditSource[];
@@ -49,7 +51,7 @@ export async function generateConfiguredImage(config: AppConfig, input: {
   if (input.mask && !editing) throw new Error("局部编辑蒙版必须与参考图一起提供");
   const target = resolveImageModel(config, editing);
   if (!target) throw new Error("未配置声明支持参考图编辑的 Images API 模型");
-  return withProviderExchangeDump({ config, modelRef: target.modelRef, model: target.profile.model }, input.skipDebugDump, async () => {
+  return withProviderExchangeDump({ config, modelRef: target.modelRef, model: target.profile.model, ...(input.logger ? { logger: input.logger } : {}) }, input.skipDebugDump, async () => {
     const prompt = input.prompt.trim();
     if (!prompt) throw new Error("图片描述不能为空");
     const settings = buildImageRequestParameters(target.profile, target.provider, input.size?.trim(), editing);

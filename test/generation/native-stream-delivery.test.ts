@@ -9,12 +9,13 @@ function deferred() {
   return { promise, resolve };
 }
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
-function fixture(options: { initialBarrier?: Promise<void>; failSeal?: boolean } = {}) {
+function fixture(options: { initialBarrier?: Promise<void>; failSeal?: boolean; isCurrent?: () => boolean } = {}) {
   const controller = new AbortController();
   const events: string[] = [];
   const registry = new QqReplyPermitRegistry("qq_official.app");
   const permit = registry.issue({ chatType: "private", targetId: "user", messageId: "incoming", timestampMs: Date.now() });
   const writer = new NativeStreamDelivery({
+    isCurrent: options.isCurrent,
     initialBarrier: options.initialBarrier ?? Promise.resolve(), signals: () => [controller.signal],
     scheduleStart: async (_text, signal, send) => { await Promise.resolve(); if (!signal.aborted) await send(); },
     captureOpen: () => () => {
@@ -128,4 +129,43 @@ test("concurrent finish calls both wait for the same seal", async () => {
   gate.resolve();
   await Promise.all([first, second]);
   assert.equal(sealed, true);
+});
+
+
+test("superseded open native streams interrupt before append and finish", async () => {
+  for (const action of ["append", "finish"] as const) {
+    let current = true;
+    const f = fixture({ isCurrent: () => current });
+    f.writer.append("已打开");
+    await tick();
+    current = false;
+    if (action === "append") f.writer.append("过期后缀");
+    await f.writer.finish();
+    assert.ok(f.events.includes("interrupt"));
+    assert.equal(f.events.some(event => event.startsWith("seal:")), false);
+    assert.equal(f.events.includes("text:过期后缀"), false);
+  }
+});
+
+test("a native receipt arriving after epoch change cannot update current history", async () => {
+  let current = true;
+  let accepted = 0;
+  const seal = deferred();
+  const writer = new NativeStreamDelivery({
+    isCurrent: () => current, initialBarrier: Promise.resolve(), signals: () => [],
+    scheduleStart: async (_text, _signal, send) => { await send(); },
+    captureOpen: () => () => ({ receipt: null, append() {},
+      async finish() { await seal.promise; return { acceptedText: "旧正文", connectionId: "app", messageId: "old" } as never; },
+      async interrupt() { return null; }
+    }),
+    accepted() { accepted++; }, onCloseError() {}
+  });
+  writer.append("旧正文");
+  await tick();
+  const finishing = writer.finish();
+  await tick();
+  current = false;
+  seal.resolve();
+  await finishing;
+  assert.equal(accepted, 0);
 });

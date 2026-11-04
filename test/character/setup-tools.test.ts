@@ -19,7 +19,7 @@ function fixture(stage = "social") {
   if (stage === "state") { store.begin("s", "embodiment", "setup", "stateful_rp"); store.confirm("s", "stateful_rp"); }
   const draft = store.ensureSetup("s", "stateful_rp")!;
   const ctx = { config, relationship: "owner", currentUser: null, lastMessage: { sessionId: "s" },
-    sessionManager: { getSession: () => ({ modeId: "stateful_rp" }), getOperationMode: () => ({ kind: "character_config", stage: draft.stage }) }
+    sessionManager: { getSession: () => ({ modeId: "stateful_rp", toolsetPreferences: { overrides: {} } }), getOperationMode: () => ({ kind: "character_config", stage: draft.stage }) }
   } as unknown as BuiltinToolContext;
   const availableToolNames = ["list_character_sections", "read_character_section", "edit_character_section"];
   const call = async (name: string, args: unknown, allowed = availableToolNames) => {
@@ -149,7 +149,7 @@ test("Scenario 初始化执行器校验枚举/未知字段并拒绝编码对象�
   const config = createTestAppConfig(); let state: any = { flags: {}, mechanics: { ruleStyle: "freeform", dicePolicy: "", difficultyScale: "", successStates: [] } };
   let writes = 0; let operation: any = { kind: "mode_setup", modeId: "scenario_host", draft: {} };
   const context = { config, relationship: "owner", currentUser: null, lastMessage: { sessionId: "s" }, sessionManager: {
-    getOperationMode: () => operation, getModeId: () => "scenario_host", getSession: () => ({ id: "s", type: "private", participantRef: { kind: "user", id: "owner" } })
+    getOperationMode: () => operation, getModeId: () => "scenario_host", getSession: () => ({ id: "s", type: "private", modeId: "scenario_host", toolsetPreferences: { overrides: {} }, participantRef: { kind: "user", id: "owner" } })
   }, scenarioHostStateStore: { update: async (_id: string, updater: any) => { writes++; state = updater(state); return state; } } } as unknown as BuiltinToolContext;
   const execute = createBuiltinToolExecutor(context, { availableToolNames: ["update_scenario_state"] });
   const run = async (args: unknown) => {

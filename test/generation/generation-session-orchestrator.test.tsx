@@ -1023,7 +1023,8 @@ test("normal prompt receives task tracker changes from the current user batch", 
   assert.deepEqual(capturedTaskTracker?.primary?.next, ["确认用户是要暂停、取消，还是稍后继续。"]);
 });
 
-test("normal prompt receives task tracker changes from turn planner intent", async () => {
+for (const compressionFails of [false, true]) {
+test(`normal prompt receives task tracker changes from turn planner intent (compression failure: ${compressionFails})`, async () => {
   const config = createTestAppConfig({
     conversation: { historyCompression: { enabled: true } },
     llm: {
@@ -1096,6 +1097,7 @@ test("normal prompt receives task tracker changes from turn planner intent", asy
           },
           async compactOldHistoryKeepingRecent() {
             statusDuringTopicCompaction = sessionManager.getSession(sessionId).taskTracker.primary?.status ?? null;
+            if (compressionFails) throw new Error("injected optional topic compression failure");
             return false;
           }
         },
@@ -1219,6 +1221,7 @@ test("normal prompt receives task tracker changes from turn planner intent", asy
   assert.equal(capturedTaskTracker?.primary?.status, "suspended");
   assert.equal(statusDuringTopicCompaction, "suspended");
 });
+}
 
 test("turn planner receives content-safety projected history and batch", async () => {
   const config = createTestAppConfig({

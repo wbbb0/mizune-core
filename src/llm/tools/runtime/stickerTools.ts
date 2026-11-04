@@ -3,7 +3,7 @@ import type { ToolDescriptor, ToolHandler, BuiltinToolContext } from "../core/sh
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 import { stickerUsagePatchSchema, type StickerRecord } from "#services/stickers/stickerStore.ts";
 import { sendImageBytesToChat } from "../core/chatMediaDelivery.ts";
-import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
+import { hasConnectorCapability } from "#services/messaging/connectorCapabilities.ts";
 
 const id = z.string().trim().min(1);
 const revision = z.number().int().positive();
@@ -28,10 +28,11 @@ const descriptions: Record<keyof typeof schemas, string> = {
   sticker_qq_list: "只读获取当前NapCat账号已有收藏的图片URL清单，返回可用于sticker_collect的qq_url；不自动导入、不修改QQ收藏。按需挑选收藏，收藏时再进行图片理解。"
 };
 export const stickerToolDescriptors: ToolDescriptor[] = (Object.keys(schemas) as Array<keyof typeof schemas>).map((name) => ({
-  requiresOneBot: name === "sticker_qq_list",
+  ...(name === "sticker_qq_list" ? { capabilities: { all: ["sticker.native_collection.read" as const] } } : {}),
+  ...(name === "sticker_collect" ? { parameterCapabilities: { qq_url: "sticker.native_collection.read" as const }, descriptionWithoutParameters: "收藏值得长期复用的已有图片asset_id；填写简短reason。达到上限时提供replace_id和replace_revision原子替换。" } : {}),
+  ...(name === "sticker_send" ? { capabilities: { all: ["media.image.send" as const] } } : {}),
   definition: { type: "function", function: { name, description: descriptions[name], parameters: z.toJSONSchema(schemas[name], { io: "input" }) } },
-  isEnabled: (config) => config.stickers.enabled && config.chatFiles.enabled && (name !== "sticker_qq_list" || (config.onebot.enabled && config.onebot.provider === "napcat")),
-  ...(name === "sticker_qq_list" ? { isVisible: (context: { sessionId?: string | undefined }) => parseChatSessionIdentity(context.sessionId ?? "")?.source === "onebot" } : {}),
+  isEnabled: (config) => config.stickers.enabled && config.chatFiles.enabled,
   resultObservation: keepRawUnlessLargePolicy({ replaySafe: name === "sticker_search" || name === "sticker_qq_list" })
 }));
 
@@ -44,8 +45,7 @@ function service(context: BuiltinToolContext) {
   return context.stickerService;
 }
 function assertNativeCollectionAccess(context: BuiltinToolContext): void {
-  const source = parseChatSessionIdentity(context.lastMessage.sessionId);
-  if (!context.config.onebot.enabled || context.config.onebot.provider !== "napcat" || source?.source !== "onebot" || source.channelId !== context.config.configRuntime.instanceName) {
+  if (!hasConnectorCapability(context.config, { sessionId: context.lastMessage.sessionId }, "sticker.native_collection.read")) {
     throw new Error("QQ原生收藏仅限当前NapCat连接的OneBot会话使用。");
   }
 }

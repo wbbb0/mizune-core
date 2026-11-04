@@ -1,3 +1,6 @@
+import { TOOLSET_DEFINITIONS } from "#llm/tools/toolsetCatalog.ts";
+
+const CATALOG_TOOL_NAMES = new Set(TOOLSET_DEFINITIONS.flatMap((toolset) => toolset.toolNames));
 import { buildTag as buildTagHint } from "#utils/structuredEnvelope.ts";
 import { buildScenarioHostToolHintLines } from "#modes/scenarioHost/toolHints.ts";
 
@@ -23,7 +26,9 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   if (visibleToolNames.has("resolve_media_reference")) lines.push("pending_media 表示媒体来源已登记但尚未下载成功；需要其内容时用 resolve_media_reference 补下载，取得 asset_handle 后再查看。来源过期或平台未提供来源时明确说明不可用，不要编造图像内容。");
 
   if (hasAnyTool(visibleToolNames, ["view_current_group_info", "list_current_group_announcements", "view_current_group_announcement", "list_current_group_files", "download_current_group_file", "list_current_group_members"])) {
-    lines.push("当前群工具只能读取本会话所在群；查询群公告、群文件或群成员时用 query 缩小范围，并设置合理 limit；公告全文用 view_current_group_announcement 按 startLine/lineCount 分段查看；群文件先 list_current_group_files 再 download_current_group_file。");
+    lines.push("当前群工具只能读取本会话所在群；对提供 query 和 limit 的查询工具，缩小范围并设置合理条数。");
+    if (visibleToolNames.has("view_current_group_announcement")) lines.push("群公告全文用 view_current_group_announcement 按 startLine/lineCount 分段查看。");
+    if (visibleToolNames.has("list_current_group_files") && visibleToolNames.has("download_current_group_file")) lines.push("群文件先 list_current_group_files 再 download_current_group_file。");
   }
 
   if (visibleToolNames.has("generate_image_with_comfyui")) {
@@ -67,7 +72,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
         visibleToolNames.has("download_asset") ? "download_asset" : "",
         visibleToolNames.has("capture_screenshot") ? "capture_screenshot" : ""
       ].filter(Boolean).join("/");
-      lines.push(`${fileTools} 短下载会直接返回 asset_handle；长下载会返回 download resource_id，完成或失败后会自动触发，也可用 read_download_resource 主动查看状态。`);
+      lines.push(`${fileTools} 短下载会直接返回 asset_handle；长下载会返回 download resource_id，完成或失败后会自动触发。`);
+      if (visibleToolNames.has("read_download_resource")) lines.push("也可用 read_download_resource 主动查看下载状态。");
     }
   }
 
@@ -85,7 +91,7 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["list_available_toolsets", "request_toolset"])) {
-    lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先 list_available_toolsets，再用 request_toolset 申请补充，避免盲猜工具名。");
+    lines.push("当前工具按工具集分批暴露；若发现缺少完成任务所需能力，先 list_available_toolsets，再从可申请集合用 request_toolset 申请补充；申请成功并在后续工具列表出现后才可调用。目录不代表本轮已激活，也不要反复申请目录中没有的能力。");
   }
 
   if (visibleToolNames.has("request_model_upgrade")) {
@@ -93,8 +99,9 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["asset_list", "asset_media_view", "asset_send_to_chat"])) {
-    lines.push("查已登记图片、视频、音频或文件时先 asset_list；发送用 asset_send_to_chat(asset_ref=...)。");
-    if (hasAnyTool(visibleToolNames, ["asset_local_path", "asset_export_to_filesystem"])) {
+    if (visibleToolNames.has("asset_list")) lines.push("查已登记图片、视频、音频或文件时先 asset_list。");
+    if (visibleToolNames.has("asset_send_to_chat")) lines.push("发送用 asset_send_to_chat(asset_ref=...)；只发送该 asset_handle.capabilities 中允许发送的资源。");
+    if (visibleToolNames.has("asset_export_to_filesystem")) {
       lines.push("需要把 asset 复制到本地目录时用 asset_export_to_filesystem。");
     }
     if (visibleToolNames.has("asset_image_transform")) {
@@ -107,7 +114,11 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["list_live_resources", "read_download_resource", "cancel_download_resource"])) {
-    lines.push("用户要求从明确 URL 下载文件时用 start_download_resource；后台下载用 list_live_resources(type=download) 查找，read_download_resource 查看状态，pause_download_resource/resume_download_resource 暂停或续传；下载完成后结果会提示可用的 asset_* 后续工具。");
+    if (visibleToolNames.has("start_download_resource")) lines.push("用户要求从明确 URL 下载文件时用 start_download_resource。");
+    if (visibleToolNames.has("list_live_resources")) lines.push("后台下载用 list_live_resources(type=download) 查找。");
+    if (visibleToolNames.has("read_download_resource")) lines.push("用 read_download_resource 查看下载状态；下载完成后结果会提示可用的后续工具。");
+    if (visibleToolNames.has("pause_download_resource")) lines.push("用 pause_download_resource 暂停下载。");
+    if (visibleToolNames.has("resume_download_resource")) lines.push("用 resume_download_resource 恢复下载。");
   }
 
   if (hasAnyTool(visibleToolNames, ["asset_media_inspect", "filesystem_media_inspect"])) {
@@ -115,7 +126,9 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
   }
 
   if (hasAnyTool(visibleToolNames, ["filesystem_media_view", "filesystem_send_to_chat", "filesystem_read", "filesystem_search", "filesystem_delete"])) {
-    lines.push("filesystem_* 处理本地文件；本地图片查看用 filesystem_media_view，本地文件发送用 filesystem_send_to_chat。");
+    lines.push("filesystem_* 处理本地文件。");
+    if (visibleToolNames.has("filesystem_media_view")) lines.push("本地图片查看用 filesystem_media_view。");
+    if (visibleToolNames.has("filesystem_send_to_chat")) lines.push("本地文件发送用 filesystem_send_to_chat。");
     if (visibleToolNames.has("filesystem_copy")) {
       lines.push("复制本地文件用 filesystem_copy；目录发送/复制暂未开放。");
     }
@@ -201,5 +214,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push("create_scheduled_job 的 instruction 要写成触发当时能独立执行的完整任务；不要依赖“刚才这轮对话”的隐含上下文。");
   }
 
-  return lines;
+  // A shared hint may mention several operations. Keep it only when every
+  // referenced catalog tool is actually present in this turn's schema.
+  return lines.filter((line) => [...line.matchAll(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g)]
+    .every(([name]) => !CATALOG_TOOL_NAMES.has(name) || visibleToolNames.has(name)));
 }

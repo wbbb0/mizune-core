@@ -9,6 +9,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
 
   test("web message context preserves pre-resolved attachments and image ids", async () => {
     const incomingMessage: ParsedIncomingMessage = {
+      source: "web",
       chatType: "private",
       userId: "2254600711",
       senderName: "assistant_1",

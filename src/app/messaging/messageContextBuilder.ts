@@ -18,7 +18,7 @@ export async function createMessageProcessingContext(
 ): Promise<MessageProcessingContext> {
   const channelId = incomingMessage.channelId ?? "qqbot";
   const externalUserId = incomingMessage.externalUserId ?? incomingMessage.userId;
-  const resolvedUserId = options?.delivery === "web"
+  const resolvedUserId = incomingMessage.source === "web"
     ? incomingMessage.userId
     : (await services.userIdentityStore.ensureUserIdentity({
         channelId: incomingMessage.source === "qq_official" && incomingMessage.chatType === "group"
@@ -44,6 +44,11 @@ export async function createMessageProcessingContext(
   const { remoteAttachments: _remote, ...messageWithoutRemoteAttachments } = incomingMessage;
   const enrichedMessage = {
     ...messageWithoutRemoteAttachments, channelId, externalUserId, userId: resolvedUserId,
+    actorAuthorization: incomingMessage.source === "web"
+      ? { kind: "web" as const, internalUserId: resolvedUserId }
+      : { kind: "external" as const, internalUserId: resolvedUserId, externalId: externalUserId,
+          channelId: incomingMessage.source === "qq_official" && incomingMessage.chatType === "group" ? `${channelId}.group.${incomingMessage.groupId}` : channelId,
+          scope: incomingMessage.source === "qq_official" && incomingMessage.chatType === "group" ? "group_member" as const : "private_user" as const },
     ...imported
   };
 

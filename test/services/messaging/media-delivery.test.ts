@@ -44,11 +44,14 @@ test("native sticker metadata is encoded only by OneBot; official receives the b
 }));
 
 test("chat media helper queues a neutral file request and updates one queued record through acceptance", async () => localMedia(async (absolutePath) => {
+  const config = createTestAppConfig({ onebot: { enabled: true, provider: "napcat" } });
+  config.configRuntime.instanceName = "bot";
   const queued: Array<() => Promise<void>> = [], requests: unknown[] = [], transcript: any[] = [];
   const context = {
+    config,
     replyDelivery: "onebot", lastMessage: { sessionId: "bot:p:123" },
     messageQueue: deferredMediaQueue(queued),
-    sessionManager: createMediaTestSessions(createTestAppConfig(), ["bot:p:123"], transcript),
+    sessionManager: createMediaTestSessions(config, ["bot:p:123"], transcript),
     messaging: { sendMedia: async (_address: unknown, input: unknown) => { requests.push(input); return { platform: "onebot", messageId: 7 }; } }
   } as unknown as BuiltinToolContext;
   await sendImageBytesToChat(context, { absolutePath, previewText: "图片", sourceName: "image.png", fileId: "asset", fileRef: "image.png", chatFilePath: "image.png", sourcePath: null, toolName: "asset_send_to_chat", outputExtras: {} });

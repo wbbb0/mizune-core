@@ -125,6 +125,7 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
     sessionRuntime: {
       logger: deps.sessionRuntime.logger,
       historyCompressor: deps.sessionRuntime.historyCompressor,
+      messageQueue: deps.sessionRuntime.messageQueue,
       llmClient: deps.sessionRuntime.llmClient,
       sessionCaptioner: deps.sessionRuntime.sessionCaptioner,
       turnPlanner: deps.sessionRuntime.turnPlanner,
@@ -142,6 +143,8 @@ export function createGenerationRunner(deps: GenerationRunnerDeps) {
       conversationAccess: deps.identity.conversationAccess
     },
     toolRuntime: {
+      oneBotClient: deps.toolRuntime.oneBotClient,
+      ...(deps.toolRuntime.messaging ? { messaging: deps.toolRuntime.messaging } : {}),
       shellRuntime: deps.toolRuntime.shellRuntime,
       browserService: deps.toolRuntime.browserService,
       downloadRuntime: deps.toolRuntime.downloadRuntime

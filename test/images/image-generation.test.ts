@@ -101,7 +101,7 @@ test("工具生成图片后导入资产并返回发送句柄", async () => {
     const store = new ChatFileStore(c, logger, new LocalFileService(c, dir));
     await store.init();
     setFetchImplementationForTests(async () => Response.json({ data: [{ b64_json: png.toString("base64") }] }));
-    const context = { config: c, chatFileStore: store } as BuiltinToolContext;
+    const context = { config: c, chatFileStore: store, replyDelivery: "web", lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" }, projectionToolNames: ["asset_send_to_chat", "asset_media_view"] } as unknown as BuiltinToolContext;
     const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({ id: "image", type: "function", function: { name: "generate_image", arguments: "{}" } }, { prompt: "小猫" }, context)));
     assert.equal(result.ok, true);
     assert.ok(result.asset_ref);
@@ -227,7 +227,7 @@ test("编辑工具只接受已导入的静态图片资产并返回新资产", as
     const source = await store.importBuffer({ buffer: png, sourceName: "source.png", mimeType: "image/png", kind: "image", origin: "image_generated" });
     let requests = 0;
     setFetchImplementationForTests(async () => { requests++; return Response.json({ data: [{ b64_json: png.toString("base64") }] }); });
-    const context = { config: c, chatFileStore: store } as BuiltinToolContext;
+    const context = { config: c, chatFileStore: store, replyDelivery: "web", lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" }, projectionToolNames: ["asset_send_to_chat", "asset_media_view"] } as unknown as BuiltinToolContext;
     const call = { id: "image", type: "function", function: { name: "generate_image", arguments: "{}" } } as const;
     const rejected = JSON.parse(String(await imageGenerationToolHandlers.generate_image!(call, { prompt: "编辑", reference_images: ["/tmp/not-an-asset.png"] }, context)));
     assert.equal(rejected.ok, false);

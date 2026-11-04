@@ -207,7 +207,8 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
   });
 
   test("chat context toolset filters current group tools by session visibility", async () => {
-    const config = createTestAppConfig();
+    const config = createTestAppConfig({ onebot: { enabled: true, provider: "napcat" } });
+    config.configRuntime.instanceName = "qqbot";
     const selectChatContextTools = (sessionId: string, replyDelivery: "onebot" | "qq_official" | "web") => (
       listTurnToolsets({
         config,
@@ -229,7 +230,7 @@ function createMediaToolsetConfig(options: { mainSupportsVision: boolean }) {
     assert.ok(!selectChatContextTools("qqbot:p:10001", "onebot").includes("list_current_group_files"));
     assert.ok(!selectChatContextTools("qqbot:p:10001", "onebot").includes("download_current_group_file"));
     assert.ok(!selectChatContextTools("web:panel", "web").includes("view_current_group_info"));
-    assert.ok(!selectChatContextTools("qqbot:g:123456", "web").includes("view_current_group_info"));
+    assert.ok(selectChatContextTools("qqbot:g:123456", "web").includes("view_current_group_info"));
   });
 
   test("assistant mode defaults to local functional toolsets only", async () => {

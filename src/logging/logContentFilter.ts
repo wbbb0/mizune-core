@@ -1,3 +1,4 @@
+import { projectRequestDiagnostic } from "../llm/provider/requestDiagnostics.ts";
 import { safeLogEvents } from "./safeLogEvents.ts";
 
 export const FILTERED_LOG_MESSAGE = "[日志内容已过滤]";
@@ -28,7 +29,7 @@ const errorNames = new Set([
 const errorCodes = new Set([
   "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "EPIPE",
   "ABORT_ERR", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
-  "UND_ERR_SOCKET"
+  "UND_ERR_SOCKET", "CERT_HAS_EXPIRED", "DEPTH_ZERO_SELF_SIGNED_CERT", "ERR_TLS_CERT_ALTNAME_INVALID", "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
 ]);
 const qqDeliveryCodes = new Set([
   "cancelled", "operation_failed", "http_error", "transport", "invalid_response",
@@ -59,6 +60,9 @@ export function filterLogContent(record: Record<string, unknown>): Record<string
   for (const key of ["err", "error"]) {
     if (record[key] !== undefined) filtered[key] = filterError(record[key]);
   }
+  if (typeof record.stage === "string" && ["prepare", "generate", "delivery"].includes(record.stage)) filtered.stage = record.stage;
+  const diagnostic = projectRequestDiagnostic(record.requestDiagnostic);
+  if (diagnostic) filtered.requestDiagnostic = diagnostic;
   return filtered;
 }
 

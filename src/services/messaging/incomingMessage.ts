@@ -6,6 +6,7 @@ import type { QqReplyPermit } from "../qqOfficial/types.ts";
 export type MessageReplyContext = QqReplyPermit;
 
 export interface ParsedIncomingMessage {
+  actorAuthorization?: import("./toolActorAuthorization.ts").ToolActorAuthorization;
   source?: "onebot" | "qq_official" | "web";
   contextOnly?: boolean;
   activationUpgrade?: boolean;

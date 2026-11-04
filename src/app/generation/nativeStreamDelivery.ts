@@ -21,6 +21,7 @@ export class NativeStreamDelivery {
 
   constructor(private readonly deps: {
     initialBarrier: Promise<void>;
+    isCurrent?: (() => boolean) | undefined;
     signals: () => AbortSignal[];
     scheduleStart: (text: string, signal: AbortSignal, send: () => Promise<void>) => Promise<unknown>;
     captureOpen: () => () => Stream;
@@ -34,6 +35,10 @@ export class NativeStreamDelivery {
   get text(): string { return this.current?.text ?? ""; }
 
   append(delta: string): void {
+    if (this.deps.isCurrent?.() === false) {
+      void this.interrupt().catch(this.deps.onCloseError);
+      return;
+    }
     const signals = this.deps.signals();
     if (!delta || signals.some(signal => signal.aborted)) return;
     if (this.failure) throw this.failure;
@@ -53,7 +58,7 @@ export class NativeStreamDelivery {
       const open = this.deps.captureOpen();
       created.start = this.deps.scheduleStart(delta, AbortSignal.any([...signals, controller.signal]), async () => {
         if (!await waitUntilReady(previous, controller.signal)) return;
-        if (created.interrupted || signals.some(signal => signal.aborted)) return;
+        if (created.interrupted || signals.some(signal => signal.aborted) || this.deps.isCurrent?.() === false) return;
         created.stream = open();
         created.stream.append(created.pending);
         created.pending = "";
@@ -79,6 +84,7 @@ export class NativeStreamDelivery {
   }
 
   async finish(): Promise<void> {
+    if (this.deps.isCurrent?.() === false) return this.interrupt();
     const segment = this.current;
     this.current = undefined;
     if (segment) this.barrier = this.close(segment, false);
@@ -94,6 +100,7 @@ export class NativeStreamDelivery {
   }
 
   private close(segment: Segment, interrupted: boolean): Promise<void> {
+    interrupted ||= this.deps.isCurrent?.() === false;
     if (this.current === segment) this.current = undefined;
     if (interrupted) {
       segment.interrupted = true;
@@ -108,15 +115,15 @@ export class NativeStreamDelivery {
       if (!stream) return;
       let receipt;
       try {
-        receipt = await (segment.interrupted ? stream.interrupt() : stream.finish());
+        receipt = await (segment.interrupted || this.deps.isCurrent?.() === false ? stream.interrupt() : stream.finish());
       } catch (error) {
         const receipt = stream.receipt;
-        if (receipt?.acceptedText) this.deps.accepted(receipt.acceptedText, { platform: "qq_official", connectionId: receipt.connectionId, messageId: receipt.messageId });
+        if (receipt?.acceptedText && this.deps.isCurrent?.() !== false) this.deps.accepted(receipt.acceptedText, { platform: "qq_official", connectionId: receipt.connectionId, messageId: receipt.messageId });
         this.failure = error;
         throw error;
       }
       // Local persistence failure must not repeat the accepted-message bookkeeping.
-      if (receipt?.acceptedText) this.deps.accepted(receipt.acceptedText, { platform: "qq_official", connectionId: receipt.connectionId, messageId: receipt.messageId });
+      if (receipt?.acceptedText && this.deps.isCurrent?.() !== false) this.deps.accepted(receipt.acceptedText, { platform: "qq_official", connectionId: receipt.connectionId, messageId: receipt.messageId });
     }).finally(() => {
       segment.removeListeners();
       this.segments.delete(segment);

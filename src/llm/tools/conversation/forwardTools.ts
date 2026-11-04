@@ -1,3 +1,4 @@
+import { hasConnectorCapability } from "#services/messaging/connectorCapabilities.ts";
 import { assertKnownOneBotReference } from "#services/onebot/referenceAccess.ts";
 import { mediaScopeForSession, resolvePendingMediaParts } from "#services/workspace/mediaSources/content.ts";
 import { importReferenceMedia } from "#services/onebot/referenceMedia.ts";
@@ -36,7 +37,7 @@ export const forwardToolHandlers: Record<string, ToolHandler> = {
         truncated = record.truncated === true;
       } else {
         const nativeId = decodeNativeForwardRecordRef(ref);
-        if (!nativeId || context.replyDelivery === "qq_official") throw new Error("当前会话没有该转发记录的可用来源");
+        if (!nativeId || !hasConnectorCapability(context.config, { sessionId: context.lastMessage.sessionId }, "message.read_native")) throw new Error("当前会话没有该转发记录的可用来源");
         assertKnownOneBotReference(context.sessionManager, scope.sessionId, "forward", nativeId);
         const expanded = await context.oneBotReferenceResolver.expand(scope, [{ kind: "forward", forwardId: nativeId }]);
         const record = expanded.find(part => part.kind === "embedded_message" && part.relation === "forward");

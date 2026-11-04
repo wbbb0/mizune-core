@@ -571,7 +571,10 @@ export interface SessionGenerationOutboundAccess {
   recordSentMessage(sessionId: string, message: SessionSentMessage): void;
 }
 
-export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess, SessionOperationModeAccess, SessionTaskTrackerAccess {
+export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess, SessionOperationModeAccess, SessionTaskTrackerAccess, SessionGenerationOutboundAccess {
+  finalizeActiveAssistantResponseIfResponseEpochMatches(sessionId: string, expectedResponseEpoch: number, timestampMs?: number): SessionState["activeAssistantResponse"] | null;
+  isResponseOpen(sessionId: string, expectedResponseEpoch: number): boolean;
+  appendInternalTranscriptIfEpochMatches(sessionId: string, expectedEpoch: number, item: InternalTranscriptItem): boolean;
   getSession(sessionId: string): SessionState;
   getReplyDelivery(sessionId: string): SessionDelivery;
   setReplyDelivery(sessionId: string, delivery: SessionDelivery): void;

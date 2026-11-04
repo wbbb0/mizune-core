@@ -320,7 +320,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       const system = readPromptSystemText(prompt);
       assert.equal(hasPromptSection(system, "toolset_guidance"), true);
       assert.match(system, /当前激活工具集：网页检索与浏览/);
-      assert.match(system, /若发现缺少完成任务所需能力，先 list_available_toolsets，再用 request_toolset 申请补充/);
+      assert.match(system, /若发现缺少完成任务所需能力，先 list_available_toolsets，再从可申请集合用 request_toolset 申请补充/);
       assert.equal((system.match(/若发现缺少完成任务所需能力/g) ?? []).length, 1);
       assert.doesNotMatch(system, /delegate_message_to_chat/);
       assert.doesNotMatch(system, /shell_run/);
@@ -553,6 +553,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
           "get_conversation_context",
           "get_scenario_state",
           "update_scenario_state",
+          "append_journal_entry",
           "list_session_modes",
           "switch_session_mode"
         ],
@@ -590,6 +591,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
       const readonlySystem = readPromptSystemText(readonlyPrompt);
       assert.match(readonlySystem, /场景状态工具用于 scenario_host 内部维护/);
       assert.doesNotMatch(readonlySystem, /必须用对应场景状态工具同步状态/);
+      assert.doesNotMatch(readonlySystem, /append_journal_entry/);
     } finally {
       await harness.cleanup();
     }

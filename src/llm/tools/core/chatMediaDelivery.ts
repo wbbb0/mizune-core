@@ -1,3 +1,4 @@
+import { hasConnectorCapability, mediaSendCapability } from "#services/messaging/connectorCapabilities.ts";
 import { createTranscriptItemId } from "#conversation/session/transcriptMetadata.ts";
 import { QqDeliveryError } from "#services/qqOfficial/types.ts";
 import { INITIAL_MEDIA_WAIT_MS, waitForMediaDelivery, mediaDeliveryResult } from "./mediaDeliveryStatus.ts";
@@ -39,6 +40,9 @@ async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMedi
   nativeEmoji?: MediaDeliveryInput["nativeEmoji"];
   onSent?: () => void;
 }) {
+  if (!hasConnectorCapability(context.config, { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery }, mediaSendCapability(input.semanticKind === "emoji" ? "image" : input.semanticKind))) {
+    return { content: JSON.stringify({ error: "当前会话不支持发送此类媒体。" }) };
+  }
   const sessionId = context.lastMessage.sessionId;
   const deliveryId = createTranscriptItemId();
   const signals = [context.abortSignal, context.outboundSignal].filter((signal): signal is AbortSignal => signal !== undefined);
@@ -123,7 +127,7 @@ async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMedi
 }
 
 export function sendFileBytesToChat(context: BuiltinToolContext, input: ChatMediaDeliveryInput) {
-  if (context.replyDelivery === "onebot" && context.config.onebot.provider !== "napcat") {
+  if (!hasConnectorCapability(context.config, { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery }, "media.file.send")) {
     return Promise.resolve({ content: JSON.stringify({ ok: false, deliveredAs: "unsupported", error: "当前 OneBot 提供方不支持发送普通文件，需要 onebot.provider=napcat。" }) });
   }
   return sendMediaBytesToChat(context, { ...input, semanticKind: "file" });

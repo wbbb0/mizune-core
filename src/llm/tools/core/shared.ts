@@ -76,7 +76,10 @@ export interface ToolVisibilityContext {
 }
 
 export interface ToolDescriptor {
-  requiresOneBot?: boolean;
+  capabilities?: { all?: import("#services/messaging/connectorCapabilities.ts").ConnectorCapability[]; any?: import("#services/messaging/connectorCapabilities.ts").ConnectorCapability[] };
+  parameterCapabilities?: Record<string, import("#services/messaging/connectorCapabilities.ts").ConnectorCapability>;
+  descriptionWithoutParameters?: string;
+
   definition: LlmToolDefinition;
   accessLevel?: ToolAccessLevel;
   ownerOnly?: boolean;
@@ -178,6 +181,9 @@ export interface BuiltinToolContext extends
   BuiltinToolCommunicationDeps,
   BuiltinToolStoreDeps,
   BuiltinToolRuntimeDeps {
+  executionModelRef?: string | string[];
+  projectionToolNames?: readonly string[];
+  resolveActorAuthorization?: () => Promise<{ relationship: Relationship; currentUser: BuiltinToolContext["currentUser"] } | null>;
   skillAccess?: SkillAccess;
   toolsetAccess?: {
     listAvailableToolsets: () => {

@@ -1,20 +1,14 @@
 import type { ChatFileRecord } from "#services/workspace/types.ts";
 import {
-  describeOneBotSelfAccountCapabilityUnavailable,
-  hasOneBotSelfAccountCapability
+  describeOneBotSelfAccountCapabilityUnavailable
 } from "#services/onebot/selfAccountCapabilities.ts";
 import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 
-const isSelfAccountToolEnabled: ToolDescriptor["isEnabled"] = (config) => hasOneBotSelfAccountCapability(config, "view");
-const isNapCatAvatarToolEnabled: ToolDescriptor["isEnabled"] = (config) => (
-  hasOneBotSelfAccountCapability(config, "avatar_update")
-);
-
 export const selfAccountToolDescriptors: ToolDescriptor[] = [
   {
-    requiresOneBot: true,
+    capabilities: { all: ["account.profile.read"] },
     definition: {
       type: "function",
       function: {
@@ -27,11 +21,10 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    ownerOnly: true,
-    isEnabled: isSelfAccountToolEnabled
+    ownerOnly: true
   },
   {
-    requiresOneBot: true,
+    capabilities: { all: ["account.avatar.write"] },
     definition: {
       type: "function",
       function: {
@@ -51,11 +44,10 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    ownerOnly: true,
-    isEnabled: isNapCatAvatarToolEnabled
+    ownerOnly: true
   },
   {
-    requiresOneBot: true,
+    capabilities: { all: ["account.profile.write"] },
     definition: {
       type: "function",
       function: {
@@ -71,8 +63,7 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
-    ownerOnly: true,
-    isEnabled: (config) => hasOneBotSelfAccountCapability(config, "signature_update")
+    ownerOnly: true
   }
 ];
 

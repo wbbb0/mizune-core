@@ -261,6 +261,8 @@ function createExecutorHarness(options?: {
           }>;
         }) => Promise<void>;
       }) {
+        // The fake provider must resolve the exact schema before emitting calls.
+        if (typeof input.tools === "function") input.tools();
         if (options?.customGenerate) {
           return await options.customGenerate(input);
         }
@@ -369,7 +371,7 @@ function createExecutorHarness(options?: {
       oneBotReferenceResolver: {} as never
     }),
     identity: {
-      userStore: {} as never,
+      userStore: { async getByUserId() { return options?.currentUser ?? null; } } as never,
       whitelistStore: {} as never,
       personaStore: {} as never,
       globalRuleStore: {} as never,
@@ -386,9 +388,10 @@ function createExecutorHarness(options?: {
       npcDirectory: {} as never
     },
     lifecycle: {
+      userIdentityStore: { async findInternalUserId() { return "owner"; } },
       logger,
       sessionManager,
-      userStore: {} as never,
+      userStore: { async getByUserId() { return options?.currentUser ?? null; } } as never,
       persistSession() {},
       getScheduler() {
         return {} as never;
@@ -417,6 +420,7 @@ function createExecutorHarness(options?: {
     persona: { name: "测试助手", temperament: "冷静", voiceStyle: "简洁" },
     batchMessages: [createBatchMessage()],
     sendTarget: {
+      actorAuthorization: options?.sessionSource === "web" ? { kind: "web", internalUserId: "owner" } : { kind: "external", channelId: "qqbot", externalId: "external-owner", scope: "private_user", internalUserId: "owner" },
       delivery,
       chatType: "private",
       userId: "owner",
@@ -1878,6 +1882,7 @@ for (const toolSelection of ["all", "planned"] as const) {
         assert.doesNotMatch(JSON.stringify(first), /查询时间前先确认用户要求的时区/);
         if (toolSelection === "planned") {
           await input.toolExecutor!({ id: "request", type: "function", function: { name: "request_toolset", arguments: JSON.stringify({ toolset_ids: ["time_utils"], reason: "查询时间" }) } });
+          if (typeof input.tools === "function") input.tools();
         }
         const deferred = await Promise.all([input.toolExecutor!(timeToolCall), input.toolExecutor!({ ...timeToolCall, id: "time-call-2" })]);
         assert.ok(deferred.every(result => toolPayload(result).executed === false));
@@ -1886,6 +1891,7 @@ for (const toolSelection of ["all", "planned"] as const) {
         assert.equal(second.filter(message => typeof message.content === "string" && message.content.startsWith("[实例技能上下文]")).length, 1);
         if (toolSelection === "planned") {
           await input.toolExecutor!({ id: "request", type: "function", function: { name: "request_toolset", arguments: JSON.stringify({ toolset_ids: ["time_utils"], reason: "查询时间" }) } });
+          if (typeof input.tools === "function") input.tools();
         }
         const result = toolPayload(await input.toolExecutor!(timeToolCall));
         assert.notEqual(result.executed, false);

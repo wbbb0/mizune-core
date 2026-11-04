@@ -253,7 +253,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       sessionId?: string;
     }
   ) => {
-    await messageIngress.handleIncomingMessage(incomingMessage, {
+    await messageIngress.handleIncomingMessage({ ...incomingMessage, source: "web" }, {
       kind: "web",
       committedTextSink: options.committedTextSink,
       ...(options.draftOverlaySink ? { draftOverlaySink: options.draftOverlaySink } : {}),

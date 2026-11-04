@@ -25,7 +25,7 @@ const filteredOptions = computed(() => {
     ...option.toolNames
   ].some((value) => value.toLocaleLowerCase().includes(keyword)));
 });
-const enabledCount = computed(() => props.options.filter(isEnabled).length);
+const enabledCount = computed(() => props.options.filter((option) => isEnabled(option) && option.available).length);
 
 function isEnabled(option: SessionToolsetOption): boolean {
   const override = props.modelValue.overrides[option.id];
@@ -78,10 +78,10 @@ function withEffectiveValueFor(
       <div class="min-w-0">
         <h3 class="text-ui font-medium text-text-primary">模型可用工具边界</h3>
         <p class="mt-1 max-w-3xl text-small leading-5 text-text-subtle">
-          限制 Planner 的候选工具集，以及模型本轮最终可见的业务工具范围。启用只代表允许被选择，不会强制模型使用，也不会绕过身份、模型能力或系统配置限制；工具集查询与申请两个管理元工具始终保留。
+          限制 Planner 的候选工具集，以及模型本轮最终可见的业务工具范围。启用只代表允许被选择，不会强制模型使用，也不会绕过身份、模型能力或系统配置限制；工具集查询与申请两个管理元工具始终保留。开关保存用户意图，当前不可用时仍保留设置；实际调用还会按当轮用户权限校验。
         </p>
       </div>
-      <span class="badge-pill shrink-0 bg-surface-muted text-text-muted">{{ enabledCount }} / {{ options.length }} 已允许</span>
+      <span class="badge-pill shrink-0 bg-surface-muted text-text-muted">{{ enabledCount }} / {{ options.length }} 当前会话允许</span>
     </div>
 
     <div class="mt-4 flex flex-wrap items-center gap-2">
@@ -116,10 +116,12 @@ function withEffectiveValueFor(
             <span class="badge-pill bg-surface-muted text-text-subtle">
               {{ modelValue.overrides[option.id] == null ? '模式默认' : '会话覆盖' }}
             </span>
+            <span class="badge-pill bg-surface-muted text-text-subtle">设置：{{ isEnabled(option) ? '允许' : '禁止' }} · 当前：{{ isEnabled(option) && option.available ? '会话允许' : '未生效' }}</span>
             <span v-if="option.ownerOnly" class="badge-pill bg-surface-muted text-text-subtle">仅主人</span>
             <span v-if="option.debugOnly" class="badge-pill bg-surface-muted text-text-subtle">仅调试</span>
           </span>
           <span class="mt-1 block text-small leading-5 text-text-subtle">{{ option.description }}</span>
+          <span v-if="option.unavailableReason" class="mt-1 block text-small text-text-muted">{{ option.unavailableReason }}</span>
           <details class="mt-1.5 text-small text-text-subtle">
             <summary class="cursor-pointer select-none">包含 {{ option.toolNames.length }} 个工具</summary>
             <div class="mt-1 break-all font-mono leading-5 text-text-muted">{{ option.toolNames.join(' · ') }}</div>

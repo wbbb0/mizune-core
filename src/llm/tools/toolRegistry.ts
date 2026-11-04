@@ -1,3 +1,4 @@
+import { resolveToolAvailability, unavailableToolParameters } from "./core/toolAvailability.ts";
 import { skillToolDescriptors, skillToolHandlers } from './runtime/skillTools.ts';
 import type { AppConfig } from "#config/config.ts";
 import type { ToolHandler } from "./core/shared.ts";
@@ -29,13 +30,16 @@ const rawBuiltinToolHandlers: Record<string, ToolHandler> = {
   ...webToolHandlersRegistry,
 };
 
-// Enforce connector capabilities again at execution, including non-model callers.
-export const builtinToolHandlers: Record<string, ToolHandler> = Object.fromEntries(
-  Object.entries(rawBuiltinToolHandlers).map(([name, handler]) => [name, async (call: Parameters<ToolHandler>[0], args: unknown, context: Parameters<ToolHandler>[2]) => {
-    const descriptor = getBuiltinToolDescriptorByName(name, context.config);
-    if (descriptor?.requiresOneBot && context.replyDelivery === "qq_official") {
-      return JSON.stringify({ error: "当前官方连接不支持此 OneBot 能力。" });
-    }
-    return handler(call, args, context);
-  }])
-);
+// Raw handlers remain private; all production execution crosses the shared checks.
+export const executeBuiltinToolHandler: ToolHandler = async (call, args, context) => {
+  const descriptor = getBuiltinToolDescriptorByName(call.function.name, context.config);
+  const availabilityContext = { ...(context.executionModelRef ? { modelRef: context.executionModelRef } : {}), config: context.config, relationship: context.relationship, currentUser: context.currentUser,
+    visibilityContext: { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery, modelSelfUpgradeAvailable: context.modelRoutingAccess !== undefined } };
+  if (!descriptor) return JSON.stringify({ error: "不支持的工具。" });
+  const availability = resolveToolAvailability(descriptor, availabilityContext);
+  if (!availability.available) return JSON.stringify({ error: availability.reason });
+  const hidden = unavailableToolParameters(descriptor, availabilityContext);
+  if (args && typeof args === "object" && hidden.some(name => Object.prototype.hasOwnProperty.call(args, name))) return JSON.stringify({ error: "当前会话不允许使用此工具参数。" });
+  const handler = rawBuiltinToolHandlers[call.function.name];
+  return handler ? handler(call, args, context) : JSON.stringify({ error: "不支持的工具。" });
+};

@@ -1,3 +1,4 @@
+import { LlmProviderHttpError } from "../providerProtocolError.ts";
 import { OpenRouterReasoning } from "../openRouterReasoning.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 import { LlmProviderPolicyError } from "../providerProtocolError.ts";
@@ -178,7 +179,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
+        throw new LlmProviderHttpError(response.status, `LLM API error: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
       }
       if (!response.body) {
         throw new Error("LLM stream body is missing");

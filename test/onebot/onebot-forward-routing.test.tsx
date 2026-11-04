@@ -84,7 +84,10 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
   });
 
   test("view_forward_record keeps opaque native identifiers exact", async () => {
-    const sessionManager = new SessionManager(createForwardFeatureConfig());
+    const config = createForwardFeatureConfig();
+    config.onebot.enabled = true;
+    config.configRuntime.instanceName = "qqbot";
+    const sessionManager = new SessionManager(config);
     sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
     sessionManager.appendUserHistory("qqbot:p:10001", {
       chatType: "private",
@@ -99,6 +102,8 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
       { id: "tool_forward_1", type: "function", function: { name: "view_forward_record", arguments: JSON.stringify({ record_ref: nativeForwardRecordRef("7618168520610781740") }) } },
       { record_ref: nativeForwardRecordRef("7618168520610781740") },
       withReferenceToolServices({
+        config,
+        replyDelivery: "onebot",
         lastMessage: { sessionId: "qqbot:p:10001", userId: "owner", senderName: "Owner" },
         sessionManager,
         oneBotReferenceResolver: {

@@ -1,4 +1,4 @@
-import { withMediaServices } from "../helpers/media-import-fixtures.ts";
+import { withMediaServices as withImportedMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -42,7 +42,8 @@ import { buildToolObservation } from "../../src/conversation/session/toolObserva
 import { sendNapCatFile } from "../../src/services/onebot/napcatFileAdapter.ts";
 
 function createNapcatTestConfig() {
-  const config = createTestAppConfig();
+  const config = createTestAppConfig({ onebot: { enabled: true }, llm: { models: { main: { chat: { capabilities: { supportsVision: true } } } } } });
+  config.configRuntime.instanceName = "qqbot";
   return {
     ...config,
     onebot: {
@@ -50,6 +51,13 @@ function createNapcatTestConfig() {
       provider: "napcat" as const
     }
   };
+}
+
+function withMediaServices(context: any): any {
+  const config = context.config ?? createNapcatTestConfig();
+  const lastMessage = context.lastMessage ?? { sessionId: "web:runtime-tools", userId: "owner", senderName: "测试" };
+  const projectionToolNames = context.debugSnapshot?.visibleToolNames ?? getBuiltinTools("owner", null, config, { visibilityContext: { sessionId: lastMessage.sessionId, replyDelivery: context.replyDelivery ?? "web" } }).map(tool => tool.function.name);
+  return withImportedMediaServices({ ...context, config, lastMessage, projectionToolNames });
 }
 
 function createMediaToolVisibilityConfig(options: {
@@ -181,9 +189,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
   test("builtin tool list exposes forward, media, and message tools", async () => {
     const config = createForwardFeatureConfig();
+    config.onebot.enabled = true;
+    config.onebot.provider = "napcat";
+    config.configRuntime.instanceName = "qqbot";
     config.search.aliyunIqs.enabled = true;
     config.shell.enabled = true;
-    const names = getBuiltinTools("owner", config).map((tool) => tool.function.name);
+    const names = getBuiltinTools("owner", config, undefined, { visibilityContext: { sessionId: "qqbot:g:123456" } }).map((tool) => tool.function.name);
     assert.ok(names.includes("end_turn_without_reply"));
     assert.ok(names.includes("list_session_modes"));
     assert.ok(names.includes("switch_session_mode"));
@@ -241,8 +252,11 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.ok(names.includes("close_page"));
   });
 
-  test("current group context tools are visible only in non-web group chats", async () => {
+  test("current group context tools follow real group source regardless of output delivery", async () => {
     const config = createForwardFeatureConfig();
+    config.onebot.enabled = true;
+    config.onebot.provider = "napcat";
+    config.configRuntime.instanceName = "qqbot";
     const currentGroupToolNames = [
       "view_current_group_info",
       "list_current_group_announcements",
@@ -260,12 +274,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const onebotGroup = getNames("qqbot:g:123456", "onebot");
     for (const toolName of currentGroupToolNames) {
       assert.equal(onebotGroup.has(toolName), true, `${toolName} should be visible in onebot group chats`);
+      assert.equal(getNames("qqbot:g:123456", "web").has(toolName), true);
     }
 
     for (const names of [
       getNames("qqbot:p:10001", "onebot"),
-      getNames("web:panel", "web"),
-      getNames("qqbot:g:123456", "web")
+      getNames("web:panel", "web")
     ]) {
       for (const toolName of currentGroupToolNames) {
         assert.equal(names.has(toolName), false, `${toolName} should be hidden outside non-web group chats`);
@@ -275,6 +289,9 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
   test("download tools are hidden when assets are disabled", async () => {
     const config = createForwardFeatureConfig();
+    config.onebot.enabled = true;
+    config.onebot.provider = "napcat";
+    config.configRuntime.instanceName = "qqbot";
     config.browser.enabled = true;
     config.chatFiles.enabled = false;
     config.localFiles.enabled = false;
@@ -1967,7 +1984,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.equal("handle_capabilities" in payload.file, false);
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", false], ["inspect_media", false], ["send_to_chat", true], ["local_path", false], ["export_to_filesystem", false]]
+      [["send_to_chat", true]]
     );
     assert.equal(payload.file.asset_handle.capabilities.every((item: { args: Record<string, unknown> }) => !("asset_ids" in item.args) && !("file_ref" in item.args) && "asset_ref" in item.args), true);
     assert.deepEqual(
@@ -2055,7 +2072,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     assert.equal("handle_capabilities" in payload.file, false);
     assert.deepEqual(
       payload.file.asset_handle.capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["view_media", false], ["inspect_media", false], ["send_to_chat", false], ["local_path", false], ["export_to_filesystem", false]]
+      []
     );
     assert.deepEqual(payload.next_actions, []);
   });
@@ -4067,6 +4084,8 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       { id: "tool_filesystem_list_handle", type: "function", function: { name: "filesystem_list", arguments: "{\"path\":\"docs/readme.md\"}" } },
       { path: "docs/readme.md" },
       {
+        config: createNapcatTestConfig(),
+        lastMessage: { sessionId: "web:filesystem" },
         debugSnapshot: {
           visibleToolNames: ["filesystem_read", "filesystem_send_to_chat"]
         },
@@ -4103,6 +4122,8 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       { id: "tool_filesystem_list_empty_visible", type: "function", function: { name: "filesystem_list", arguments: "{\"path\":\"docs/readme.md\"}" } },
       { path: "docs/readme.md" },
       {
+        config: createNapcatTestConfig(),
+        lastMessage: { sessionId: "web:filesystem" },
         debugSnapshot: {
           visibleToolNames: []
         },
@@ -4123,7 +4144,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const payload = JSON.parse(String(result));
     assert.deepEqual(
       payload.handle_capabilities.map((item: { capability: string; available: boolean }) => [item.capability, item.available]),
-      [["read_text", false], ["send_to_chat", false]]
+      []
     );
     assert.equal(payload.next_actions, undefined);
   });

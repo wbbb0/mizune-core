@@ -1085,7 +1085,8 @@ test("reply preparation analyzes visible cached media while forward records rema
     })));
 
     const result = await builder.buildScheduledPromptMessages({
-      sessionId: "qqbot:p:10001",
+      sessionId: "web:asset-preview",
+      replyDelivery: "web",
       interactionMode: "normal",
       visibleToolNames: ["asset_media_view", "asset_send_to_chat"],
       activeToolsets: [],
@@ -1153,7 +1154,8 @@ test("reply preparation analyzes visible cached media while forward records rema
     })));
 
     const result = await builder.buildScheduledPromptMessages({
-      sessionId: "qqbot:p:10001",
+      sessionId: "web:asset-preview",
+      replyDelivery: "web",
       interactionMode: "normal",
       visibleToolNames: ["asset_send_to_chat"],
       activeToolsets: [],

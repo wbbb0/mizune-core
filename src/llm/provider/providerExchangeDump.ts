@@ -6,6 +6,10 @@ import { Response } from "undici";
 import { fetchWithProxy } from "#services/proxy/index.ts";
 import type { LlmProviderRequestContext } from "./providerTypes.ts";
 
+import { requestWithDiagnostics, getRequestDiagnostic, attachRequestDiagnostic, safeCauseCodes, type RequestDiagnostic } from "./requestDiagnostics.ts";
+
+const activeDiagnosticLogger = new AsyncLocalStorage<Partial<Pick<LlmProviderRequestContext, "logger">> & { latest?: RequestDiagnostic; started?: number; allowRetry: boolean }>();
+
 const BODY_LIMIT = 1024 * 1024;
 interface Exchange {
   endpoint: string;
@@ -42,15 +46,20 @@ function diagnosticEndpoint(endpoint: string): string {
 /** Capture the bytes consumed by providers, before SSE/JSON parsing, without a tee or extra read. */
 export async function fetchProviderResponse(...args: Parameters<typeof fetchWithProxy>): ReturnType<typeof fetchWithProxy> {
   const exchanges = activeExchanges.getStore();
-  if (!exchanges) return fetchWithProxy(...args);
+  const fetchRequest = () => requestWithDiagnostics(() => fetchWithProxy(...args), args[3]?.signal, diagnostic => {
+    activeDiagnosticLogger.getStore()?.logger?.warn({ requestDiagnostic: diagnostic, modelRef: args[4]?.modelRef }, "llm_request_transport_failed");
+  }, args[1] === "llm" && activeDiagnosticLogger.getStore()?.allowRetry === true);
+
   const exchange: Exchange = {
     endpoint: diagnosticEndpoint(args[2]),
     requestBody: typeof args[3]?.body === "string" ? args[3].body : null,
     body: [], capturedBytes: 0, receivedBytes: 0, bodyComplete: false
   };
-  exchanges.push(exchange);
+  exchanges?.push(exchange);
   try {
-    const response = await fetchWithProxy(...args);
+    const response = await fetchRequest();
+    const scope = activeDiagnosticLogger.getStore();
+    if (scope) { scope.latest = getRequestDiagnostic(response)!; scope.started = Date.now() - (scope.latest?.elapsedMs ?? 0); }
     exchange.status = response.status;
     exchange.statusText = response.statusText;
     exchange.headers = {};
@@ -63,6 +72,8 @@ export async function fetchProviderResponse(...args: Parameters<typeof fetchWith
       exchange.bodyComplete = true;
       return response;
     }
+    const responseDiagnostic = getRequestDiagnostic(response)!;
+    const responseStarted = Date.now() - responseDiagnostic.elapsedMs;
     const reader = response.body.getReader();
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
@@ -76,21 +87,24 @@ export async function fetchProviderResponse(...args: Parameters<typeof fetchWith
           }
           exchange.receivedBytes += value.byteLength;
           const retained = value.subarray(0, Math.max(0, BODY_LIMIT - exchange.capturedBytes));
-          if (retained.byteLength) {
+          if (exchanges && retained.byteLength) {
             exchange.body.push(Buffer.from(retained));
             exchange.capturedBytes += retained.byteLength;
           }
           controller.enqueue(value);
         } catch (error) {
           exchange.transportError = describeError(error);
+          attachRequestDiagnostic(error, { ...responseDiagnostic, stage: "body", statusCode: response.status, elapsedMs: Date.now() - responseStarted, causeCodes: safeCauseCodes(error), retryable: false, willRetry: false });
           controller.error(error);
         }
       },
       cancel(reason) { return reader.cancel(reason); }
     }, { highWaterMark: 0 });
-    return new Response(body, {
+    const wrappedResponse = new Response(body, {
       status: response.status, statusText: response.statusText, headers: response.headers
     });
+    attachRequestDiagnostic(wrappedResponse, responseDiagnostic);
+    return wrappedResponse;
   } catch (error) {
     exchange.transportError = describeError(error);
     throw error;
@@ -103,6 +117,26 @@ export async function withProviderExchangeDump<T>(
   skipDebugDump: boolean | undefined,
   run: () => Promise<T>,
   kind: "chat" | "image" | "audio" | "decision" | "transcription" = "chat"
+): Promise<T> {
+  const requestId = randomUUID();
+  const started = Date.now();
+  return activeDiagnosticLogger.run({ ...(context.logger ? { logger: context.logger } : {}), allowRetry: kind === "chat" }, async () => {
+    try { return await runProviderExchangeDump(context, skipDebugDump, run, kind); }
+    catch (error) {
+      if (!getRequestDiagnostic(error)) {
+        const statusCode = error && typeof error === "object" && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : undefined;
+        attachRequestDiagnostic(error, { requestId, stage: "provider", attempt: 1, ...(activeDiagnosticLogger.getStore()?.latest ?? {}), elapsedMs: Date.now() - (activeDiagnosticLogger.getStore()?.started ?? started), causeCodes: safeCauseCodes(error), retryable: false, willRetry: false, ...(statusCode ? { statusCode, stage: "response" as const } : {}) });
+      }
+      context.logger?.warn({ modelRef: context.modelRef, model: context.model, requestDiagnostic: getRequestDiagnostic(error) }, "llm_request_failed");
+      throw error;
+    }
+  });
+}
+
+async function runProviderExchangeDump<T>(
+  context: Pick<LlmProviderRequestContext, "config" | "modelRef" | "model"> & Partial<Pick<LlmProviderRequestContext, "logger">>,
+  skipDebugDump: boolean | undefined, run: () => Promise<T>,
+  kind: "chat" | "image" | "audio" | "decision" | "transcription"
 ): Promise<T> {
   if (skipDebugDump) return run();
   const exchanges: Exchange[] = [];

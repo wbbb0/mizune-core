@@ -28,7 +28,7 @@ export const messageToolDescriptors: ToolDescriptor[] = [
     } }, resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
-    requiresOneBot: true,
+    capabilities: { all: ["message.read_native"] },
     definition: {
       type: "function",
       function: {
@@ -47,7 +47,7 @@ export const messageToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
-    requiresOneBot: true,
+    capabilities: { all: ["message.file.read"] },
     definition: {
       type: "function",
       function: {

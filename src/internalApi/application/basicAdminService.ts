@@ -876,7 +876,11 @@ export function getSessionSettings(
       toolsetPreferences,
       modelRoutingPreferences
     },
-    toolsetOptions: listConfigurableSessionToolsets(session.modeId, toolsetPreferences)
+    toolsetOptions: listConfigurableSessionToolsets(session.modeId, toolsetPreferences, {
+      ...(deps.config ? { config: deps.config } : {}), relationship: "owner", currentUser: null,
+      visibilityContext: { sessionId: session.id, replyDelivery: session.replyDelivery },
+      includeDebugTools: session.debugControl.enabled
+    })
   };
 }
 
@@ -894,10 +898,7 @@ export async function updateSessionSettings(
   return {
     ok: true as const,
     settings,
-    toolsetOptions: listConfigurableSessionToolsets(
-      deps.sessionManager.getSession(sessionId).modeId,
-      settings.toolsetPreferences
-    )
+    toolsetOptions: getSessionSettings(deps, sessionId)!.toolsetOptions
   };
 }
 

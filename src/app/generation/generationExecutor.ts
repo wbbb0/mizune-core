@@ -1,4 +1,5 @@
-import type { QqReplyPermit } from "#services/qqOfficial/types.ts";
+import { createGenerationFailureLifecycle } from "./generationFailureLifecycle.ts";
+import { QqDeliveryError, type QqReplyPermit } from "#services/qqOfficial/types.ts";
 import { prepareGenerationRequestBudget } from "./generationRequestBudget.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { resolveSkillTaskId } from "../../skills/skillTaskIdentity.ts";
@@ -41,9 +42,6 @@ import type {
 } from "./generationRunnerDeps.ts";
 import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, InternalTranscriptItem, SessionDebugMarker } from "#conversation/session/sessionTypes.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
-import {
-  buildGenerationFailureAssistantMessage
-} from "./generationExecutorSupport.ts";
 import type {
   GenerationCommittedTextSink,
   GenerationDraftOverlaySink
@@ -108,6 +106,7 @@ export interface GenerationRuntimeBatchMessage {
 }
 
 export interface GenerationSendTarget {
+  actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
   replyContext?: QqReplyPermit;
   delivery: "onebot" | "qq_official" | "web";
   chatType: "private" | "group";
@@ -248,6 +247,20 @@ export function createGenerationExecutor(
       committedTextSink,
       draftOverlaySink
     } = input;
+    let failureStage: "generate" | "delivery" = "generate";
+    let notifyFailure: ((message: string) => Promise<void>) | undefined;
+    const failure = createGenerationFailureLifecycle({
+      logger, sessionId,
+      isCurrent: () => !abortController.signal.aborted && !responseAbortController.signal.aborted
+        && sessionManager.getSession(sessionId).mutationEpoch === expectedEpoch
+        && sessionManager.isResponseOpen(sessionId, responseEpoch),
+      record: (error, failureMessage) => {
+        if (sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch,
+          createGenerationFailureFallbackEvent({ details: formatErrorDetails(error), failureMessage }))) {
+          persistSession(sessionId, "internal_transcript_updated");
+        }
+      }
+    });
     let outboundDrainPromise: Promise<void> | null = null;
     let completedSuccessfully = false;
     let generationFailed = false;
@@ -360,9 +373,24 @@ export function createGenerationExecutor(
             abortController,
             responseAbortController,
             sendTarget,
+            isCurrent: () => sessionManager.getSession(sessionId).mutationEpoch === expectedEpoch && sessionManager.isResponseOpen(sessionId, responseEpoch),
             ...(committedTextSink ? { committedTextSink } : {})
           }
         );
+      notifyFailure = async message => {
+        if (sendTarget.delivery === "qq_official" && !sendTarget.replyContext) return;
+        // Close the original stream without replaying uncertain or already accepted text.
+        try { await outbound.interruptStream(); } catch { /* the original failure is recorded below */ }
+        const notification = createGenerationOutbound({ logger, messageQueue, oneBotClient,
+          ...(toolRuntime.messaging ? { messaging: toolRuntime.messaging } : {}), sessionManager, persistSession },
+          { sessionId, responseEpoch, abortController, responseAbortController, sendTarget,
+            isCurrent: () => sessionManager.getSession(sessionId).mutationEpoch === expectedEpoch && sessionManager.isResponseOpen(sessionId, responseEpoch),
+            ...(committedTextSink ? { committedTextSink } : {}) });
+        await notification.enqueueChunk(message);
+        await notification.finishStream();
+        await notification.getDrainPromise();
+        await draftOverlaySink?.fail(message);
+      };
       const segmentCoordinator = createGenerationSegmentCoordinator({
         disableStreamingSplit,
         committedSink: outbound,
@@ -528,6 +556,18 @@ export function createGenerationExecutor(
         buildToolSelectionOptions()
       );
       const resolveAllowedTools = resolveCandidateTools;
+      let providerToolNames = new Set<string>();
+      const operationKey = () => {
+        const operation = sessionManager.getOperationMode(sessionId);
+        return `${operation.kind}:${"modeId" in operation ? operation.modeId : ""}:${"stage" in operation ? operation.stage : ""}`;
+      };
+      let providerOperationKey = operationKey();
+      const resolveProviderTools = () => {
+        const tools = resolveAllowedTools();
+        providerToolNames = new Set(tools.map(tool => tool.function.name));
+        providerOperationKey = operationKey();
+        return tools;
+      };
 
       const modelRoutingAccess = modelSelfUpgradePlan
         ? {
@@ -634,6 +674,17 @@ export function createGenerationExecutor(
         : undefined;
 
       const builtinToolContext = buildBuiltinToolContext({
+        resolveActorAuthorization: async () => {
+          const actor = sendTarget.actorAuthorization;
+          if (activeInternalTrigger) return { relationship: toolRelationship ?? relationship, currentUser: await userStore.getByUserId(sendTarget.userId) };
+          if (!actor || actor.internalUserId !== sendTarget.userId) return null;
+          if (actor.kind === "external") {
+            const resolved = await lifecycle.userIdentityStore.findInternalUserId({ channelId: actor.channelId, externalId: actor.externalId, scope: actor.scope });
+            if (resolved !== actor.internalUserId) return null;
+          }
+          const user = await userStore.getByUserId(actor.internalUserId);
+          return { relationship: actor.internalUserId === "owner" ? "owner" : "known", currentUser: user };
+        },
         nativeCapabilities: deps.sessionRuntime.llmClient,
         config,
         relationship: toolRelationship ?? relationship,
@@ -731,9 +782,10 @@ export function createGenerationExecutor(
               return skillObservation("deferred", loaded, { deferred: true, executed: false, message: "已加载相关技能。请先阅读下面方法，重新计划后再次调用；本次工具尚未执行。", skills: loaded.map(projectSkillForModel) });
             }
           }
+          if (operationKey() !== providerOperationKey) return JSON.stringify({ error: "会话配置阶段已变化，请重新请求工具清单。" });
           const rawToolExecutor = createBuiltinToolExecutor(
             builtinToolContext,
-            buildToolSelectionOptions({ forExecution: true })
+            { ...buildToolSelectionOptions({ forExecution: true }), availableToolNames: [...providerToolNames] }
           );
           toolResult = await rawToolExecutor(toolCall, args);
         } catch (error: unknown) {
@@ -775,7 +827,7 @@ export function createGenerationExecutor(
               resolveModelRefOverride: () => activeGenerationModelRefs
             } : {}),
             enableThinkingOverride: config.llm.mainRouting.enableThinking,
-            tools: resolveAllowedTools,
+            tools: resolveProviderTools,
             abortSignal: abortController.signal,
             consumeSteerMessages,
             consumeInlineTriggers,
@@ -839,7 +891,9 @@ export function createGenerationExecutor(
             },
             onProviderResponseComplete: async (event) => {
               if (event.phase === "tool_call" && !(sendTarget.delivery === "qq_official" && sendTarget.chatType === "group")) {
+                failureStage = "delivery";
                 await segmentCoordinator.flushBufferedChunk();
+                failureStage = "generate";
               }
             },
             resolveAssistantToolCallContent: (event) => segmentCoordinator.resolveProviderAssistantText(event.text),
@@ -972,12 +1026,16 @@ export function createGenerationExecutor(
                   ...(outbound.nativeStreaming ? {
                     onIrreversibleTextDelta: (delta: string) => {
                       assertGenerationCurrent();
+                      failureStage = "delivery";
                       outbound.appendNativeDelta(delta);
+                      failureStage = "generate";
                     }
                   } : {}),
                   onTextDelta: async (delta: string) => {
                     sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "generating" });
+                    failureStage = "delivery";
                     await segmentCoordinator.onTextDelta(delta);
+                    failureStage = "generate";
                   }
                 })
           });
@@ -1076,235 +1134,229 @@ export function createGenerationExecutor(
           }
         } catch (error: unknown) {
           generationFailed = true;
-          logger.error({ err: error, sessionId }, "generation_failed");
-          if (abortController.signal.aborted || responseAbortController.signal.aborted) {
-            throw error;
-          }
-
-          const failureMessage = buildGenerationFailureAssistantMessage();
-          const fallbackEventApplied = sessionManager.appendInternalTranscriptIfEpochMatches(
-            sessionId,
-            expectedEpoch,
-            createGenerationFailureFallbackEvent({
-              timestampMs: Date.now(),
-              details: formatErrorDetails(error),
-              failureMessage
-            })
-          );
-          if (fallbackEventApplied) {
-            persistSession(sessionId, "internal_transcript_updated");
-          }
-          await segmentCoordinator.flushBufferedChunk();
-          await outbound.enqueueChunk(failureMessage, {
-            joinWithDoubleNewline: outbound.hasSentAssistantChunk()
-          });
-          await draftOverlaySink?.fail(failureMessage);
+          if (abortController.signal.aborted || responseAbortController.signal.aborted) throw error;
+          await segmentCoordinator.discardPendingOutput();
+          await failure.report(error, canNotifyGenerationFailure(error) ? notifyFailure : undefined, failureStage);
           summary = "";
         }
       } else {
         summary = "LLM 未配置。请在 LLM catalog 文件中填写 provider、model 与 routing preset 清单，在运行时配置中设置 llm.routingPreset，并将 llm.enabled 设为 true。";
       }
 
-      await segmentCoordinator.flushSummary(summary, streamResponse);
-      await outbound.finishStream();
-      await draftOverlaySink?.complete();
-      outboundDrainPromise = outbound.getDrainPromise();
+      if (!generationFailed) {
+        failureStage = "delivery";
+        await segmentCoordinator.flushSummary(summary, streamResponse);
+        await outbound.finishStream();
+        await draftOverlaySink?.complete();
+        outboundDrainPromise = outbound.getDrainPromise();
+      }
 
       completedSuccessfully = !generationFailed;
       persistSession(sessionId, "generation_completed");
     } catch (error: unknown) {
       completedSuccessfully = false;
-      logger.error({ err: error, sessionId }, "generation_failed");
+      await failure.report(error, canNotifyGenerationFailure(error) ? notifyFailure : undefined, failureStage);
       throw error;
     } finally {
       const finishedCurrent = sessionManager.finishGeneration(sessionId, abortController);
-      if (finishedCurrent && setupMode && input.setupCompletionSignal && input.setupOnComplete) {
-        const modeId = sessionManager.getModeId(sessionId);
-        const modeDef = requireSessionModeDefinition(modeId);
-        if (modeDef.setupPhase) {
-          const isComplete = await checkSetupCompletion(
-            input.setupCompletionSignal,
-            sessionId,
-            { setupStore, scenarioHostStateStore, sessionManager }
-          );
-          if (isComplete && input.setupOnComplete === "exit_profile_operation") {
-            sessionManager.finishProfileOperation(sessionId, {
-              action: "exit_confirmed",
-              source: "automatic"
-            });
-            persistSession(sessionId, "setup_completed_profile_phase_exited");
+      let nextWorkScheduled = false;
+      try {
+        if (finishedCurrent && setupMode && input.setupCompletionSignal && input.setupOnComplete) {
+          const modeId = sessionManager.getModeId(sessionId);
+          const modeDef = requireSessionModeDefinition(modeId);
+          if (modeDef.setupPhase) {
+            const isComplete = await checkSetupCompletion(
+              input.setupCompletionSignal,
+              sessionId,
+              { setupStore, scenarioHostStateStore, sessionManager }
+            );
+            if (isComplete && input.setupOnComplete === "exit_profile_operation") {
+              sessionManager.finishProfileOperation(sessionId, {
+                action: "exit_confirmed",
+                source: "automatic"
+              });
+              persistSession(sessionId, "setup_completed_profile_phase_exited");
+            }
           }
         }
-      }
 
-      if (!sessionManager.isResponseOpen(sessionId, responseEpoch)) {
+        if (!sessionManager.isResponseOpen(sessionId, responseEpoch)) {
+          await typingWindow.stopIfStarted();
+          await draftOverlaySink?.complete();
+          if (finishedCurrent) {
+            persistSession(sessionId, "generation_finished");
+          }
+          return;
+        }
+
+        try {
+          await outboundDrainPromise;
+        } catch (error: unknown) {
+          completedSuccessfully = false;
+          await failure.report(error, canNotifyGenerationFailure(error) ? notifyFailure : undefined, "delivery");
+          logger.warn({ err: error, sessionId }, "outbound_drain_failed");
+        }
+
         await typingWindow.stopIfStarted();
-        await draftOverlaySink?.complete();
+
+        if (lastResultReasoningContent) {
+          sessionManager.setLastAssistantReasoningIfResponseEpochMatches(
+            sessionId,
+            responseEpoch,
+            lastResultReasoningContent
+          );
+        }
+        if (lastResultAssistantMetadata) {
+          sessionManager.setLastAssistantProviderMetadataIfResponseEpochMatches(
+            sessionId,
+            responseEpoch,
+            lastResultAssistantMetadata
+          );
+        }
+
+        if (finalProviderCallUsage) {
+          const applied = sessionManager.applyActiveResponseTokenStatsIfResponseEpochMatches(sessionId, responseEpoch, {
+            outputTokens: finalProviderCallUsage.usage.outputTokens,
+            reasoningTokens: finalProviderCallUsage.usage.reasoningTokens,
+            modelRef: finalProviderCallUsage.usage.modelRef,
+            model: finalProviderCallUsage.usage.model,
+            providerReported: finalProviderCallUsage.usage.providerReported,
+            capturedAt: Date.now()
+          });
+          if (applied) {
+            persistSession(sessionId, "assistant_response_token_stats_updated");
+          }
+        }
+
+        const finalizedAssistant = sessionManager.finalizeActiveAssistantResponseIfResponseEpochMatches(
+          sessionId,
+          responseEpoch,
+          Date.now()
+        );
+        if (finalizedAssistant && completedSuccessfully && !abortController.signal.aborted && !responseAbortController.signal.aborted && !sessionManager.getOutboundAbortSignal(sessionId)?.aborted) {
+          publishConversation(sessionManager.getSession(sessionId), Date.now());
+          persistSession(sessionId, "cross_conversation_reply_published");
+        }
+        if (finalizedAssistant) {
+          logger.info(
+            {
+              sessionId,
+              role: "assistant",
+              contentLength: finalizedAssistant.text.length,
+              contentPreview: finalizedAssistant.text.slice(0, 120)
+            },
+            "history_assistant_appended"
+          );
+          persistSession(sessionId, "assistant_response_finalized");
+          updateTaskTracker((tracker) => sessionTaskTrackerService.observeAssistantFinalResponse({
+            tracker,
+            text: finalizedAssistant.text,
+            nowMs: Date.now()
+          }), "task_tracker_assistant_response_observed");
+          const targetUserIds = collectExtractionUserIds(input.batchMessages);
+          const scenarioHostMode = input.modeId === "scenario_host";
+          if (!scenarioHostMode && input.currentUser?.userId && lifecycle.contextExtractionQueue) {
+            try {
+              for (const userId of targetUserIds) {
+                lifecycle.contextExtractionQueue.enqueueTurn({
+                  sessionId,
+                  userId,
+                  chatType: sendTarget.chatType,
+                  senderName: input.batchMessages.find((message) => message.userId === userId)?.senderName ?? sendTarget.senderName,
+                  userMessages: input.batchMessages.map((message) => ({
+                    userId: message.userId,
+                    senderName: message.senderName,
+                    text: message.text,
+                    receivedAt: message.receivedAt
+                  })),
+                  assistantText: finalizedAssistant.text,
+                  completedAt: Date.now()
+                });
+              }
+            } catch (error) {
+              logger.warn({
+                sessionId,
+                error: error instanceof Error ? error.message : String(error)
+              }, "context_extraction_enqueue_failed_open");
+              appendContextExtractionTranscriptEvent({
+                sessionManager,
+                persistSession,
+                sessionId,
+                expectedEpoch,
+                status: "enqueue_failed",
+                targetUserIds,
+                messageCount: input.batchMessages.length,
+                error
+              });
+            }
+          }
+        }
+
+        if (
+          completedSuccessfully
+          && finalizedAssistant?.text.trim()
+          && !abortController.signal.aborted
+          && !responseAbortController.signal.aborted
+          && !sessionManager.getOutboundAbortSignal(sessionId)?.aborted
+        ) {
+          await runStatefulRpPostTurnIfApplicable({
+            modeId: input.modeId,
+            setupMode,
+            sessionId,
+            expectedEpoch,
+            sessionManager,
+            statefulRpPostTurnMaintainer,
+            baseline: statefulRpTurnBaseline,
+            batchMessages: input.batchMessages,
+            consumedSteerTexts,
+            assistantText: finalizedAssistant.text,
+            personaName: input.persona.name,
+            abortSignal: responseAbortController.signal,
+            logger,
+            persistSession
+          });
+        }
+
         if (finishedCurrent) {
           persistSession(sessionId, "generation_finished");
         }
-        return;
-      }
 
-      try {
-        await outboundDrainPromise;
-      } catch (error: unknown) {
-        completedSuccessfully = false;
-        logger.warn({ err: error, sessionId }, "outbound_drain_failed");
-      }
-
-      await typingWindow.stopIfStarted();
-
-      if (lastResultReasoningContent) {
-        sessionManager.setLastAssistantReasoningIfResponseEpochMatches(
-          sessionId,
-          responseEpoch,
-          lastResultReasoningContent
-        );
-      }
-      if (lastResultAssistantMetadata) {
-        sessionManager.setLastAssistantProviderMetadataIfResponseEpochMatches(
-          sessionId,
-          responseEpoch,
-          lastResultAssistantMetadata
-        );
-      }
-
-      if (finalProviderCallUsage) {
-        const applied = sessionManager.applyActiveResponseTokenStatsIfResponseEpochMatches(sessionId, responseEpoch, {
-          outputTokens: finalProviderCallUsage.usage.outputTokens,
-          reasoningTokens: finalProviderCallUsage.usage.reasoningTokens,
-          modelRef: finalProviderCallUsage.usage.modelRef,
-          model: finalProviderCallUsage.usage.model,
-          providerReported: finalProviderCallUsage.usage.providerReported,
-          capturedAt: Date.now()
-        });
-        if (applied) {
-          persistSession(sessionId, "assistant_response_token_stats_updated");
-        }
-      }
-
-      const finalizedAssistant = sessionManager.finalizeActiveAssistantResponseIfResponseEpochMatches(
-        sessionId,
-        responseEpoch,
-        Date.now()
-      );
-      if (finalizedAssistant && completedSuccessfully && !abortController.signal.aborted && !responseAbortController.signal.aborted && !sessionManager.getOutboundAbortSignal(sessionId)?.aborted) {
-        publishConversation(sessionManager.getSession(sessionId), Date.now());
-        persistSession(sessionId, "cross_conversation_reply_published");
-      }
-      if (finalizedAssistant) {
-        logger.info(
-          {
-            sessionId,
-            role: "assistant",
-            contentLength: finalizedAssistant.text.length,
-            contentPreview: finalizedAssistant.text.slice(0, 120)
-          },
-          "history_assistant_appended"
-        );
-        persistSession(sessionId, "assistant_response_finalized");
-        updateTaskTracker((tracker) => sessionTaskTrackerService.observeAssistantFinalResponse({
-          tracker,
-          text: finalizedAssistant.text,
-          nowMs: Date.now()
-        }), "task_tracker_assistant_response_observed");
-        const targetUserIds = collectExtractionUserIds(input.batchMessages);
-        const scenarioHostMode = input.modeId === "scenario_host";
-        if (!scenarioHostMode && input.currentUser?.userId && lifecycle.contextExtractionQueue) {
-          try {
-            for (const userId of targetUserIds) {
-              lifecycle.contextExtractionQueue.enqueueTurn({
-                sessionId,
-                userId,
-                chatType: sendTarget.chatType,
-                senderName: input.batchMessages.find((message) => message.userId === userId)?.senderName ?? sendTarget.senderName,
-                userMessages: input.batchMessages.map((message) => ({
-                  userId: message.userId,
-                  senderName: message.senderName,
-                  text: message.text,
-                  receivedAt: message.receivedAt
-                })),
-                assistantText: finalizedAssistant.text,
-                completedAt: Date.now()
-              });
-            }
-          } catch (error) {
-            logger.warn({
-              sessionId,
-              error: error instanceof Error ? error.message : String(error)
-            }, "context_extraction_enqueue_failed_open");
-            appendContextExtractionTranscriptEvent({
-              sessionManager,
-              persistSession,
-              sessionId,
-              expectedEpoch,
-              status: "enqueue_failed",
-              targetUserIds,
-              messageCount: input.batchMessages.length,
-              error
-            });
+        if (sessionManager.hasPendingSteerMessages(sessionId)) {
+          const promoted = sessionManager.promoteSteerMessagesToPending(sessionId);
+          if (promoted > 0) {
+            persistSession(sessionId, "steer_messages_promoted_after_generation");
           }
         }
-      }
 
-      if (
-        completedSuccessfully
-        && finalizedAssistant?.text.trim()
-        && !abortController.signal.aborted
-        && !responseAbortController.signal.aborted
-        && !sessionManager.getOutboundAbortSignal(sessionId)?.aborted
-      ) {
-        await runStatefulRpPostTurnIfApplicable({
-          modeId: input.modeId,
-          setupMode,
-          sessionId,
-          expectedEpoch,
-          sessionManager,
-          statefulRpPostTurnMaintainer,
-          baseline: statefulRpTurnBaseline,
-          batchMessages: input.batchMessages,
-          consumedSteerTexts,
-          assistantText: finalizedAssistant.text,
-          personaName: input.persona.name,
-          abortSignal: responseAbortController.signal,
-          logger,
-          persistSession
-        });
-      }
-
-      if (finishedCurrent) {
-        persistSession(sessionId, "generation_finished");
-      }
-
-      if (sessionManager.hasPendingSteerMessages(sessionId)) {
-        const promoted = sessionManager.promoteSteerMessagesToPending(sessionId);
-        if (promoted > 0) {
-          persistSession(sessionId, "steer_messages_promoted_after_generation");
+        if (sessionManager.completeResponse(sessionId, responseEpoch)) {
+          const captionForceRegenerate = forceRegenerateTitleAfterTurn === true || historyCompressedForRequest;
+          const sessionAfterCompletion = sessionManager.getSession(sessionId);
+          if (shouldAutoCaptionSessionTitle(sessionAfterCompletion, { forceRegenerate: captionForceRegenerate })) {
+            void maybeAutoCaptionSessionTitle({
+              sessionId,
+              sessionManager,
+              sessionCaptioner,
+              expectedHistoryRevision: sessionAfterCompletion.historyRevision,
+              forceRegenerate: captionForceRegenerate,
+              persistSession,
+              logger,
+              reason: captionForceRegenerate ? "generation_completed_title_regenerated" : "generation_completed_captioned"
+            }).catch((error: unknown) => {
+              logger.warn(
+                { err: error, sessionId, forceRegenerate: captionForceRegenerate },
+                "session_title_auto_caption_background_failed"
+              );
+            });
+          }
+          nextWorkScheduled = true;
+          handlers.processNextSessionWork(sessionId);
         }
-      }
-
-      if (sessionManager.completeResponse(sessionId, responseEpoch)) {
-        const captionForceRegenerate = forceRegenerateTitleAfterTurn === true || historyCompressedForRequest;
-        const sessionAfterCompletion = sessionManager.getSession(sessionId);
-        if (shouldAutoCaptionSessionTitle(sessionAfterCompletion, { forceRegenerate: captionForceRegenerate })) {
-          void maybeAutoCaptionSessionTitle({
-            sessionId,
-            sessionManager,
-            sessionCaptioner,
-            expectedHistoryRevision: sessionAfterCompletion.historyRevision,
-            forceRegenerate: captionForceRegenerate,
-            persistSession,
-            logger,
-            reason: captionForceRegenerate ? "generation_completed_title_regenerated" : "generation_completed_captioned"
-          }).catch((error: unknown) => {
-            logger.warn(
-              { err: error, sessionId, forceRegenerate: captionForceRegenerate },
-              "session_title_auto_caption_background_failed"
-            );
-          });
+      } finally {
+        // Persistence, setup completion and observer failures must never leave the response open.
+        if (!nextWorkScheduled && finishedCurrent && sessionManager.completeResponse(sessionId, responseEpoch)) {
+          nextWorkScheduled = true;
+          handlers.processNextSessionWork(sessionId);
         }
-        handlers.processNextSessionWork(sessionId);
       }
     }
   };
@@ -1479,4 +1531,8 @@ async function runStatefulRpPostTurnIfApplicable(input: {
   } catch (error: unknown) {
     input.logger.warn({ err: error, sessionId: input.sessionId }, "stateful_rp_post_turn_maintenance_failed");
   }
+}
+
+function canNotifyGenerationFailure(error: unknown): boolean {
+  return !(error instanceof QqDeliveryError && ["reply_permit_expired", "reply_budget_exhausted", "invalid_reply_permit", "cancelled"].includes(error.code));
 }

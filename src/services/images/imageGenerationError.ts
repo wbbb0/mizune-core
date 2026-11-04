@@ -1,3 +1,4 @@
+import { getRequestDiagnostic, attachRequestDiagnostic, type RequestDiagnostic } from "#llm/provider/requestDiagnostics.ts";
 /** 可交给模型的有界诊断；不包含请求正文、认证头或完整网络地址。 */
 export interface ImageFailureDetails {
   stage: "request" | "download";
@@ -8,12 +9,14 @@ export interface ImageFailureDetails {
   type?: string;
   param?: string;
   message: string;
+  requestDiagnostic?: RequestDiagnostic;
 }
 
 export class ImageGenerationError extends Error {
   constructor(readonly details: ImageFailureDetails) {
     super(`图像${details.stage === "download" ? "下载" : "生成"}失败${details.httpStatus ? ` HTTP ${details.httpStatus}` : ""}${details.code ? ` [${details.code}]` : ""}：${details.message}`);
     this.name = "ImageGenerationError";
+    if (details.requestDiagnostic) attachRequestDiagnostic(this, details.requestDiagnostic);
   }
 }
 
@@ -55,7 +58,9 @@ export function imageTransportFailure(error: unknown, stage: ImageFailureDetails
     if (Array.isArray(item.errors)) for (const child of item.errors.slice(0, 4)) visit(child, depth + 1);
   };
   visit(error, 0);
+  const diagnostic = getRequestDiagnostic(error);
   return new ImageGenerationError({ stage, kind: "transport", modelRef,
+    ...(diagnostic ? { requestDiagnostic: diagnostic } : {}),
     message: messages.map(message => sanitizeImageDiagnostic(message, secrets)).join("；").slice(0, 4096) || "网络请求失败"
   });
 }

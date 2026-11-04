@@ -1,6 +1,11 @@
 // 仅登记代码中的固定事件名称；禁止加入运行时文本、模板插值或用户输入。
 // 未登记的消息在内容过滤模式下统一隐藏，避免自由文本或格式化参数泄漏。
 export const safeLogEvents: ReadonlySet<string> = new Set([
+  "llm_request_transport_failed",
+  "llm_request_failed",
+  "generation_failure_record_failed",
+  "generation_failure_notification_failed",
+  "turn_planner_topic_switch_compression_failed",
   "generation_request_budget",
   "generation_request_budget_compacting",
   "history_compression_rejected_no_reduction",
@@ -128,7 +133,6 @@ export const safeLogEvents: ReadonlySet<string> = new Set([
   "llm_invalid_provider_response_recovering",
   "llm_invalid_tool_envelope_recovering",
   "llm_provider_messages_tool_history_repaired",
-  "llm_request_failed",
   "llm_thinking_disable_ignored",
   "llm_tool_calls_rejected_recovering",
   "llm_usage_update_skipped_epoch_mismatch",

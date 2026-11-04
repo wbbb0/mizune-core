@@ -13,12 +13,14 @@ import { listTurnToolsets, listConfigurableSessionToolsets, resolveToolNamesFrom
 import { getBuiltinTools } from "../../src/llm/builtinTools.ts";
 
 function config() {
-  return createTestAppConfig({ llm: {
+  const config = createTestAppConfig({ onebot: { enabled: true }, llm: {
     enabled: true, speechGeneration: { enabled: true }, decision: { enabled: true },
     providers: { native: { type: "openai", apiKey: "test" } },
     models: { speech: { provider: "native", model: "speech-model", speech: {} }, decision: { provider: "native", model: "decision-model", decision: {} } },
     routingPresets: { test: { speechGenerator: ["speech"], decision: ["decision"] } }
   }, chatFiles: { enabled: true } });
+  config.configRuntime.instanceName = "qqbot";
+  return config;
 }
 const call = (name: string) => ({ id: "test", type: "function" as const, function: { name, arguments: "{}" } });
 
@@ -67,14 +69,14 @@ test("生成语音工具创建受管音频资产和可发送句柄", async () =>
     const store = new ChatFileStore(c, pino({ level: "silent" }), new LocalFileService(c, directory));
     await store.init();
     let calls = 0;
-    const context = { config: c, chatFileStore: store, nativeCapabilities: {
-      async synthesize(params) {
+    const context = { config: c, lastMessage: { sessionId: "web:speech" }, projectionToolNames: ["asset_send_to_chat"], chatFileStore: store, nativeCapabilities: {
+      async synthesize(params: { text: string; speed?: number }) {
         calls++;
         assert.equal(params.text, "你好");
         assert.equal(params.speed, 1.25);
         return { buffer: Buffer.from("ID3audio"), mimeType: "audio/mpeg", extension: "mp3", usage: createEmptyUsage("speech", "speech-model") };
       }
-    } } as BuiltinToolContext;
+    } } as unknown as BuiltinToolContext;
     const result = JSON.parse(String(await nativeCapabilityToolHandlers.generate_speech!(call("generate_speech"), { text: "你好", speed: 1.25 }, context)));
     assert.equal(result.ok, true);
     assert.equal(result.ai_generated, true);
@@ -131,6 +133,7 @@ test("生成语音资产沿音频消息链路投递到 OneBot 与 Web 并可播�
         config: c,
         replyDelivery: delivery,
         lastMessage: { sessionId: "qqbot:p:123", userId: "123", senderName: "测试" },
+        projectionToolNames: ["asset_send_to_chat"],
         chatFileStore: store,
         nativeCapabilities: {
           async synthesize() { return { buffer: audio, mimeType: "audio/mpeg", extension: "mp3", usage: createEmptyUsage("speech", "speech-model") }; }

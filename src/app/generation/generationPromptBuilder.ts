@@ -1,3 +1,4 @@
+import { resolveConnectorCapabilities, type ConnectorCapability } from "#services/messaging/connectorCapabilities.ts";
 import { recoverPromptMedia } from "./promptMediaRecovery.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { characterPrompt } from "../../character/prompt.ts";
@@ -23,7 +24,8 @@ import {
 import type {
   InternalTranscriptItem,
   SessionDebugMarker,
-  SessionUsageSnapshot
+  SessionUsageSnapshot,
+  SessionDelivery
 } from "#conversation/session/sessionTypes.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import type { Relationship } from "#identity/relationship.ts";
@@ -131,6 +133,7 @@ export interface GenerationPromptBuildResult {
 export interface GenerationPromptBuilder {
   buildChatPromptMessages: (input: {
     sessionId: string;
+    replyDelivery?: SessionDelivery;
     modeId?: string;
     interactionMode: PromptInteractionMode;
     mainModelRef: string[];
@@ -160,6 +163,7 @@ export interface GenerationPromptBuilder {
   }) => Promise<GenerationPromptBuildResult>;
   buildScheduledPromptMessages: (input: {
     sessionId: string;
+    replyDelivery?: SessionDelivery;
     modeId?: string;
     interactionMode: PromptInteractionMode;
     visibleToolNames: string[];
@@ -187,6 +191,7 @@ export interface GenerationPromptBuilder {
   }) => Promise<GenerationPromptBuildResult>;
   buildSetupPromptMessages: (input: {
     sessionId: string;
+    replyDelivery?: SessionDelivery;
     interactionMode: PromptInteractionMode;
     lateSystemMessages?: string[];
     crossConversationContext?: (() => string | null) | undefined;
@@ -504,6 +509,7 @@ async function preparePromptBatchMessages(
   messages: GenerationPromptBatchMessage[],
   captionMap: Awaited<ReturnType<typeof preparePromptMediaContext>>["captionMap"],
   options: {
+    connectorCapabilities?: ReadonlySet<ConnectorCapability>;
     supportsAudioInput?: boolean | undefined;
     supportsVision?: boolean | undefined;
     shouldTranscribeAudio?: boolean | undefined;
@@ -524,6 +530,7 @@ async function preparePromptBatchMessages(
       .map((fileId) => assetFiles.get(fileId))
       .filter((file): file is NonNullable<typeof file> => Boolean(file))
       .map((file) => buildChatFileHandleResult(file, {
+            connectorCapabilities: options.connectorCapabilities,
             visibleToolNames: options.visibleToolNames ?? [],
             defaultVisible: false,
             nextActionMode: "default"
@@ -860,13 +867,16 @@ function buildScheduledQueryText(trigger: Parameters<typeof buildScheduledTaskPr
 async function enrichScheduledPromptTrigger(
   deps: GenerationPromptBuilderDeps,
   trigger: Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"],
-  visibleToolNames: string[]
+  visibleToolNames: string[],
+  sessionId: string,
+  replyDelivery?: SessionDelivery
 ): Promise<Parameters<typeof buildScheduledTaskPrompt>[0]["trigger"]> {
   if (trigger.kind === "comfy_task_completed" && trigger.workspaceFileIds.length > 0) {
     try {
       const files = await deps.chatFileStore.getMany(trigger.workspaceFileIds);
       const fileHandleResults = files.map((file) =>
         buildChatFileHandleResult(file, {
+          connectorCapabilities: resolveConnectorCapabilities(deps.config, { sessionId, replyDelivery }),
           visibleToolNames,
           defaultVisible: false,
           nextActionMode: "default"
@@ -890,6 +900,7 @@ async function enrichScheduledPromptTrigger(
         return trigger;
       }
       const result = buildChatFileHandleResult(file, {
+        connectorCapabilities: resolveConnectorCapabilities(deps.config, { sessionId, replyDelivery }),
         visibleToolNames,
         defaultVisible: false,
         nextActionMode: "default"
@@ -1034,6 +1045,7 @@ function logPromptMemorySuppressions(
   deps: Pick<GenerationPromptBuilderDeps, "logger">,
   input: {
     sessionId: string;
+    replyDelivery?: SessionDelivery;
     modeId?: string;
     persona: PersonaState;
     userProfile: ReturnType<typeof buildUserProfilePromptState>;
@@ -1066,6 +1078,7 @@ function logPromptMemorySuppressions(
 export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps): GenerationPromptBuilder {
   const buildChatPromptMessages = async (input: {
     sessionId: string;
+    replyDelivery?: SessionDelivery;
     modeId?: string;
     interactionMode: PromptInteractionMode;
     mainModelRef: string[];
@@ -1171,6 +1184,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       safetyProjected.batchMessages,
       mediaContext.captionMap,
       {
+        connectorCapabilities: resolveConnectorCapabilities(deps.config, { sessionId: input.sessionId, replyDelivery: input.replyDelivery }),
         supportsAudioInput: mainProfile?.chat?.capabilities.supportsAudioInput,
         supportsVision: mainProfile?.chat?.capabilities.supportsVision,
         shouldTranscribeAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
@@ -1329,6 +1343,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
 
   const buildScheduledPromptMessages = async (input: {
     sessionId: string;
+    replyDelivery?: SessionDelivery;
     modeId?: string;
     interactionMode: PromptInteractionMode;
     visibleToolNames: string[];
@@ -1377,7 +1392,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
         : Promise.resolve([]),
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.globalRuleStore.getAll(),
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.toolsetRuleStore.getAll(),
-      enrichScheduledPromptTrigger(deps, input.trigger, input.visibleToolNames)
+      enrichScheduledPromptTrigger(deps, input.trigger, input.visibleToolNames, input.sessionId, input.replyDelivery)
     ]);
     const toolsetRules = resolveToolsetRules(toolsetRuleEntries, {
       activeToolsets: input.activeToolsets
@@ -1548,6 +1563,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
 
   const buildSetupPromptMessages = async (input: {
     sessionId: string;
+    replyDelivery?: SessionDelivery;
     interactionMode: PromptInteractionMode;
     lateSystemMessages?: string[];
     crossConversationContext?: (() => string | null) | undefined;
@@ -1589,6 +1605,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       safetyProjected.batchMessages,
       mediaContext.captionMap,
       {
+        connectorCapabilities: resolveConnectorCapabilities(deps.config, { sessionId: input.sessionId, replyDelivery: input.replyDelivery }),
         supportsAudioInput: mainProfile?.chat?.capabilities.supportsAudioInput,
         supportsVision: mainProfile?.chat?.capabilities.supportsVision,
         shouldTranscribeAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,

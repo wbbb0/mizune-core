@@ -1,3 +1,4 @@
+import { LlmProviderHttpError } from "./providerProtocolError.ts";
 import { readProviderSseData } from "./providerSseReader.ts";
 import { fetchProviderResponse } from "./providerExchangeDump.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "./providerTimeout.ts";
@@ -57,7 +58,7 @@ export async function runProviderSseStream<TFinalPayload>(input: {
     if (!response.ok) {
       const errorText = await response.text();
       const prefix = input.errorPrefix ?? "LLM API error";
-      throw new Error(`${prefix}: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
+      throw new LlmProviderHttpError(response.status, `${prefix}: ${response.status} ${response.statusText}${errorText ? ` ${errorText}` : ""}`);
     }
 
     if (!response.body) {

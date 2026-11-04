@@ -62,7 +62,7 @@ export function createGenerationFailureFallbackEvent(input: {
     timestampMs: input.timestampMs ?? Date.now(),
     fallbackType: "generation_failure_reply",
     title: "生成失败兜底",
-    summary: "本轮生成失败，已发送兜底回复",
+    summary: "本轮回复失败，详细原因已记录；用户提示以实际送达结果为准",
     details: input.details,
     failureMessage: input.failureMessage
   };

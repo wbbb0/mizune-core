@@ -66,7 +66,8 @@ test("recursive forwards and cycles share query, media and content budgets", asy
 });
 
 test("forward tools import nested images as real assets accepted by asset_media_view", async () => {
-  const config = createTestAppConfig();
+  const config = createTestAppConfig({ onebot: { enabled: true } });
+  config.configRuntime.instanceName = "bot";
   const sessions = new SessionManager(config);
   sessions.ensureSession({ id: scope.sessionId, type: "group" });
   sessions.appendUserHistory(scope.sessionId, { chatType: "group", userId: "actor", senderName: "当前发送者", text: "查看记录", forwardIds: ["outer"] });
