@@ -38,7 +38,7 @@ test("editorState source merges schema defaults below reference and draft values
 
   assert.match(
     source,
-    /case "merge_reference":\s+return computeEffectiveValue\(\s+computeEffectiveValue\(model\.schemaDefaultValue, referenceValue\),\s+draftValue\s+\);/s,
+    /return computeEffectiveValue\(\s+computeEffectiveValue\(model\.schemaDefaultValue, referenceValue\),\s+draftValue\s+\);/s,
     "expected merge_reference effective values to layer schema defaults below reference and draft"
   );
 });

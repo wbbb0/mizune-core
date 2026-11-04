@@ -123,7 +123,7 @@ CONFIG_INSTANCE_FILE=config/instances/acc1.yml npm run dev
 
 更多配置说明见 [快速上手](docs/getting-started.md#配置文件职责)。
 
-可选的内容安全审核支持阿里云与 OpenAI，可在配置页选择默认供应商，并按类型编辑各自配置；单项规则可覆盖默认选择。详见 [内容安全审核供应商](docs/development/content-safety.md)。
+可选的内容安全审核支持阿里云与 OpenAI，在内容安全最外层统一选择供应商，内层只显示该供应商的连接配置；所有审核规则共用这一选择。详见 [内容安全审核供应商](docs/development/content-safety.md)。
 
 ## 运行模式
 

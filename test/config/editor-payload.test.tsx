@@ -115,16 +115,16 @@ test("overlapping reloads hydrate with the schema version declared by each reque
   });
 });
 
-test("content safety provider choices use current merged global and instance configuration", async () => {
+test("layered editor preview agrees with the backend when switching safety provider", async () => {
+  const { computeDraftEffectiveValue } = await import("../../vendor/workbench-kit/packages/vue-resource-editor/src/editorState.ts");
   await withEditor(async (service, configDir) => {
-    await writeYaml(join(configDir, "global.yml"), { contentSafety: { providers: {
-      shared: { type: "aliyun_content_moderation" }, globalOnly: { type: "keyword" }
-    } } });
-    await writeYaml(join(configDir, "instances", "default.yml"), { contentSafety: { providers: {
-      shared: { type: "openai_moderation" }, instanceOnly: { type: "openai_moderation" }
-    } } });
-    assert.deepEqual(await service.getOptions("content_safety_provider_names"), { options: ["globalOnly", "instanceOnly", "shared"] });
-    await writeYaml(join(configDir, "instances", "default.yml"), { contentSafety: { providers: { newlySaved: { type: "openai_moderation" } } } });
-    assert.deepEqual(await service.getOptions("content_safety_provider_names"), { options: ["globalOnly", "newlySaved", "shared"] });
+    await writeYaml(join(configDir, "global.yml"), { contentSafety: { provider: "aliyun", config: { accessKeyId: "ali", proxy: true, timeoutMs: 12000 } } });
+    await writeYaml(join(configDir, "instances", "default.yml"), { contentSafety: { provider: "openai", config: { apiKey: "openai-test-key" } } });
+    const load = createEditorModelLoader(async () => JSON.parse(JSON.stringify(await service.loadResourceModel("config"))) as EditorModelResponse);
+    const { editor } = await load("config");
+    const effective = computeDraftEffectiveValue(editor, editor.currentValue) as { contentSafety: { config: unknown } };
+    assert.deepEqual(effective.contentSafety.config, (editor.effectiveValue as { contentSafety: { config: unknown } }).contentSafety.config);
+    assert.deepEqual((effective.contentSafety.config as { proxy: boolean }).proxy, false);
+    assert.deepEqual((effective.contentSafety.config as { timeoutMs: number }).timeoutMs, 6000);
   });
 });

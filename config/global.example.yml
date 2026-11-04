@@ -291,8 +291,28 @@ comfy: # 支持实例覆盖；与 llm.imageGeneration.enabled 独立控制
 contentSafety:
   # 可选功能，默认关闭。默认失败时记录 warning 并放行；failPolicy: mark 可改为屏蔽并标记。
   enabled: false
-  # 在已启用的供应商中选择；规则中的 provider 可单独覆盖此选择。
-  defaultProvider: aliyunCm
+  # 统一选择审核供应商：aliyun / openai；所有审核规则均使用这一家。
+  provider: aliyun
+  config:
+    endpoint: green-cip.ap-southeast-1.aliyuncs.com
+    regionId: ap-southeast-1
+    accessKeyIdEnv: ALIBABA_CLOUD_ACCESS_KEY_ID
+    accessKeySecretEnv: ALIBABA_CLOUD_ACCESS_KEY_SECRET
+    timeoutMs: 6000
+    proxy: false
+    services:
+      text: llm_query_moderation
+      image: baselineCheck
+    variants:
+      text: text_plus
+      image: image
+  # provider: openai 时，config 改为下列结构；不要同时填写两家的参数。
+  # config:
+  #   baseUrl: https://api.openai.com/v1
+  #   apiKeyEnv: OPENAI_API_KEY
+  #   model: omni-moderation-latest
+  #   timeoutMs: 6000
+  #   proxy: false
   failPolicy: allow
   audit:
     preserveOriginalText: true
@@ -315,41 +335,6 @@ contentSafety:
     includeLabels: true
     includeConfidence: false
     includeSubjectRef: true
-  providers:
-    # 类型选择会展示各自配置：阿里云使用 AccessKey，OpenAI 使用 API Key 和审核模型。
-    localKeyword:
-      type: keyword
-      enabled: false
-      blockedTextKeywords: []
-      blockedMediaNameKeywords: []
-    aliyunCm:
-      type: aliyun_content_moderation
-      enabled: false
-      endpoint: green-cip.ap-southeast-1.aliyuncs.com
-      regionId: ap-southeast-1
-      # 可以直接明文填写，也可以使用下面的 Env 字段从环境变量读取。
-      # accessKeyId: your-access-key-id
-      # accessKeySecret: your-access-key-secret
-      accessKeyIdEnv: ALIBABA_CLOUD_ACCESS_KEY_ID
-      accessKeySecretEnv: ALIBABA_CLOUD_ACCESS_KEY_SECRET
-      timeoutMs: 6000
-      proxy: false
-      services:
-        text: llm_query_moderation
-        image: baselineCheck
-      variants:
-        text: text_plus
-        image: image
-    openaiCm:
-      type: openai_moderation
-      enabled: false
-      baseUrl: https://api.openai.com/v1
-      # apiKey: your-openai-api-key
-      apiKeyEnv: OPENAI_API_KEY
-      model: omni-moderation-latest
-      timeoutMs: 6000
-      # 使用公共 proxy 配置；与对话模型的代理开关独立。
-      proxy: false
   profiles:
     preLlm:
       text:
@@ -364,7 +349,6 @@ contentSafety:
         action: hide_from_projection_and_mark
       audio:
         action: mark_unavailable
-      unsupportedFilePolicy: mark
   routes:
     prompt:
       preLlm: preLlm

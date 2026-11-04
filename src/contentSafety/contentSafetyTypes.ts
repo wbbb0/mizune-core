@@ -60,8 +60,8 @@ export interface ContentModerationProvider {
   id: string;
   type: string;
   capabilities: Set<ModerationSubjectKind>;
-  moderateText?: (input: ModerateTextInput) => Promise<ModerationResult>;
-  moderateMedia?: (input: ModerateMediaInput) => Promise<ModerationResult>;
+  moderateText: (input: ModerateTextInput) => Promise<ModerationResult>;
+  moderateMedia: (input: ModerateMediaInput) => Promise<ModerationResult>;
 }
 
 export interface ContentSafetyEvent {

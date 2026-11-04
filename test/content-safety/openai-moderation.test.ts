@@ -10,12 +10,12 @@ import { createOpenAiContentModerationProvider } from "../../src/contentSafety/p
 import type { OpenAiContentSafetyProviderConfig } from "../../src/config/contentSafetyConfig.ts";
 
 function provider(overrides: Partial<OpenAiContentSafetyProviderConfig> = {}) {
-  const config = createTestAppConfig({ contentSafety: { providers: { openai: { type: "openai_moderation", apiKey: "test-key", ...overrides } } } });
+  const config = createTestAppConfig({ contentSafety: { provider: "openai", config: { apiKey: "test-key", ...overrides } } });
   config.proxy.https = { type: "http", host: "127.0.0.1", port: 7890 };
-  const settings = config.contentSafety.providers.openai!;
-  assert.equal(settings.type, "openai_moderation");
-  if (settings.type !== "openai_moderation") throw new Error("unexpected provider");
-  return createOpenAiContentModerationProvider("openai", settings, config);
+  const settings = config.contentSafety;
+  assert.equal(settings.provider, "openai");
+  if (settings.provider !== "openai") throw new Error("unexpected provider");
+  return createOpenAiContentModerationProvider("openai", settings.config, config);
 }
 
 function response(flagged = false, score = 0.05) {
@@ -80,10 +80,10 @@ test("credentials may come from an environment variable and missing keys do not 
   const before = process.env[envName];
   process.env[envName] = "env-key";
   try {
-    const config = createTestAppConfig({ contentSafety: { providers: { openai: { type: "openai_moderation", apiKeyEnv: envName } } } });
-    const settings = config.contentSafety.providers.openai!;
-    if (settings.type !== "openai_moderation") throw new Error("unexpected provider");
-    const p = createOpenAiContentModerationProvider("openai", settings, config);
+    const config = createTestAppConfig({ contentSafety: { provider: "openai", config: { apiKeyEnv: envName } } });
+    const settings = config.contentSafety;
+    if (settings.provider !== "openai") throw new Error("unexpected provider");
+    const p = createOpenAiContentModerationProvider("openai", settings.config, config);
     await withMockFetch([{ assertRequest(_body: unknown, _index: number, init: any) { assert.equal(init.headers.Authorization, "Bearer env-key"); }, response: response() }], async () => {
       await p.moderateText!({ subjectKind: "text", text: "测试", context: {} });
     });

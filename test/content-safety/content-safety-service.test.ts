@@ -13,30 +13,23 @@ function createConfig() {
   return createTestAppConfig({
     contentSafety: {
       enabled: true,
-      providers: {
-        localKeyword: {
-          type: "keyword",
-          enabled: true,
-          blockedTextKeywords: ["违规词"],
-          blockedMediaNameKeywords: ["blocked"]
-        }
+      provider: "keyword",
+      config: {
+        blockedTextKeywords: ["违规词"],
+        blockedMediaNameKeywords: ["blocked"]
       },
       profiles: {
         preLlm: {
           text: {
-            provider: "localKeyword",
             action: "replace_in_projection"
           },
           image: {
-            provider: "localKeyword",
             action: "hide_from_projection_and_mark"
           },
           emoji: {
-            provider: "localKeyword",
             action: "hide_from_projection_and_mark"
           },
           audio: {
-            provider: "localKeyword",
             action: "mark_unavailable"
           }
         }
@@ -113,17 +106,13 @@ test("prompt text messages are moderated as groups and allow results are cached 
       textBatch: {
         maxMessages: 3
       },
-      providers: {
-        localKeyword: {
-          type: "keyword",
-          enabled: true,
-          blockedTextKeywords: ["违规词"]
-        }
+      provider: "keyword",
+      config: {
+        blockedTextKeywords: ["违规词"]
       },
       profiles: {
         preLlm: {
           text: {
-            provider: "localKeyword",
             action: "replace_in_projection"
           }
         }
@@ -162,17 +151,13 @@ test("blocked prompt group falls back to per-message moderation to locate unsafe
       textBatch: {
         maxMessages: 3
       },
-      providers: {
-        localKeyword: {
-          type: "keyword",
-          enabled: true,
-          blockedTextKeywords: ["违规词"]
-        }
+      provider: "keyword",
+      config: {
+        blockedTextKeywords: ["违规词"]
       },
       profiles: {
         preLlm: {
           text: {
-            provider: "localKeyword",
             action: "replace_in_projection"
           }
         }
@@ -284,30 +269,23 @@ test("projectLlmMessages moderates multimodal content parts", async () => {
   const harness = await createHarness(createTestAppConfig({
     contentSafety: {
       enabled: true,
-      providers: {
-        localKeyword: {
-          type: "keyword",
-          enabled: true,
-          blockedTextKeywords: ["违规词"],
-          blockedMediaNameKeywords: ["content_part"]
-        }
+      provider: "keyword",
+      config: {
+        blockedTextKeywords: ["违规词"],
+        blockedMediaNameKeywords: ["content_part"]
       },
       profiles: {
         preLlm: {
           text: {
-            provider: "localKeyword",
             action: "replace_in_projection"
           },
           image: {
-            provider: "localKeyword",
             action: "hide_from_projection_and_mark"
           },
           emoji: {
-            provider: "localKeyword",
             action: "hide_from_projection_and_mark"
           },
           audio: {
-            provider: "localKeyword",
             action: "mark_unavailable"
           }
         }
@@ -524,17 +502,13 @@ test("action allow bypasses risky provider result", async () => {
   const config = createTestAppConfig({
     contentSafety: {
       enabled: true,
-      providers: {
-        localKeyword: {
-          type: "keyword",
-          enabled: true,
-          blockedTextKeywords: ["违规词"]
-        }
+      provider: "keyword",
+      config: {
+        blockedTextKeywords: ["违规词"]
       },
       profiles: {
         preLlm: {
           text: {
-            provider: "localKeyword",
             action: "allow"
           }
         }
@@ -560,17 +534,13 @@ test("action mark keeps original text and appends audit marker", async () => {
   const config = createTestAppConfig({
     contentSafety: {
       enabled: true,
-      providers: {
-        localKeyword: {
-          type: "keyword",
-          enabled: true,
-          blockedTextKeywords: ["违规词"]
-        }
+      provider: "keyword",
+      config: {
+        blockedTextKeywords: ["违规词"]
       },
       profiles: {
         preLlm: {
           text: {
-            provider: "localKeyword",
             action: "mark"
           }
         }
@@ -593,7 +563,7 @@ test("action mark keeps original text and appends audit marker", async () => {
   }
 });
 
-test("enabled content safety without configured providers allows normal projection", async () => {
+test("enabled content safety without configured credentials allows normal projection", async () => {
   const harness = await createHarness(createTestAppConfig({
     contentSafety: {
       enabled: true,
@@ -616,14 +586,13 @@ test("enabled content safety without configured providers allows normal projecti
   }
 });
 
-test("default provider, model and rule changes invalidate cached moderation results", async () => {
+test("provider, model and rule changes invalidate cached moderation results", async () => {
   const { withMockFetch } = await import("../helpers/llm-test-support.tsx");
   const { parseConfig } = await import("../../src/data/schema/index.ts");
-  const { contentSafetyProviderConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
+  const { contentSafetyConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
   const config = createConfig();
-  config.contentSafety.providers.openai = parseConfig(contentSafetyProviderConfigSchema, { type: "openai_moderation", apiKey: "test-key" });
-  config.contentSafety.defaultProvider = "openai";
-  delete config.contentSafety.profiles.preLlm!.text.provider;
+  const keywordSettings = structuredClone(config.contentSafety.config);
+  config.contentSafety = parseConfig(contentSafetyConfigSchema, { ...config.contentSafety, provider: "openai", config: { apiKey: "test-key" } });
   const harness = await createHarness(config);
   const project = () => harness.service.projectPromptMessages({ sessionId: "test", source: "test", recentMessages: [], batchMessages: [{ text: "重复违规词测试" }] });
   const allow = () => Response.json({ id: "mod", results: [{ flagged: false, categories: { violence: false }, category_scores: { violence: 0.7 } }] });
@@ -636,13 +605,13 @@ test("default provider, model and rule changes invalidate cached moderation resu
     ], async () => {
       assert.equal((await project()).events.length, 0);
       assert.equal((await project()).events.length, 0, "same policy should reuse the allow result");
-      config.contentSafety.defaultProvider = "localKeyword";
+      config.contentSafety = parseConfig(contentSafetyConfigSchema, { ...config.contentSafety, provider: "keyword", config: keywordSettings });
       assert.equal((await project()).events[0]?.decision, "block", "a new provider must not reuse an old allow result");
-      config.contentSafety.defaultProvider = "openai";
+      config.contentSafety = parseConfig(contentSafetyConfigSchema, { ...config.contentSafety, provider: "openai", config: { apiKey: "test-key" } });
       assert.equal((await project()).events.length, 0, "switching back must not reuse the keyword block");
-      const openai = config.contentSafety.providers.openai!;
-      if (openai.type !== "openai_moderation") throw new Error("unexpected provider");
-      openai.model = "omni-moderation-2024-09-26";
+      const openai = config.contentSafety;
+      if (openai.provider !== "openai") throw new Error("unexpected provider");
+      openai.config.model = "omni-moderation-2024-09-26";
       assert.equal((await project()).events.length, 0);
       config.contentSafety.profiles.preLlm!.text.blockConfidenceGte = 60;
       assert.equal((await project()).events[0]?.decision, "block", "threshold changes must trigger a fresh decision");
@@ -653,9 +622,9 @@ test("default provider, model and rule changes invalidate cached moderation resu
 test("OpenAI moderation failures respect failPolicy and never become reusable allow decisions", async () => {
   const { withMockFetch } = await import("../helpers/llm-test-support.tsx");
   const { parseConfig } = await import("../../src/data/schema/index.ts");
-  const { contentSafetyProviderConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
+  const { contentSafetyConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
   const config = createConfig();
-  config.contentSafety.providers.localKeyword = parseConfig(contentSafetyProviderConfigSchema, { type: "openai_moderation", apiKey: "test-key" });
+  config.contentSafety = parseConfig(contentSafetyConfigSchema, { ...config.contentSafety, provider: "openai", config: { apiKey: "test-key" } });
   const harness = await createHarness(config);
   const project = () => harness.service.projectPromptMessages({ sessionId: "test", source: "test", recentMessages: [], batchMessages: [{ text: "公开测试内容" }] });
   try {
@@ -690,25 +659,22 @@ test("media blocks are rechecked after policy changes and tool guards reuse only
   try {
     assert.equal((await project()).events[0]?.decision, "block");
     assert.notEqual(await harness.service.guardChatFileForLlm("blocked-image"), "allow");
-    const keyword = config.contentSafety.providers.localKeyword!;
-    if (keyword.type !== "keyword") throw new Error("unexpected provider");
-    keyword.blockedMediaNameKeywords = [];
+    const keyword = config.contentSafety;
+    if (keyword.provider !== "keyword") throw new Error("unexpected provider");
+    keyword.config.blockedMediaNameKeywords = [];
     assert.equal(await harness.service.guardChatFileForLlm("blocked-image"), "allow", "old media blocks must not survive a policy switch");
     assert.equal((await project()).events.length, 0);
   } finally { await harness.cleanup(); }
 });
 
-test("missing and disabled providers honor mark policy, while allow rules skip external moderation", async () => {
+test("missing credentials honor mark policy, while allow rules skip external moderation", async () => {
+  const { parseConfig } = await import("../../src/data/schema/index.ts");
+  const { contentSafetyConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
   const config = createConfig();
-  config.contentSafety.failPolicy = "mark";
-  config.contentSafety.defaultProvider = "missing";
-  delete config.contentSafety.profiles.preLlm!.text.provider;
+  config.contentSafety = parseConfig(contentSafetyConfigSchema, { ...config.contentSafety, provider: "openai", config: { apiKeyEnv: "MISSING_SMOKE_CREDENTIAL" }, failPolicy: "mark" });
   const harness = await createHarness(config);
   const project = () => harness.service.projectPromptMessages({ sessionId: "test", source: "test", recentMessages: [], batchMessages: [{ text: "公开测试" }] });
   try {
-    assert.equal((await project()).events[0]?.decision, "review");
-    config.contentSafety.defaultProvider = "localKeyword";
-    config.contentSafety.providers.localKeyword!.enabled = false;
     assert.equal((await project()).events[0]?.decision, "review");
     config.contentSafety.profiles.preLlm!.text.action = "allow";
     assert.equal((await project()).events.length, 0);
@@ -718,9 +684,9 @@ test("missing and disabled providers honor mark policy, while allow rules skip e
 test("in-flight moderation uses its original model and rule snapshot without poisoning the next policy's cache", async () => {
   const { withMockFetch } = await import("../helpers/llm-test-support.tsx");
   const { parseConfig } = await import("../../src/data/schema/index.ts");
-  const { contentSafetyProviderConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
+  const { contentSafetyConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
   const config = createConfig();
-  config.contentSafety.providers.localKeyword = parseConfig(contentSafetyProviderConfigSchema, { type: "openai_moderation", apiKey: "test-key" });
+  config.contentSafety = parseConfig(contentSafetyConfigSchema, { ...config.contentSafety, provider: "openai", config: { apiKey: "test-key" } });
   const harness = await createHarness(config);
   const project = () => harness.service.projectPromptMessages({ sessionId: "test", source: "test", recentMessages: [], batchMessages: [{ text: "相同的公开测试" }] });
   const allow = () => Response.json({ id: "mod", results: [{ flagged: false, categories: { violence: false }, category_scores: { violence: 0.7 } }] });
@@ -729,9 +695,9 @@ test("in-flight moderation uses its original model and rule snapshot without poi
       {
         assertRequest(body: any) {
           assert.equal(body.model, "omni-moderation-latest");
-          const settings = config.contentSafety.providers.localKeyword!;
-          if (settings.type !== "openai_moderation") throw new Error("unexpected provider");
-          settings.model = "omni-moderation-2024-09-26";
+          const settings = config.contentSafety;
+          if (settings.provider !== "openai") throw new Error("unexpected provider");
+          settings.config.model = "omni-moderation-2024-09-26";
           config.contentSafety.profiles.preLlm!.text.blockConfidenceGte = 60;
         }, response: allow()
       },
@@ -747,8 +713,8 @@ test("tool media guards do not submit non-image files for image moderation", asy
   const config = createConfig();
   config.contentSafety.failPolicy = "mark";
   const { parseConfig } = await import("../../src/data/schema/index.ts");
-  const { contentSafetyProviderConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
-  config.contentSafety.providers.localKeyword = parseConfig(contentSafetyProviderConfigSchema, { type: "openai_moderation", apiKey: "test-key" });
+  const { contentSafetyConfigSchema } = await import("../../src/config/contentSafetyConfig.ts");
+  config.contentSafety = parseConfig(contentSafetyConfigSchema, { ...config.contentSafety, provider: "openai", config: { apiKey: "test-key" } });
   const { withMockFetch } = await import("../helpers/llm-test-support.tsx");
   const harness = await createHarness(config, {
     async getFile(fileId) { return {

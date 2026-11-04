@@ -1,4 +1,4 @@
-import { contentSafetyConfigSchema } from "#config/contentSafetyConfig.ts";
+import { contentSafetyConfigSchema, DEFAULT_CONTENT_SAFETY_PROVIDER } from "#config/contentSafetyConfig.ts";
 import { ModelCapabilityProbe, type ModelCapabilityProbeInput, type ModelCapabilityProbeResult } from "#llm/provider/modelCapabilityProbe.ts";
 import { migrateRoutingPresetContextBudgets } from "#config/contextBudgetMigration.ts";
 import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
@@ -406,13 +406,6 @@ export function createEditorService(input: {
     },
 
     async getOptions(optionKey) {
-      if (optionKey === "content_safety_provider_names") {
-        const runtime = input.config.configRuntime;
-        const layers = await Promise.all([runtime.globalConfigPath, runtime.instanceConfigPath].map(readOptionalConfigLayer));
-        const merged = mergeConfigLayers(layers);
-        const safety = parseConfig(contentSafetyConfigSchema, merged.contentSafety ?? {});
-        return { options: Object.keys(safety.providers).sort() };
-      }
       if (["llm_model_targets", "llm_image_model_targets", "llm_embedding_model_targets", "llm_transcription_model_targets", "llm_speech_model_targets", "llm_decision_model_targets"].includes(optionKey)) {
         const raw = await readConfigFileRaw(input.config.configRuntime.llmCatalogPath).catch(() => ({}));
         const catalog = parseConfig(llmCatalogFileSchema, raw, { cloneInput: true });
@@ -489,7 +482,14 @@ function buildEditorResourceMap(input: {
         showReferenceBackdrop: true,
         unsetMode: "reference",
         unsetActionLabel: "恢复继承",
-        draftEffectiveMode: "merge_reference"
+        draftEffectiveMode: "merge_reference",
+        variantInheritance: [{
+          path: ["contentSafety"], discriminator: "provider", settingsKey: "config", defaultVariant: DEFAULT_CONTENT_SAFETY_PROVIDER,
+          defaults: Object.fromEntries(["aliyun", "openai", "keyword", "noop"].map(provider => {
+            const defaults = parseConfig(contentSafetyConfigSchema, { provider });
+            return [provider, defaults.config];
+          }))
+        }]
       }),
       layers: [
         { key: "global", path: input.config.configRuntime.globalConfigPath, optional: true },

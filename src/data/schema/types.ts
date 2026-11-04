@@ -205,6 +205,14 @@ export type EditorUnsetMode =
   | "reference";
 
 export interface EditorFeatures {
+  /** 按判别字段隔离专属参数；外层策略仍按普通继承规则合并。 */
+  variantInheritance?: Array<{
+    path: string[];
+    discriminator: string;
+    settingsKey: string;
+    defaultVariant: string;
+    defaults: Record<string, unknown>;
+  }>;
   showReferenceBackdrop: boolean;
   unsetMode: EditorUnsetMode;
   unsetActionLabel: string | null;

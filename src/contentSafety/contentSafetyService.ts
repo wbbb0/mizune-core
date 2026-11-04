@@ -422,13 +422,7 @@ export class ContentSafetyService {
     rule = structuredClone(rule);
     if (rule.action === "allow") return allowResult("policy", "allow_rule");
     const fingerprint = this.policyFingerprint(rule, input.subjectKind);
-    const provider = this.resolveProvider(rule.provider);
-    if (!provider?.moderateText) {
-      this.warnOnce("content_safety_text_provider_missing", {
-        providerId: rule.provider ?? null
-      }, "content_safety_provider_missing");
-      return this.failedResult("unconfigured", "unconfigured");
-    }
+    const provider = this.resolveProvider();
     try {
       return {
         ...applyModerationRule(await provider.moderateText(input), rule),
@@ -446,13 +440,7 @@ export class ContentSafetyService {
     rule = structuredClone(rule);
     if (rule.action === "allow") return allowResult("policy", "allow_rule");
     const fingerprint = this.policyFingerprint(rule, input.subjectKind);
-    const provider = this.resolveProvider(rule.provider);
-    if (!provider?.moderateMedia) {
-      this.warnOnce("content_safety_media_provider_missing", {
-        providerId: rule.provider ?? null
-      }, "content_safety_provider_missing");
-      return this.failedResult("unconfigured", "unconfigured");
-    }
+    const provider = this.resolveProvider();
     try {
       return {
         ...applyModerationRule(await provider.moderateMedia(input), rule),
@@ -1067,17 +1055,11 @@ export class ContentSafetyService {
     return first ? structuredClone(first) : null;
   }
 
-  private selectedProvider(providerId: string | undefined) {
-    const entries = Object.entries(this.config.contentSafety.providers)
-      .filter(([, provider]) => provider.enabled);
-    const selectedId = providerId ?? this.config.contentSafety.defaultProvider;
-    return selectedId ? entries.find(([id]) => id === selectedId) : entries[0];
-  }
-
   private policyFingerprint(rule: RuleConfig, subjectKind: ModerationSubjectKind): string {
     // 不存明文连接配置；供应商、模型、规则或标记策略变化都使旧缓存失效。
     return contentSafetyHashText(JSON.stringify({
-      provider: this.selectedProvider(rule.provider) ?? null,
+      provider: this.config.contentSafety.provider,
+      config: this.config.contentSafety.config,
       subjectKind,
       rule,
       marker: this.config.contentSafety.marker,
@@ -1098,21 +1080,14 @@ export class ContentSafetyService {
       : { ...result, rawDecision: "error" };
   }
 
-  private resolveProvider(providerId: string | undefined): ContentModerationProvider | null {
-    const selected = this.selectedProvider(providerId);
-    if (!selected) return null;
-    const [id, settings] = selected;
-    const providerConfig = structuredClone(settings);
-    if (providerConfig.type === "noop") {
-      return createNoopContentSafetyProvider(id);
+  private resolveProvider(): ContentModerationProvider {
+    const safety = this.config.contentSafety;
+    switch (safety.provider) {
+      case "noop": return createNoopContentSafetyProvider(safety.provider);
+      case "keyword": return createKeywordContentSafetyProvider(safety.provider, structuredClone(safety.config));
+      case "aliyun": return createAliyunContentModerationProvider(safety.provider, structuredClone(safety.config));
+      case "openai": return createOpenAiContentModerationProvider(safety.provider, structuredClone(safety.config), this.config);
     }
-    if (providerConfig.type === "keyword") {
-      return createKeywordContentSafetyProvider(id, providerConfig);
-    }
-    if (providerConfig.type === "aliyun_content_moderation") {
-      return createAliyunContentModerationProvider(id, providerConfig);
-    }
-    return createOpenAiContentModerationProvider(id, providerConfig, this.config);
   }
 
   private warnOnce(cacheKey: string, payload: Record<string, unknown>, event: string): void {

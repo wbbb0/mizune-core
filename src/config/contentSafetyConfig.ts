@@ -1,61 +1,49 @@
 import { s, type Infer } from "#data/schema/index.ts";
 
+export const DEFAULT_CONTENT_SAFETY_PROVIDER = "aliyun";
+
 const emptyObject = () => ({} as never);
-const commonProviderShape = {
-  enabled: s.boolean().title("启用").default(true)
-};
-const remoteProviderShape = {
-  ...commonProviderShape,
+const remoteSettingsShape = {
   timeoutMs: s.number().int().positive().title("超时毫秒").default(6000),
   proxy: s.boolean().title("使用代理").default(false)
 };
 
-export const contentSafetyProviderConfigSchema = s.discriminatedUnion("type", [
-  s.object({
-    type: s.literal("aliyun_content_moderation").title("供应商类型").default("aliyun_content_moderation"),
-    ...remoteProviderShape,
-    endpoint: s.string().trim().nonempty().title("Endpoint").optional(),
-    regionId: s.string().trim().nonempty().title("地域").optional(),
-    accessKeyId: s.string().trim().nonempty().title("AccessKeyId").optional(),
-    accessKeySecret: s.string().trim().nonempty().title("AccessKeySecret").optional(),
-    accessKeyIdEnv: s.string().trim().nonempty().title("AccessKeyId 环境变量").optional(),
-    accessKeySecretEnv: s.string().trim().nonempty().title("AccessKeySecret 环境变量").optional(),
-    services: s.object({
-      text: s.string().trim().nonempty().title("文本审核服务").optional(),
-      image: s.string().trim().nonempty().title("图片审核服务").optional()
-    }).title("服务").default(emptyObject),
-    variants: s.object({
-      text: s.enum(["text", "text_plus"] as const).title("文本接口").default("text_plus"),
-      image: s.enum(["image"] as const).title("图片接口").default("image")
-    }).title("接口变体").default(emptyObject)
-  }).title("阿里云内容安全"),
-  s.object({
-    type: s.literal("openai_moderation").title("供应商类型").default("openai_moderation"),
-    ...remoteProviderShape,
-    baseUrl: s.string().trim().url().title("接口地址").describe("填写 API 根地址，例如 https://api.openai.com/v1。").default("https://api.openai.com/v1"),
-    apiKey: s.string().trim().nonempty().title("API Key").optional(),
-    apiKeyEnv: s.string().trim().nonempty().title("API Key 环境变量").default("OPENAI_API_KEY"),
-    model: s.string().trim().nonempty().title("审核模型").default("omni-moderation-latest")
-  }).title("OpenAI 内容安全"),
-  s.object({
-    type: s.literal("keyword").title("供应商类型").default("keyword"),
-    ...commonProviderShape,
-    blockedTextKeywords: s.array(s.string().trim().nonempty()).title("文本阻断关键词").default([]),
-    blockedMediaNameKeywords: s.array(s.string().trim().nonempty()).title("媒体文件名阻断关键词").default([])
-  }).title("本地关键词（调试）"),
-  s.object({
-    type: s.literal("noop").title("供应商类型").default("noop"),
-    ...commonProviderShape
-  }).title("直接放行（调试）")
-] as const).title("审核供应商类型与配置").default(() => ({ type: "aliyun_content_moderation" }) as never);
+export const aliyunContentSafetySettingsSchema = s.object({
+  ...remoteSettingsShape,
+  endpoint: s.string().trim().nonempty().title("Endpoint").optional(),
+  regionId: s.string().trim().nonempty().title("地域").optional(),
+  accessKeyId: s.string().trim().nonempty().title("AccessKeyId").optional(),
+  accessKeySecret: s.string().trim().nonempty().title("AccessKeySecret").optional(),
+  accessKeyIdEnv: s.string().trim().nonempty().title("AccessKeyId 环境变量").optional(),
+  accessKeySecretEnv: s.string().trim().nonempty().title("AccessKeySecret 环境变量").optional(),
+  services: s.object({
+    text: s.string().trim().nonempty().title("文本审核服务").optional(),
+    image: s.string().trim().nonempty().title("图片审核服务").optional()
+  }).title("服务").default(emptyObject),
+  variants: s.object({
+    text: s.enum(["text", "text_plus"] as const).title("文本接口").default("text_plus"),
+    image: s.enum(["image"] as const).title("图片接口").default("image")
+  }).title("接口变体").default(emptyObject)
+}).title("阿里云配置").default(emptyObject);
 
-export type ContentSafetyProviderConfig = Infer<typeof contentSafetyProviderConfigSchema>;
-export type AliyunContentSafetyProviderConfig = Extract<ContentSafetyProviderConfig, { type: "aliyun_content_moderation" }>;
-export type OpenAiContentSafetyProviderConfig = Extract<ContentSafetyProviderConfig, { type: "openai_moderation" }>;
-export type KeywordContentSafetyProviderConfig = Extract<ContentSafetyProviderConfig, { type: "keyword" }>;
+export const openAiContentSafetySettingsSchema = s.object({
+  ...remoteSettingsShape,
+  baseUrl: s.string().trim().url().title("接口地址").describe("填写 API 根地址，例如 https://api.openai.com/v1。").default("https://api.openai.com/v1"),
+  apiKey: s.string().trim().nonempty().title("API Key").optional(),
+  apiKeyEnv: s.string().trim().nonempty().title("API Key 环境变量").default("OPENAI_API_KEY"),
+  model: s.string().trim().nonempty().title("审核模型").default("omni-moderation-latest")
+}).title("OpenAI 配置").default(emptyObject);
 
-const contentSafetyRuleConfigSchema = s.object({
-  provider: s.string().trim().nonempty().dynamicRef("content_safety_provider_names").title("审核供应商覆盖").describe("留空使用默认审核供应商。").optional(),
+const keywordContentSafetySettingsSchema = s.object({
+  blockedTextKeywords: s.array(s.string().trim().nonempty()).title("文本阻断关键词").default([]),
+  blockedMediaNameKeywords: s.array(s.string().trim().nonempty()).title("媒体文件名阻断关键词").default([])
+}).title("关键词配置").default(emptyObject);
+
+export type AliyunContentSafetyProviderConfig = Infer<typeof aliyunContentSafetySettingsSchema>;
+export type OpenAiContentSafetyProviderConfig = Infer<typeof openAiContentSafetySettingsSchema>;
+export type KeywordContentSafetyProviderConfig = Infer<typeof keywordContentSafetySettingsSchema>;
+
+export const contentSafetyRuleConfigSchema = s.object({
   action: s.enum([
     "allow",
     "mark",
@@ -73,13 +61,11 @@ const contentSafetyProfileConfigSchema = s.object({
   text: s.field(contentSafetyRuleConfigSchema, { title: "文本规则" }),
   image: s.field(contentSafetyRuleConfigSchema, { title: "图片规则" }),
   emoji: s.field(contentSafetyRuleConfigSchema, { title: "表情规则" }),
-  audio: s.field(contentSafetyRuleConfigSchema, { title: "音频规则" }),
-  unsupportedFilePolicy: s.enum(["allow", "mark", "block"] as const).title("不支持文件策略").default("mark")
+  audio: s.field(contentSafetyRuleConfigSchema, { title: "音频规则" })
 }).title("内容安全 Profile").default(emptyObject);
 
-export const contentSafetyConfigSchema = s.object({
+const commonSafetyShape = {
   enabled: s.boolean().title("启用").default(false),
-  defaultProvider: s.string().trim().nonempty().dynamicRef("content_safety_provider_names").title("默认审核供应商").describe("各项规则未指定供应商时使用；留空选择第一个已启用的供应商。").optional(),
   failPolicy: s.enum(["allow", "mark"] as const).title("失败策略").default("allow"),
   audit: s.object({
     preserveOriginalText: s.boolean().title("保留原始文本").default(true),
@@ -106,10 +92,6 @@ export const contentSafetyConfigSchema = s.object({
     includeConfidence: s.boolean().title("包含置信度").default(false),
     includeSubjectRef: s.boolean().title("包含对象引用").default(true)
   }).title("屏蔽标记").default(emptyObject),
-  providers: s.record(
-    s.string().trim().nonempty(),
-    contentSafetyProviderConfigSchema
-  ).title("Provider 列表").default({}),
   profiles: s.record(
     s.string().trim().nonempty(),
     contentSafetyProfileConfigSchema
@@ -128,5 +110,28 @@ export const contentSafetyConfigSchema = s.object({
       }).title("DashScope").default(emptyObject)
     }).title("LLM Provider 兜底").default(emptyObject)
   }).title("路由").default(emptyObject)
-}).title("内容安全").describe("在内容进入 LLM 前进行可选审核；默认关闭，失败时默认放行并记录警告。").default(emptyObject);
+};
 
+
+export const contentSafetyConfigSchema = s.discriminatedUnion("provider", [
+  s.object({
+    provider: s.literal("aliyun").title("供应商").default("aliyun"),
+    ...commonSafetyShape,
+    config: aliyunContentSafetySettingsSchema
+  }).title("阿里云内容安全"),
+  s.object({
+    provider: s.literal("openai").title("供应商").default("openai"),
+    ...commonSafetyShape,
+    config: openAiContentSafetySettingsSchema
+  }).title("OpenAI 内容安全"),
+  s.object({
+    provider: s.literal("keyword").title("供应商").default("keyword"),
+    ...commonSafetyShape,
+    config: keywordContentSafetySettingsSchema
+  }).title("本地关键词（调试）"),
+  s.object({
+    provider: s.literal("noop").title("供应商").default("noop"),
+    ...commonSafetyShape,
+    config: s.object({}).title("无需配置").default(emptyObject)
+  }).title("直接放行（调试）")
+] as const).title("内容安全").describe("统一选择审核供应商，所有规则均使用该供应商；默认关闭。").default(() => ({ provider: DEFAULT_CONTENT_SAFETY_PROVIDER }) as never);
