@@ -15,7 +15,7 @@ import {
   type LlmProviderRequestContext,
   type LlmUsage
 } from "../providerTypes.ts";
-import { OpenAiProvider } from "./openaiProvider.ts";
+import { OpenAiCompatibleProvider } from "./openAiCompatibleProvider.ts";
 
 const DEFAULT_BASE_URL = "http://localhost:1234/v1";
 const DEFAULT_API_KEY = "lm-studio";
@@ -63,7 +63,7 @@ type NativeLmStudioInput =
  */
 export class LmStudioProvider implements LlmProvider {
   readonly type = "lmstudio" as const;
-  private readonly delegate = new OpenAiProvider();
+  private readonly delegate = new OpenAiCompatibleProvider();
 
   resolveBaseUrl(providerConfig: LlmProviderRequestContext["providerConfig"]): string | null {
     return providerConfig.baseUrl?.trim() || DEFAULT_BASE_URL;

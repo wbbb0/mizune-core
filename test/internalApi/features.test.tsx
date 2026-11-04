@@ -464,7 +464,7 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     const app = await createInternalApiApp(deps);
     try {
       await writeFile(deps.config.configRuntime.llmCatalogPath, `images:
-  type: openai_responses
+  type: openai_responses_compatible
   models:
     chat:
       upstreamModel: chat
@@ -494,7 +494,7 @@ other:
     const catalogPath = deps.config.configRuntime.llmCatalogPath;
     const routingPath = deps.config.configRuntime.llmRoutingPresetCatalogPath;
     const providerValue = {
-      type: "openai",
+      type: "openai_compatible",
       models: {
         shared: {
           upstreamModel: "vendor-shared-model", chat: {}
@@ -505,7 +505,7 @@ other:
     try {
       await writeFile(catalogPath, [
         "alpha:",
-        "  type: openai",
+        "  type: openai_compatible",
         "  models:",
         "    shared:",
         "      chat: {}",
@@ -753,6 +753,8 @@ other:
           audioTranscription: [],
           turnPlanner: [],
           imageGenerator: [],
+          speechGenerator: [],
+          decision: [],
           historyWindow: {
             maxRecentMessages: 50,
             maxImageReferences: 5
@@ -775,6 +777,8 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
+        speechGenerator: [],
+        decision: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5
@@ -798,6 +802,8 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
+        speechGenerator: [],
+        decision: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5
@@ -818,6 +824,8 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
+        speechGenerator: [],
+        decision: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5
@@ -854,6 +862,8 @@ other:
         audioTranscription: [],
         turnPlanner: [],
         imageGenerator: [],
+        speechGenerator: [],
+        decision: [],
         historyWindow: {
           maxRecentMessages: 50,
           maxImageReferences: 5

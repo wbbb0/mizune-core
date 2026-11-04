@@ -22,24 +22,25 @@
 
 ## 标准图像模型
 
-在 `llm.catalog.yml` 的现有 OpenAI 兼容 Provider 内添加模型。`openai` 和 `openai_responses` 均支持标准 Images 端点；不会因聊天使用 Responses 而改用 `/responses` 生图。
+在 `llm.catalog.yml` 的 OpenAI 官方或兼容 Provider 内添加模型。`openai`、`openai_compatible` 和 `openai_responses_compatible` 均使用原生 Images 端点；官方主对话使用 Responses，并通过 `generate_image` 取得图片资产。图像模型与聊天模型可以分别选择。
 
 ```yaml
 images_provider:
   type: openai
-  baseUrl: https://api.openai.com/v1
   apiKey: replace-me
   models:
     image:
-      upstreamModel: gpt-image-1
+      upstreamModel: gpt-image-2.5-sunburst
       image:
+        capabilities:
+          referenceImages: true
         defaults:
           size: 1024x1024
           quality: low
           output_format: png
 ```
 
-`image.defaults` 仅用于 Images API，模型的对话 `chat.defaults` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size` 可覆盖模型默认尺寸。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，GPT Image 不支持该参数。
+`image.defaults` 仅用于 Images API，模型的对话 `chat.defaults` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size` 可覆盖模型默认尺寸。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，官方 provider 会在发请求前拒绝该参数。`background`、`output_compression` 可按具体模型支持情况配置；仅编辑所用的 `input_fidelity` 在生成新图时不发送。参数支持情况由模型决定，未知时留空。
 
 在 `llm.routing-presets.yml` 为所用预设指定目标（或在 `default` 中设置，由其他预设继承）：
 
@@ -50,7 +51,7 @@ default:
       model: image
 ```
 
-模型身份继续使用 `{ provider, model }`。WebUI 路由选择器只列出 OpenAI 兼容 Provider 下的生图模型。与其他角色一致，未设置字段时继承 `default`，显式 `[]` 清空；一次请求只使用第一个有效生图目标，不自动故障重试或切换候选，避免超时后上游仍在生成导致重复计费。
+模型身份继续使用 `{ provider, model }`。WebUI 路由选择器列出支持 Images API 的 Provider 下的生图模型。与其他角色一致，未设置字段时继承 `default`，显式 `[]` 清空；一次请求只使用第一个满足当前操作能力的生图目标（编辑要求 `image.capabilities.referenceImages: true`），不自动故障重试或切换候选，避免超时后上游仍在生成导致重复计费。
 
 全局或实例配置中启用：
 
@@ -66,7 +67,22 @@ chatFiles:
 
 调用 `POST <baseUrl>/images/generations`，固定 `n: 1`，接受标准 `data[].b64_json` 或 `data[].url`。URL 图片下载不会携带供应商密钥。响应、图片大小受资产上传限制约束；生成结果验证为 PNG、JPEG 或 WebP 后导入资产，返回 `asset_ref` 供现有发送工具使用。取消或失败时不导入结果，不自动发送消息。
 
-协议参考：[OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate)。
+## 参考图编辑与局部重绘
+
+`generate_image` 可传 `reference_images`，其中每个字符串是已导入静态图片的 `asset_ref` 或 `file_id`。不接受任意本地路径、网络 URL 或上游 Files API ID；工具通过当前实例的资产存储解析引用并读取文件，复用既有资产访问边界。
+
+编辑调用 `POST <baseUrl>/images/edits`，使用 multipart 上传 `image[]`，支持 1 至 16 张 PNG、JPEG、WebP 静态参考图。参考图与蒙版总大小受 `chatFiles.maxUploadBytes` 限制。可选 `mask_image` 指向与第一张图同尺寸、包含透明区域的 PNG 资产，透明区域表示待编辑位置。编辑产物作为新资产保存，不覆盖原图；返回的资产句柄可继续编辑或交给发送工具。
+
+```json
+{
+  "prompt": "保留主体，把背景改为蓝色",
+  "reference_images": ["asset-ref-from-previous-tool"]
+}
+```
+
+模型需要声明 `image.capabilities.referenceImages: true` 才可用于编辑。无有效目标、无效参考图或蒙版会在请求前失败。OpenRouter 当前不走此标准编辑协议；不会为了编辑静默改为其他协议。
+
+协议参考：[OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate)、[编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit)。
 
 ## 手动真实接口验证
 

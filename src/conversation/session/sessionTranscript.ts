@@ -66,45 +66,26 @@ export function projectVisibleMessagesFromTranscript(transcript: InternalTranscr
     .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
 }
 
+interface ProjectedChatTimelineMedia {
+  role: "assistant";
+  fileId: string | null;
+  fileRef: string | null;
+  sourceName: string | null;
+  chatFilePath: string | null;
+  sourcePath: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  messageId: number | null;
+  toolName: "asset_send_to_chat" | "filesystem_send_to_chat" | "sticker_send";
+  captionText: string | null;
+  timestampMs: number;
+}
+
 export type ProjectedChatTimelineItem =
-  | {
-      kind: "text";
-      role: "user" | "assistant";
-      content: string;
-      timestampMs: number;
-    }
-  | {
-      kind: "image";
-      role: "assistant";
-      mediaKind: "image" | "emoji";
-      fileId: string | null;
-      fileRef: string | null;
-      sourceName: string | null;
-      chatFilePath: string | null;
-      sourcePath: string | null;
-      mimeType: string | null;
-      sizeBytes: number | null;
-      messageId: number | null;
-      toolName: "asset_send_to_chat" | "filesystem_send_to_chat" | "sticker_send";
-      captionText: string | null;
-      timestampMs: number;
-    }
-  | {
-      kind: "file";
-      role: "assistant";
-      mediaKind: "file";
-      fileId: string | null;
-      fileRef: string | null;
-      sourceName: string | null;
-      chatFilePath: string | null;
-      sourcePath: string | null;
-      mimeType: string | null;
-      sizeBytes: number | null;
-      messageId: number | null;
-      toolName: "asset_send_to_chat" | "filesystem_send_to_chat" | "sticker_send";
-      captionText: string | null;
-      timestampMs: number;
-    };
+  | { kind: "text"; role: "user" | "assistant"; content: string; timestampMs: number }
+  | (ProjectedChatTimelineMedia & { kind: "image"; mediaKind: "image" | "emoji" })
+  | (ProjectedChatTimelineMedia & { kind: "file"; mediaKind: "file" })
+  | (ProjectedChatTimelineMedia & { kind: "audio"; mediaKind: "audio" });
 
 export function projectChatTimelineFromTranscript(transcript: InternalTranscriptItem[]): ProjectedChatTimelineItem[] {
   const projected: ProjectedChatTimelineItem[] = [];
@@ -140,9 +121,13 @@ export function projectChatTimelineFromTranscript(transcript: InternalTranscript
         captionText: item.captionText ?? null,
         timestampMs: item.timestampMs
       };
-      projected.push(item.mediaKind === "file"
-        ? { ...base, kind: "file" as const, mediaKind: "file" as const }
-        : { ...base, kind: "image" as const, mediaKind: item.mediaKind });
+      if (item.mediaKind === "audio") {
+        projected.push({ ...base, kind: "audio", mediaKind: "audio" });
+      } else if (item.mediaKind === "file") {
+        projected.push({ ...base, kind: "file", mediaKind: "file" });
+      } else {
+        projected.push({ ...base, kind: "image", mediaKind: item.mediaKind });
+      }
     }
   }
   return projected;

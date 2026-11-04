@@ -26,7 +26,7 @@ balanced:
     - provider: dashscope
       model: fast
   imageGenerator:
-    - provider: openai_images
+    - provider: openai_official
       model: image
   imageCaptioner:
     - provider: dashscope
@@ -40,3 +40,17 @@ balanced:
   turnPlanner:
     - provider: dashscope
       model: fast
+# 可选官方能力预设；不自动切换当前 routingPreset。
+openai_native:
+  mainSmall: { provider: openai_official, model: main }
+  mainLarge: { provider: openai_official, model: main }
+  summarizer: { provider: openai_official, model: main }
+  textInspector: { provider: openai_official, model: main }
+  sessionCaptioner: { provider: openai_official, model: main }
+  imageCaptioner: { provider: openai_official, model: main }
+  imageInspector: { provider: openai_official, model: main }
+  turnPlanner: { provider: openai_official, model: main }
+  imageGenerator: { provider: openai_official, model: image }
+  audioTranscription: { provider: openai_official, model: transcription }
+  speechGenerator: { provider: openai_official, model: speech }
+  decision: { provider: openai_official, model: decision }

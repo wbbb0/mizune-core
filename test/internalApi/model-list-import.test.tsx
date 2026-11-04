@@ -6,8 +6,8 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
 const OPENAI_LIST_PAYLOAD = {
   object: "list",
   data: [
-    { id: "gpt-4o", object: "model", created: 1700000000, owned_by: "openai" },
-    { id: "gpt-5.6", object: "model", created: 1700000001, owned_by: "openai" }
+    { id: "gpt-4o", object: "model", created: 1700000000, owned_by: "openai_compatible" },
+    { id: "gpt-5.6", object: "model", created: 1700000001, owned_by: "openai_compatible" }
   ]
 };
 
@@ -31,7 +31,7 @@ test("internal api lists provider models from the OpenAI-compatible endpoint", a
       method: "POST",
       url: "/api/editors/llm_catalog/list-models",
       payload: {
-        provider: { type: "openai", baseUrl: "https://example.com/v1", apiKey: "test-key" }
+        provider: { type: "openai_compatible", baseUrl: "https://example.com/v1", apiKey: "test-key" }
       }
     });
     assert.equal(response.statusCode, 200);
@@ -59,7 +59,7 @@ test("internal api marks upstream models already present in the provider draft",
       url: "/api/editors/llm_catalog/list-models",
       payload: {
         provider: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://example.com/v1",
           models: {
             main: { upstreamModel: "gpt-4o" }

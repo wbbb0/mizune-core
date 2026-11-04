@@ -16,6 +16,8 @@ export const statefulRpModeDefinition: SessionModeDefinition = {
     { toolsetId: "memory_profile", defaultEnabled: true },
     { toolsetId: "conversation_navigation", defaultEnabled: true },
     { toolsetId: "image_generation", defaultEnabled: false },
+    { toolsetId: "speech_generation", defaultEnabled: false },
+    { toolsetId: "native_decisions", defaultEnabled: false },
     { toolsetId: "comfy_image", defaultEnabled: false },
     { toolsetId: "asset_io", defaultEnabled: false },
     { toolsetId: "scheduler_admin", defaultEnabled: false },

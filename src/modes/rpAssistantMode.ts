@@ -22,6 +22,8 @@ export const rpAssistantModeDefinition: SessionModeDefinition = {
     "social_admin",
     "scheduler_admin",
     "image_generation",
+    "speech_generation",
+    "native_decisions",
     "comfy_image",
     "time_utils",
     "debug_owner"

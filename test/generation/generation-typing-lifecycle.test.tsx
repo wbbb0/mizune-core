@@ -14,6 +14,7 @@ import type { SessionTaskTracker } from "../../src/conversation/taskTracker/task
 import type { LlmMessage } from "../../src/llm/provider/providerTypes.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { resolveModelSelfUpgradePlan } from "../../src/llm/shared/modelSelfUpgrade.ts";
+import { listTurnToolsets } from "../../src/llm/tools/toolsetSelectionPolicy.ts";
 
 function createUsage() {
   return {
@@ -2085,4 +2086,48 @@ test(`${stage} 配置生成无需加载即可使用全部稳定工具，跨分�
   assert.equal(completed, true);
 });
 
+}
+
+for (const toolSelection of ['all', 'planned'] as const) {
+  for (const disabled of [false, true]) {
+    test(`原生工具经真实目录进入executor ${toolSelection}模式，disabled=${disabled}遵守会话边界`, async () => {
+      const availableToolsets: ToolsetView[] = [];
+      let reached = false;
+      const harness = createExecutorHarness({
+        modeId: 'assistant',
+        availableToolsets,
+        configOverrides: {
+          llm: {
+            turnPlanner: { toolSelection },
+            speechGeneration: { enabled: true }, decision: { enabled: true },
+            providers: { native: { type: 'openai', apiKey: 'test-only' } },
+            models: { speech: { provider: 'native', model: 'speech-test', speech: {} }, decision: { provider: 'native', model: 'decision-test', decision: {} } },
+            routingPresets: { test: { speechGenerator: ['speech'], decision: ['decision'] } }
+          },
+          chatFiles: { enabled: true }, skills: { enabled: false }
+        },
+        prepareConfig(config) {
+          availableToolsets.push(...listTurnToolsets({
+            config, relationship: 'owner', currentUser: null, modelRef: ['main'], includeDebugTools: false, modeId: 'assistant',
+            toolsetPreferences: { overrides: disabled ? { speech_generation: 'disabled', native_decisions: 'disabled' } : {} }
+          }));
+        },
+        customGenerate: async input => {
+          reached = true;
+          const names = () => (typeof input.tools === 'function' ? input.tools() : input.tools ?? []).map(tool => tool.function.name);
+          for (const name of ['generate_speech', 'make_decision']) assert.equal(names().includes(name), !disabled && toolSelection === 'all');
+          const listed = toolPayload(await input.toolExecutor!({ id: 'list', type: 'function', function: { name: 'list_available_toolsets', arguments: '{}' } }));
+          const listedIds = (listed.available_toolsets as Array<{ id: string }>).map(item => item.id);
+          for (const id of ['speech_generation', 'native_decisions']) assert.equal(listedIds.includes(id), !disabled);
+          const requested = toolPayload(await input.toolExecutor!({ id: 'request', type: 'function', function: { name: 'request_toolset', arguments: JSON.stringify({ toolset_ids: ['speech_generation', 'native_decisions'], reason: '用户需要语音和分类' }) } }));
+          assert.deepEqual(requested.approved_toolset_ids, disabled ? [] : ['speech_generation', 'native_decisions']);
+          for (const name of ['generate_speech', 'make_decision']) assert.equal(names().includes(name), !disabled);
+          return { text: '完成', usage: createUsage() };
+        }
+      });
+      harness.resolveDrain();
+      await harness.runPromise;
+      assert.equal(reached, true);
+    });
+  }
 }

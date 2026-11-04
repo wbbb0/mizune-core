@@ -1,3 +1,4 @@
+import type { LlmClient } from "../../llmClient.ts";
 import type { SkillAccess } from '../../../skills/skillRuntime.ts';
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
@@ -129,6 +130,7 @@ export interface BuiltinToolStoreDeps {
 }
 
 export interface BuiltinToolRuntimeDeps {
+  nativeCapabilities?: Pick<LlmClient, "synthesize" | "decide">;
   scheduledJobStore: ScheduledJobStore;
   scheduler: Scheduler;
   messageQueue: MessageQueue;

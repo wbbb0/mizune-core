@@ -15,7 +15,7 @@ function createOpenAiResponsesConfig(modelOverrides: Record<string, unknown> = {
     chat: { capabilities: { supportsThinking: true, thinkingControllable: true, supportsVision: true, supportsTools: true, supportsSearch: true }, searchEnabled: true },
     ...modelOverrides
   });
-  config.llm.providers.test!.type = "openai_responses";
+  config.llm.providers.test!.type = "openai_responses_compatible";
   delete config.llm.providers.test!.baseUrl;
   config.llm.models.main!.chat!.searchEnabled = true;
   config.llm.models.main!.chat!.capabilities.supportsSearch = true;
@@ -389,6 +389,10 @@ test("openai responses provider replays final response output items on the next 
           content: "上一轮回答",
           providerMetadata: {
             openAiResponses: {
+              provider: "test",
+              providerType: "openai_responses_compatible",
+              baseUrl: "https://api.openai.com/v1",
+              model: "gpt-5.6",
               outputItems: [reasoningItem, assistantItem]
             }
           }
@@ -539,4 +543,205 @@ test("openai responses provider rejects incomplete streams", async () => {
     }),
     /stream incomplete: max_output_tokens/
   );
+});
+
+function createOfficialOpenAiConfig(modelOverrides: Record<string, unknown> = {}) {
+  const config = createOpenAiResponsesConfig(modelOverrides);
+  config.llm.providers.test!.type = "openai";
+  return config;
+}
+
+test("official OpenAI uses native Responses parameters and preserves cited sources", async () => {
+  const config = createOfficialOpenAiConfig({
+    chat: {
+      defaults: {
+        reasoningEffort: "high",
+        verbosity: "low",
+        extra: { model: "wrong-model", stream: false, previous_response_id: "foreign-chain", conversation: "foreign-conversation", background: true }
+      }
+    }
+  });
+  const outputItems = [{
+    type: "web_search_call",
+    id: "search_1",
+    status: "completed",
+    action: { type: "search", sources: [{ url: "https://example.com/source", title: "资料" }] }
+  }, {
+    type: "message",
+    role: "assistant",
+    content: [{
+      type: "output_text",
+      text: "  有依据的回答",
+      annotations: [
+        { type: "url_citation", url: "https://example.com/source", title: "资料", start_index: 2, end_index: 5 },
+        { type: "url_citation", url: "javascript:alert(1)", title: "恶意链接", start_index: 2, end_index: 5 }
+      ]
+    }]
+  }];
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  await withMockFetch([{
+    assertRequest(body: any) {
+      assert.equal(body.model, "gpt-5.6");
+      assert.equal(body.stream, true);
+      assert.equal(body.store, false);
+      assert.equal(body.previous_response_id, undefined);
+      assert.equal(body.conversation, undefined);
+      assert.equal(body.background, undefined);
+      assert.deepEqual(body.reasoning, { summary: "auto", effort: "high" });
+      assert.deepEqual(body.text, { verbosity: "low" });
+      assert.deepEqual(body.include, ["reasoning.encrypted_content", "web_search_call.action.sources"]);
+      assert.deepEqual(body.tools, [{ type: "web_search" }]);
+    },
+    payloads: [{ type: "response.completed", response: { id: "resp_citations", status: "completed", output: outputItems } }]
+  }], async () => {
+    const result = await client.generate({ messages: [{ role: "user", content: "查询资料" }], enableThinkingOverride: true });
+    assert.equal(result.text, "有依据的回答\n\n参考来源：\n1. [资料](https://example.com/source)");
+    assert.deepEqual(result.assistantMetadata?.citations, [{ url: "https://example.com/source", title: "资料", startIndex: 0, endIndex: 3 }]);
+    assert.deepEqual(result.assistantMetadata?.searchSources, [{ url: "https://example.com/source", title: "资料" }]);
+    assert.deepEqual(result.assistantMetadata?.openAiResponses, { provider: "test", providerType: "openai", baseUrl: "https://api.openai.com/v1", model: "gpt-5.6", responseId: "resp_citations", outputItems });
+  });
+});
+
+test("official OpenAI maps structured output and thinking disable independently", async () => {
+  const config = createOfficialOpenAiConfig({ chat: { defaults: { reasoningEffort: "high", verbosity: "medium" } } });
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false };
+  await withMockFetch([{
+    assertRequest(body: any) {
+      assert.deepEqual(body.reasoning, { effort: "none" });
+      assert.deepEqual(body.text, { verbosity: "medium", format: { type: "json_schema", name: "answer", schema, strict: true } });
+    },
+    payloads: [{ type: "response.completed", response: { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: '{"answer":"内容"}' }] }] } }]
+  }], async () => {
+    const result = await client.generate({
+      messages: [{ role: "user", content: "回答" }],
+      enableThinkingOverride: false,
+      responseFormat: { type: "json_schema", name: "answer", schema }
+    });
+    assert.equal(result.text, '{"answer":"内容"}');
+  });
+});
+
+test("Responses never replays opaque items from another provider or upstream model", async () => {
+  const config = createOfficialOpenAiConfig();
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  await withMockFetch([{
+    assertRequest(body: any) {
+      assert.deepEqual(body.input, [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "原回答", annotations: [] }] }, { type: "message", role: "user", content: [{ type: "input_text", text: "继续" }] }]);
+    },
+    payloads: [{ type: "response.completed", response: { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "新回答" }] }] } }]
+  }], async () => {
+    await client.generate({
+      messages: [{ role: "assistant", content: "原回答", providerMetadata: { openAiResponses: { provider: "different-provider", model: "different-model", outputItems: [{ type: "reasoning", encrypted_content: "wrong-key" }] } } }, { role: "user", content: "继续" }]
+    });
+  });
+});
+
+test("compatible Chat Completions maps the same structured output contract", async () => {
+  const config = createOpenAiResponsesConfig();
+  config.llm.providers.test!.type = "openai_compatible";
+  config.llm.models.main!.chat!.searchEnabled = false;
+  const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false };
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  await withMockFetch([{
+    assertRequest(body: any, _index: number, _init: RequestInit, url: string) {
+      assert.equal(url, "https://api.openai.com/v1/chat/completions");
+      assert.deepEqual(body.response_format, { type: "json_schema", json_schema: { name: "answer", schema, strict: true } });
+    },
+    payloads: [{ choices: [{ delta: { content: '{"answer":"内容"}' }, finish_reason: "stop" }] }]
+  }], async () => {
+    const result = await client.generate({ messages: [{ role: "user", content: "回答" }], responseFormat: { type: "json_schema", name: "answer", schema } });
+    assert.equal(result.text, '{"answer":"内容"}');
+  });
+});
+
+test("official Responses rejects an already cancelled request before transport", async () => {
+  const config = createOfficialOpenAiConfig();
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  const controller = new AbortController();
+  controller.abort();
+  await withMockFetch([], async () => {
+    await assert.rejects(client.generate({ messages: [{ role: "user", content: "取消" }], abortSignal: controller.signal }), /abort/i);
+  });
+});
+
+test("Responses binds opaque replay to protocol type and normalized endpoint", async () => {
+  for (const change of ["type", "endpoint", "normalized_endpoint"] as const) {
+    const config = createOfficialOpenAiConfig();
+    config.llm.providers.test!.baseUrl = "https://API.OPENAI.COM:443/v1///";
+    const client = new LlmClient(config, pino({ level: "silent" }));
+    const reasoning = { type: "reasoning", id: "reasoning_original", encrypted_content: "opaque-content", summary: [] };
+    const message = { type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "原回答", annotations: [] }] };
+    await withMockFetch([{
+      assertRequest() {},
+      payloads: [{ type: "response.completed", response: { status: "completed", output: [reasoning, message] } }]
+    }, {
+      assertRequest(body: any) {
+        if (change === "normalized_endpoint") {
+          assert.deepEqual(body.input.slice(0, 2), [reasoning, message]);
+        } else {
+          assert.deepEqual(body.input[0], { type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "原回答", annotations: [] }] });
+          assert.equal(body.input.some((item: any) => item.type === "reasoning"), false);
+        }
+      },
+      payloads: [{ type: "response.completed", response: { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "新回答" }] }] } }]
+    }], async () => {
+      const previous = await client.generate({ messages: [{ role: "user", content: "回答" }] });
+      const identity = previous.assistantMetadata?.openAiResponses as Record<string, unknown>;
+      assert.equal(identity.baseUrl, "https://api.openai.com/v1");
+      assert.equal(identity.providerType, "openai");
+      if (change === "type") config.llm.providers.test!.type = "openai_responses_compatible";
+      config.llm.providers.test!.baseUrl = change === "endpoint" ? "https://another.example/v1" : "https://api.openai.com/v1";
+      await client.generate({ messages: [{ role: "assistant", content: previous.text, providerMetadata: previous.assistantMetadata! }, { role: "user", content: "继续" }] });
+    });
+  }
+});
+
+test("structured Responses retains valid JSON while preserving search citations as metadata", async () => {
+  for (const format of ["json_object", "json_schema"] as const) {
+    const config = createOfficialOpenAiConfig();
+    const client = new LlmClient(config, pino({ level: "silent" }));
+    const answer = '{"answer":"有依据"}';
+    const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"], additionalProperties: false };
+    await withMockFetch([{
+      assertRequest(body: any) {
+        assert.deepEqual(body.tools, [{ type: "web_search" }]);
+        assert.equal(body.text.format.type, format);
+      },
+      payloads: [{ type: "response.completed", response: { status: "completed", output: [{ type: "message", content: [{
+        type: "output_text", text: answer,
+        annotations: [{ type: "url_citation", url: "https://example.com/source", title: "资料", start_index: 11, end_index: 14 }]
+      }] }] } }]
+    }], async () => {
+      const result = await client.generate({
+        messages: [{ role: "user", content: "查询后输出 JSON" }],
+        responseFormat: format === "json_object" ? { type: "json_object" } : { type: "json_schema", name: "answer", schema }
+      });
+      assert.equal(result.text, answer);
+      assert.deepEqual(JSON.parse(result.text), { answer: "有依据" });
+      assert.equal((result.assistantMetadata?.citations as unknown[]).length, 1);
+    });
+  }
+});
+
+test("official Responses rejects chat audio before HTTP and points to native transcription", async () => {
+  const config = createOfficialOpenAiConfig();
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  await withMockFetch([], async () => {
+    await assert.rejects(client.generate({ messages: [{ role: "user", content: [{ type: "input_audio", input_audio: { data: "YXVkaW8=", format: "wav" } }] }] }), /不接受聊天音频输入.*音频转写/);
+  });
+});
+
+test("Responses-compatible chat audio retains its explicitly configured wire format", async () => {
+  const config = createOpenAiResponsesConfig();
+  const client = new LlmClient(config, pino({ level: "silent" }));
+  await withMockFetch([{
+    assertRequest(body: any) {
+      assert.deepEqual(body.input, [{ type: "message", role: "user", content: [{ type: "input_audio", input_audio: { data: "YXVkaW8=", format: "wav" } }] }]);
+    },
+    payloads: [{ type: "response.completed", response: { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "转写内容" }] }] } }]
+  }], async () => {
+    const result = await client.generate({ messages: [{ role: "user", content: [{ type: "input_audio", input_audio: { data: "YXVkaW8=", format: "wav" } }] }] });
+    assert.equal(result.text, "转写内容");
+  });
 });

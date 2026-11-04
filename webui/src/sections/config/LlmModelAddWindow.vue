@@ -76,8 +76,14 @@ const MODEL_TYPE_OPTIONS = [
   { value: "chat", label: "对话" },
   { value: "transcription", label: "转写" },
   { value: "image", label: "生图" },
-  { value: "embedding", label: "向量" }
+  { value: "embedding", label: "向量" },
+  { value: "speech", label: "语音生成" },
+  { value: "decision", label: "原生决策" }
 ];
+
+const availableModelTypeOptions = computed(() => MODEL_TYPE_OPTIONS.filter(option =>
+  props.provider.type === "openai" || !["speech", "decision"].includes(option.value)
+));
 
 const MODEL_COLUMNS: WorkbenchDataTableColumn<ProviderModelSlot>[] = [
   { key: "upstreamModel", title: "模型", width: "minmax(10rem, 1fr)", cellClass: "font-mono text-text-secondary" },
@@ -200,7 +206,7 @@ const aliasError = computed(() => {
 });
 
 const selectedOperations = computed({
-  get: () => MODEL_TYPE_OPTIONS.filter(option => activeDraft.value.profile[option.value] !== undefined).map(option => option.value),
+  get: () => availableModelTypeOptions.value.filter(option => activeDraft.value.profile[option.value] !== undefined).map(option => option.value),
   set: (selected: string[]) => {
     for (const { value } of MODEL_TYPE_OPTIONS) {
       if (selected.includes(value)) activeDraft.value.profile[value] ??= {};
@@ -209,7 +215,7 @@ const selectedOperations = computed({
   }
 });
 const operationFilter = ref("all");
-const filterOptions = [{ value: "all", label: "全部用途" }, ...MODEL_TYPE_OPTIONS, { value: "unknown", label: "用途未知" }];
+const filterOptions = computed(() => [{ value: "all", label: "全部用途" }, ...availableModelTypeOptions.value, { value: "unknown", label: "用途未知" }]);
 const selectedSlot = computed(() => fetchedModels.value.find(slot => slot.upstreamModel === activeDraft.value.upstreamModel));
 interface SuggestedChange { path: string[]; current: unknown; suggested: unknown }
 const suggestedChanges = computed(() => {
@@ -379,7 +385,7 @@ onMounted(() => {
               </WorkbenchFormField>
 
               <WorkbenchFormField label="模型用途" hint="可同时选择多种用途。清单未声明用途时，请按实际接口能力选择。" required>
-                <WorkbenchMultiSelect v-model="selectedOperations" :options="MODEL_TYPE_OPTIONS" placeholder="选择用途" />
+                <WorkbenchMultiSelect v-model="selectedOperations" :options="availableModelTypeOptions" placeholder="选择用途" />
               </WorkbenchFormField>
               <p v-if="mode === 'catalog' && selectedSlot" class="break-all text-small text-text-subtle">发现来源：{{ selectedSlot.sources.join(' · ') }}</p>
               <details v-if="suggestedChanges.length" class="text-small text-text-secondary">
@@ -389,7 +395,7 @@ onMounted(() => {
                   <WorkbenchButton label="应用此项" @click="applySuggestion(change)" />
                 </div>
               </details>
-              <ModelOperationEditor v-model="activeDraft.profile" :operations="selectedOperations" />
+              <ModelOperationEditor v-model="activeDraft.profile" :operations="selectedOperations" :provider-type="String(provider.type ?? '')" />
               <div v-if="isUpdating" class="flex items-start gap-2 rounded-md border border-border-subtle bg-surface-muted px-3 py-2 text-small text-text-secondary">
                 <Check class="mt-0.5 size-4 shrink-0 text-success" />
                 此模型已配置；发现结果仅填充缺失字段，已有设置保持不变。

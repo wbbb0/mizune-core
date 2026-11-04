@@ -15,13 +15,13 @@ test("provider catalog exports discriminated options and only applicable control
   assert.equal(branch("deepseek").fields.harmBlockThreshold, undefined);
   assert.ok(branch("google").fields.harmBlockThreshold);
   assert.equal(branch("google").fields.features, undefined);
-  assert.ok(branch("openai").fields.features);
+  assert.ok(branch("openai_compatible").fields.features);
   assert.equal(branch("anthropic").fields.models.schema.value.fields.supportsSearch, undefined);
   assert.equal(branch("lmstudio").fields.models.schema.value.fields.supportsSearch, undefined);
 });
 
 test("known provider native search requires only model permission", () => {
-  for (const type of ["deepseek", "google", "vertex", "vertex_express", "dashscope", "openai_responses"] as const) {
+  for (const type of ["deepseek", "google", "vertex", "vertex_express", "dashscope", "openai_responses_compatible"] as const) {
     const catalog = llmCatalogFileSchema.parseFromObject({
       demo: {
         type, ...(type === "vertex" ? { projectId: "test-project" } : {}), models: {

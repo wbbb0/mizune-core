@@ -195,7 +195,7 @@ const baseTestFileConfigOverrides: DeepPartial<FileConfig> = {
 const baseTestCatalogOverrides: DeepPartial<LlmCatalogConfig> = {
   providers: {
     test: {
-      type: "openai",
+      type: "openai_compatible",
       baseUrl: "https://example.com/v1",
       apiKey: "test-key",
       proxy: false

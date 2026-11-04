@@ -17,7 +17,8 @@ export type ProviderModelListResult =
   | { kind: "unsupported"; providerType: LlmProviderType; reason: string };
 
 const DEFAULTS: Partial<Record<LlmProviderType, string>> = {
-  openrouter: "https://openrouter.ai/api/v1", openai: "https://api.openai.com/v1", openai_responses: "https://api.openai.com/v1",
+  openai: "https://api.openai.com/v1",
+  openrouter: "https://openrouter.ai/api/v1", openai_compatible: "https://api.openai.com/v1", openai_responses_compatible: "https://api.openai.com/v1",
   deepseek: "https://api.deepseek.com", dashscope: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   lmstudio: "http://localhost:1234/v1", anthropic: "https://api.anthropic.com", google: "https://generativelanguage.googleapis.com/v1beta"
 };

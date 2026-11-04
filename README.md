@@ -50,10 +50,7 @@ cp config/instances/acc1.example.yml config/instances/default.yml
 
 - `config/llm.catalog.yml`：按 provider 维护连接信息与嵌套模型清单；不同 provider 可复用相同的局部模型别名
 
-OpenAI 接入有两种独立协议：`type: openai` 使用 `/v1/chat/completions`
-兼容接口，`type: openai_responses` 使用 `/v1/responses`。Responses provider
-由本地 transcript 管理上下文并固定发送 `store: false`，不会依赖服务端
-`previous_response_id` 会话链。
+OpenAI 接入区分官方供应商与兼容协议：`type: openai` 使用官方 Responses 生成，并提供原生搜索、向量、转写、语音、图像生成/编辑与 Decisions；`type: openai_compatible` 使用 Chat Completions 兼容协议，`type: openai_responses_compatible` 使用 Responses 兼容协议。历史由本地会话统一管理，Responses 固定 `store: false` 并保留必要原生输出项。各模型按用途声明能力，详见 [OpenAI 官方供应商](docs/development/openai-provider.md)。
 
 `type: deepseek` 使用 Anthropic Messages 协议，默认地址为
 `https://api.deepseek.com/anthropic`，支持服务端原生搜索与普通工具混合调用。
@@ -295,7 +292,7 @@ npm run test
 
 实例 `dataDir/dump/` 下，`last-exchange.json` 统一保存解析后的成功结果，以及最近一次模型调用的实际 HTTP 请求体、响应状态、少量诊断响应头和解析前的原始响应体。`last-failed-exchange.json` 单独保留最近一次失败，不会被后续成功调用覆盖。不再生成旧的 `last-request.json` / `last-response.json`，也不额外缓存流事件数组。解析结果超过 1 MiB 时省略，并标记 `parsedResponseOmitted`；写入失败不会改变调用结果。请求与响应放在同一文件，并带调用 ID、模型引用和时间，避免并发调用时误配。
 
-成功调用遵循 `llm.debugDump.enabled`；失败调用即使关闭该开关也保存原始诊断。内部调用显式设置 `skipDebugDump` 时不生成这两种新增文件。适用于各聊天 provider（含 Responses 和 LM Studio），不包括 embedding。标准图片生成使用独立的 `last-image-exchange.json` / `last-failed-image-exchange.json`，保留 API 响应及失败信息，不覆盖聊天 dump。
+成功调用遵循 `llm.debugDump.enabled`；失败调用即使关闭该开关也保存原始诊断。内部调用显式设置 `skipDebugDump` 时不生成这两种新增文件。适用于各聊天 provider（含 Responses 和 LM Studio），不包括 embedding。标准图片生成使用独立的 `last-image-exchange.json` / `last-failed-image-exchange.json`，保留 API 响应及失败信息，不覆盖聊天 dump。原生语音、转写与决策分别使用 `audio-`、`transcription-`、`decision-` 前缀的独立 dump；音频不序列化 Buffer 为解析结果。
 
 每条响应最多保留前 1 MiB；`receivedBytes` / `capturedBytes` / `bodyTruncated` 标记大小与截断，`bodyComplete` 表示是否读到 EOF。解析失败或中断时只保存已读内容，不额外读取剩余流；尚未收到 HTTP 响应的网络失败没有状态码和响应体。`error` 保存最终异常，`transportError` 保存网络/读流异常。原始响应保留不等于已经识别所有供应商的流内错误；被解析器忽略的错误仍需从 `rawBody` 检查。
 

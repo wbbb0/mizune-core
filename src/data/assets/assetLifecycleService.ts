@@ -241,6 +241,7 @@ function isLifecycleManagedChatFile(file: ChatFileRecord): boolean {
     || file.origin === "browser_download"
     || file.origin === "browser_screenshot"
     || file.origin === "image_generated"
+    || file.origin === "audio_generated"
     || file.origin === "comfy_generated"
     || file.origin === "group_file_download"
     || file.origin === "url_download";

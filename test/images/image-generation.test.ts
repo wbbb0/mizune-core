@@ -20,7 +20,7 @@ function config() {
   return createTestAppConfig({
     llm: {
     enabled: true, imageGeneration: { enabled: true }, routingPreset: "test",
-    providers: { images: { type: "openai_responses", baseUrl: "https://images.example/v1/", apiKey: "test-only" } },
+    providers: { images: { type: "openai_responses_compatible", baseUrl: "https://images.example/v1/", apiKey: "test-only" } },
     models: {
       image: {
         provider: "images",
@@ -171,4 +171,93 @@ test("OpenRouter 图像端点使用专属参数并在请求前校验范围", asy
   value.llm.models.image!.image!.defaults.resolution = "invalid";
   await assert.rejects(generateConfiguredImage(value, { prompt: "测试" }), /不在模型声明/);
   assert.equal(requests, 1);
+});
+
+test("官方原生编辑上传参考图片及蒙版，继承模型参数并只请求一次", async () => {
+  const c = config();
+  c.llm.providers.images!.type = "openai";
+  c.llm.models.image!.image!.capabilities.referenceImages = true;
+  const mask = await sharp({ create: { width: 8, height: 6, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).png().toBuffer();
+  let requests = 0;
+  setFetchImplementationForTests(async (url, init) => {
+    requests++;
+    assert.equal(url, "https://images.example/v1/images/edits");
+    const body = init!.body as import("undici").FormData;
+    assert.equal(body.get("model"), "upstream-image");
+    assert.equal(body.get("prompt"), "把背景改成蓝色");
+    assert.equal(body.get("n"), "1");
+    assert.equal(body.get("quality"), "low");
+    assert.equal(body.getAll("image[]").length, 1);
+    const file = body.get("image[]") as File;
+    assert.deepEqual(Buffer.from(await file.arrayBuffer()), png);
+    assert.equal(file.type, "image/png");
+    assert.ok(body.get("mask"));
+    assert.equal((init?.headers as Record<string, string>)["Content-Type"], undefined);
+    assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer test-only");
+    return Response.json({ data: [{ b64_json: png.toString("base64") }] });
+  });
+  const result = await generateConfiguredImage(c, { prompt: "把背景改成蓝色", referenceImages: [{ buffer: png }], mask: { buffer: mask } });
+  assert.deepEqual(result.buffer, png);
+  assert.equal(requests, 1);
+});
+
+test("参考图、蒙版与编辑能力在发请求前校验", async () => {
+  const c = config();
+  let requests = 0;
+  setFetchImplementationForTests(async () => { requests++; throw new Error("不应请求"); });
+  await assert.rejects(generateConfiguredImage(c, { prompt: "编辑", referenceImages: [{ buffer: png }] }), /支持参考图编辑/);
+  c.llm.models.image!.image!.capabilities.referenceImages = true;
+  await assert.rejects(generateConfiguredImage(c, { prompt: "编辑", referenceImages: [{ buffer: Buffer.from("not image") }] }));
+  await assert.rejects(generateConfiguredImage(c, { prompt: "编辑", referenceImages: Array.from({ length: 17 }, () => ({ buffer: png })) }), /数量/);
+  await assert.rejects(generateConfiguredImage(c, { prompt: "编辑", mask: { buffer: png } }), /参考图/);
+  await assert.rejects(generateConfiguredImage(c, { prompt: "编辑", referenceImages: [{ buffer: png }], mask: { buffer: png } }), /蒙版/);
+  c.chatFiles.maxUploadBytes = png.length;
+  await assert.rejects(generateConfiguredImage(c, { prompt: "编辑", referenceImages: [{ buffer: png }, { buffer: png }] }), /总大小/);
+  assert.equal(requests, 0);
+});
+
+test("编辑工具只接受已导入的静态图片资产并返回新资产", async () => {
+  await withTempDir("image-edit-assets", async dir => {
+    const c = config(); c.localFiles.root = dir;
+    c.llm.models.image!.image!.capabilities.referenceImages = true;
+    const logger = pino({ level: "silent" });
+    const store = new ChatFileStore(c, logger, new LocalFileService(c, dir));
+    await store.init();
+    const source = await store.importBuffer({ buffer: png, sourceName: "source.png", mimeType: "image/png", kind: "image", origin: "image_generated" });
+    let requests = 0;
+    setFetchImplementationForTests(async () => { requests++; return Response.json({ data: [{ b64_json: png.toString("base64") }] }); });
+    const context = { config: c, chatFileStore: store } as BuiltinToolContext;
+    const call = { id: "image", type: "function", function: { name: "generate_image", arguments: "{}" } } as const;
+    const rejected = JSON.parse(String(await imageGenerationToolHandlers.generate_image!(call, { prompt: "编辑", reference_images: ["/tmp/not-an-asset.png"] }, context)));
+    assert.equal(rejected.ok, false);
+    assert.equal(requests, 0);
+    const edited = JSON.parse(String(await imageGenerationToolHandlers.generate_image!(call, { prompt: "编辑", reference_images: [source.fileRef] }, context)));
+    assert.equal(edited.ok, true);
+    assert.notEqual(edited.file_id, source.fileId);
+    assert.ok(edited.asset_handle);
+    assert.equal(requests, 1);
+  });
+});
+
+test("官方图像不发送兼容专用 response_format 参数", async () => {
+  const c = config();
+  c.llm.providers.images!.type = "openai";
+  c.llm.models.image!.image!.defaults.response_format = "b64_json";
+  setFetchImplementationForTests(async () => { throw new Error("不应请求"); });
+  await assert.rejects(generateConfiguredImage(c, { prompt: "图片" }), /response_format/);
+});
+
+test("局部重绘接受灰度透明 PNG 蒙版", async () => {
+  const c = config();
+  c.llm.providers.images!.type = "openai";
+  c.llm.models.image!.image!.capabilities.referenceImages = true;
+  const mask = await sharp({ create: { width: 8, height: 6, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .toColourspace("b-w").png().toBuffer();
+  assert.equal((await sharp(mask).metadata()).channels, 2);
+  setFetchImplementationForTests(async (_url, init) => {
+    assert.ok((init!.body as import("undici").FormData).get("mask"));
+    return Response.json({ data: [{ b64_json: png.toString("base64") }] });
+  });
+  const result = await generateConfiguredImage(c, { prompt: "局部编辑", referenceImages: [{ buffer: png }], mask: { buffer: mask } });
+  assert.deepEqual(result.buffer, png);
 });

@@ -92,6 +92,14 @@
 - `src/llm/prompts/history-summary.prompt.ts`
 - `test/conversation/history-compression-features.test.tsx`
 
+## 语音资产投递与会话展示
+
+语音生成工具先把结果导入实例资产库，返回音频资产句柄，不自动发送。`asset_send_to_chat` 按资产的真实媒体类型投递：音频使用 OneBot `record` 消息段；Web 投递保留同一音频语义，不降级为普通附件。
+
+成功投递后写入 `outbound_media_message`，`mediaKind: audio`，同时保留资产 ID、MIME、大小和消息 ID。生成语音带 `aiGenerated: true`。Sessions 聊天时间线和事件详情通过已有受认证资产内容地址提供播放器，明确显示“人工智能生成语音”；播放默认不预加载音频。音频资产发送不依赖 NapCat 的普通文件上传接口。
+
+图片、表情和音频共用媒体投递队列及已发送消息记录，只有实际发送成功后才产生对外媒体事件。普通文件仍使用文件上传路径。
+
 ## 会话输出偏好
 
 会话通过 `pacingPreferences.toolLoopOutput` 控制工具循环文本的对外输出方式：
@@ -156,3 +164,10 @@ WebUI 的实时 provider 文本是可撤回草稿，通过 `draft_delta` 展示�
 主回复与维护模型读取同一份三层固定档案和会话动态状态。代码先推进游戏时钟与周期事件，再按条件调用动态分块维护器。未确认的会话不进行后台初始化或结算。
 
 每次状态写入生成新 revision；提交同时检查状态与角色 revision、会话取消信号。人工修改、重置、删除、读档或全局配置变更后，旧维护结果不会覆盖新状态。任一维护响应失败时不提交半成品，也不清零本轮维护计时器。
+
+### 原生语音与决策工具集的模式边界
+
+`speech_generation` 与 `native_decisions` 在 `assistant`、`rp_assistant` 中默认可用，但仍受实例的能力开关、模型用途和路由配置限制。
+在 `stateful_rp`、`scenario_host` 中，两者均为默认关闭的会话可选工具集；会话显式启用后才进入模型和规划器的候选目录。
+这两个模式需要发送生成的语音时，还须同时启用 `asset_io`，由 `asset_send_to_chat` 投递语音资产。`scenario_host` 的 `asset_io` 同样默认关闭。
+会话工具集 override 只能选择该模式声明的工具集，不能借此开启未授权的其他模式能力。

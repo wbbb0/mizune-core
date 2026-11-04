@@ -334,7 +334,7 @@ function buildAssetFileCapabilities(
     reason: "把该 asset 发送到当前聊天",
     available: visibleToolNames.has("asset_send_to_chat"),
     args: selector,
-    ...(MEDIA_VIEW_KINDS.has(file.kind) ? {} : { requires: ["webui_or_napcat_file_upload"] })
+    ...(MEDIA_VIEW_KINDS.has(file.kind) || file.kind === "audio" ? {} : { requires: ["webui_or_napcat_file_upload"] })
   });
   capabilities.push({
     capability: "local_path",

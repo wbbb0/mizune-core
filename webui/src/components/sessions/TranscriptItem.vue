@@ -109,7 +109,7 @@ const itemTitle = computed(() => {
       title = `工具结果 · ${props.item.toolName || "未知工具结果"}`;
       break;
     case "outbound_media_message":
-      title = `${props.item.mediaKind === "file" ? "发送文件" : props.item.mediaKind === "emoji" ? "发送表情" : "发送图片"} · ${props.item.toolName}`;
+      title = `${props.item.mediaKind === "audio" ? "发送语音" : props.item.mediaKind === "file" ? "发送文件" : props.item.mediaKind === "emoji" ? "发送表情" : "发送图片"} · ${props.item.toolName}`;
       break;
     case "gate_decision":
       title = `Turn Planner 判定 · ${formatPlannerAction(props.item.action)}`;
@@ -528,7 +528,7 @@ const outboundMediaRows = computed(() => {
     { label: "类型", value: props.item.mediaKind },
     { label: "文件 ID", value: props.item.fileId || "无" },
     { label: "文件引用", value: props.item.fileRef || "无" },
-    { label: "原始文件名", value: props.item.sourceName || (props.item.mediaKind === "file" ? "未命名文件" : "未命名图片") },
+    { label: "原始文件名", value: props.item.sourceName || (props.item.mediaKind === "audio" ? "未命名语音" : props.item.mediaKind === "file" ? "未命名文件" : "未命名图片") },
     { label: "MIME", value: props.item.mimeType || "未知" },
     { label: "大小", value: props.item.sizeBytes != null ? String(props.item.sizeBytes) : "未知" },
     { label: "工作区路径", value: props.item.chatFilePath || "无" },
@@ -862,6 +862,10 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'outbound_media_message'" class="flex flex-col gap-2">
+        <template v-if="item.mediaKind === 'audio'">
+          <p v-if="item.aiGenerated" class="text-small text-text-muted">人工智能生成语音</p>
+          <audio v-if="item.fileId" :src="`/api/chat-files/${encodeURIComponent(item.fileId)}/content`" controls preload="none" class="max-w-full" :aria-label="item.sourceName || '语音消息'" />
+        </template>
         <WorkbenchCard v-for="row in outboundMediaRows" :key="row.label">
           <div class="flex items-center justify-between gap-3">
             <div class="text-small tracking-[0.05em] text-text-subtle uppercase">{{ row.label }}</div>

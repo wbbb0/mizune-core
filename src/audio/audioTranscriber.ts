@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
-import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
+import type { LlmClient } from "#llm/llmClient.ts";
 import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { KeyedDerivationRunner } from "#llm/derivations/keyedDerivationRunner.ts";
@@ -13,20 +13,6 @@ export interface AudioTranscriptionResult {
   status: "ready" | "failed";
   text?: string;
   error?: string | null;
-}
-
-function buildTranscriptionPrompt(): LlmMessage[] {
-  return [
-    {
-      role: "system",
-      content: [
-        "你是聊天音频听写器，只负责把输入音频尽量准确地转成简洁中文文本。",
-        "优先保留用户实际说出的内容，不要总结，不要润色，不要补充猜测。",
-        "如果音频里主要是语气词、环境音、噪声、音乐、听不清内容或无法识别，请明确输出“[无法识别]”或一句简短原因。",
-        "输出单段纯文本，不加引号、编号或额外解释。"
-      ].join("\n")
-    }
-  ];
 }
 
 function normalizeTranscription(raw: string): string {
@@ -60,7 +46,7 @@ export class AudioTranscriber {
     return this.config.llm.enabled
       && this.config.llm.audioTranscription.enabled
       && accepted.length > 0
-      && this.llmClient.isConfigured(accepted);
+      && this.llmClient.isCapabilityConfigured("transcription", accepted);
   }
 
   getResolvedModelRefs(): string[] {
@@ -127,32 +113,11 @@ export class AudioTranscriber {
         throw new Error(`Audio not found for transcription: ${audioId}`);
       }
 
-      const result = await this.llmClient.generate({
-        operation: "transcription",
+      const result = await this.llmClient.transcribe({
         modelRefOverride: modelRefs,
         timeoutMsOverride: this.config.llm.audioTranscription.timeoutMs,
-        enableThinkingOverride: this.config.llm.audioTranscription.enableThinking,
         skipDebugDump: true,
-        messages: [
-          ...buildTranscriptionPrompt(),
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "请转写这段聊天音频。"
-              },
-              {
-                type: "input_audio",
-                input_audio: {
-                  data: audio.data,
-                  format: audio.format,
-                  mimeType: audio.mimeType
-                }
-              }
-            ]
-          }
-        ]
+        audio: { data: audio.data, format: audio.format, mimeType: audio.mimeType }
       });
       const transcription = normalizeTranscription(result.text);
       const resolvedModelRef = result.usage.modelRef ?? normalizeModelRefs(modelRefs)[0] ?? "unknown";

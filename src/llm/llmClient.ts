@@ -1,7 +1,10 @@
+import { renderNativeSearchCitations } from "./shared/nativeSearchCitations.ts";
+import { runModelCapability, transcribeWithChat } from "./provider/modelCapabilityClient.ts";
+import type { LlmTranscribeParams, LlmTranscribeResult, LlmSynthesizeParams, LlmSynthesizeResult, LlmDecideParams, LlmDecideResult } from "./provider/nativeCapabilityTypes.ts";
 import { ModelRequestBudgetError, resolveRequestOutputBudget, resolveModelRequestBudget } from "./shared/requestTokenBudget.ts";
 import { getEmbeddingModelRefs } from "./shared/embeddingTarget.ts";
 import { resolveModelRefsForType } from "./shared/modelProfiles.ts";
-import { LlmProviderPolicyError } from "./provider/providerProtocolError.ts";
+import { LlmProviderPolicyError, LlmProviderHttpError } from "./provider/providerProtocolError.ts";
 import { withProviderExchangeDump } from "./provider/providerExchangeDump.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile, normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
@@ -82,6 +85,43 @@ export class LlmClient {
       const provider = getLlmProvider(context);
       return typeof provider.embed === "function";
     });
+  }
+
+  supportsStructuredOutput(modelRefs: string | string[]): boolean {
+    const contexts = this.resolveProviderContexts(modelRefs);
+    return contexts.length > 0 && contexts.every(context =>
+      getLlmProvider(context).supportsStructuredOutput === true
+      && context.modelProfile.chat?.capabilities.supportsStructuredOutput === true);
+  }
+
+  isCapabilityConfigured(operation: "transcription" | "speech" | "decision", modelRef?: string | string[]): boolean {
+    if (!this.config.llm.enabled) return false;
+    const contexts = this.resolveCapabilityContexts(operation, modelRef);
+    return contexts.some(context => operation === "transcription" || typeof getLlmProvider(context)[operation === "speech" ? "synthesize" : "decide"] === "function");
+  }
+
+  async transcribe(params: LlmTranscribeParams): Promise<LlmTranscribeResult> {
+    return runModelCapability(this.resolveCapabilityContexts("transcription", params.modelRefOverride), params, async (provider, context) => {
+      if (provider.transcribe) return provider.transcribe(context, params);
+      return transcribeWithChat(context, params, request => this.generate(request));
+    }, { kind: "transcription", allowFallback: true, shouldFallback: shouldFallbackToNextModel });
+  }
+
+  async synthesize(params: LlmSynthesizeParams): Promise<LlmSynthesizeResult> {
+    return runModelCapability(this.resolveCapabilityContexts("speech", params.modelRefOverride), params,
+      (provider, context) => provider.synthesize?.(context, params), { kind: "audio", allowFallback: false });
+  }
+
+  async decide(params: LlmDecideParams): Promise<LlmDecideResult> {
+    return runModelCapability(this.resolveCapabilityContexts("decision", params.modelRefOverride), params,
+      (provider, context) => provider.decide?.(context, params), { kind: "decision", allowFallback: true, shouldFallback: shouldFallbackToNextModel });
+  }
+
+  private resolveCapabilityContexts(operation: "transcription" | "speech" | "decision", modelRef?: string | string[]): LlmProviderRequestContext[] {
+    if (!this.config.llm.enabled) return [];
+    const role = operation === "transcription" ? "audio_transcription" : operation === "speech" ? "speech_generator" : "decision";
+    const refs = normalizeModelRefs(modelRef ?? getModelRefsForRole(this.config, role));
+    return this.resolveProviderContexts(resolveModelRefsForType(this.config, refs, operation).acceptedModelRefs);
   }
 
   async generate(params: LlmGenerateParams): Promise<LlmGenerateResult> {
@@ -249,6 +289,7 @@ export class LlmClient {
       try {
         streamed = await this.streamChatCompletion({
           ...(params.operation ? { operation: params.operation } : {}),
+          ...(params.responseFormat ? { responseFormat: params.responseFormat } : {}),
           messages: workingMessages,
           ...(params.prepareRequestForBudget ? { prepareRequestForBudget: params.prepareRequestForBudget } : {}),
           tools,
@@ -631,6 +672,7 @@ export class LlmClient {
       const candidateDeltas: Array<{ kind: "text" | "reasoning"; delta: string }> = [];
 
       try {
+        if (params.responseFormat && !provider.supportsStructuredOutput) throw new Error("Provider does not support structured output");
         const budget = resolveModelRequestBudget(providerContext.modelProfile, getRoutingPresetTokenLimits(this.config).contextTokens, params.maxOutputTokensOverride, providerContext.operation);
         const preparedMessages = params.prepareRequestForBudget
           ? await params.prepareRequestForBudget({ messages: messageProjection.messages, tools: resolvedTools ?? [], modelRef: providerContext.modelRef, budget })
@@ -641,6 +683,7 @@ export class LlmClient {
         messageProjection.messages = preparedMessages;
         const maxOutputTokens = resolveRequestOutputBudget(providerContext, preparedMessages, resolvedTools ?? [], params.maxOutputTokensOverride);
         const result = await withProviderExchangeDump(providerContext, params.skipDebugDump, () => provider.generate(providerContext, {
+          ...(params.responseFormat ? { responseFormat: params.responseFormat } : {}),
           messages: preparedMessages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
@@ -659,10 +702,16 @@ export class LlmClient {
             : {}),
           ...(params.skipDebugDump ? { skipDebugDump: params.skipDebugDump } : {})
         }));
+        const renderedText = params.responseFormat ? result.text : renderNativeSearchCitations(result.text, result.assistantMetadata);
+        if (renderedText !== result.text) {
+          const reasoningDeltas = candidateDeltas.filter(delta => delta.kind === "reasoning");
+          candidateDeltas.splice(0, candidateDeltas.length, ...reasoningDeltas, { kind: "text", delta: renderedText });
+        }
         await params.onPreviewReset?.();
         await replayValidatedProviderDeltas(candidateDeltas, params);
         return {
           ...result,
+          text: renderedText,
           modelRef: providerContext.modelRef
         };
       } catch (error: unknown) {
@@ -870,7 +919,7 @@ function shouldFallbackToNextModel(error: unknown): boolean {
   const message = error instanceof Error
     ? `${error.name} ${error.message}`.toLowerCase()
     : String(error).toLowerCase();
-  const statusCode = extractHttpStatusCode(message);
+  const statusCode = error instanceof LlmProviderHttpError ? error.statusCode : extractHttpStatusCode(message);
 
   return (
     isRetryableHttpStatus(statusCode)

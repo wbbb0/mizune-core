@@ -92,6 +92,8 @@ function buildTargetRoutingPresets(
     "imageInspector",
     "audioTranscription",
     "imageGenerator",
+    "speechGenerator",
+    "decision",
     "turnPlanner",
     "embedding"
   ]);

@@ -25,12 +25,12 @@ test("slugifyModelAlias produces [a-z0-9_] ids from upstream model names", () =>
 
 test("model list endpoint resolves per provider type with defaults", () => {
   const cases: Array<[Record<string, unknown>, string]> = [
-    [{ type: "openai" }, "https://api.openai.com/v1/models"],
-    [{ type: "openai_responses" }, "https://api.openai.com/v1/models"],
+    [{ type: "openai_compatible" }, "https://api.openai.com/v1/models"],
+    [{ type: "openai_responses_compatible" }, "https://api.openai.com/v1/models"],
     [{ type: "deepseek" }, "https://api.deepseek.com/models"],
     [{ type: "lmstudio" }, "http://localhost:1234/api/v1/models"],
     [{ type: "anthropic" }, "https://api.anthropic.com/v1/models?limit=1000"],
-    [{ type: "openai", baseUrl: "https://proxy.example.com/v1" }, "https://proxy.example.com/v1/models"]
+    [{ type: "openai_compatible", baseUrl: "https://proxy.example.com/v1" }, "https://proxy.example.com/v1/models"]
   ];
   for (const [provider, expected] of cases) {
     const resolved = resolveProviderModelListEndpoint(provider as { type: LlmProviderType; baseUrl?: string });

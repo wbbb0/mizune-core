@@ -299,7 +299,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
             harmBlockThreshold: "BLOCK_NONE"
           },
           fallbackTest: {
-            type: "openai",
+            type: "openai_compatible",
             apiKey: "fallback-key",
             proxy: false,
             baseUrl: "https://fallback.example.invalid/v1"

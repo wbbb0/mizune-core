@@ -1,3 +1,4 @@
+import type { LlmTranscribeParams, LlmTranscribeResult, LlmSynthesizeParams, LlmSynthesizeResult, LlmDecideParams, LlmDecideResult } from "./nativeCapabilityTypes.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { LlmProviderConfig, ModelProfile } from "#config/configModel.ts";
@@ -60,7 +61,12 @@ export interface LlmMessage {
   providerMetadata?: Record<string, unknown>;
 }
 
+export type LlmResponseFormat =
+  | { type: "json_schema"; name: string; schema: Record<string, unknown>; strict?: boolean }
+  | { type: "json_object" };
+
 export interface LlmGenerateParams {
+  responseFormat?: LlmResponseFormat;
   operation?: "chat" | "transcription";
   messages: LlmMessage[];
   abortSignal?: AbortSignal;
@@ -202,6 +208,7 @@ export interface LlmProviderRequestContext {
 }
 
 export interface LlmProviderGenerateParams {
+  responseFormat?: LlmResponseFormat;
   messages: LlmMessage[];
   abortSignal?: AbortSignal;
   tools?: LlmToolDefinition[];
@@ -224,6 +231,10 @@ export interface LlmProviderGenerateResult {
 
 export interface LlmProvider {
   readonly type: LlmProviderConfig["type"];
+  readonly supportsStructuredOutput?: boolean;
+  transcribe?(context: LlmProviderRequestContext, params: LlmTranscribeParams): Promise<LlmTranscribeResult>;
+  synthesize?(context: LlmProviderRequestContext, params: LlmSynthesizeParams): Promise<LlmSynthesizeResult>;
+  decide?(context: LlmProviderRequestContext, params: LlmDecideParams): Promise<LlmDecideResult>;
   resolveBaseUrl(providerConfig: LlmProviderConfig): string | null;
   generate(
     context: LlmProviderRequestContext,

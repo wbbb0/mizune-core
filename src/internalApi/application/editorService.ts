@@ -392,7 +392,7 @@ export function createEditorService(input: {
     },
 
     async getOptions(optionKey) {
-      if (["llm_model_targets", "llm_image_model_targets", "llm_embedding_model_targets", "llm_transcription_model_targets"].includes(optionKey)) {
+      if (["llm_model_targets", "llm_image_model_targets", "llm_embedding_model_targets", "llm_transcription_model_targets", "llm_speech_model_targets", "llm_decision_model_targets"].includes(optionKey)) {
         const raw = await readConfigFileRaw(input.config.configRuntime.llmCatalogPath).catch(() => ({}));
         const catalog = parseConfig(llmCatalogFileSchema, raw, { cloneInput: true });
         return {
@@ -405,7 +405,9 @@ export function createEditorService(input: {
               options: Object.entries(providerConfig.models)
                 .filter(([, profile]) => optionKey === "llm_image_model_targets" ? !!profile.image
                   : optionKey === "llm_embedding_model_targets" ? !!profile.embedding
-                  : optionKey === "llm_transcription_model_targets" ? !!profile.transcription : !!profile.chat)
+                  : optionKey === "llm_transcription_model_targets" ? !!profile.transcription
+                  : optionKey === "llm_speech_model_targets" ? !!profile.speech
+                  : optionKey === "llm_decision_model_targets" ? !!profile.decision : !!profile.chat)
                 .sort(([left], [right]) => left.localeCompare(right))
                 .map(([model, profile]) => ({
                   key: model,

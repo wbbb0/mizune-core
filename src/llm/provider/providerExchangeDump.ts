@@ -102,7 +102,7 @@ export async function withProviderExchangeDump<T>(
   context: Pick<LlmProviderRequestContext, "config" | "modelRef" | "model"> & Partial<Pick<LlmProviderRequestContext, "logger">>,
   skipDebugDump: boolean | undefined,
   run: () => Promise<T>,
-  kind: "chat" | "image" = "chat"
+  kind: "chat" | "image" | "audio" | "decision" | "transcription" = "chat"
 ): Promise<T> {
   if (skipDebugDump) return run();
   const exchanges: Exchange[] = [];
@@ -139,7 +139,7 @@ export async function withProviderExchangeDump<T>(
             ? join("data", context.config.configRuntime.instanceName) : context.config.dataDir;
           const directory = resolve(dataDir, "dump");
           await mkdir(directory, { recursive: true });
-          const prefix = kind === "image" ? "image-" : "";
+          const prefix = kind === "chat" ? "" : `${kind}-`;
           const serialized = JSON.stringify(payload, null, 2) + "\n";
           for (const name of [`last-${prefix}exchange.json`, ...(failure ? [`last-failed-${prefix}exchange.json`] : [])]) {
             const target = join(directory, name);

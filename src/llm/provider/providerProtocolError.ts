@@ -18,3 +18,11 @@ export class LlmProviderPolicyError extends Error {
     this.name = "LlmProviderPolicyError";
   }
 }
+
+/** Transport status is structured so every provider participates in the same fallback policy. */
+export class LlmProviderHttpError extends Error {
+  constructor(readonly statusCode: number, message: string) {
+    super(message);
+    this.name = "LlmProviderHttpError";
+  }
+}

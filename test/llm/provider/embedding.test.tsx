@@ -5,13 +5,14 @@ import { LlmClient } from "../../../src/llm/llmClient.ts";
 import { createTestAppConfig } from "../../helpers/config-fixtures.tsx";
 import { withMockFetch } from "../../helpers/llm-test-support.tsx";
 
-test("LlmClient sends embedding requests through embedding model routing", async () => {
+for (const providerType of ["openai_compatible", "openai"] as const) {
+test(`LlmClient sends ${providerType} embedding requests through embedding model routing`, async () => {
   const config = createTestAppConfig({
     llm: {
       enabled: true,
       providers: {
         test: {
-          type: "openai",
+          type: providerType,
           baseUrl: "https://example.com/v1",
           apiKey: "embedding-key",
           proxy: false
@@ -66,3 +67,5 @@ test("LlmClient sends embedding requests through embedding model routing", async
     assert.equal(result.usage.inputTokens, 2);
   });
 });
+
+}

@@ -620,6 +620,7 @@ export function createGenerationExecutor(
         : undefined;
 
       const builtinToolContext = buildBuiltinToolContext({
+        nativeCapabilities: deps.sessionRuntime.llmClient,
         config,
         relationship: toolRelationship ?? relationship,
         replyDelivery: sendTarget.delivery,

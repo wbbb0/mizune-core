@@ -18,6 +18,8 @@ export const assistantModeDefinition: SessionModeDefinition = {
     "asset_io",
     "scheduler_admin",
     "image_generation",
+    "speech_generation",
+    "native_decisions",
     "comfy_image",
     "time_utils"
   ].map((toolsetId) => ({

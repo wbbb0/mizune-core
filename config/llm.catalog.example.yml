@@ -1,4 +1,5 @@
-# 模型可同时配置 chat / embedding / image / transcription 多种用途；未提供的能力表示未知。
+# 模型可同时配置 chat / embedding / image / transcription 多种用途；OpenAI 官方另支持 speech / decision。
+# 未声明的用途不可路由；未提供的能力标记表示未知。
 dashscope:
   type: dashscope
   apiKey: replace-me
@@ -71,26 +72,55 @@ anthropic:
         defaults:
           maxOutputTokens: 4096
         preserveThinking: true
-openai_responses:
-  type: openai_responses
-  baseUrl: https://api.openai.com/v1
-  apiKey: replace-me
+openai_official:
+  type: openai
+  apiKey: replace-with-openai-api-key
   proxy: true
   models:
     main:
-      upstreamModel: gpt-5.6
+      upstreamModel: gpt-6-sol
       chat:
         capabilities:
+          supportsStructuredOutput: true
           supportsThinking: true
+          thinkingControllable: false
           supportsVision: true
           supportsTools: true
+          supportsSearch: true
         defaults:
           maxOutputTokens: 4096
-          extra:
-            reasoning:
-              effort: medium
-              summary: auto
+          reasoningEffort: medium
+          verbosity: medium
         preserveThinking: true
+        searchEnabled: false
+    embedding:
+      upstreamModel: text-embedding-3-small
+      embedding: {}
+    transcription:
+      upstreamModel: gpt-transcribe
+      transcription:
+        language: zh
+    speech:
+      upstreamModel: gpt-4o-mini-tts
+      speech:
+        voice: coral
+        format: mp3
+        speed: 1
+    image:
+      upstreamModel: gpt-image-2.5-sunburst
+      image:
+        capabilities:
+          referenceImages: true
+        defaults:
+          size: 1024x1024
+    decision:
+      upstreamModel: gpt-6-luna
+      decision: {}
+responses_gateway:
+  type: openai_responses_compatible
+  baseUrl: https://your-responses-gateway.example/v1
+  apiKey: replace-me
+  models: {}
 lmstudio_local:
   type: lmstudio
   models:
@@ -118,17 +148,6 @@ vertex:
         defaults:
           maxOutputTokens: 4096
         searchEnabled: true
-openai_images:
-  type: openai
-  baseUrl: https://api.openai.com/v1
-  apiKey: replace-me
-  models:
-    image:
-      upstreamModel: gpt-image-1
-      image:
-        defaults:
-          size: 1024x1024
-          quality: low
 openrouter:
   type: openrouter
   apiKey: replace-me

@@ -5,9 +5,19 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 const results = computed(() => {
+  const nativeResults = [...(Array.isArray(props.metadata?.citations) ? props.metadata.citations : []),
+    ...(Array.isArray(props.metadata?.searchSources) ? props.metadata.searchSources : [])]
+    .map(record).flatMap(item => {
+      if (typeof item.url !== "string") return [];
+      try {
+        const url = new URL(item.url);
+        if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return [];
+        return [{ title: typeof item.title === "string" ? item.title : url.hostname, url: url.href }];
+      } catch { return []; }
+    });
   const blocks = props.metadata?.anthropicContentBlocks;
-  if (!Array.isArray(blocks)) return [];
-  return blocks.flatMap((value) => {
+  if (!Array.isArray(blocks)) return uniqueResults(nativeResults);
+  const anthropicResults = blocks.flatMap((value) => {
     const block = record(value);
     if (block.type !== "web_search_tool_result") return [];
     const content = Array.isArray(block.content) ? block.content : [block.content];
@@ -17,7 +27,17 @@ const results = computed(() => {
       return [{ title: typeof item.title === "string" ? item.title : item.url, url: item.url }];
     });
   });
+  return uniqueResults([...nativeResults, ...anthropicResults]);
 });
+function uniqueResults(rows: Array<{ title: string; url: string }>) {
+  const seen = new Set<string>();
+  return rows.filter(row => {
+    const key = row.url || row.title;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 </script>
 
 <template>

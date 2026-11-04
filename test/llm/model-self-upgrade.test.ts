@@ -113,7 +113,7 @@ function createUpgradeConfig(): AppConfig {
       routingPreset: "upgrade",
       providers: {
         other: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://other.example.com/v1",
           apiKey: "test-key",
           proxy: false

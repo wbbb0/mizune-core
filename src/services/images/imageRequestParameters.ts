@@ -1,11 +1,15 @@
 import type { ModelProfile, LlmProviderConfig } from "#config/configModel.ts";
 
-export function buildImageRequestParameters(profile: ModelProfile, provider: LlmProviderConfig, size?: string): Record<string, unknown> {
+export function buildImageRequestParameters(profile: ModelProfile, provider: LlmProviderConfig, size?: string, editing = false): Record<string, unknown> {
   const settings = profile.image;
   if (!settings) throw new Error("模型未配置图像用途");
   const defaults = settings.defaults;
   const result: Record<string, unknown> = { ...defaults };
+  if (!editing) delete result.input_fidelity;
   if (size) result.size = size;
+  if (provider.type === "openai" && result.response_format) {
+    throw new Error("OpenAI 官方图像接口直接返回 Base64，不使用 response_format，请清除此默认参数");
+  }
   if (provider.type === "openrouter") {
     if (result.size) throw new Error("OpenRouter 图像接口使用比例与分辨率，请在模型默认参数中设置 aspect_ratio 和 resolution，不使用 size");
     if (result.response_format) throw new Error("OpenRouter 图像接口不使用 response_format，请清除此默认参数");

@@ -191,6 +191,8 @@ test("routing preset editor effective values update all preset fields without re
     imageInspector: [],
     audioTranscription: [],
     imageGenerator: [],
+    speechGenerator: [],
+    decision: [],
     turnPlanner: [],
     embedding: ["base-embedding"],
     historyWindow: {

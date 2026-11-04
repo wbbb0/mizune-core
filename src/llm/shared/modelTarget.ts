@@ -1,27 +1,14 @@
+import { ROUTING_MODEL_FIELDS } from "#config/routingModelFields.ts";
 import { llmProviderCatalogSchema } from "#config/configModel.ts";
 import type {
   LlmCatalogConfig,
   LlmCatalogFile,
   LlmRoutingPreset,
   LlmRoutingPresetCatalogFile,
-  LlmRoutingPresetFile,
   ModelTargetRef
 } from "#config/configModel.ts";
 
 const MODEL_TARGET_SEPARATOR = "/";
-
-const ROUTING_MODEL_FIELDS = [
-  "mainSmall",
-  "mainLarge",
-  "summarizer",
-  "textInspector",
-  "sessionCaptioner",
-  "imageCaptioner",
-  "imageInspector",
-  "audioTranscription",
-  "imageGenerator",
-  "turnPlanner"
-] as const satisfies ReadonlyArray<Exclude<keyof LlmRoutingPresetFile, "historyWindow" | "tokenLimits">>;
 
 function assertModelTargetAlias(value: string, label: "provider" | "model"): void {
   if (!value || value.includes(MODEL_TARGET_SEPARATOR)) {

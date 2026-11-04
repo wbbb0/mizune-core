@@ -617,3 +617,38 @@ test("模型组件状态在窗口快照刷新后保留，向量模型仍可提�
   });
   wrapper.unmount();
 });
+
+test("新增模型按供应商展示原生用途，官方转写不展示聊天能力", async () => {
+  const apiUrl = createDataModule(`
+    export async function listProviderModels() {
+      return { kind: 'ok', warnings: [], models: [{ upstreamModel: 'transcriber', alias: 'transcriber', exists: false,
+        profile: { transcription: {} }, suggested: {}, sources: ['test'] }] };
+    }
+  `);
+  const widgetsUrl = createDataModule(`
+    import { h } from '${VUE_RUNTIME_URL}';
+    const Box = { setup: (_, { slots }) => () => h('div', slots.default?.()) };
+    export const WorkbenchButton = Box, WorkbenchCard = Box, WorkbenchEmptyState = Box,
+      WorkbenchSelect = Box, WorkbenchTabStrip = Box, WorkbenchTextInput = Box, WorkbenchDataTable = Box;
+    export const WorkbenchFormField = { props: ['label'], setup: (props, { slots }) => () => h('label', [props.label, slots.default?.()]) };
+    export const WorkbenchMultiSelect = { props: ['options'], setup: props => () => h('div', { 'data-model-options': JSON.stringify(props.options) }) };
+    export const ResponsiveSplitPane = { setup: (_, { slots }) => () => h('div', [slots.primary?.({compact: false}), slots.secondary?.({compact: false})]) };
+  `);
+  const iconsUrl = createDataModule(`export const AlertCircle = {}, Check = {}, DownloadCloud = {}, RefreshCw = {}, Search = {};`);
+  const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, { vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl });
+  const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
+    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
+    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl
+  });
+  const { default: ModelAdd } = await import(modelUrl);
+  for (const type of ['openai', 'google']) {
+    const wrapper = vueMount(ModelAdd, { props: { provider: { type }, existingAliases: [], values: {} } });
+    await vueTestUtils.flushPromises();
+    const options = JSON.parse(wrapper.get('[data-model-options]').attributes('data-model-options'));
+    assert.equal(options.some((item: { value: string }) => item.value === 'speech'), type === 'openai');
+    assert.equal(options.some((item: { value: string }) => item.value === 'decision'), type === 'openai');
+    assert.equal(wrapper.text().includes('可关闭思考'), type !== 'openai');
+    assert.equal(wrapper.text().includes('保存后可在目录表单设置语言代码和转写提示'), type === 'openai');
+    wrapper.unmount();
+  }
+});

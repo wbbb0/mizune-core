@@ -10,7 +10,7 @@ function createInspectorConfig() {
       enabled: true,
       providers: {
         vision: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://example.com/v1",
           apiKey: "test-key",
           proxy: false
@@ -56,7 +56,7 @@ function createMixedVisionInspectorConfig() {
       enabled: true,
       providers: {
         vision: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://example.com/v1",
           apiKey: "test-key",
           proxy: false

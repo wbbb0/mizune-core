@@ -96,8 +96,9 @@ interface OpenAiRequestMessage {
   reasoning_content?: string;
 }
 
-export class OpenAiProvider implements LlmProvider {
-  readonly type = "openai" as const;
+export class OpenAiCompatibleProvider implements LlmProvider {
+  readonly type = "openai_compatible" as const;
+  readonly supportsStructuredOutput = true;
 
   resolveBaseUrl(providerConfig: LlmProviderRequestContext["providerConfig"]): string | null {
     return providerConfig.baseUrl?.trim() || "https://api.openai.com/v1";
@@ -125,10 +126,22 @@ export class OpenAiProvider implements LlmProvider {
       ...(requestTools.length > 0 ? { tools: requestTools } : {})
     };
 
+    if (params.responseFormat) {
+      requestBody.response_format = params.responseFormat.type === "json_schema"
+        ? {
+          type: "json_schema",
+          json_schema: {
+            name: params.responseFormat.name,
+            schema: params.responseFormat.schema,
+            strict: params.responseFormat.strict ?? true
+          }
+        }
+        : { type: "json_object" };
+    }
     if (params.maxOutputTokensOverride) {
       delete requestBody.max_tokens;
       delete requestBody.max_completion_tokens;
-      const outputField = context.providerConfig.type === "openai" ? context.providerConfig.maxOutputTokenField : "max_tokens";
+      const outputField = context.providerConfig.type === "openai_compatible" ? context.providerConfig.maxOutputTokenField : "max_tokens";
       requestBody[outputField] = params.maxOutputTokensOverride;
     }
     const thinkingFeature = getProviderFeatureFromContext(context, "thinking");

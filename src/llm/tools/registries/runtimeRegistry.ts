@@ -1,3 +1,4 @@
+import { nativeCapabilityToolDescriptors, nativeCapabilityToolHandlers } from "../runtime/nativeCapabilityTools.ts";
 import { stickerToolDescriptors, stickerToolHandlers } from "../runtime/stickerTools.ts";
 import { imageGenerationToolDescriptors, imageGenerationToolHandlers } from "../runtime/imageGenerationTools.ts";
 import { temporaryWorkspaceToolDescriptors, temporaryWorkspaceToolHandlers } from "../runtime/temporaryWorkspaceTools.ts";
@@ -35,6 +36,7 @@ const runtimeStaticToolDescriptorsRegistry = [
   ...chatFileToolDescriptors,
   ...imageTransformToolDescriptors,
   ...imageGenerationToolDescriptors,
+  ...nativeCapabilityToolDescriptors,
   ...assetDocumentToolDescriptors,
   ...selfAccountToolDescriptors,
   ...diceToolDescriptors,
@@ -63,6 +65,7 @@ export const runtimeToolHandlersRegistry = {
   ...chatFileToolHandlers,
   ...imageTransformToolHandlers,
   ...imageGenerationToolHandlers,
+  ...nativeCapabilityToolHandlers,
   ...assetDocumentToolHandlers,
   ...selfAccountToolHandlers,
   ...diceToolHandlers,

@@ -21,6 +21,7 @@ export const chatFileRecordRegistrySchema = s.object({
     "browser_download",
     "browser_screenshot",
     "image_generated",
+    "audio_generated",
     "comfy_generated",
     "group_file_download",
     "image_transform",

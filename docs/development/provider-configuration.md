@@ -10,7 +10,8 @@ LLM 目录以供应商为一级目录。创建供应商后先选择类型，表�
 | DeepSeek | 模型勾选“允许联网搜索”；工具定义自动生成 | 供应商搜索次数上限，默认 3 |
 | Google / Vertex / Vertex Express | 模型勾选“允许联网搜索” | 内容拦截阈值 |
 | DashScope | 模型勾选“允许联网搜索”；思考开关自动映射 | 无需填写 enable_search / enable_thinking |
-| OpenAI Responses | 模型勾选“允许联网搜索”；默认使用 web_search | 兼容接口高级覆盖 |
+| OpenAI 官方 | Responses 原生搜索，来源随消息展示 | 原生转写、语音、图像编辑、Decisions；各模型独立配置用途 |
+| OpenAI Responses 兼容 | 模型勾选“允许联网搜索”；默认使用 web_search | 兼容接口高级覆盖 |
 | OpenAI Chat Completions 兼容接口 | 没有统一原生搜索协议，需按服务商说明配置高级覆盖 | 自定义请求字段或工具定义 |
 | LM Studio / Anthropic | 当前不展示联网搜索开关 | LM Studio 可覆盖思考请求字段 |
 
@@ -23,7 +24,7 @@ LLM 目录以供应商为一级目录。创建供应商后先选择类型，表�
 
 - **从供应商清单选择**：打开窗口后自动调用后端 `POST /api/editors/llm_catalog/list-models`，携带当前 provider 草稿连接信息，
   从模型清单接口拉取模型 id；窗口支持按模型名或别名搜索、区分可添加与已配置模型，并可手动刷新。支持 OpenAI 兼容协议
-  （`openai` / `openai_responses` / `deepseek` / `dashscope` / `lmstudio` 走 `{baseUrl}/models`，
+  （`openai` / `openai_compatible` / `openai_responses_compatible` / `deepseek` / `dashscope` / `lmstudio` 走 `{baseUrl}/models`，
   DashScope 默认重写到 `compatible-mode/v1`）与 Anthropic（`{baseUrl}/v1/models`）；Google / Vertex 暂不自动拉取，会给出提示。
 - **手动填写**：直接输入上游模型名。
 - 两种方式都会自动生成 `[a-z0-9_]` 格式的局部模型别名（新模型可改，重复时追加 `_2`、`_3`），并给出默认能力选择
@@ -101,3 +102,11 @@ vertex:
 删除模型后，已有路由引用仍保留并提示失效，避免静默改变路由顺序或继承语义；可直接重新选择 Provider 和模型修复。保存、加载或重新加载配置会刷新动态选项目录，组件库统一处理请求复用和过期响应丢弃。供应商及模型目录的业务定义继续由本项目 `/api/editor-options` 提供，组件库不识别 Provider 或模型字段。
 
 路由角色的默认值由后端 `createRoutingPresetEditorFeatures` 从当前路由定义生成，通过通用 `record_inheritance` 契约传给编辑器。组件库不再硬编码角色列表，新增 `imageGenerator` 等字段可自动参与继承与回显。
+
+## OpenAI 类型与能力边界
+
+`openai` 专用于官方接口；兼容 Chat Completions 使用 `openai_compatible`，兼容 Responses 使用 `openai_responses_compatible`。本次类型调整直接更新现有 YAML，不提供自动迁移、旧类型别名或双读逻辑。
+
+官方供应商的 `transcription` 使用原生 Audio 转写参数；`speech` 和 `decision` 仅在官方类型提供。图像字段按供应商协议裁剪：官方不展示 `response_format`，OpenRouter 使用比例与分辨率，兼容 Images 可选择响应格式。官方向量输入固定为原文，避免发送兼容服务专属的 `input_type`。
+
+`speechGenerator` 和 `decision` 路由与其他角色共用持久化、默认继承、动态选项和引用事务。详见 [OpenAI 官方供应商](openai-provider.md)。

@@ -49,7 +49,7 @@ function isFeatureSupportedByModel(modelProfile: ModelProfile, featureName: Prov
 
 /** 用户只声明模型是否允许搜索；协议工具名称和字段由 provider 负责。 */
 function resolveProviderFeature(provider: LlmProviderConfig, feature: ProviderFeatureName): ProviderFeatureConfig | null {
-  if (["openai", "openai_responses", "lmstudio"].includes(provider.type)) {
+  if (["openai_compatible", "openai_responses_compatible", "lmstudio"].includes(provider.type)) {
     const override = provider.features[feature];
     if (override) return override;
   }
@@ -59,7 +59,8 @@ function resolveProviderFeature(provider: LlmProviderConfig, feature: ProviderFe
   }
   switch (provider.type) {
     case "deepseek": return { type: "builtin_tool", tool: { type: "web_search_20250305", name: "web_search", max_uses: provider.search.maxUses } };
-    case "openai_responses": return { type: "builtin_tool", tool: { type: "web_search" } };
+    case "openai":
+    case "openai_responses_compatible": return { type: "builtin_tool", tool: { type: "web_search" } };
     case "google":
     case "vertex":
     case "vertex_express": return { type: "builtin_tool", tool: { googleSearch: {} } };

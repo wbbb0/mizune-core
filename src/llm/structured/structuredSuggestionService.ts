@@ -16,7 +16,7 @@ export interface StructuredSuggestionResult {
 export class StructuredSuggestionService {
   constructor(
     private readonly config: AppConfig,
-    private readonly llmClient: Pick<LlmClient, "generate" | "isConfigured">,
+    private readonly llmClient: Pick<LlmClient, "generate" | "isConfigured"> & Partial<Pick<LlmClient, "supportsStructuredOutput">>,
     private readonly logger: Logger
   ) {}
 
@@ -33,6 +33,7 @@ export class StructuredSuggestionService {
     instruction: string;
     context: Record<string, unknown>;
     outputContract: string;
+    outputSchema?: Record<string, unknown>;
     abortSignal?: AbortSignal;
   }): Promise<StructuredSuggestionResult> {
     const modelRefs = this.resolveModelRefs();
@@ -47,7 +48,11 @@ export class StructuredSuggestionService {
     }
 
     try {
+      const nativeOutput = this.llmClient.supportsStructuredOutput?.(modelRefs) === true;
       const result = await this.llmClient.generate({
+        ...(nativeOutput ? { responseFormat: input.outputSchema
+          ? { type: "json_schema" as const, name: "suggestion", schema: input.outputSchema, strict: true }
+          : { type: "json_object" as const } } : {}),
         modelRefOverride: modelRefs,
         timeoutMsOverride: this.config.llm.structuredSuggestion.timeoutMs,
         enableThinkingOverride: this.config.llm.structuredSuggestion.enableThinking,

@@ -5,12 +5,16 @@ import sharp from "sharp";
 import type { AppConfig } from "#config/config.ts";
 import { resolveModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import { fetchWithProxy } from "#services/proxy/index.ts";
+import { buildImageEditBody, type ImageEditSource } from "./imageEditInputs.ts";
 
-function resolveImageModel(config: AppConfig) {
+function resolveImageModel(config: AppConfig, editing = false) {
   for (const modelRef of resolveModelRefsForRole(config, "image_generator").acceptedModelRefs) {
     const profile = config.llm.models[modelRef];
     const provider = profile ? config.llm.providers[profile.provider] : undefined;
-    if (profile && provider && supportsStandardImageGeneration(provider.type)) return { modelRef, profile, provider };
+    if (profile && provider && supportsStandardImageGeneration(provider.type)
+      && (!editing || (provider.type !== "openrouter" && profile.image?.capabilities.referenceImages === true))) {
+      return { modelRef, profile, provider };
+    }
   }
   return null;
 }
@@ -34,32 +38,42 @@ export interface GeneratedImage {
 export async function generateConfiguredImage(config: AppConfig, input: {
   prompt: string;
   size?: string;
+  referenceImages?: ImageEditSource[];
+  mask?: ImageEditSource;
   abortSignal?: AbortSignal;
 }): Promise<GeneratedImage> {
   if (!isImageGenerationAvailable(config)) throw new Error("图像生成未启用，或未配置支持标准 Images API 的生图路由");
-  const target = resolveImageModel(config)!;
+  const editing = (input.referenceImages?.length ?? 0) > 0;
+  if (input.mask && !editing) throw new Error("局部编辑蒙版必须与参考图一起提供");
+  const target = resolveImageModel(config, editing);
+  if (!target) throw new Error("未配置声明支持参考图编辑的 Images API 模型");
   return withProviderExchangeDump({ config, modelRef: target.modelRef, model: target.profile.model }, false, async () => {
     const prompt = input.prompt.trim();
     if (!prompt) throw new Error("图片描述不能为空");
-    const settings = buildImageRequestParameters(target.profile, target.provider, input.size?.trim());
+    const settings = buildImageRequestParameters(target.profile, target.provider, input.size?.trim(), editing);
     const signal = AbortSignal.any([
       AbortSignal.timeout(config.llm.imageGeneration.timeoutMs),
       ...(input.abortSignal ? [input.abortSignal] : [])
     ]);
     signal.throwIfAborted();
+    const request = editing
+      ? await buildImageEditBody({
+          model: target.profile.model, prompt, settings,
+          images: input.referenceImages!,
+          ...(input.mask ? { mask: input.mask } : {}),
+          maxBytes: config.chatFiles.maxUploadBytes
+        })
+      : JSON.stringify({ model: target.profile.model, prompt, n: 1, ...settings });
+    signal.throwIfAborted();
     const baseUrl = (target.provider.baseUrl ?? (target.provider.type === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1")).replace(/\/+$/, "");
-    const response = await fetchProviderResponse(config, "llm", `${baseUrl}${target.provider.type === "openrouter" ? "/images" : "/images/generations"}`, {
+    const endpoint = editing ? "/images/edits" : target.provider.type === "openrouter" ? "/images" : "/images/generations";
+    const response = await fetchProviderResponse(config, "llm", `${baseUrl}${endpoint}`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        ...(editing ? {} : { "Content-Type": "application/json" }),
         ...(target.provider.apiKey ? { Authorization: `Bearer ${target.provider.apiKey}` } : {})
       },
-      body: JSON.stringify({
-        model: target.profile.model,
-        prompt,
-        n: 1,
-        ...settings
-      }),
+      body: request,
       signal
     }, { modelRef: target.modelRef });
     if (!response.ok) {

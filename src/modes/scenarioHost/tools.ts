@@ -768,6 +768,15 @@ export const scenarioHostToolHandlers: Record<string, ToolHandler> = {
         wornItemCount: Math.max(1, Math.round(getNumberArg(args, "wornItemCount") ?? 4)),
         heldItemCount: Math.max(1, Math.round(getNumberArg(args, "heldItemCount") ?? 2))
       },
+      outputSchema: {
+        type: "object", additionalProperties: false, required: ["wornItems", "heldItems"],
+        properties: {
+          wornItems: { type: "array", items: { type: "object", additionalProperties: false,
+            required: ["name", "wearPosition", "description"], properties: { name: { type: "string" }, wearPosition: { type: "string" }, description: { type: "string" } } } },
+          heldItems: { type: "array", items: { type: "object", additionalProperties: false,
+            required: ["name", "description", "quantity"], properties: { name: { type: "string" }, description: { type: "string" }, quantity: { type: "integer" } } } }
+        }
+      },
       outputContract: JSON.stringify({
         wornItems: [{ name: "string", wearPosition: "string", description: "string" }],
         heldItems: [{ name: "string", description: "string", quantity: 1 }]

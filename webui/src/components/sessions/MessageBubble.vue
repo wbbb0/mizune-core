@@ -180,6 +180,11 @@ function getFileTypeLabel(part: Extract<ChatTimelineContentPart, { kind: "file" 
             >
               <img :src="part.imageUrl" :alt="part.sourceName || part.fileId" class="max-h-72 w-full rounded object-contain" />
             </button>
+            <div v-else-if="part.kind === 'audio'" class="flex min-w-0 flex-col gap-1">
+              <span v-if="part.aiGenerated" class="text-small opacity-80">人工智能生成语音</span>
+              <audio v-if="part.contentUrl" :src="part.contentUrl" controls preload="none" class="max-w-full" :aria-label="part.name || '语音消息'" />
+              <span v-else class="text-small">语音文件不可用</span>
+            </div>
             <span
               v-else-if="part.kind === 'file' && !part.contentUrl"
               class="flex min-w-0 items-center gap-1.5 overflow-hidden rounded border border-border-default/60 bg-surface-input pr-2 text-text-secondary"

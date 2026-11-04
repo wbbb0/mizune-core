@@ -306,7 +306,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
             type: "anthropic"
           },
           openai_responses_1: {
-            type: "openai_responses"
+            type: "openai_responses_compatible"
           }
         },
         models: {
@@ -325,7 +325,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
 
     assert.equal(resolveProviderTranscriptProjectorName(config, "g1_gemini3_flash_preview"), "google");
     assert.equal(resolveProviderTranscriptProjectorName(config, "anth_claude_sonnet"), "anthropic");
-    assert.equal(resolveProviderTranscriptProjectorName(config, "openai_gpt_responses"), "openai_responses");
+    assert.equal(resolveProviderTranscriptProjectorName(config, "openai_gpt_responses"), "openai_responses_compatible");
   });
 
   test("dashscope projector replays visible history with assistant reasoning when preserveThinking is enabled", () => {
@@ -413,7 +413,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
         annotations: []
       }]
     }];
-    const projection = getProviderTranscriptProjector("openai_responses").project({
+    const projection = getProviderTranscriptProjector("openai_responses_compatible").project({
       transcript: [{
         kind: "assistant_message",
         role: "assistant",
@@ -464,7 +464,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
       timestampMs: 1
     }];
 
-    const openaiProjection = getProviderTranscriptProjector("openai").project({
+    const openaiProjection = getProviderTranscriptProjector("openai_compatible").project({
       transcript,
       preserveThinking: true
     });
@@ -513,7 +513,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
       } as any);
     }
 
-    const projection = getProviderTranscriptProjector("openai").project({ transcript: pinnedTranscript });
+    const projection = getProviderTranscriptProjector("openai_compatible").project({ transcript: pinnedTranscript });
     const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
 
     assert.equal(toolMessages[0]?.content, JSON.stringify({ stdout: "RAW-1", exitCode: 1 }));
@@ -523,7 +523,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
   });
 
   test("openai-style projector keeps raw replay-safe content when it costs fewer tokens", () => {
-    const projection = getProviderTranscriptProjector("openai").project({
+    const projection = getProviderTranscriptProjector("openai_compatible").project({
       transcript: Array.from({ length: 7 }, (_, index) => {
         const sequence = index + 1;
         return [
@@ -566,7 +566,7 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
   });
 
   test("openai-style projector never replays raw unsafe tool results", () => {
-    const projection = getProviderTranscriptProjector("openai").project({
+    const projection = getProviderTranscriptProjector("openai_compatible").project({
       transcript: [
         {
           kind: "assistant_tool_call",

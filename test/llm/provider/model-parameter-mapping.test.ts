@@ -30,7 +30,7 @@ test("provider schemas offer applicable sampling parameters and reject invalid n
   assert.ok(parameters("lmstudio").min_p);
   assert.equal(parameters("google").min_p, undefined);
   assert.equal(parameters("anthropic").presence_penalty, undefined);
-  assert.equal(parameters("openai_responses").top_k, undefined);
+  assert.equal(parameters("openai_responses_compatible").top_k, undefined);
   assert.equal(parameters("deepseek").top_k, undefined);
   for (const value of [0, -1, 1.5]) {
     assert.throws(() => llmCatalogFileSchema.parseFromObject({
@@ -63,7 +63,7 @@ test("Vertex builds project endpoints with explicit URL taking precedence", () =
 
 test("OpenAI compatible output limit supports selecting the completion token field", () => {
   const context = {
-    providerConfig: { type: "openai", maxOutputTokenField: "max_completion_tokens" }, modelProfile: {
+    providerConfig: { type: "openai_compatible", maxOutputTokenField: "max_completion_tokens" }, modelProfile: {
       chat: { defaults: { maxOutputTokens: 256 } }
     }
   } as any;

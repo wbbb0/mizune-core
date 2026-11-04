@@ -62,7 +62,7 @@ function createCaptionerConfig() {
       enabled: true,
       providers: {
         vision: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://example.com/v1",
           apiKey: "test-key",
           proxy: false
@@ -107,7 +107,7 @@ function createMixedVisionCaptionerConfig() {
       enabled: true,
       providers: {
         vision: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://example.com/v1",
           apiKey: "test-key",
           proxy: false

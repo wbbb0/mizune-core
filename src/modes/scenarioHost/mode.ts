@@ -11,13 +11,13 @@ export const scenarioHostModeDefinition: SessionModeDefinition = {
     modeProfile: "scenario"
   },
   toolsets: [
-    "chat_context",
-    "time_utils",
-    "scenario_host_state"
-  ].map((toolsetId) => ({
-    toolsetId,
-    defaultEnabled: true
-  })),
+    { toolsetId: "chat_context", defaultEnabled: true },
+    { toolsetId: "time_utils", defaultEnabled: true },
+    { toolsetId: "scenario_host_state", defaultEnabled: true },
+    { toolsetId: "asset_io", defaultEnabled: false },
+    { toolsetId: "speech_generation", defaultEnabled: false },
+    { toolsetId: "native_decisions", defaultEnabled: false }
+  ],
   setupPhase: createOwnerPrivateProfileSetupPhase({
     persona: true,
     modeProfile: "scenario"

@@ -1,7 +1,8 @@
+import { ROUTING_MODEL_FIELDS, type RoutingModelField } from "./routingModelFields.ts";
+export { ROUTING_MODEL_FIELDS, type RoutingModelField } from "./routingModelFields.ts";
 import type {
   LlmCatalogFile,
   LlmRoutingPresetCatalogFile,
-  LlmRoutingPresetFile,
   ModelTargetRef
 } from "./configModel.ts";
 
@@ -24,21 +25,6 @@ export interface LlmProviderMutationImpact {
   references: LlmProviderReferenceImpact[];
   emptiedRoles: Array<{ preset: string; role: RoutingModelField }>;
 }
-
-export const ROUTING_MODEL_FIELDS = [
-  "mainSmall",
-  "mainLarge",
-  "summarizer",
-  "textInspector",
-  "sessionCaptioner",
-  "imageCaptioner",
-  "imageInspector",
-  "audioTranscription",
-  "imageGenerator",
-  "turnPlanner"
-] as const satisfies ReadonlyArray<Exclude<keyof LlmRoutingPresetFile, "historyWindow" | "tokenLimits">>;
-
-export type RoutingModelField = typeof ROUTING_MODEL_FIELDS[number];
 
 export function summarizeLlmProviderMutationImpact(
   catalog: LlmCatalogFile,

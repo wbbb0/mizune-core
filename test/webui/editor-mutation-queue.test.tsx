@@ -77,6 +77,6 @@ test("provider mutation queue does not mistake a same-alias replacement for undo
   ], {
     alpha: { type: "deepseek", models: {} }
   }, {
-    alpha: { type: "openai", models: {} }
+    alpha: { type: "openai_compatible", models: {} }
   }), [{ kind: "delete_provider", provider: "alpha" }]);
 });

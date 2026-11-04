@@ -56,6 +56,12 @@ llm:
     enabled: true
     timeoutMs: 15000
     enableThinking: false
+  speechGeneration:
+    enabled: false
+    timeoutMs: 120000
+  decision:
+    enabled: false
+    timeoutMs: 15000
   imageGeneration:
     enabled: false
     timeoutMs: 300000

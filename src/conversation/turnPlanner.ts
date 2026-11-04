@@ -7,7 +7,7 @@ import type { LlmClient, LlmUsage } from "#llm/llmClient.ts";
 import { getTurnPlannerReasons, resolveTurnPlannerOutputTokenLimit, type TurnPlannerRequirements } from "./turnPlannerPolicy.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
-import { buildTurnPlannerPrompt } from "#llm/prompts/turn-planner.prompt.ts";
+import { buildTurnPlannerPrompt, buildTurnPlannerResponseFormat } from "#llm/prompts/turn-planner.prompt.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
 import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
@@ -234,7 +234,11 @@ export class TurnPlanner {
       emojiInputCount: emojiInputs.length
     });
     try {
+      const responseFormat = this.llmClient.supportsStructuredOutput?.(plannerModelRefs)
+        ? buildTurnPlannerResponseFormat(input.requirements, input.requirements.taskIntent && input.taskContext != null)
+        : undefined;
       const result = await this.llmClient.generate({
+        ...(responseFormat ? { responseFormat } : {}),
         modelRefOverride: plannerModelRefs,
         timeoutMsOverride: this.config.llm.turnPlanner.timeoutMs,
         ...(maxOutputTokens != null ? { maxOutputTokensOverride: maxOutputTokens } : {}),
@@ -243,6 +247,7 @@ export class TurnPlanner {
         skipDebugDump: true,
         ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
         messages: buildTurnPlannerPrompt({
+          structuredOutput: responseFormat !== undefined,
           ...input,
           availableToolsets: input.availableToolsets ?? [],
           recentMessages: captionContext.recentMessages,
@@ -512,7 +517,16 @@ function parseToolsetIds(value: string): string[] {
 
 function parseStructuredPlannerResult(raw: string): TurnPlannerResult | null {
   const fieldMap = new Map<string, string>();
-  for (const line of raw.split(/\r?\n/g)) {
+  if (raw.trimStart().startsWith("{")) {
+    try {
+      const value: unknown = JSON.parse(raw);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      for (const [key, field] of Object.entries(value)) {
+        if (typeof field !== "string") return null;
+        fieldMap.set(key, field.trim());
+      }
+    } catch { return null; }
+  } else for (const line of raw.split(/\r?\n/g)) {
     const trimmed = line.trim();
     if (!trimmed) {
       continue;

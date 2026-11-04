@@ -63,8 +63,9 @@ interface OpenAiResponsesStreamPayload {
   };
 }
 
-export class OpenAiResponsesProvider implements LlmProvider {
-  readonly type = "openai_responses" as const;
+export abstract class OpenAiResponsesProvider implements LlmProvider {
+  abstract readonly type: "openai" | "openai_responses_compatible";
+  readonly supportsStructuredOutput = true;
 
   resolveBaseUrl(providerConfig: LlmProviderRequestContext["providerConfig"]): string | null {
     return providerConfig.baseUrl?.trim() || "https://api.openai.com/v1";
@@ -74,9 +75,10 @@ export class OpenAiResponsesProvider implements LlmProvider {
     context: LlmProviderRequestContext,
     params: LlmProviderGenerateParams
   ): Promise<LlmProviderGenerateResult> {
-    const endpoint = `${context.baseUrl.replace(/\/$/, "")}/responses`;
+    params.abortSignal?.throwIfAborted();
+    const endpoint = `${context.baseUrl.replace(/\/+$/, "")}/responses`;
     const resolvedEnableThinking = params.enableThinkingOverride ?? false;
-    const requestInput = buildOpenAiResponsesInput(params.messages);
+    const requestInput = buildOpenAiResponsesInput(context, params.messages);
     const requestBody = buildOpenAiResponsesRequestBody(context, params, requestInput, resolvedEnableThinking);
 
     try {
@@ -98,7 +100,7 @@ export class OpenAiResponsesProvider implements LlmProvider {
         throw new Error("OpenAI Responses stream ended without response.completed");
       }
 
-      const finalText = stream.accumulator.text.trim() || extractResponseText(response.output);
+      const finalText = extractResponseText(response.output) || stream.accumulator.text.trim();
       const reasoningContent = stream.accumulator.reasoningContent || extractReasoningSummary(response.output);
       const toolCalls = extractFunctionCalls(response.output);
       if (!finalText && toolCalls.length === 0) {
@@ -121,8 +123,15 @@ export class OpenAiResponsesProvider implements LlmProvider {
         usage: stream.accumulator.usage,
         assistantMetadata: {
           openAiResponses: {
+            provider: context.providerName,
+            providerType: context.providerConfig.type,
+            baseUrl: normalizeResponsesBaseUrl(context.baseUrl),
+            model: context.model,
+            responseId: response.id,
             outputItems: structuredClone(response.output ?? [])
-          }
+          },
+          citations: extractResponseCitations(response.output),
+          searchSources: extractSearchSources(response.output)
         }
       };
     } catch (error) {
@@ -147,9 +156,9 @@ function buildOpenAiResponsesRequestBody(
   enableThinking: boolean
 ): Record<string, unknown> {
   const requestBody: Record<string, unknown> = {
+    ...buildOpenAiResponsesModelApiParameters(context),
     model: context.model,
     stream: true,
-    ...buildOpenAiResponsesModelApiParameters(context),
     ...(params.maxOutputTokensOverride ? { max_output_tokens: params.maxOutputTokensOverride } : {}),
     input,
     tools: buildOpenAiResponsesTools(context, params.tools ?? []),
@@ -158,6 +167,31 @@ function buildOpenAiResponsesRequestBody(
 
   if ((requestBody.tools as unknown[]).length === 0) {
     delete requestBody.tools;
+  }
+
+  if (params.responseFormat) {
+    requestBody.text = {
+      ...(isRecord(requestBody.text) ? requestBody.text : {}),
+      format: {
+        ...params.responseFormat,
+        ...(params.responseFormat.type === "json_schema" ? { strict: params.responseFormat.strict ?? true } : {})
+      }
+    };
+  }
+
+  // Local history owns the conversation. Request opaque reasoning and search sources
+  // explicitly, and never let advanced parameters introduce a second state chain.
+  delete requestBody.previous_response_id;
+  delete requestBody.conversation;
+  delete requestBody.background;
+  if (context.providerConfig.type === "openai") {
+    const include = Array.isArray(requestBody.include) ? requestBody.include : [];
+    requestBody.include = [...new Set([
+      ...include,
+      ...(getGenerationSettings(context)?.capabilities.supportsThinking ? ["reasoning.encrypted_content"] : []),
+      ...(getProviderFeatureFromContext(context, "search") ? ["web_search_call.action.sources"] : [])
+    ])];
+    if ((requestBody.include as unknown[]).length === 0) delete requestBody.include;
   }
 
   const thinkingFeature = getProviderFeatureFromContext(context, "thinking");
@@ -210,7 +244,7 @@ function buildOpenAiResponsesTools(
   return tools;
 }
 
-function buildOpenAiResponsesInput(messages: LlmMessage[]): unknown[] {
+function buildOpenAiResponsesInput(context: LlmProviderRequestContext, messages: LlmMessage[]): unknown[] {
   const input: unknown[] = [];
 
   for (const message of messages) {
@@ -227,7 +261,7 @@ function buildOpenAiResponsesInput(messages: LlmMessage[]): unknown[] {
     }
 
     if (message.role === "assistant") {
-      const replayItems = getOpenAiResponsesReplayItems(message);
+      const replayItems = getOpenAiResponsesReplayItems(context, message);
       if (replayItems) {
         input.push(...replayItems);
         continue;
@@ -241,6 +275,10 @@ function buildOpenAiResponsesInput(messages: LlmMessage[]): unknown[] {
       }
     }
 
+    if (context.providerConfig.type === "openai" && Array.isArray(message.content)
+      && message.content.some(part => part.type === "input_audio")) {
+      throw new Error("OpenAI 官方 Responses 不接受聊天音频输入，请使用音频转写能力。");
+    }
     appendMessageItem(input, message);
   }
 
@@ -317,9 +355,12 @@ function contentAsText(content: LlmMessage["content"]): string {
     .join("\n");
 }
 
-function getOpenAiResponsesReplayItems(message: LlmMessage): unknown[] | null {
+function getOpenAiResponsesReplayItems(context: LlmProviderRequestContext, message: LlmMessage): unknown[] | null {
   const metadata = message.providerMetadata?.openAiResponses;
-  if (!isRecord(metadata) || !Array.isArray(metadata.outputItems)) {
+  if (!isRecord(metadata) || !Array.isArray(metadata.outputItems)
+    || metadata.provider !== context.providerName || metadata.model !== context.model
+    || metadata.providerType !== context.providerConfig.type
+    || metadata.baseUrl !== normalizeResponsesBaseUrl(context.baseUrl)) {
     return null;
   }
 
@@ -339,6 +380,12 @@ function getOpenAiResponsesReplayItems(message: LlmMessage): unknown[] | null {
     }
   }
   return structuredClone(metadata.outputItems);
+}
+
+function normalizeResponsesBaseUrl(baseUrl: string): string {
+  const url = new URL(baseUrl);
+  // Endpoint identity excludes credentials and normalizes host casing/default ports.
+  return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
 }
 
 function convertFunctionCallToResponseItem(toolCall: LlmToolCall): Record<string, unknown> {
@@ -468,6 +515,71 @@ function extractFunctionCalls(output: unknown[] | undefined): LlmToolCall[] {
   return toolCalls;
 }
 
+interface ResponseCitation {
+  url: string;
+  title: string;
+  startIndex?: number;
+  endIndex?: number;
+}
+
+function extractResponseCitations(output: unknown[] | undefined): ResponseCitation[] {
+  const citations: ResponseCitation[] = [];
+  let textOffset = 0;
+  let rawText = "";
+  for (const item of output ?? []) {
+    if (!isRecord(item) || item.type !== "message" || !Array.isArray(item.content)) continue;
+    for (const part of item.content) {
+      if (!isRecord(part)) continue;
+      const text = part.type === "output_text" && typeof part.text === "string"
+        ? part.text : part.type === "refusal" && typeof part.refusal === "string" ? part.refusal : "";
+      for (const annotation of Array.isArray(part.annotations) ? part.annotations : []) {
+        if (!isRecord(annotation) || annotation.type !== "url_citation" || !isHttpUrl(annotation.url)) continue;
+        const validRange = Number.isInteger(annotation.start_index) && Number.isInteger(annotation.end_index)
+          && Number(annotation.start_index) >= 0 && Number(annotation.end_index) >= Number(annotation.start_index)
+          && Number(annotation.end_index) <= text.length;
+        citations.push({
+          url: annotation.url,
+          title: typeof annotation.title === "string" ? annotation.title : annotation.url,
+          ...(validRange ? {
+            startIndex: textOffset + Number(annotation.start_index),
+            endIndex: textOffset + Number(annotation.end_index)
+          } : {})
+        });
+      }
+      textOffset += text.length;
+      rawText += text;
+    }
+  }
+  const leadingWhitespace = rawText.length - rawText.trimStart().length;
+  return citations.map(citation => citation.startIndex === undefined ? citation : {
+    ...citation,
+    startIndex: Math.max(0, citation.startIndex - leadingWhitespace),
+    endIndex: Math.max(0, citation.endIndex! - leadingWhitespace)
+  });
+}
+
+function extractSearchSources(output: unknown[] | undefined): Array<{ url: string; title: string }> {
+  const sources = new Map<string, { url: string; title: string }>();
+  for (const item of output ?? []) {
+    if (!isRecord(item) || item.type !== "web_search_call" || !isRecord(item.action)) continue;
+    for (const source of Array.isArray(item.action.sources) ? item.action.sources : []) {
+      if (!isRecord(source) || !isHttpUrl(source.url)) continue;
+      sources.set(source.url, { url: source.url, title: typeof source.title === "string" ? source.title : source.url });
+    }
+  }
+  return [...sources.values()];
+}
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -476,4 +588,9 @@ function serializeError(error: unknown): Record<string, unknown> {
   return error instanceof Error
     ? { name: error.name, message: error.message, stack: error.stack }
     : { message: String(error) };
+}
+
+/** Third-party Responses-compatible endpoints share the wire protocol only. */
+export class OpenAiResponsesCompatibleProvider extends OpenAiResponsesProvider {
+  readonly type = "openai_responses_compatible" as const;
 }

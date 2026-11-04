@@ -193,7 +193,7 @@ test("压缩保留的记录可按单条、整组及截断转为手动删除，�
   });
 
   test("runtimeExcluded assistant tool chains are excluded from openai-style replay", () => {
-    const projection = getProviderTranscriptProjector("openai").project({
+    const projection = getProviderTranscriptProjector("openai_compatible").project({
       transcript: [
         {
           id: "item-tool-call-1",
@@ -275,7 +275,7 @@ test("压缩保留的记录可按单条、整组及截断转为手动删除，�
       } as any);
     }
 
-    const projection = getProviderTranscriptProjector("openai").project({ transcript });
+    const projection = getProviderTranscriptProjector("openai_compatible").project({ transcript });
     const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
 
     assert.equal(toolMessages.length, 6);
@@ -322,7 +322,7 @@ test("压缩保留的记录可按单条、整组及截断转为手动删除，�
       } as any);
     }
 
-    const projection = getProviderTranscriptProjector("openai").project({ transcript });
+    const projection = getProviderTranscriptProjector("openai_compatible").project({ transcript });
     const toolMessages = projection.replayMessages.filter((message) => message.role === "tool");
 
     assert.equal(toolMessages[0]?.content, JSON.stringify({ ok: true, path: "tmp-1.txt", full: true }));

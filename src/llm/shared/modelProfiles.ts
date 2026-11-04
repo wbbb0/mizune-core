@@ -60,7 +60,7 @@ export function resolveModelRefsForType(
       rejectedModelRefs.push({
         modelRef: ref,
         reason: "unsupported_model_type",
-        actualModelTypes: (["chat", "embedding", "image", "transcription"] as const).filter((operation) => profile[operation] !== undefined)
+        actualModelTypes: (["chat", "embedding", "image", "transcription", "speech", "decision"] as const).filter((operation) => profile[operation] !== undefined)
       });
       continue;
     }

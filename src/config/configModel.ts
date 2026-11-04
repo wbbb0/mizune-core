@@ -55,6 +55,8 @@ const llmRoutingPresetSchema = s.object({
   audioTranscription: createModelRefListSchema().title("音频转写"),
   turnPlanner: createModelRefListSchema().title("轮次规划"),
   imageGenerator: createModelRefListSchema().title("图像生成"),
+  speechGenerator: createModelRefListSchema().title("语音生成"),
+  decision: createModelRefListSchema().title("原生决策"),
   historyWindow: routingPresetHistoryWindowSchema.optional(),
   tokenLimits: routingPresetTokenLimitsSchema.optional()
 }).title("模型路由预设").describe("为各个模型角色提供统一的模型引用列表。");
@@ -70,6 +72,8 @@ const llmRoutingPresetFileSchema = s.object({
   audioTranscription: s.oneOrMany(createModelTargetRefSchema("llm_transcription_model_targets")).optional().title("音频转写"),
   turnPlanner: createModelTargetListSchema().title("轮次规划"),
   imageGenerator: s.oneOrMany(createModelTargetRefSchema("llm_image_model_targets")).optional().title("图像生成"),
+  speechGenerator: s.oneOrMany(createModelTargetRefSchema("llm_speech_model_targets")).optional().title("语音生成"),
+  decision: s.oneOrMany(createModelTargetRefSchema("llm_decision_model_targets")).optional().title("原生决策"),
   historyWindow: routingPresetHistoryWindowSchema.optional(),
   tokenLimits: routingPresetTokenLimitsSchema.optional()
 }).title("模型路由预设").describe("以 provider 与局部模型别名为各模型角色配置候选目标。");
@@ -184,7 +188,7 @@ const llmProviderFeaturesSchema = s.object({
 }).title("能力映射").default(emptyObject);
 
 const llmProviderSchemaShape = {
-  type: s.enum(llmProviderTypes).title("供应商类型").default("openai"),
+  type: s.enum(llmProviderTypes).title("供应商类型").default("openai_compatible"),
   baseUrl: s.string().url().nonempty().title("Base URL").optional(),
   apiKey: s.string().trim().nonempty().title("API Key").optional(),
   proxy: s.boolean().title("使用代理").default(false),
@@ -611,6 +615,14 @@ const llmRuntimeConfigSchema = s.object({
     timeoutMs: s.number().int().positive().title("超时毫秒").default(15000),
     enableThinking: s.boolean().title("启用思考").default(false)
   }).title("会话标题生成").describe("为会话生成简短标题。").default(emptyObject),
+  speechGeneration: s.object({
+    enabled: s.boolean().title("启用").default(false),
+    timeoutMs: s.number().int().positive().title("超时毫秒").default(120000)
+  }).title("语音生成").describe("通过 speechGenerator 路由生成可发送的语音资产。").default(emptyObject),
+  decision: s.object({
+    enabled: s.boolean().title("启用").default(false),
+    timeoutMs: s.number().int().positive().title("超时毫秒").default(15000)
+  }).title("原生决策").describe("通过 decision 路由调用分类、条件概率及评分能力。").default(emptyObject),
   imageGeneration: s.object({
     enabled: s.boolean().title("启用").default(false),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(300000)
@@ -644,7 +656,7 @@ function createProviderCatalogVariant<T extends LlmProviderType>(type: T) {
     baseUrl: s.string().url().nonempty().title("接口地址（可选覆盖）")
       .describe(type === "vertex" ? "填写项目 ID 时自动生成；自定义地址应以 /publishers/google 结尾。" : "标准接口留空即可使用协议默认地址；转发服务请填写其接口地址。").optional(),
     apiKey: s.string().trim().nonempty().title(type === "vertex" ? "访问令牌" : type === "lmstudio" ? "API Key（本地服务可选）" : "API Key").optional(),
-    ...(type === "openai" ? { maxOutputTokenField: llmProviderSchemaShape.maxOutputTokenField } : {}),
+    ...(type === "openai_compatible" ? { maxOutputTokenField: llmProviderSchemaShape.maxOutputTokenField } : {}),
     ...(type === "vertex" ? { projectId: llmProviderSchemaShape.projectId, location: llmProviderSchemaShape.location } : {}),
     proxy: llmProviderSchemaShape.proxy,
     ...(definition.googleSafety ? { harmBlockThreshold: llmProviderSchemaShape.harmBlockThreshold } : {}),
@@ -663,7 +675,7 @@ function createProviderCatalogVariant<T extends LlmProviderType>(type: T) {
 
 export const llmCatalogProviderFileSchema = s.discriminatedUnion("type", llmProviderTypes.map(createProviderCatalogVariant))
   .title("供应商类型与配置")
-  .default(() => ({ type: "openai", models: {} }) as never);
+  .default(() => ({ type: "openai_compatible", models: {} }) as never);
 
 export const llmCatalogFileSchema = s.record(
   createCatalogAliasSchema(),

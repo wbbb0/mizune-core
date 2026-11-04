@@ -32,18 +32,26 @@ export function buildOpenAiCompatibleModelApiParameters(
 ): Record<string, unknown> {
   return buildMappedParameters(context, {
     ...Object.fromEntries(OPENAI_COMPAT_PARAMETER_KEYS.map((key) => [key, key])),
-    maxOutputTokens: context.providerConfig?.type === "openai" ? context.providerConfig.maxOutputTokenField : "max_tokens"
+    maxOutputTokens: context.providerConfig?.type === "openai_compatible" ? context.providerConfig.maxOutputTokenField : "max_tokens"
   });
 }
 
 export function buildOpenAiResponsesModelApiParameters(
   context: LlmProviderRequestContext
 ): Record<string, unknown> {
-  return buildMappedParameters(context, {
+  const result = buildMappedParameters(context, {
     temperature: "temperature",
     top_p: "top_p",
     maxOutputTokens: "max_output_tokens"
   });
+  const settings = getGenerationSettings(context)?.defaults;
+  if (settings?.reasoningEffort !== undefined) {
+    result.reasoning = { ...objectRecord(result.reasoning), effort: settings.reasoningEffort };
+  }
+  if (settings?.verbosity !== undefined) {
+    result.text = { ...objectRecord(result.text), verbosity: settings.verbosity };
+  }
+  return result;
 }
 
 export function buildDashScopeModelApiParameters(

@@ -22,13 +22,13 @@ function createConfig() {
       },
       providers: {
         blocked_provider: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://example.com/v1",
           apiKey: "blocked-key",
           proxy: false
         },
         fallback_provider: {
-          type: "openai",
+          type: "openai_compatible",
           baseUrl: "https://example.com/v1",
           apiKey: "fallback-key",
           proxy: false

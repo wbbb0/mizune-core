@@ -16,7 +16,9 @@ export type LlmRoutingRole =
   | "image_inspector"
   | "audio_transcription"
   | "turn_planner"
-  | "image_generator";
+  | "image_generator"
+  | "speech_generator"
+  | "decision";
 
 interface RoutingRoleDefinition {
   label: string;
@@ -114,6 +116,8 @@ const routingRoleDefinitions: Record<LlmRoutingRole, RoutingRoleDefinition & {
     presetField: "turnPlanner",
     getModelRefs: (preset) => preset.turnPlanner
   },
+  speech_generator: { label: "语音生成", requiredModelType: "speech", presetField: "speechGenerator", getModelRefs: preset => preset.speechGenerator },
+  decision: { label: "原生决策", requiredModelType: "decision", presetField: "decision", getModelRefs: preset => preset.decision },
   image_generator: {
     label: "图像生成",
     requiredModelType: "image",
@@ -166,6 +170,8 @@ export function createEmptyRoutingPreset(): EffectiveLlmRoutingPreset {
     audioTranscription: [],
     turnPlanner: [],
     imageGenerator: [],
+    speechGenerator: [],
+    decision: [],
     historyWindow: { ...DEFAULT_ROUTING_PRESET_HISTORY_WINDOW },
     tokenLimits: { ...DEFAULT_ROUTING_PRESET_TOKEN_LIMITS }
   };

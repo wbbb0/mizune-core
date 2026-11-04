@@ -10,6 +10,7 @@ export interface ChatTimelineTranscriptEntry {
 export type ChatTimelineContentPart =
   | { kind: "text"; text: string }
   | { kind: "image" | "emoji"; fileId: string; imageUrl: string; sourceName: string | null }
+  | { kind: "audio"; fileId: string; name: string | null; mimeType: string | null; contentUrl: string | null; aiGenerated: boolean }
   | { kind: "file"; fileId: string; name: string | null; sizeBytes: number | null; mimeType: string | null; fileKind: string | null; contentUrl: string | null }
   | { kind: "meta"; text: string };
 
@@ -142,6 +143,24 @@ function toChatTimelineItems(
   }
 
   if (entry.item.kind === "outbound_media_message") {
+    if (entry.item.mediaKind === "audio") {
+      const contentUrl = entry.item.fileId
+        ? getChatFileContentUrlById(entry.item.fileId)
+        : (entry.item.sourcePath ? getLocalSendFileContentUrl(entry.item.sourcePath) : null);
+      return [{
+        id: entry.id,
+        itemId: entry.item.id,
+        groupId: entry.item.groupId,
+        actionTitle: "语音消息",
+        kind: "content_parts",
+        role: "assistant",
+        side: "left",
+        parts: [{ kind: "audio", fileId: entry.item.fileId ?? entry.item.id, name: entry.item.sourceName,
+          mimeType: entry.item.mimeType ?? null, contentUrl, aiGenerated: entry.item.aiGenerated === true }],
+        metaChips: [entry.item.toolName],
+        timestampMs: entry.item.timestampMs
+      }];
+    }
     if (entry.item.mediaKind === "file") {
       const contentUrl = entry.item.fileId
         ? getChatFileContentUrlById(entry.item.fileId)

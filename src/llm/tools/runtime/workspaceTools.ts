@@ -1,4 +1,4 @@
-import { sendImageBytesToChat, parseSessionTarget, enqueueToolSend, recordDeliveredMessage } from "../core/chatMediaDelivery.ts";
+import { sendAudioBytesToChat, sendImageBytesToChat, parseSessionTarget, enqueueToolSend, recordDeliveredMessage } from "../core/chatMediaDelivery.ts";
 import { withFilesystemScopeDescriptors, withFilesystemScopeHandlers } from "../core/filesystemScope.ts";
 import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -245,7 +245,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDesc
             asset_id: { type: "string" },
             query: { type: "string" },
             kind: { type: "string", enum: ["image", "animated_image", "video", "audio", "file"] },
-            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "image_generated", "group_file_download", "image_transform", "local_file_import", "url_download", "user_upload"] },
+            origin: { type: "string", enum: ["chat_message", "browser_download", "browser_screenshot", "comfy_generated", "image_generated", "audio_generated", "group_file_download", "image_transform", "local_file_import", "url_download", "user_upload"] },
             limit: { type: "integer", minimum: 1, maximum: 100 }
           },
           additionalProperties: false
@@ -785,6 +785,22 @@ async function sendChatFileToChat(
 ) {
   if (text) {
     return JSON.stringify({ error: "asset_send_to_chat 发送文件时不能附带 text；如需说明请另外发送文本" });
+  }
+  if (file.kind === "audio") {
+    return sendAudioBytesToChat(context, {
+      absolutePath: await context.chatFileStore.resolveAbsolutePath(file.fileId),
+      previewText: file.fileRef,
+      sourceName: file.sourceName,
+      fileId: file.fileId,
+      fileRef: file.fileRef,
+      chatFilePath: file.chatFilePath,
+      sourcePath: null,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+      aiGenerated: file.origin === "audio_generated",
+      toolName: "asset_send_to_chat",
+      outputExtras: {}
+    });
   }
   if (file.kind !== "image" && file.kind !== "animated_image") {
     return sendGenericFileToChat(context, {

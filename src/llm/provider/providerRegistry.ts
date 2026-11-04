@@ -5,15 +5,17 @@ import { DashScopeProvider } from "./providers/dashScopeProvider.ts";
 import { DeepSeekProvider } from "./providers/deepSeekProvider.ts";
 import { GoogleAiStudioProvider } from "./providers/googleAiStudioProvider.ts";
 import { LmStudioProvider } from "./providers/lmStudioProvider.ts";
-import { OpenAiProvider } from "./providers/openaiProvider.ts";
-import { OpenAiResponsesProvider } from "./providers/openAiResponsesProvider.ts";
+import { OpenAiCompatibleProvider } from "./providers/openAiCompatibleProvider.ts";
+import { OpenAiResponsesCompatibleProvider } from "./providers/openAiResponsesProvider.ts";
+import { OpenAiOfficialProvider } from "./providers/openAiOfficialProvider.ts";
 import { VertexAiProvider } from "./providers/vertexAiProvider.ts";
 import { VertexExpressProvider } from "./providers/vertexExpressProvider.ts";
 
 const providers = new Map<string, LlmProvider>([
   ["openrouter", new OpenRouterProvider()],
-  ["openai", new OpenAiProvider()],
-  ["openai_responses", new OpenAiResponsesProvider()],
+  ["openai", new OpenAiOfficialProvider()],
+  ["openai_compatible", new OpenAiCompatibleProvider()],
+  ["openai_responses_compatible", new OpenAiResponsesCompatibleProvider()],
   ["deepseek", new DeepSeekProvider()],
   ["dashscope", new DashScopeProvider()],
   ["google", new GoogleAiStudioProvider()],

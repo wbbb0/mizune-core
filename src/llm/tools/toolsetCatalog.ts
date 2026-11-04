@@ -20,6 +20,16 @@ export interface ToolsetView {
 
 export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
   {
+    id: "speech_generation", title: "语音生成", availableDuringSetup: true,
+    description: "把文本生成可发送的语音资产；可选择声音、语速和说话风格。",
+    plannerSignals: ["生成语音、朗读或有声内容"], toolNames: ["generate_speech"]
+  },
+  {
+    id: "native_decisions", title: "原生决策",
+    description: "根据文本、图片和结构化证据计算条件概率、分类或评分。",
+    plannerSignals: ["按固定选项分类、条件概率或评分"], toolNames: ["make_decision"]
+  },
+  {
     id: "sticker_library",
     title: "精选表情库",
     description: "按需收藏、整理和淘汰值得复用的表情，或从QQ收藏导入；不是每轮都需要整理。",
