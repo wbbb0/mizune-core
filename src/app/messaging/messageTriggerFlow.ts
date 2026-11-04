@@ -47,7 +47,8 @@ export async function resolveTriggerDecision(
   }
 
   const directlyAddressed = context.enrichedMessage.isAtMentioned;
-  const accessAllowed = context.user.relationship === "owner" || userMatched || groupMatched;
+  const accessAllowed = !services.config.whitelist.enabled
+    || context.user.relationship === "owner" || userMatched || groupMatched;
   if (!accessAllowed) {
     return buildNoReplyDecision({
       groupMatched,
