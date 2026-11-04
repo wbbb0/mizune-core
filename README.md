@@ -123,6 +123,8 @@ CONFIG_INSTANCE_FILE=config/instances/acc1.yml npm run dev
 
 更多配置说明见 [快速上手](docs/getting-started.md#配置文件职责)。
 
+可选的内容安全审核支持阿里云与 OpenAI，可在配置页选择默认供应商，并按类型编辑各自配置；单项规则可覆盖默认选择。详见 [内容安全审核供应商](docs/development/content-safety.md)。
+
 ## 运行模式
 
 WebUI 会话输入框支持以 `.` 或 `。` 开头的指令补全：方向键选择，Tab / Enter 填入，Esc 收起；完整指令继续用 Enter 发送，Shift + Enter 换行。枚举参数和表情 ID 提供候选，自由参数只提示名称。表情 ID 在进入对应参数时读取当前实例收藏清单；补全不改变指令原有的权限和会话限制。

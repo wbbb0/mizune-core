@@ -11,9 +11,15 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
     const app = await createInternalApiApp(createInternalApiDeps());
     try {
       const response = await app.inject({ method: "GET", url: "/api/editors/config" });
-      const schemaMeta = response.json().editor.schemaMeta;
+      const schemaMeta = response.json().schema.meta;
 
       assert.equal(response.statusCode, 200);
+      const cachedResponse = await app.inject({
+        method: "GET", url: `/api/editors/config?schemaVersion=${response.json().schemaVersion}`
+      });
+      assert.equal(cachedResponse.statusCode, 200);
+      assert.equal(cachedResponse.json().schema, undefined);
+      assert.deepEqual(cachedResponse.json().editor, response.json().editor);
       assert.equal(schemaMeta.kind, "object");
       assert.equal(schemaMeta.fields.appName.title, "应用名称");
       assert.equal(schemaMeta.fields.onebot.title, "OneBot");
@@ -341,9 +347,9 @@ import { createInternalApiApp, createInternalApiDeps } from "../helpers/internal
       const editor = editorResponse.json().editor;
       assert.equal(editor.referenceValue.appName, "global-app");
       assert.equal(editor.referenceValue.scheduler, undefined);
-      assert.equal(editor.schemaDefaultValue.scheduler.defaultTimezone, "Asia/Shanghai");
-      assert.equal(editor.schemaDefaultValue.shell.terminalEvents.enabled, true);
-      assert.equal(editor.schemaDefaultValue.shell.terminalEvents.inputDetectionDebounceMs, 800);
+      assert.equal(editorResponse.json().schema.defaultValue.scheduler.defaultTimezone, "Asia/Shanghai");
+      assert.equal(editorResponse.json().schema.defaultValue.shell.terminalEvents.enabled, true);
+      assert.equal(editorResponse.json().schema.defaultValue.shell.terminalEvents.inputDetectionDebounceMs, 800);
       assert.equal(editor.currentValue.appName, undefined);
       assert.equal(editor.effectiveValue.appName, "global-app");
       assert.equal(editor.effectiveValue.scheduler.defaultTimezone, "Asia/Shanghai");
@@ -741,7 +747,7 @@ other:
       });
       assert.equal(editorResponse.statusCode, 200);
       assert.equal(editorResponse.json().editor.editorFeatures.unsetMode, "reference");
-      assert.deepEqual(editorResponse.json().editor.template, {
+      assert.deepEqual(editorResponse.json().schema.template, {
         default: {
           mainSmall: [],
           mainLarge: [],

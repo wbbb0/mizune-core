@@ -385,7 +385,11 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     }
 
     try {
-      return await services.editor.loadResourceModel(params.resource);
+      const query = request.query as { schemaVersion?: unknown };
+      return await services.editor.loadResourceModel(
+        params.resource,
+        typeof query.schemaVersion === "string" ? query.schemaVersion : undefined
+      );
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
     }

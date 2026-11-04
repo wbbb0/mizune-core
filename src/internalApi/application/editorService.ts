@@ -1,3 +1,4 @@
+import { contentSafetyConfigSchema } from "#config/contentSafetyConfig.ts";
 import { ModelCapabilityProbe, type ModelCapabilityProbeInput, type ModelCapabilityProbeResult } from "#llm/provider/modelCapabilityProbe.ts";
 import { migrateRoutingPresetContextBudgets } from "#config/contextBudgetMigration.ts";
 import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
@@ -30,7 +31,6 @@ import {
   readStructuredFileRaw,
   writeConfigFile
 } from "#data/schema/file.ts";
-import { buildUiTreeFromMeta } from "#data/schema/ui.ts";
 import type { BaseSchema, Infer } from "#data/schema/index.ts";
 import {
   listProviderModelSlots,
@@ -98,7 +98,9 @@ export interface EditorService {
       editable: boolean;
     }>;
   }>;
-  loadResourceModel(resourceKey: string): Promise<{
+  loadResourceModel(resourceKey: string, knownSchemaVersion?: string): Promise<{
+    schemaVersion: string;
+    schema?: { meta: ReturnType<typeof exportSchemaMeta>; template: unknown; defaultValue: unknown };
     editor: unknown;
   }>;
   validateDraft(resourceKey: string, value: unknown): Promise<{
@@ -146,6 +148,11 @@ export function createEditorService(input: {
   scheduler: Pick<Scheduler, "reloadFromStore">;
 }): EditorService {
   const capabilityProbe = new ModelCapabilityProbe(input.config);
+  // Schema 是服务生命周期内的静态结构，配置值和文件 revision 每次仍从磁盘读取。
+  const schemas = new Map<string, {
+    version: string;
+    descriptor: { meta: ReturnType<typeof exportSchemaMeta>; template: unknown; defaultValue: unknown };
+  }>();
   return {
     testModelCapability: probe => capabilityProbe.run(probe),
     async listResources() {
@@ -163,17 +170,26 @@ export function createEditorService(input: {
       };
     },
 
-    async loadResourceModel(resourceKey) {
+    async loadResourceModel(resourceKey, knownSchemaVersion) {
       const resources = buildEditorResourceMap(input);
       const resource = getRequiredResource(resources, resourceKey);
-      const schemaMeta = exportSchemaMeta(resource.schema);
-
-      if (resourceKey === "users" && schemaMeta.kind === "array" && schemaMeta.item.kind === "object") {
-        delete schemaMeta.item.fields.memories;
+      let cachedSchema = schemas.get(resourceKey);
+      if (!cachedSchema) {
+        const descriptor = {
+          meta: exportSchemaMeta(resource.schema),
+          template: resolveEditorValueState(resource, createSchemaTemplate(resource.schema)).currentValue,
+          defaultValue: createSchemaDefaultValue(resource.schema)
+        };
+        cachedSchema = {
+          version: createHash("sha256").update(JSON.stringify(descriptor)).digest("hex"),
+          descriptor
+        };
+        schemas.set(resourceKey, cachedSchema);
       }
-
-      const editorTemplate = resolveEditorValueState(resource, createSchemaTemplate(resource.schema)).currentValue;
-      const schemaDefaultValue = createSchemaDefaultValue(resource.schema);
+      const schemaEnvelope = {
+        schemaVersion: cachedSchema.version,
+        ...(knownSchemaVersion === cachedSchema.version ? {} : { schema: cachedSchema.descriptor })
+      };
       const editorFeatures = resolveEditorFeatures(resource);
 
       if (resource.kind === "single") {
@@ -183,15 +199,12 @@ export function createEditorService(input: {
         const current = revisioned.current;
         const valueState = resolveEditorValueState(resource, current);
         return {
+          ...schemaEnvelope,
           editor: {
             key: resource.key,
             title: resource.title,
             kind: resource.kind,
             editable: resource.editable,
-            schemaMeta,
-            uiTree: buildUiTreeFromMeta(schemaMeta),
-            template: editorTemplate,
-            schemaDefaultValue,
             currentValue: valueState.currentValue,
             referenceValue: valueState.referenceValue,
             effectiveValue: valueState.effectiveValue,
@@ -221,15 +234,12 @@ export function createEditorService(input: {
         currentValue
       ]));
       return {
+        ...schemaEnvelope,
         editor: {
           key: resource.key,
           title: resource.title,
           kind: resource.kind,
           editable: resource.editable,
-          schemaMeta,
-          uiTree: buildUiTreeFromMeta(schemaMeta),
-          template: editorTemplate,
-          schemaDefaultValue,
           currentValue,
           referenceValue: baseValue,
           effectiveValue,
@@ -396,6 +406,13 @@ export function createEditorService(input: {
     },
 
     async getOptions(optionKey) {
+      if (optionKey === "content_safety_provider_names") {
+        const runtime = input.config.configRuntime;
+        const layers = await Promise.all([runtime.globalConfigPath, runtime.instanceConfigPath].map(readOptionalConfigLayer));
+        const merged = mergeConfigLayers(layers);
+        const safety = parseConfig(contentSafetyConfigSchema, merged.contentSafety ?? {});
+        return { options: Object.keys(safety.providers).sort() };
+      }
       if (["llm_model_targets", "llm_image_model_targets", "llm_embedding_model_targets", "llm_transcription_model_targets", "llm_speech_model_targets", "llm_decision_model_targets"].includes(optionKey)) {
         const raw = await readConfigFileRaw(input.config.configRuntime.llmCatalogPath).catch(() => ({}));
         const catalog = parseConfig(llmCatalogFileSchema, raw, { cloneInput: true });

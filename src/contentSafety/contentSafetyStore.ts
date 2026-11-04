@@ -13,6 +13,7 @@ const moderationLabelSchema = z.object({
 });
 
 const moderationResultSchema = z.object({
+  policyFingerprint: z.string().min(1).optional(),
   decision: z.enum(["allow", "review", "block", "error"]),
   reason: z.string(),
   labels: z.array(moderationLabelSchema),
