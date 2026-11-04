@@ -28,6 +28,7 @@ import type {
   ModerationSubjectKind
 } from "./contentSafetyTypes.ts";
 import { ContentSafetyStore } from "./contentSafetyStore.ts";
+import { createOpenAiContentModerationProvider } from "./providers/openAiContentModerationProvider.ts";
 import { createAliyunContentModerationProvider } from "./providers/aliyunContentModerationProvider.ts";
 import { createKeywordContentSafetyProvider } from "./providers/keywordContentSafetyProvider.ts";
 import { createNoopContentSafetyProvider } from "./providers/noopContentSafetyProvider.ts";
@@ -378,7 +379,22 @@ export class ContentSafetyService {
     if (!this.config.contentSafety.enabled) {
       return "allow";
     }
-    return await this.store.isBlockedFileId(fileId) ?? "allow";
+    // 该守卫也会被非图片文件的 caption 入队检查调用，不能将它们送入图片审核。
+    const file = await this.chatFileStore.getFile(fileId).catch(() => null);
+    if (!file || (file.kind !== "image" && file.kind !== "animated_image")) return "allow";
+    const profileId = this.config.contentSafety.routes.toolMedia.chatFile;
+    const profile = (profileId ? this.config.contentSafety.profiles[profileId] : undefined) ?? this.resolvePromptProfile();
+    if (!profile) return "allow";
+    const cached = await this.store.getByFileId(fileId);
+    const subjectKind = cached?.subjectKind === "emoji" ? "emoji" : "image";
+    const event = await this.projectMediaRef({
+      sessionId: cached?.sessionId ?? "tool_media",
+      source: "tool_media",
+      subjectKind,
+      fileId,
+      rule: subjectKind === "emoji" ? profile.emoji : profile.image
+    });
+    return event?.marker ? { blocked: true, marker: event.marker, reason: event.reason } : "allow";
   }
 
   async guardTextForLlm(text: string, context: ModerateTextInput["context"]): Promise<"allow" | { blocked: true; marker: string; reason: string }> {
@@ -402,34 +418,50 @@ export class ContentSafetyService {
   }
 
   async moderateText(input: ModerateTextInput, rule: RuleConfig): Promise<ModerationResult> {
+    input.abortSignal?.throwIfAborted();
+    rule = structuredClone(rule);
+    if (rule.action === "allow") return allowResult("policy", "allow_rule");
+    const fingerprint = this.policyFingerprint(rule, input.subjectKind);
     const provider = this.resolveProvider(rule.provider);
     if (!provider?.moderateText) {
       this.warnOnce("content_safety_text_provider_missing", {
         providerId: rule.provider ?? null
       }, "content_safety_provider_missing");
-      return allowResult("unconfigured", "unconfigured");
+      return this.failedResult("unconfigured", "unconfigured");
     }
     try {
-      return applyModerationRule(await provider.moderateText(input), rule);
+      return {
+        ...applyModerationRule(await provider.moderateText(input), rule),
+        policyFingerprint: fingerprint
+      };
     } catch (error: unknown) {
-      this.logger.warn({ error: toSafeErrorLog(error), providerId: provider.id }, "content_safety_text_failed_allowing");
-      return allowResult(provider.id, provider.type);
+      input.abortSignal?.throwIfAborted();
+      this.logger.warn({ error: toSafeErrorLog(error), providerId: provider.id }, "content_safety_text_failed");
+      return this.failedResult(provider.id, provider.type);
     }
   }
 
   async moderateMedia(input: ModerateMediaInput, rule: RuleConfig): Promise<ModerationResult> {
+    input.abortSignal?.throwIfAborted();
+    rule = structuredClone(rule);
+    if (rule.action === "allow") return allowResult("policy", "allow_rule");
+    const fingerprint = this.policyFingerprint(rule, input.subjectKind);
     const provider = this.resolveProvider(rule.provider);
     if (!provider?.moderateMedia) {
       this.warnOnce("content_safety_media_provider_missing", {
         providerId: rule.provider ?? null
       }, "content_safety_provider_missing");
-      return allowResult("unconfigured", "unconfigured");
+      return this.failedResult("unconfigured", "unconfigured");
     }
     try {
-      return applyModerationRule(await provider.moderateMedia(input), rule);
+      return {
+        ...applyModerationRule(await provider.moderateMedia(input), rule),
+        policyFingerprint: fingerprint
+      };
     } catch (error: unknown) {
-      this.logger.warn({ error: toSafeErrorLog(error), providerId: provider.id }, "content_safety_media_failed_allowing");
-      return allowResult(provider.id, provider.type);
+      input.abortSignal?.throwIfAborted();
+      this.logger.warn({ error: toSafeErrorLog(error), providerId: provider.id }, "content_safety_media_failed");
+      return this.failedResult(provider.id, provider.type);
     }
   }
 
@@ -661,8 +693,8 @@ export class ContentSafetyService {
     abortSignal?: AbortSignal | undefined;
   }): Promise<ContentSafetyEvent | null> {
     const cached = await this.store.getByFileId(input.fileId);
-    if (cached && shouldProjectAsBlocked(cached.result)) {
-      return contentSafetyEventFromRecord(cached);
+    if (cached && this.isCurrentCache(cached, input.rule, input.subjectKind)) {
+      return shouldProjectAsBlocked(cached.result) ? contentSafetyEventFromRecord(cached) : null;
     }
     const file = await this.chatFileStore.getFile(input.fileId).catch(() => null);
     const absolutePath = file ? await this.chatFileStore.resolveAbsolutePath(input.fileId).catch(() => undefined) : undefined;
@@ -678,7 +710,8 @@ export class ContentSafetyService {
       },
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     }, input.rule);
-    if (!shouldProjectAsBlocked(result)) {
+    const blocked = shouldProjectAsBlocked(result);
+    if (!blocked && !(result.policyFingerprint && this.config.contentSafety.cache.enabled && this.config.contentSafety.cache.storeAllowResults)) {
       return null;
     }
     const persisted = await this.persistAudit({
@@ -689,7 +722,7 @@ export class ContentSafetyService {
       fileId: input.fileId,
       sourceName: file?.sourceName ?? input.fileId
     });
-    return persisted.event;
+    return blocked ? persisted.event : null;
   }
 
   private async projectContentPartMedia(input: {
@@ -764,7 +797,7 @@ export class ContentSafetyService {
     abortSignal?: AbortSignal | undefined;
   }): Promise<ContentSafetyEvent | null> {
     const cached = await this.store.getByAudioId(input.audioId);
-    if (cached && shouldProjectAsBlocked(cached.result)) {
+    if (cached && this.isCurrentCache(cached, input.rule, "audio") && shouldProjectAsBlocked(cached.result)) {
       return contentSafetyEventFromRecord(cached);
     }
     const audio = await this.audioStore?.get(input.audioId).catch(() => null);
@@ -901,7 +934,7 @@ export class ContentSafetyService {
   }
 
   private async projectCachedText(input: ModerateTextInput, rule: RuleConfig): Promise<TextProjection | null> {
-    const cached = await this.readTextCache(input.text);
+    const cached = await this.readTextCache(input.text, rule, input.subjectKind);
     if (!cached) {
       return null;
     }
@@ -924,7 +957,7 @@ export class ContentSafetyService {
     return projectBlockedText(input.text, rule, cached.marker, event);
   }
 
-  private async readTextCache(text: string): Promise<ContentSafetyAuditRecord | null> {
+  private async readTextCache(text: string, rule: RuleConfig, subjectKind: ModerationSubjectKind): Promise<ContentSafetyAuditRecord | null> {
     if (!this.config.contentSafety.cache.enabled) {
       return null;
     }
@@ -932,10 +965,7 @@ export class ContentSafetyService {
     if (!record) {
       return null;
     }
-    if (record.expiresAtMs !== undefined && record.expiresAtMs <= Date.now()) {
-      return null;
-    }
-    return record;
+    return this.isCurrentCache(record, rule, subjectKind) ? record : null;
   }
 
   private async persistTextDecision(input: {
@@ -1027,26 +1057,52 @@ export class ContentSafetyService {
     if (routed) {
       const profile = this.config.contentSafety.profiles[routed];
       if (profile) {
-        return profile;
+        return structuredClone(profile);
       }
       this.warnOnce(`content_safety_prompt_profile_missing:${routed}`, {
         profileId: routed
       }, "content_safety_prompt_profile_missing_allowing");
     }
     const first = Object.values(this.config.contentSafety.profiles)[0];
-    return first ?? null;
+    return first ? structuredClone(first) : null;
+  }
+
+  private selectedProvider(providerId: string | undefined) {
+    const entries = Object.entries(this.config.contentSafety.providers)
+      .filter(([, provider]) => provider.enabled);
+    const selectedId = providerId ?? this.config.contentSafety.defaultProvider;
+    return selectedId ? entries.find(([id]) => id === selectedId) : entries[0];
+  }
+
+  private policyFingerprint(rule: RuleConfig, subjectKind: ModerationSubjectKind): string {
+    // 不存明文连接配置；供应商、模型、规则或标记策略变化都使旧缓存失效。
+    return contentSafetyHashText(JSON.stringify({
+      provider: this.selectedProvider(rule.provider) ?? null,
+      subjectKind,
+      rule,
+      marker: this.config.contentSafety.marker,
+      cache: this.config.contentSafety.cache
+    }));
+  }
+
+  private isCurrentCache(record: ContentSafetyAuditRecord, rule: RuleConfig, subjectKind: ModerationSubjectKind): boolean {
+    return this.config.contentSafety.cache.enabled
+      && (record.expiresAtMs === undefined || record.expiresAtMs > Date.now())
+      && record.result.policyFingerprint === this.policyFingerprint(rule, subjectKind);
+  }
+
+  private failedResult(providerId: string, providerType: string): ModerationResult {
+    const result = allowResult(providerId, providerType);
+    return this.config.contentSafety.failPolicy === "mark"
+      ? { ...result, decision: "review", reason: "内容安全检查暂不可用，已按失败策略屏蔽", rawDecision: "error" }
+      : { ...result, rawDecision: "error" };
   }
 
   private resolveProvider(providerId: string | undefined): ContentModerationProvider | null {
-    const entries = Object.entries(this.config.contentSafety.providers)
-      .filter(([, provider]) => provider.enabled);
-    const selected = providerId
-      ? entries.find(([id]) => id === providerId)
-      : entries[0];
-    if (!selected) {
-      return null;
-    }
-    const [id, providerConfig] = selected;
+    const selected = this.selectedProvider(providerId);
+    if (!selected) return null;
+    const [id, settings] = selected;
+    const providerConfig = structuredClone(settings);
     if (providerConfig.type === "noop") {
       return createNoopContentSafetyProvider(id);
     }
@@ -1056,11 +1112,7 @@ export class ContentSafetyService {
     if (providerConfig.type === "aliyun_content_moderation") {
       return createAliyunContentModerationProvider(id, providerConfig);
     }
-    this.warnOnce(`content_safety_provider_not_implemented:${id}`, {
-      providerId: id,
-      providerType: providerConfig.type
-    }, "content_safety_provider_not_implemented_allowing");
-    return null;
+    return createOpenAiContentModerationProvider(id, providerConfig, this.config);
   }
 
   private warnOnce(cacheKey: string, payload: Record<string, unknown>, event: string): void {

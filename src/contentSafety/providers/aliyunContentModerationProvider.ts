@@ -12,7 +12,7 @@ import {
   type TextModerationPlusResponseBodyDataResult,
   type TextModerationResponseBody
 } from "@alicloud/green20220302";
-import type { AppConfig } from "#config/config.ts";
+import type { AliyunContentSafetyProviderConfig } from "#config/contentSafetyConfig.ts";
 import type {
   ContentModerationProvider,
   ModerateMediaInput,
@@ -22,7 +22,7 @@ import type {
   ModerationResult
 } from "../contentSafetyTypes.ts";
 
-type ProviderConfig = AppConfig["contentSafety"]["providers"][string];
+type ProviderConfig = AliyunContentSafetyProviderConfig;
 
 const DEFAULT_TEXT_SERVICE = "chat_detection";
 const DEFAULT_IMAGE_SERVICE = "baselineCheck";

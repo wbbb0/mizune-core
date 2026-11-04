@@ -289,8 +289,10 @@ comfy: # 支持实例覆盖；与 llm.imageGeneration.enabled 独立控制
         maxAutoIterations: 1
         defaultActionHint: decide_by_model
 contentSafety:
-  # 可选功能，默认关闭。启用后如果 provider 未配置或调用失败，只记录 warning 并放行，不影响正常聊天。
+  # 可选功能，默认关闭。默认失败时记录 warning 并放行；failPolicy: mark 可改为屏蔽并标记。
   enabled: false
+  # 在已启用的供应商中选择；规则中的 provider 可单独覆盖此选择。
+  defaultProvider: aliyunCm
   failPolicy: allow
   audit:
     preserveOriginalText: true
@@ -314,7 +316,7 @@ contentSafety:
     includeConfidence: false
     includeSubjectRef: true
   providers:
-    # 本地关键词 provider 用于联调审核链路；生产可替换为 aliyun_content_moderation。
+    # 类型选择会展示各自配置：阿里云使用 AccessKey，OpenAI 使用 API Key 和审核模型。
     localKeyword:
       type: keyword
       enabled: false
@@ -338,23 +340,29 @@ contentSafety:
       variants:
         text: text_plus
         image: image
+    openaiCm:
+      type: openai_moderation
+      enabled: false
+      baseUrl: https://api.openai.com/v1
+      # apiKey: your-openai-api-key
+      apiKeyEnv: OPENAI_API_KEY
+      model: omni-moderation-latest
+      timeoutMs: 6000
+      # 使用公共 proxy 配置；与对话模型的代理开关独立。
+      proxy: false
   profiles:
     preLlm:
       text:
-        provider: aliyunCm
         action: replace_in_projection
         blockRiskLevels: [high]
         reviewRiskLevels: [medium]
       image:
-        provider: aliyunCm
         action: hide_from_projection_and_mark
         blockRiskLevels: [high]
         reviewRiskLevels: [medium]
       emoji:
-        provider: aliyunCm
         action: hide_from_projection_and_mark
       audio:
-        provider: aliyunCm
         action: mark_unavailable
       unsupportedFilePolicy: mark
   routes:

@@ -8,7 +8,7 @@ import { buildUiTreeFromMeta } from "../../src/data/schema/ui.ts";
 import { createEditorModelLoader, type EditorModelResponse } from "../../webui/src/api/editorModelLoader.ts";
 import { withConfigDir, writeLlmCatalog, writeYaml } from "../helpers/config-test-support.tsx";
 
-async function withEditor(fn: (service: ReturnType<typeof createEditorService>) => Promise<void>) {
+async function withEditor(fn: (service: ReturnType<typeof createEditorService>, configDir: string) => Promise<void>) {
   await withConfigDir("editor-payload", async configDir => {
     await writeLlmCatalog(configDir);
     await writeYaml(join(configDir, "global.yml"), { appName: "editor-test" });
@@ -20,7 +20,7 @@ async function withEditor(fn: (service: ReturnType<typeof createEditorService>) 
       whitelistStore: { async reloadFromDisk() { return { users: [], groups: [] }; } },
       scheduler: { async reloadFromStore() {} }
     });
-    await fn(service);
+    await fn(service, configDir);
   });
 }
 
@@ -112,5 +112,19 @@ test("overlapping reloads hydrate with the schema version declared by each reque
     finishOlder({ schemaVersion: initial.schemaVersion, editor: initial.editor });
     assert.equal((await olderRequest).editor.uiTree, first.editor.uiTree);
     assert.equal((await load("config")).editor.uiTree, newer.editor.uiTree);
+  });
+});
+
+test("content safety provider choices use current merged global and instance configuration", async () => {
+  await withEditor(async (service, configDir) => {
+    await writeYaml(join(configDir, "global.yml"), { contentSafety: { providers: {
+      shared: { type: "aliyun_content_moderation" }, globalOnly: { type: "keyword" }
+    } } });
+    await writeYaml(join(configDir, "instances", "default.yml"), { contentSafety: { providers: {
+      shared: { type: "openai_moderation" }, instanceOnly: { type: "openai_moderation" }
+    } } });
+    assert.deepEqual(await service.getOptions("content_safety_provider_names"), { options: ["globalOnly", "instanceOnly", "shared"] });
+    await writeYaml(join(configDir, "instances", "default.yml"), { contentSafety: { providers: { newlySaved: { type: "openai_moderation" } } } });
+    assert.deepEqual(await service.getOptions("content_safety_provider_names"), { options: ["globalOnly", "newlySaved", "shared"] });
   });
 });

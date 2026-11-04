@@ -1,4 +1,4 @@
-import type { AppConfig } from "#config/config.ts";
+import type { KeywordContentSafetyProviderConfig } from "#config/contentSafetyConfig.ts";
 import type {
   ContentModerationProvider,
   ModerateMediaInput,
@@ -6,7 +6,7 @@ import type {
   ModerationResult
 } from "../contentSafetyTypes.ts";
 
-type ProviderConfig = AppConfig["contentSafety"]["providers"][string];
+type ProviderConfig = KeywordContentSafetyProviderConfig;
 
 export function createKeywordContentSafetyProvider(id: string, providerConfig: ProviderConfig): ContentModerationProvider {
   const blockedTextKeywords = providerConfig.blockedTextKeywords.map((item) => item.toLowerCase());

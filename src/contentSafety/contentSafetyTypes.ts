@@ -18,6 +18,8 @@ export interface ModerationLabel {
 }
 
 export interface ModerationResult {
+  /** 成功审核所使用的供应商与规则指纹，仅用于缓存有效性判断。 */
+  policyFingerprint?: string | undefined;
   decision: ModerationDecision;
   reason: string;
   labels: ModerationLabel[];
