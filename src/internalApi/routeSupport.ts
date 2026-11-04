@@ -1,3 +1,4 @@
+import { modelOperations } from "#config/modelOperations.ts";
 import type { FastifyReply } from "fastify";
 import { z } from "zod";
 import { sessionPacingPreferencesSchema } from "#conversation/session/sessionPacing.ts";
@@ -162,6 +163,12 @@ const llmModelListBodySchema = z.object({
   provider: z.record(z.string(), z.unknown())
 }).strict();
 
+const llmModelTestBodySchema = z.object({
+  provider: z.record(z.string(), z.unknown()),
+  model: z.object({ upstreamModel: z.string().trim().min(1).max(512) }).catchall(z.unknown()),
+  operation: z.enum(modelOperations)
+}).strict();
+
 const dataResourceRowPatchBodySchema = z.object({
   patch: z.record(z.string(), z.unknown()),
   revision: z.union([z.string().trim().min(1), z.number().finite()]).optional(),
@@ -263,6 +270,7 @@ export type ParsedUploadAssetsBody = z.infer<typeof uploadWorkspaceFilesBodySche
 export type ParsedConfigValidateBody = z.infer<typeof configValidateBodySchema>;
 export type ParsedConfigSaveBody = z.infer<typeof configSaveBodySchema>;
 export type ParsedLlmProviderImpactBody = z.infer<typeof llmProviderImpactBodySchema>;
+export type ParsedLlmModelTestBody = z.infer<typeof llmModelTestBodySchema>;
 export type ParsedLlmModelListBody = z.infer<typeof llmModelListBodySchema>;
 export type ParsedDataResourceRowPatchBody = z.infer<typeof dataResourceRowPatchBodySchema>;
 export type ParsedEditorResourceParams = z.infer<typeof editorResourceParamsSchema>;
@@ -412,6 +420,10 @@ export function parseConfigSaveBody(body: unknown): ParsedConfigSaveBody | { err
 
 export function parseLlmProviderImpactBody(body: unknown): ParsedLlmProviderImpactBody | { error: string } {
   return parseWithSchema(llmProviderImpactBodySchema, body);
+}
+
+export function parseLlmModelTestBody(body: unknown): ParsedLlmModelTestBody | { error: string } {
+  return parseWithSchema(llmModelTestBodySchema, body);
 }
 
 export function parseLlmModelListBody(body: unknown): ParsedLlmModelListBody | { error: string } {

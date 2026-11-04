@@ -10,6 +10,7 @@ const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind
 const vueUrl = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const moduleSource = js.replace(/import[\s\S]*?from\s+["']([^"']+)["'];/g, (statement, name: string) => {
   if (name === "vue") return statement.replace('"vue"', JSON.stringify(vueUrl));
+  if (name === "@/sections/config/modelTestActions") return statement.replace(JSON.stringify(name), JSON.stringify(new URL("../../../webui/src/sections/config/modelTestActions.ts", import.meta.url).href));
   return "";
 });
 const factory = await import(`data:text/javascript,${encodeURIComponent(`
@@ -18,7 +19,7 @@ const createSharedSectionState = fn => fn;
 const createResourceEditorState = () => harness.state;
 const useWorkbenchWindows = () => harness.windows;
 const useWorkbenchToasts = () => ({ push: value => harness.errors.push(value) });
-const editorApi = {}, LlmModelAddWindow = {};
+const editorApi = {}, LlmModelAddWindow = {}, LlmModelTestWindow = {};
 const window = { innerWidth: 1280, innerHeight: 800 };
 const clearEditorMutations = () => {};
 export function setup(value) { harness = value; return useConfigSection(); }

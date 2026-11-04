@@ -1,3 +1,4 @@
+import { ModelCapabilityProbe, type ModelCapabilityProbeInput, type ModelCapabilityProbeResult } from "#llm/provider/modelCapabilityProbe.ts";
 import { migrateRoutingPresetContextBudgets } from "#config/contextBudgetMigration.ts";
 import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
 import { readEmbeddingConfigLayers, mutateEmbeddingConfigReference } from "#config/embeddingConfigReferences.ts";
@@ -115,6 +116,7 @@ export interface EditorService {
   getLlmProviderImpact(provider: string): Promise<LlmProviderMutationImpact>;
   /** 按供应商草稿的连接信息拉取其模型清单，并生成为可导入的模型槽位。 */
   listProviderModels(providerDraft: unknown): Promise<ProviderModelListResult>;
+  testModelCapability(input: ModelCapabilityProbeInput): Promise<ModelCapabilityProbeResult>;
   normalizeDraft(resourceKey: string, value: unknown): Promise<{
     ok: true;
     path: string;
@@ -143,7 +145,9 @@ export function createEditorService(input: {
   whitelistStore: Pick<WhitelistStore, "reloadFromDisk">;
   scheduler: Pick<Scheduler, "reloadFromStore">;
 }): EditorService {
+  const capabilityProbe = new ModelCapabilityProbe(input.config);
   return {
+    testModelCapability: probe => capabilityProbe.run(probe),
     async listResources() {
       const resources = buildEditorResourceMap(input);
       return {

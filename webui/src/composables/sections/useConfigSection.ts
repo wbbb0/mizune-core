@@ -1,10 +1,13 @@
 import {
   createResourceEditorState,
   type EditorRecordMutationEvent,
+  type EditorNodeActions,
   type ResourceEditorState
 } from "@workbench-kit/vue";
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue";
+import { createModelTestNodeActions } from "@/sections/config/modelTestActions";
+import LlmModelTestWindow from "@/sections/config/LlmModelTestWindow.vue";
 import LlmModelAddWindow from "@/sections/config/LlmModelAddWindow.vue";
 import { type LlmModelAddEntry } from "@/api/editor";
 import {
@@ -28,6 +31,7 @@ export type ConfigSectionState = ResourceEditorState & {
   canStandardize: ComputedRef<boolean>;
   useDefaultValue: () => void;
   standardize: () => Promise<void>;
+  nodeActions: EditorNodeActions;
   beforeRecordMutation: (event: EditorRecordMutationEvent) => Promise<boolean>;
 };
 
@@ -99,6 +103,18 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     }
     await state.reloadFromServer();
   }
+
+  const nodeActions = createModelTestNodeActions({
+    getResourceKey: () => state.selectedKey.value,
+    getDraft: () => state.draftValue.value,
+    openTest: ({ providerName, modelName, provider, model }) => {
+      windows.openSync({
+        kind: "dialog", title: `测试模型 · ${providerName}/${modelName}`, size: "lg", modal: true,
+        closeLabel: "关闭", blocks: [{ kind: "component", component: LlmModelTestWindow,
+          props: { provider, model } }]
+      });
+    }
+  });
 
   async function beforeRecordMutation(event: EditorRecordMutationEvent): Promise<boolean> {
     if (state.selectedKey.value !== "llm_catalog") {
@@ -274,7 +290,8 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
     useDefaultValue,
     standardize,
     reloadFromServer,
-    beforeRecordMutation
+    beforeRecordMutation,
+    nodeActions
   };
 });
 

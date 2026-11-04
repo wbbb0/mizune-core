@@ -170,3 +170,17 @@ function pruneEmptyOptionalFields(provider: unknown): unknown {
   }
   return next;
 }
+
+export type ModelProbeOperation = "chat" | "embedding" | "transcription" | "speech" | "image" | "decision";
+export interface ModelProbeResult {
+  operation: ModelProbeOperation;
+  status: "passed" | "unsupported" | "inconclusive";
+  durationMs: number;
+  message: string;
+  usage?: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null };
+}
+
+export function testProviderModel(provider: Record<string, unknown>, model: Record<string, unknown>, operation: ModelProbeOperation, signal?: AbortSignal): Promise<ModelProbeResult> {
+  const { models: _models, ...connection } = provider;
+  return api.post("/api/editors/llm_catalog/test-model", { provider: pruneEmptyOptionalFields(connection), model, operation }, signal);
+}

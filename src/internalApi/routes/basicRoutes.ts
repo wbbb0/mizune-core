@@ -1,3 +1,4 @@
+import { ModelCapabilityProbeBusyError } from "#llm/provider/modelCapabilityProbe.ts";
 import { characterRepository } from "../../character/repository.ts";
 import type { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
@@ -53,6 +54,7 @@ import {
   parseEditorOptionsParams,
   parseEditorResourceParams,
   parseLlmModelListBody,
+  parseLlmModelTestBody,
   parseLlmProviderImpactBody,
   parseResourceRowParams,
   parseResourceItemParams,
@@ -430,6 +432,24 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       return await services.editor.getLlmProviderImpact(body.provider);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/api/editors/llm_catalog/test-model", async (request, reply) => {
+    const body = parseLlmModelTestBody(request.body);
+    if (!parseOrReply(reply, body)) return reply;
+    const controller = new AbortController();
+    const cancel = () => { if (!reply.raw.writableEnded) controller.abort(); };
+    request.raw.once("aborted", cancel);
+    reply.raw.once("close", cancel);
+    try {
+      return await services.editor.testModelCapability({ ...body, abortSignal: controller.signal });
+    } catch (error) {
+      if (error instanceof ModelCapabilityProbeBusyError) return reply.code(409).send({ error: error.message });
+      return respondBadRequest(reply, "模型测试请求无法处理，请检查模型与供应商配置。");
+    } finally {
+      request.raw.off("aborted", cancel);
+      reply.raw.off("close", cancel);
     }
   });
 
