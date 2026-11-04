@@ -11,7 +11,7 @@ import type {
 } from "./messageHandlerTypes.ts";
 import {
   appendIncomingHistoryTranscript,
-  resolveIncomingOneBotSourceRef
+  resolveIncomingSourceRef
 } from "./incomingHistory.ts";
 
 export async function resolveTriggerDecision(
@@ -175,7 +175,7 @@ export function appendIncomingHistory(
     transcriptGroupId?: string;
   }
 ): void {
-  const sourceRef = resolveIncomingOneBotSourceRef(context.enrichedMessage);
+  const sourceRef = resolveIncomingSourceRef(context.enrichedMessage);
   appendIncomingHistoryTranscript(sessionManager, context, {
     timestampMs: Date.now(),
     ...(sourceRef ? { sourceRef } : {}),

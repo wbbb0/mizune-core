@@ -29,7 +29,7 @@ import {
 } from "#conversation/session/internalTranscriptEvents.ts";
 import { buildBuiltinToolContext, type PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
 import type { PromptInteractionMode } from "#llm/prompt/promptTypes.ts";
-import type { MessageContentPart } from "#messages/contentParts.ts";
+import type { PersistedMessageContentPart } from "#messages/contentParts.ts";
 import { createGenerationOutbound } from "./generationOutbound.ts";
 import { createGenerationSegmentCoordinator } from "./generationSegmentCoordinator.ts";
 import { createGenerationTypingWindow } from "./generationTypingWindow.ts";
@@ -88,7 +88,7 @@ export interface GenerationRuntimeBatchMessage {
   userId: string;
   senderName: string;
   text: string;
-  contentParts?: MessageContentPart[];
+  contentParts?: PersistedMessageContentPart[];
   images: string[];
   audioSources: string[];
   audioIds: string[];

@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import { resolveDispatchableDirectCommand } from "./directCommands.ts";
+import { resolveIncomingSourceRef } from "./incomingHistory.ts";
 import type {
   DirectCommandInput,
   MessageEventHandlerDeps,
@@ -32,6 +33,9 @@ export async function dispatchChatDirectCommand(
   context: MessageProcessingContext,
   command: DirectCommandInput["command"]
 ): Promise<void> {
+  const sourceRef = context.enrichedMessage.source === "qq_official"
+    ? resolveIncomingSourceRef(context.enrichedMessage)
+    : undefined;
   logger.info({ sessionId: context.session.id, command: command.name }, "direct_command_received");
   sessionManager.appendInternalTranscript(context.session.id, {
     kind: "direct_command",
@@ -40,6 +44,7 @@ export async function dispatchChatDirectCommand(
     role: "user",
     commandName: command.name,
     content: context.enrichedMessage.text,
+    ...(sourceRef ? { sourceRef } : {}),
     timestampMs: Date.now()
   });
   persistSession(context.session.id, "direct_command_input_recorded");

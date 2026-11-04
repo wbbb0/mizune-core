@@ -3,6 +3,7 @@ export interface QqOfficialConfig {
   appId: string;
   appSecret: string;
   requestTimeoutMs?: number;
+  groupContext?: "mentions_only" | "all_received";
 }
 
 export interface QqReplyPermit {

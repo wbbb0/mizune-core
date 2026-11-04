@@ -32,6 +32,9 @@ qqOfficial:
   enabled: false
   appId: ""
   appSecret: ""
+  # mentions_only 仅接收群 @；all_received 保存平台实时推送的群上下文，仍只有 @ 才回复。
+  # all_received 还需在 QQ 客户端允许机器人接收群内所有消息；修改后重启实例。
+  groupContext: mentions_only
   requestTimeoutMs: 15000
 llm:
   enabled: false

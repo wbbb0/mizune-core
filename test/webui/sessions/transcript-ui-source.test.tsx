@@ -32,7 +32,10 @@ import { readFile } from "node:fs/promises";
   });
 
   test("message bubble renders ordered content parts with previews and asset links", async () => {
-    const source = await readFile(new URL("../../../webui/src/components/sessions/MessageBubble.vue", import.meta.url), "utf8");
+    const bubble = await readFile(new URL("../../../webui/src/components/sessions/MessageBubble.vue", import.meta.url), "utf8");
+    const renderer = await readFile(new URL("../../../webui/src/components/sessions/MessageContentParts.vue", import.meta.url), "utf8");
+    const source = `${bubble}\n${renderer}`;
+    assert.match(bubble, /<MessageContentParts/);
 
     assert.match(source, /kind === 'content_parts'/);
     assert.match(source, /part\.kind === 'image' \|\| part\.kind === 'emoji'/);

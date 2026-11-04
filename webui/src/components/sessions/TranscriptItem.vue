@@ -3,10 +3,18 @@ import { computed, inject } from "vue";
 import { Bot, FileText, GitBranch, Image as ImageIcon, Info, MoreHorizontal, User, Wrench } from "lucide-vue-next";
 import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
-import { WorkbenchCard, WorkbenchDisclosure } from "@workbench-kit/vue";
+import { WorkbenchCard, WorkbenchDisclosure, useWorkbenchWindows } from "@workbench-kit/vue";
+import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
 import NativeSearchResults from "./NativeSearchResults.vue";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
+import MessageContentParts from "./MessageContentParts.vue";
+import { projectTimelineContentParts } from "./chatTimeline";
 import type { TranscriptExpandState } from "./ChatPanel.vue";
+
+const windows = useWorkbenchWindows();
+function previewEmbeddedImage(url?: string, title?: string): void {
+  if (url) void openImagePreviewWindow(windows, { src: url, ...(title ? { title } : {}) });
+}
 
 const props = defineProps<{
   item: TranscriptItem;
@@ -675,7 +683,8 @@ function openActions(): void {
       <div v-if="item.kind === 'user_message' || item.kind === 'user_media_message'" class="flex flex-col gap-2">
         <div v-if="(item.contentParts?.length ?? 0) > 0" class="flex flex-col gap-2">
           <template v-for="(part, partIndex) in item.contentParts" :key="`${part.kind}:${partIndex}`">
-            <TranscriptTextBlock v-if="part.kind === 'text' && part.text.trim()" :text="part.text" />
+            <MessageContentParts v-if="part.kind === 'embedded_message'" :parts="projectTimelineContentParts([part])" @preview-image="previewEmbeddedImage" />
+            <TranscriptTextBlock v-else-if="part.kind === 'text' && part.text.trim()" :text="part.text" />
             <TranscriptTextBlock v-else-if="part.kind === 'special'" :text="part.summary" tone="muted" />
             <TranscriptTextBlock v-else-if="part.kind === 'reply'" :text="`回复：${part.messageId}`" tone="muted" />
             <TranscriptTextBlock v-else-if="part.kind === 'mention'" :text="part.target === 'all' ? '@全体' : part.target === 'self' ? '@我' : `@${part.userId ?? 'unknown'}`" tone="muted" />

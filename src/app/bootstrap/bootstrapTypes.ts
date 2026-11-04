@@ -1,4 +1,5 @@
 import type { QqOfficialClient } from "#services/qqOfficial/client.ts";
+import type { IncomingMessageReceiptStore } from "#data/state/incomingMessageReceiptStore.ts";
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
@@ -72,6 +73,7 @@ export interface AppServiceBootstrap {
   router: EventRouter;
   oneBotClient: OneBotClient;
   qqOfficialClient: QqOfficialClient | undefined;
+  incomingMessageReceiptStore: IncomingMessageReceiptStore;
   messaging: DeliveryCoordinator;
   sessionManager: SessionAppRuntimeAccess;
   debounceManager: DebounceManager;

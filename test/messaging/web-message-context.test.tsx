@@ -504,8 +504,8 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
 
     assert.deepEqual(context.enrichedMessage.audioIds, ["aud-1"]);
     assert.deepEqual(context.enrichedMessage.contentParts, [
-      { kind: "audio", source: "voice.amr", audioId: "aud-1" },
+      { kind: "audio", audioId: "aud-1" },
       { kind: "text", text: "再发一次" },
-      { kind: "audio", source: "voice.amr", audioId: "aud-1" }
+      { kind: "audio", audioId: "aud-1" }
     ]);
   });

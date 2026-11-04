@@ -102,6 +102,7 @@ const onebotConfigSchema = s.object({
 }).title("OneBot").describe("配置 OneBot 连接方式与消息发送行为。").default(emptyObject);
 
 const qqOfficialConfigSchema = s.object({
+  groupContext: s.enum(["mentions_only", "all_received"] as const).title("群上下文接收").describe("仅群 @，或在平台已授予全量权限时保存收到的普通群消息作为上下文。只有明确 @ 触发回复；普通消息不下载媒体或调用模型。").default("mentions_only"),
   enabled: s.boolean().title("启用").default(false),
   appId: s.string().trim().title("应用 ID").default(""),
   appSecret: s.string().title("应用密钥").default(""),

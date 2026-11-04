@@ -701,7 +701,7 @@ export class SessionManager {
     mentionedSelf?: boolean;
     sourceRef?: TranscriptItemSourceRef;
     contentSafetyEvents?: import("./sessionTypes.ts").TranscriptContentSafetyEvent[];
-  }, timestampMs = Date.now(), options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string }): void {
+  }, timestampMs = Date.now(), options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string; upsertSource?: boolean }): void {
     const session = this.requireSession(sessionId);
     this.historyService.appendUserHistory(session, message, timestampMs, options);
     this.notifySessionChanged(sessionId);

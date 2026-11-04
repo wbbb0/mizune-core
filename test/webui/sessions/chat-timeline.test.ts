@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildChatTimelineItems } from "../../../webui/src/components/sessions/chatTimeline.ts";
+import { buildChatTimelineItems, projectTimelineContentParts } from "../../../webui/src/components/sessions/chatTimeline.ts";
 import type { ChatTimelineTranscriptEntry } from "../../../webui/src/components/sessions/chatTimeline.ts";
 
 function createUserMessageEntry(): ChatTimelineTranscriptEntry {
@@ -431,4 +431,57 @@ test("压缩后的原消息继续显示，手动失效的消息仍隐藏", () =>
   assert.equal(buildChatTimelineItems([entry], { activeComposerUserId: "10001" }).length, 4);
   entry.item.runtimeExclusionReason = "manual_single";
   assert.deepEqual(buildChatTimelineItems([entry], { activeComposerUserId: "10001" }), []);
+});
+
+
+test("embedded reply and nested forward records retain order and cannot change the enclosing sender", () => {
+  const entry = createUserMessageEntry();
+  if (entry.item.kind !== "user_message") throw new Error("unexpected fixture");
+  entry.item.chatType = "group";
+  entry.item.contentParts = [
+    { kind: "text", text: "请分析引用内容" },
+    { kind: "embedded_message", relation: "reply", messageId: "REF-quote", senderId: "other-user", senderName: "引用作者", parts: [
+      { kind: "text", text: "被引用内容" },
+      { kind: "embedded_message", relation: "forward", senderName: "记录作者", truncated: true, parts: [
+        { kind: "image", fileId: "nested/image", sourceName: "图片.png", mimeType: "image/png" },
+        { kind: "asset_file", fileId: "nested-file", fileKind: "file", sourceName: "资料.txt", mimeType: "text/plain", sizeBytes: 12 },
+        { kind: "audio", audioId: "nested-audio" }
+      ] }
+    ] }
+  ];
+  const [item] = buildChatTimelineItems([entry], { activeComposerUserId: "10001" });
+  assert.equal(item?.kind, "content_parts");
+  if (item?.kind !== "content_parts") throw new Error("expected content parts");
+  assert.equal(item.side, "right");
+  assert.equal(item.senderLabel, "Alice · 10001");
+  assert.equal(item.parts[0]?.kind, "text");
+  const quote = item.parts[1];
+  assert.equal(quote?.kind, "embedded_message");
+  if (quote?.kind !== "embedded_message") throw new Error("expected quote");
+  assert.equal(quote.messageId, "REF-quote");
+  assert.equal(quote.senderName, "引用作者");
+  assert.equal(quote.parts[0]?.kind, "text");
+  const forward = quote.parts[1];
+  if (forward?.kind !== "embedded_message") throw new Error("expected nested forward");
+  assert.equal(forward.relation, "forward");
+  assert.equal(forward.truncated, true);
+  assert.deepEqual(forward.parts.map(part => part.kind), ["image", "file", "meta"]);
+  const image = forward.parts[0];
+  assert.equal(image?.kind === "image" ? image.imageUrl : null, "/api/chat-files/nested%2Fimage/content");
+});
+
+test("embedded projection retains unavailable content and marks excessive nesting", () => {
+  const leaf = { kind: "embedded_message" as const, relation: "reply" as const, messageId: "missing", parts: [] };
+  assert.deepEqual(projectTimelineContentParts([leaf]), [leaf]);
+  let nested: Parameters<typeof projectTimelineContentParts>[0][number] = { kind: "text", text: "深层文本" };
+  for (let i = 0; i < 12; i++) nested = { kind: "embedded_message", relation: "forward", parts: [nested] };
+  let parts = projectTimelineContentParts([nested]);
+  let foundTruncation = false;
+  for (let i = 0; i < 10; i++) {
+    const part = parts[0];
+    if (part?.kind !== "embedded_message") break;
+    if (part.truncated) { foundTruncation = true; assert.equal(part.parts.length, 0); break; }
+    parts = part.parts;
+  }
+  assert.equal(foundTruncation, true);
 });

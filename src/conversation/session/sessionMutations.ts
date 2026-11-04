@@ -1,4 +1,6 @@
 import { freezeTranscriptItem } from "./immutableTranscript.ts";
+import type { MessageContentPart } from "#messages/contentParts.ts";
+import { transcriptMessageContentPartsSchema } from "./transcriptContract.ts";
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import type {
   ActiveAssistantResponse,
@@ -66,7 +68,7 @@ function createSessionMessage(
     groupId?: string;
     senderName: string;
     text: string;
-    contentParts?: SessionMessage["contentParts"];
+    contentParts?: MessageContentPart[] | undefined;
     images: string[];
     audioSources: string[];
     audioIds: string[];
@@ -93,7 +95,9 @@ function createSessionMessage(
     senderName: message.senderName,
     chatType: message.chatType,
     text: message.text,
-    ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: [...message.contentParts] } : {}),
+    ...(message.contentParts && message.contentParts.length > 0
+      ? { contentParts: transcriptMessageContentPartsSchema.parse(message.contentParts) }
+      : {}),
     images: [...message.images],
     audioSources: [...(message.audioSources ?? [])],
     audioIds: [...(message.audioIds ?? [])],
@@ -133,7 +137,7 @@ export function appendSessionMessage(
     groupId?: string;
     senderName: string;
     text: string;
-    contentParts?: SessionMessage["contentParts"];
+    contentParts?: MessageContentPart[] | undefined;
     images: string[];
     audioSources: string[];
     audioIds: string[];
@@ -168,7 +172,7 @@ export function appendSteerMessageState(
     groupId?: string;
     senderName: string;
     text: string;
-    contentParts?: SessionMessage["contentParts"];
+    contentParts?: MessageContentPart[] | undefined;
     images: string[];
     audioSources: string[];
     audioIds: string[];

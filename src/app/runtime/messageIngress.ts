@@ -1,3 +1,4 @@
+import { buildSessionId } from "#conversation/session/sessionIdentity.ts";
 import type { MessageReplyContext } from "#services/messaging/incomingMessage.ts";
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { createDirectCommandHandler } from "../messaging/directCommands.ts";
@@ -59,7 +60,7 @@ type DeliveryContext =
     }
   | {
       kind: "qq_official";
-      replyContext: MessageReplyContext;
+      replyContext?: MessageReplyContext;
     }
   | {
       kind: "web";
@@ -81,6 +82,8 @@ export function createRuntimeMessageIngress(input: {
     handleDirectCommand: onebotHandleDirectCommand
   });
 
+  const officialIngressQueues = new Map<string, Promise<void>>();
+
   return {
     handleMessageEvent: createMessageEventHandler(onebotDeps),
     async handleIncomingMessage(incomingMessage: ParsedIncomingMessage, delivery: DeliveryContext = { kind: "onebot" }) {
@@ -90,13 +93,19 @@ export function createRuntimeMessageIngress(input: {
             ...delivery,
             handleDirectCommand: createDeliveryHandleDirectCommand(input.directCommandDeps, delivery)
           });
-      await processIncomingMessage(
-        deps,
-        incomingMessage,
-        delivery.kind === "web" && delivery.sessionId
-          ? { targetSessionId: delivery.sessionId }
-          : undefined
+      const process = () => processIncomingMessage(
+        deps, incomingMessage,
+        delivery.kind === "web" && delivery.sessionId ? { targetSessionId: delivery.sessionId } : undefined
       );
+      if (delivery.kind !== "qq_official") return process();
+      // Earlier passive context must be stored before a later @ starts preparing its reply.
+      const key = buildSessionId(incomingMessage);
+      const previous = officialIngressQueues.get(key) ?? Promise.resolve();
+      const next = previous.catch(() => undefined).then(process).finally(() => {
+        if (officialIngressQueues.get(key) === next) officialIngressQueues.delete(key);
+      });
+      officialIngressQueues.set(key, next);
+      return next;
     }
   };
 }

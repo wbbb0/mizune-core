@@ -8,6 +8,8 @@ export type MessageContentPart =
   | { kind: "image"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; marketFace?: MarketFaceMetadata }
   | { kind: "emoji"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; marketFace?: MarketFaceMetadata }
   | { kind: "file"; file: OneBotMessageFileSummary }
+  | { kind: "embedded_message"; relation: "reply" | "forward" | "message"; messageId?: string | undefined; senderId?: string | undefined; senderName?: string | undefined; parts: MessageContentPart[]; truncated?: boolean | undefined }
+  | { kind: "remote_file"; source: string; sourceName: string; mimeType: string; fileKind: "file" | "video" }
   | { kind: "asset_file"; fileId: string; fileKind: ChatFileKind; sourceName: string | null; mimeType: string | null; sizeBytes: number | null }
   | { kind: "mention"; target: "self" | "all" | "user"; userId?: string | undefined }
   | { kind: "reply"; messageId: string }
@@ -16,6 +18,13 @@ export type MessageContentPart =
   | { kind: "special"; segmentType: string; summary: string };
 
 export type MessageMediaContentPart = Extract<MessageContentPart, { kind: "image" | "emoji" }>;
+
+/** Imported content only: remote download inputs cannot enter a persisted subtree. */
+export type PersistedMessageContentPart =
+  | Exclude<MessageContentPart, { kind: "remote_file" | "embedded_message" }>
+  | (Omit<Extract<MessageContentPart, { kind: "embedded_message" }>, "parts"> & {
+      parts: PersistedMessageContentPart[];
+    });
 
 export function mediaPartKindToSemanticKind(kind: MessageMediaContentPart["kind"]): MediaSemanticKind {
   return kind === "emoji" ? "emoji" : "image";
@@ -31,7 +40,7 @@ export function collectContentPartMediaIds(
 ): string[] {
   const seen = new Set<string>();
   const ids: string[] = [];
-  for (const part of contentParts ?? []) {
+  for (const part of walkMessageContentParts(contentParts)) {
     if (part.kind !== kind || !part.fileId || seen.has(part.fileId)) {
       continue;
     }
@@ -44,7 +53,7 @@ export function collectContentPartMediaIds(
 export function collectContentPartAttachments(contentParts: readonly MessageContentPart[] | undefined): ChatAttachment[] {
   const attachments: ChatAttachment[] = [];
   const seen = new Set<string>();
-  for (const part of contentParts ?? []) {
+  for (const part of walkMessageContentParts(contentParts)) {
     if ((part.kind !== "image" && part.kind !== "emoji") || !part.fileId || seen.has(part.fileId)) {
       continue;
     }
@@ -59,6 +68,21 @@ export function collectContentPartAttachments(contentParts: readonly MessageCont
     });
   }
   return attachments;
+}
+
+/** Enumerate embedded assets without promoting embedded authors or message roles. */
+export function* walkMessageContentParts(contentParts: readonly MessageContentPart[] | undefined): Generator<MessageContentPart> {
+  const pending = [...(contentParts ?? [])].reverse();
+  const visited = new WeakSet<object>();
+  while (pending.length > 0) {
+    const part = pending.pop()!;
+    if (visited.has(part)) continue;
+    visited.add(part);
+    yield part;
+    if (part.kind === "embedded_message") {
+      for (let index = part.parts.length - 1; index >= 0; index -= 1) pending.push(part.parts[index]!);
+    }
+  }
 }
 
 export function resolveUserMessageMediaKind(

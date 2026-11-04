@@ -23,7 +23,7 @@ import {
 } from "./messageTriggerFlow.ts";
 import { logIgnoredMessage, logReceivedMessage, resolveRawText } from "./messageLogging.ts";
 import {
-  resolveIncomingOneBotSourceRef
+  resolveIncomingSourceRef, canActivateRecordedGroupContext
 } from "./incomingHistory.ts";
 import { buildSessionId } from "#conversation/session/sessionIdentity.ts";
 
@@ -63,18 +63,19 @@ export async function processIncomingMessage(
     conversationAccess
   } = services;
 
-  const sourceRef = resolveIncomingOneBotSourceRef(incomingMessage);
+  const sourceRef = resolveIncomingSourceRef(incomingMessage);
   if (sourceRef != null) {
     const sessionId = options?.targetSessionId ?? buildSessionId(incomingMessage);
     if (hasHistorySource(sessionManager, sessionId, sourceRef)) {
-      logger.info(
-        {
-          sessionId,
-          sourceRef
-        },
-        "incoming_message_duplicate_ignored"
-      );
-      return;
+      if (canActivateRecordedGroupContext(incomingMessage, sessionManager.getSession(sessionId).internalTranscript)) {
+        incomingMessage = { ...incomingMessage, activationUpgrade: true };
+      } else {
+        logger.info(
+          { sessionId, sourceRef },
+          "incoming_message_duplicate_ignored"
+        );
+        return;
+      }
     }
   }
 
@@ -83,16 +84,27 @@ export async function processIncomingMessage(
     incomingMessage,
     {
       ...options,
-      delivery: deps.inboundDelivery
+      delivery: deps.inboundDelivery,
+      metadataOnly: incomingMessage.contextOnly === true
     }
   );
+
+  if (incomingMessage.contextOnly) {
+    // Passive context has no reply permit and must never execute commands, setup, captioning or model calls.
+    const decision = {
+      groupMatched: false, userMatched: false, directlyAddressed: context.enrichedMessage.isAtMentioned,
+      shouldTriggerResponse: false, threadAction: "record_only" as const, replyDecision: "no_reply" as const,
+      interruptPolicy: "none" as const, priority: "low" as const, reason: "仅保存收到的群上下文"
+    };
+    appendIncomingHistory(sessionManager, logger, context, { transcriptGroup: "standalone" });
+    persistSession(context.session.id, "group_context_received");
+    logReceivedMessage(logger, context, decision);
+    return;
+  }
 
   if (deps.inboundDelivery === "onebot" && await handlePostRouterSetupDecision({ logger, userIdentityStore }, context, sendImmediateText)) {
     return;
   }
-
-
-
   const command = resolveChatDirectCommand(context);
   if (command) {
     try {
@@ -237,7 +249,7 @@ export function createMessageEventHandler(deps: MessageEventHandlerDeps) {
 function hasHistorySource(
   sessionManager: MessageHandlerServices["sessionManager"],
   sessionId: string,
-  sourceRef: NonNullable<ReturnType<typeof resolveIncomingOneBotSourceRef>>
+  sourceRef: NonNullable<ReturnType<typeof resolveIncomingSourceRef>>
 ): boolean {
   try {
     return sessionManager.hasHistorySource(sessionId, sourceRef);

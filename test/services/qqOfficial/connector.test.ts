@@ -25,7 +25,7 @@ function fixture(handler?: (path: string, body: Record<string, unknown>) => Prom
   return { fetch, calls };
 }
 
-test("official ingress rejects non-at group messages and deduplicates verified events", () => {
+test("official transport rejects disabled full-group events and forwards verified deliveries", () => {
   const f = fixture();
   const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
   assert.equal(client.acceptEvent("GROUP_MESSAGE_CREATE", event(true)), null);
@@ -35,7 +35,7 @@ test("official ingress rejects non-at group messages and deduplicates verified e
   assert.equal(incoming.message.rawEvent, undefined);
   assert.equal(incoming.message.sourceRef.connectionId, "qq_official.test-app");
   assert.equal(incoming.message.replyContext, incoming.permit);
-  assert.equal(client.acceptEvent("GROUP_AT_MESSAGE_CREATE", event(true)), null);
+  assert.ok(client.acceptEvent("GROUP_AT_MESSAGE_CREATE", event(true)));
 });
 
 test("reply permits reject clones, expire, and share one reply budget", () => {

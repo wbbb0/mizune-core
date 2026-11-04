@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import { QqHttpClient, type QqFetch } from "./httpClient.ts";
 import { QqGateway } from "./gateway.ts";
 import { QqReplyPermitRegistry, qqTargetPath } from "./replyPermit.ts";
-import { decodeQqMessage, type QqOfficialIncoming } from "./eventDecoder.ts";
+import { decodeQqMessage, type QqOfficialIncoming, type QqInteractiveIncoming } from "./eventDecoder.ts";
 import { QqTextStream, qqReceipt } from "./textStream.ts";
 import { uploadQqMedia } from "./mediaUpload.ts";
 import type { QqDeliveryReceipt, QqMediaInput, QqMessageResponse, QqOfficialConfig, QqReplyPermit } from "./types.ts";
@@ -13,11 +13,13 @@ export class QqOfficialClient extends EventEmitter {
   readonly permits: QqReplyPermitRegistry;
   readonly http: QqHttpClient;
   private readonly gateway: QqGateway;
-  private readonly seen = new Map<string, number>();
+  private selfId: string | undefined;
+  private readonly onIncomingEvent: ((type: string, data: unknown) => void) | undefined;
   private readonly streams = new Set<QqTextStream>();
 
-  constructor(readonly config: QqOfficialConfig, logger: Logger, options: { fetch?: QqFetch; now?: () => number } = {}) {
+  constructor(readonly config: QqOfficialConfig, logger: Logger, options: { fetch?: QqFetch; now?: () => number; onIncomingEvent?: (type: string, data: unknown) => void } = {}) {
     super();
+    this.onIncomingEvent = options.onIncomingEvent;
     this.connectionId = `qq_official.${config.appId}`;
     this.permits = new QqReplyPermitRegistry(this.connectionId, options.now);
     this.http = new QqHttpClient(config, options.fetch, options.now);
@@ -27,20 +29,27 @@ export class QqOfficialClient extends EventEmitter {
   async start(): Promise<void> { await this.gateway.start(); }
   async stop(): Promise<void> {
     this.gateway.stop();
+    this.selfId = undefined;
     await Promise.allSettled([...this.streams].map((stream) => stream.interrupt()));
     this.streams.clear();
   }
 
   /** Gateway dispatch entrypoint, also usable by an authenticated transport in tests. */
+  acceptEvent(type: "GROUP_AT_MESSAGE_CREATE" | "C2C_MESSAGE_CREATE", data: unknown): QqInteractiveIncoming | null;
+  acceptEvent(type: string, data: unknown): QqOfficialIncoming | null;
   acceptEvent(type: string, data: unknown): QqOfficialIncoming | null {
-    const incoming = decodeQqMessage(type, data, this.permits);
+    if (type === "READY") {
+      const ready = data !== null && typeof data === "object" ? data as Record<string, unknown> : {};
+      const user = ready.user !== null && typeof ready.user === "object" ? ready.user as Record<string, unknown> : {};
+      this.selfId = typeof user.id === "string" && user.id ? user.id : undefined;
+      return null;
+    }
+    if (["GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE", "C2C_MESSAGE_CREATE"].includes(type)) {
+      // The composition root controls redaction and the explicit content-logging opt-in.
+      try { this.onIncomingEvent?.(type, data); } catch { /* diagnostics cannot break message ingress */ }
+    }
+    const incoming = decodeQqMessage(type, data, this.permits, { ...(this.config.groupContext ? { groupContext: this.config.groupContext } : {}), selfId: this.selfId });
     if (!incoming) return null;
-    const now = Date.now();
-    for (const [key, expires] of this.seen) if (expires <= now) this.seen.delete(key);
-    const key = `${type}:${incoming.permit.targetId}:${incoming.messageId}`;
-    if (this.seen.has(key)) return null;
-    if (this.seen.size >= 10_000) return null;
-    this.seen.set(key, now + 10 * 60_000);
     this.emit("message", incoming);
     return incoming;
   }

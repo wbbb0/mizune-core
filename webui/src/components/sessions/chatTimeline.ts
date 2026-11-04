@@ -12,7 +12,8 @@ export type ChatTimelineContentPart =
   | { kind: "image" | "emoji"; fileId: string; imageUrl: string; sourceName: string | null }
   | { kind: "audio"; fileId: string; name: string | null; mimeType: string | null; contentUrl: string | null; aiGenerated: boolean }
   | { kind: "file"; fileId: string; name: string | null; sizeBytes: number | null; mimeType: string | null; fileKind: string | null; contentUrl: string | null }
-  | { kind: "meta"; text: string };
+  | { kind: "meta"; text: string }
+  | { kind: "embedded_message"; relation: "reply" | "forward" | "message"; messageId?: string; senderId?: string; senderName?: string; parts: ChatTimelineContentPart[]; truncated?: boolean };
 
 export type ChatTimelineItem =
   | {
@@ -242,9 +243,26 @@ function buildUserContentPartsItem(
 function buildTimelineContentParts(
   item: Extract<SessionTranscriptItem, { kind: "user_message" | "user_media_message" }>
 ): ChatTimelineContentPart[] {
+  const parts = projectTimelineContentParts(item.contentParts ?? []);
+  return parts.length > 0 ? parts : [{ kind: "text", text: buildUserMessageContent(item) || "<empty>" }];
+}
+
+type TranscriptContentPart = NonNullable<Extract<SessionTranscriptItem, { kind: "user_message" }>["contentParts"]>[number];
+
+export function projectTimelineContentParts(contentParts: readonly TranscriptContentPart[], depth = 0): ChatTimelineContentPart[] {
   const parts: ChatTimelineContentPart[] = [];
-  for (const part of item.contentParts ?? []) {
+  for (const part of contentParts) {
     switch (part.kind) {
+      case "embedded_message":
+        parts.push({
+          kind: "embedded_message", relation: part.relation,
+          ...(part.messageId ? { messageId: part.messageId } : {}),
+          ...(part.senderId ? { senderId: part.senderId } : {}),
+          ...(part.senderName ? { senderName: part.senderName } : {}),
+          parts: depth < 8 ? projectTimelineContentParts(part.parts, depth + 1) : [],
+          ...(part.truncated || depth >= 8 ? { truncated: true } : {})
+        });
+        break;
       case "text":
         if (part.text.trim()) {
           parts.push({ kind: "text", text: part.text.trim() });
@@ -302,7 +320,7 @@ function buildTimelineContentParts(
         break;
     }
   }
-  return parts.length > 0 ? parts : [{ kind: "text", text: buildUserMessageContent(item) || "<empty>" }];
+  return parts;
 }
 
 function formatUnresolvedMediaPart(kind: "image" | "emoji", label: string | null): string {

@@ -630,7 +630,38 @@ function validateRecentErrorsSchema(db: SqliteDatabase): void {
   });
 }
 
+function createIncomingMessageReceiptsSchema(db: SqliteDatabase): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS incoming_message_receipts (
+      connection_id TEXT NOT NULL,
+      chat_type TEXT NOT NULL CHECK (chat_type IN ('private', 'group')),
+      target_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      activated INTEGER NOT NULL CHECK (activated IN (0, 1)),
+      expires_at_ms INTEGER NOT NULL CHECK (expires_at_ms >= 0),
+      PRIMARY KEY (connection_id, chat_type, target_id, message_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_incoming_message_receipts_expiry ON incoming_message_receipts(expires_at_ms);
+  `);
+}
+
+function validateIncomingMessageReceiptsSchema(db: SqliteDatabase): void {
+  assertTableColumns(db, "incoming_message_receipts", {
+    connection_id: "TEXT", chat_type: "TEXT", target_id: "TEXT", message_id: "TEXT",
+    activated: "INTEGER", expires_at_ms: "INTEGER"
+  });
+}
+
 const STATE_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
+  {
+    groupId: "state.incoming_message_receipts",
+    schemaVersion: 1,
+    resetPolicy: "block_reset",
+    ownedTables: ["incoming_message_receipts"],
+    ownedIndexes: ["idx_incoming_message_receipts_expiry"],
+    createSchema: createIncomingMessageReceiptsSchema,
+    validateSchema: validateIncomingMessageReceiptsSchema
+  },
   {
     groupId: "state.persona",
     schemaVersion: 2,

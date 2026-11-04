@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PersistedMessageContentPart } from "#messages/contentParts.ts";
 import { chatAttachmentSchema, chatFileKindValues } from "../../types/chatContracts.ts";
 
 export const transcriptItemRuntimeExclusionReasonValues = ["history_compressed", "manual_single", "manual_group", "manual_truncate_after", "interrupt_cleanup", "system"] as const;
@@ -64,7 +65,8 @@ export const transcriptMessageFileSchema = z.object({
   downloadTool: z.literal("download_message_file")
 });
 
-export const transcriptMessageContentPartSchema = z.discriminatedUnion("kind", [
+// Validate the whole forest before recursive parsing, so sibling subtrees share one budget.
+const rawTranscriptMessageContentPartSchema: z.ZodType<PersistedMessageContentPart> = z.lazy(() => z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("text"),
     text: z.string()
@@ -117,8 +119,50 @@ export const transcriptMessageContentPartSchema = z.discriminatedUnion("kind", [
     kind: z.literal("special"),
     segmentType: z.string().min(1),
     summary: z.string()
+  }),
+  z.object({
+    kind: z.literal("embedded_message"),
+    relation: z.enum(["reply", "forward", "message"]),
+    messageId: z.string().min(1).optional(),
+    senderId: z.string().min(1).optional(),
+    senderName: z.string().optional(),
+    parts: z.array(rawTranscriptMessageContentPartSchema),
+    truncated: z.boolean().optional()
   })
-]);
+]));
+
+// Remote files are ingress-only. Persist imported assets or safe failure markers instead.
+export const transcriptMessageContentPartSchema: z.ZodType<PersistedMessageContentPart> = z.preprocess((value, context) => {
+  if (!isBoundedContentPartForest([value])) {
+    context.addIssue({ code: "custom", message: "嵌入消息超出层级或节点限制，或包含循环结构" });
+    return z.NEVER;
+  }
+  return value;
+}, rawTranscriptMessageContentPartSchema);
+
+export const transcriptMessageContentPartsSchema: z.ZodType<PersistedMessageContentPart[]> = z.preprocess((value, context) => {
+  if (Array.isArray(value) && !isBoundedContentPartForest(value)) {
+    context.addIssue({ code: "custom", message: "嵌入消息超出层级或节点限制，或包含循环结构" });
+    return z.NEVER;
+  }
+  return value;
+}, z.array(rawTranscriptMessageContentPartSchema));
+
+function isBoundedContentPartForest(values: readonly unknown[]): boolean {
+  const pending: Array<{ value: unknown; depth: number; ancestors: ReadonlySet<object> }> = values.map(value => ({ value, depth: 0, ancestors: new Set<object>() }));
+  let count = 0;
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    if (++count > 512 || current.depth > 8) return false;
+    if (current.value == null || typeof current.value !== "object" || Array.isArray(current.value)) continue;
+    if (current.ancestors.has(current.value)) return false;
+    const part = current.value as Record<string, unknown>;
+    if (part.kind !== "embedded_message" || !Array.isArray(part.parts)) continue;
+    const ancestors = new Set(current.ancestors).add(current.value);
+    for (const child of part.parts) pending.push({ value: child, depth: current.depth + 1, ancestors });
+  }
+  return true;
+}
 
 export const transcriptTokenStatSourceValues = ["api_direct", "api_attributed", "estimated"] as const;
 
@@ -170,7 +214,7 @@ export const transcriptUserMessageItemSchema = z.object({
   userId: z.string().min(1),
   senderName: z.string().min(1),
   text: z.string(),
-  contentParts: z.array(transcriptMessageContentPartSchema).optional(),
+  contentParts: transcriptMessageContentPartsSchema.optional(),
   imageIds: z.array(z.string()).default([]),
   emojiIds: z.array(z.string()).default([]),
   attachments: z.array(chatAttachmentSchema).default([]),
@@ -194,7 +238,7 @@ export const transcriptUserMediaMessageItemSchema = z.object({
   userId: z.string().min(1),
   senderName: z.string().min(1),
   mediaKind: z.enum(["image", "emoji", "mixed"]),
-  contentParts: z.array(transcriptMessageContentPartSchema).default([]),
+  contentParts: transcriptMessageContentPartsSchema.default([]),
   imageIds: z.array(z.string()).default([]),
   emojiIds: z.array(z.string()).default([]),
   attachments: z.array(chatAttachmentSchema).default([]),
@@ -481,7 +525,30 @@ export const internalTranscriptItemSchema = z.discriminatedUnion("kind", [
   transcriptContextExtractionEventItemSchema
 ]);
 
+export const transcriptUserMessagePatchSchema = z.object({
+  groupId: transcriptItemMetaSchema.shape.groupId,
+  chatType: transcriptUserMessageItemSchema.shape.chatType.optional(),
+  userId: transcriptUserMessageItemSchema.shape.userId.optional(),
+  senderName: transcriptUserMessageItemSchema.shape.senderName.optional(),
+  text: z.string().optional(),
+  contentParts: transcriptMessageContentPartsSchema.optional(),
+  imageIds: z.array(z.string()).optional(),
+  emojiIds: z.array(z.string()).optional(),
+  attachments: z.array(chatAttachmentSchema).optional(),
+  messageFiles: z.array(transcriptMessageFileSchema).optional(),
+  specialSegments: z.array(transcriptSpecialSegmentSchema).optional(),
+  audioCount: transcriptUserMessageItemSchema.shape.audioCount.optional(),
+  forwardIds: z.array(z.string()).optional(),
+  replyMessageId: transcriptUserMessageItemSchema.shape.replyMessageId.optional(),
+  mentionUserIds: z.array(z.string()).optional(),
+  mentionedAll: z.boolean().optional(),
+  mentionedSelf: z.boolean().optional(),
+  sourceRef: transcriptItemSourceRefSchema.optional(),
+  contentSafetyEvents: z.array(transcriptContentSafetyEventSchema).optional()
+});
+
 export const transcriptItemPatchSchema = z.object({
+  ...transcriptUserMessagePatchSchema.shape,
   reasoningContent: z.string().optional(),
   runtimeExcluded: z.boolean().optional(),
   runtimeExcludedAt: z.number().int().nonnegative().optional(),

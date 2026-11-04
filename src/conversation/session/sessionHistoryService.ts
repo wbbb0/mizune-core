@@ -169,19 +169,41 @@ export class SessionHistoryService {
     options?: {
       transcriptGroup?: "pending" | "standalone";
       transcriptGroupId?: string;
+      upsertSource?: boolean;
     }
   ): void {
-    if (message.sourceRef && this.hasSourceRef(session, message.sourceRef)) {
+    const sourceRef = message.sourceRef;
+    const existingIndex = sourceRef
+      ? session.internalTranscript.findIndex((item) => this.matchesSourceRef(item.sourceRef, sourceRef))
+      : -1;
+    const existing = session.internalTranscript[existingIndex];
+    if (existing && (!options?.upsertSource || existing.kind !== "user_message")) {
       return;
     }
-    this.appendHistoryTranscript(
-      session,
-      this.createUserHistoryTranscriptItem(message, timestampMs),
-      options?.transcriptGroupId
-        ?? (options?.transcriptGroup === "standalone"
+    const groupId = options?.transcriptGroupId
+      ?? (options?.transcriptGroup === "standalone"
         ? createTranscriptGroupId()
-        : ensurePendingTranscriptGroupId(session))
-    );
+        : ensurePendingTranscriptGroupId(session));
+    const item = this.createUserHistoryTranscriptItem(message, existing?.timestampMs ?? timestampMs);
+    if (!existing) {
+      this.appendHistoryTranscript(session, item, groupId);
+      return;
+    }
+
+    // Reprocessing a source message changes its content and input group, while
+    // preserving its identity, ordering and any explicit runtime exclusion.
+    session.internalTranscript[existingIndex] = freezeTranscriptItem(withEstimatedInputTokenStats(normalizeTranscriptItem({
+      ...item,
+      ...(existing.id ? { id: existing.id } : {}),
+      groupId,
+      runtimeExcluded: existing.runtimeExcluded === true,
+      ...(existing.runtimeExcludedAt != null ? { runtimeExcludedAt: existing.runtimeExcludedAt } : {}),
+      ...(existing.runtimeExclusionReason ? { runtimeExclusionReason: existing.runtimeExclusionReason } : {})
+    }, groupId), this.config));
+    if (existing.id && session.publishedConversation?.messages.some((message) => message.id === existing.id)) {
+      session.publishedConversation = null;
+    }
+    session.historyRevision += 1;
   }
 
   canInsertUserHistoryByTimestamp(
@@ -219,10 +241,15 @@ export class SessionHistoryService {
   }
 
   hasSourceRef(session: SessionState, sourceRef: TranscriptItemSourceRef): boolean {
-    return session.internalTranscript.some((item) => (
-      item.sourceRef?.platform === sourceRef.platform
-      && item.sourceRef.messageId === sourceRef.messageId
-    ));
+    return session.internalTranscript.some((item) => this.matchesSourceRef(item.sourceRef, sourceRef));
+  }
+
+  private matchesSourceRef(candidate: TranscriptItemSourceRef | undefined, sourceRef: TranscriptItemSourceRef): boolean {
+    if (!candidate || candidate.platform !== sourceRef.platform || candidate.messageId !== sourceRef.messageId) {
+      return false;
+    }
+    return candidate.platform !== "qq_official"
+      || (sourceRef.platform === "qq_official" && candidate.connectionId === sourceRef.connectionId);
   }
 
   appendAssistantHistory(

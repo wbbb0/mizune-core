@@ -1,10 +1,11 @@
 import type { SessionMessagingAccess } from "#conversation/session/sessionCapabilities.ts";
+import { transcriptMessageContentPartsSchema } from "#conversation/session/transcriptContract.ts";
 import type { TranscriptItemSourceRef } from "#conversation/session/sessionTypes.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
 import type { MessageProcessingContext } from "./messageHandlerTypes.ts";
 
-export function resolveIncomingOneBotSourceRef(
+export function resolveIncomingSourceRef(
   message: Pick<MessageProcessingContext["enrichedMessage"], "rawEvent" | "sourceRef">
 ): TranscriptItemSourceRef | undefined {
   if (message.sourceRef) return message.sourceRef;
@@ -36,7 +37,9 @@ export function createIncomingHistoryMessage(
     userId: context.enrichedMessage.userId,
     senderName: context.enrichedMessage.senderName,
     text: context.enrichedMessage.text,
-    ...(context.enrichedMessage.contentParts && context.enrichedMessage.contentParts.length > 0 ? { contentParts: context.enrichedMessage.contentParts } : {}),
+    ...(context.enrichedMessage.contentParts && context.enrichedMessage.contentParts.length > 0
+      ? { contentParts: transcriptMessageContentPartsSchema.parse(context.enrichedMessage.contentParts) }
+      : {}),
     ...(context.enrichedMessage.imageIds.length > 0 ? { imageIds: context.enrichedMessage.imageIds } : {}),
     ...(context.enrichedMessage.emojiIds.length > 0 ? { emojiIds: context.enrichedMessage.emojiIds } : {}),
     ...(context.enrichedMessage.attachments ? { attachments: context.enrichedMessage.attachments } : {}),
@@ -69,11 +72,29 @@ export function appendIncomingHistoryTranscript(
     context.session.id,
     createIncomingHistoryMessage(context, input.sourceRef),
     input.timestampMs,
-    input.transcriptGroup || input.transcriptGroupId
+    input.transcriptGroup || input.transcriptGroupId || context.enrichedMessage.activationUpgrade
       ? {
+          ...(context.enrichedMessage.activationUpgrade ? { upsertSource: true } : {}),
           ...(input.transcriptGroup ? { transcriptGroup: input.transcriptGroup } : {}),
           ...(input.transcriptGroupId ? { transcriptGroupId: input.transcriptGroupId } : {})
         }
       : undefined
   );
+}
+
+/** Persisted mention state prevents a replay after reconnect/restart from activating twice. */
+export function canActivateRecordedGroupContext(
+  message: MessageProcessingContext["enrichedMessage"],
+  items: readonly import("#conversation/session/sessionTypes.ts").InternalTranscriptItem[]
+): boolean {
+  const source = message.sourceRef;
+  if (message.source !== "qq_official" || message.chatType !== "group" || message.contextOnly
+    || !message.isAtMentioned || !message.replyContext || !source) return false;
+  // A command consumes this source without promoting its passive copy into prompt history.
+  if (items.some(item => item.kind === "direct_command" && item.direction === "input"
+    && item.sourceRef?.platform === "qq_official" && item.sourceRef.connectionId === source.connectionId
+    && item.sourceRef.messageId === source.messageId)) return false;
+  const existing = items.find(item => item.kind === "user_message" && item.sourceRef?.platform === "qq_official"
+    && item.sourceRef.connectionId === source.connectionId && item.sourceRef.messageId === source.messageId);
+  return existing?.kind === "user_message" && existing.mentionedSelf !== true;
 }

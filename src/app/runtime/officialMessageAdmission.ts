@@ -7,10 +7,14 @@ export function isOfficialMessageAllowed(
   message: ParsedIncomingMessage,
   whitelistEnabled: boolean,
   whitelist: Pick<WhitelistStore, "hasGroup" | "hasUser">,
-  identities: Pick<UserIdentityStore, "findInternalUserIdSync">
+  identities: Pick<UserIdentityStore, "findInternalUserIdSync">,
+  options: { allowGroupContext?: boolean } = {}
 ): boolean {
-  if (message.source !== "qq_official" || !message.replyContext || !message.channelId) return false;
-  if (message.chatType === "group" && (!message.isAtMentioned || !message.groupId)) return false;
+  if (message.source !== "qq_official" || !message.channelId) return false;
+  const contextOnly = options.allowGroupContext === true && message.chatType === "group" && !message.replyContext;
+  if (message.chatType === "group" && !message.groupId) return false;
+  if (!contextOnly && !message.replyContext) return false;
+  if (!contextOnly && message.chatType === "group" && !message.isAtMentioned) return false;
   if (!whitelistEnabled) return true;
   const externalId = message.externalUserId ?? message.userId;
   const internalId = identities.findInternalUserIdSync({

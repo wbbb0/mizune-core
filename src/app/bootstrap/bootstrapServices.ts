@@ -1,3 +1,4 @@
+import { projectQqMessageDiagnostic } from "#services/qqOfficial/messageDiagnostics.ts";
 import { QqOfficialClient } from "#services/qqOfficial/client.ts";
 import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { StickerService } from "#services/stickers/stickerService.ts";
@@ -7,6 +8,7 @@ import { ContextEmbeddingService } from "#context/contextEmbeddingService.ts";
 import { ContextRetrievalService } from "#context/contextRetrievalService.ts";
 import { ContextStore } from "#context/contextStore.ts";
 import { StateDatabase } from "#data/state/stateDatabase.ts";
+import { IncomingMessageReceiptStore } from "#data/state/incomingMessageReceiptStore.ts";
 import { GroupMembershipStore } from "#identity/groupMembershipStore.ts";
 import { NpcDirectory } from "#identity/npcDirectory.ts";
 import { WhitelistStore } from "#identity/whitelistStore.ts";
@@ -73,6 +75,7 @@ export function createBootstrapServices(
 ): AppBootstrapServices {
   const { config, logger, dataDir } = context;
   const stateDatabase = new StateDatabase(dataDir, logger);
+  const incomingMessageReceiptStore = new IncomingMessageReceiptStore(stateDatabase);
   const whitelistStore = new WhitelistStore(dataDir, logger, stateDatabase);
   const userIdentityStore = new UserIdentityStore(dataDir, logger, stateDatabase);
   const npcDirectory = new NpcDirectory();
@@ -86,7 +89,11 @@ export function createBootstrapServices(
   );
   const oneBotClient = options.oneBotClient ?? new OneBotClient(config, logger);
   const qqOfficialClient = config.qqOfficial.enabled
-    ? new QqOfficialClient({ ...config.qqOfficial }, logger)
+    ? new QqOfficialClient({ ...config.qqOfficial }, logger, {
+        onIncomingEvent: (type, data) => {
+          if (config.logIncludeConversationContent) logger.info(projectQqMessageDiagnostic(type, data), "qq_official_message_received");
+        }
+      })
     : undefined;
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
@@ -186,6 +193,7 @@ export function createBootstrapServices(
     router,
     oneBotClient,
     qqOfficialClient,
+    incomingMessageReceiptStore,
     messaging,
     sessionManager,
     debounceManager,

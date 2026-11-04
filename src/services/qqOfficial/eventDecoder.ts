@@ -1,17 +1,30 @@
 import type { ParsedIncomingMessage } from "../messaging/incomingMessage.ts";
-import type { MessageContentPart } from "#messages/contentParts.ts";
+import { decodeQqMessageContent } from "./embeddedMessages.ts";
 import type { QqReplyPermitRegistry } from "./replyPermit.ts";
 import type { QqReplyPermit } from "./types.ts";
 
-export interface QqOfficialIncoming {
-  message: ParsedIncomingMessage & {
-    source: "qq_official";
-    sourceRef: { platform: "qq_official"; connectionId: string; messageId: string };
-    replyContext: QqReplyPermit;
-  };
-  permit: QqReplyPermit;
+interface QqIncomingBase {
   messageId: string;
   timestampMs: number;
+}
+type OfficialMessage = Omit<ParsedIncomingMessage, "replyContext"> & {
+  source: "qq_official";
+  sourceRef: { platform: "qq_official"; connectionId: string; messageId: string };
+};
+export interface QqInteractiveIncoming extends QqIncomingBase {
+  contextOnly: false;
+  permit: QqReplyPermit;
+  message: OfficialMessage & { replyContext: QqReplyPermit };
+}
+export interface QqContextIncoming extends QqIncomingBase {
+  contextOnly: true;
+  permit?: never;
+  message: OfficialMessage & { replyContext?: never };
+}
+export type QqOfficialIncoming = QqInteractiveIncoming | QqContextIncoming;
+export interface QqDecodeOptions {
+  groupContext?: "mentions_only" | "all_received";
+  selfId?: string | undefined;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -19,58 +32,54 @@ function record(value: unknown): Record<string, unknown> {
 }
 function string(value: unknown): string { return typeof value === "string" ? value : ""; }
 
-/** Decoding only accepts verified gateway dispatch types, never user text claiming to mention the bot. */
-export function decodeQqMessage(type: string, data: unknown, registry: QqReplyPermitRegistry): QqOfficialIncoming | null {
-  if (type !== "GROUP_AT_MESSAGE_CREATE" && type !== "C2C_MESSAGE_CREATE") return null;
+/** The event type and platform mention entities establish addressing; body text is never authoritative. */
+export function decodeQqMessage(type: "GROUP_AT_MESSAGE_CREATE" | "C2C_MESSAGE_CREATE", data: unknown, registry: QqReplyPermitRegistry, options?: QqDecodeOptions): QqInteractiveIncoming | null;
+export function decodeQqMessage(type: string, data: unknown, registry: QqReplyPermitRegistry, options?: QqDecodeOptions): QqOfficialIncoming | null;
+export function decodeQqMessage(type: string, data: unknown, registry: QqReplyPermitRegistry, options: QqDecodeOptions = {}): QqOfficialIncoming | null {
+  const fullGroup = type === "GROUP_MESSAGE_CREATE";
+  if (type !== "GROUP_AT_MESSAGE_CREATE" && type !== "C2C_MESSAGE_CREATE" && !fullGroup) return null;
+  if (fullGroup && options.groupContext !== "all_received") return null;
   const event = record(data);
   const author = record(event.author);
   if (author.bot === true) return null;
-  const group = type === "GROUP_AT_MESSAGE_CREATE";
+  const group = type !== "C2C_MESSAGE_CREATE";
   const externalUserId = string(group ? author.member_openid : author.user_openid) || string(author.id);
   const targetId = group ? string(event.group_openid) : externalUserId;
   const messageId = string(event.id);
   const timestampMs = Date.parse(string(event.timestamp));
   if (!externalUserId || !targetId || !messageId || !Number.isFinite(timestampMs)) return null;
-  if (timestampMs + 5 * 60_000 <= Date.now()) return null;
-  const permit = registry.issue({ chatType: group ? "group" : "private", targetId, messageId, timestampMs });
-  const parts: MessageContentPart[] = [];
-  const text = string(event.content);
-  if (text) parts.push({ kind: "text", text });
-  const images: string[] = [];
-  const audioSources: string[] = [];
-  const remoteAttachments: NonNullable<ParsedIncomingMessage["remoteAttachments"]> = [];
-  const specialSegments: Array<{ type: string; summary: string }> = [];
-  for (const raw of Array.isArray(event.attachments) ? event.attachments : []) {
-    const attachment = record(raw);
-    const url = string(attachment.url);
-    if (!/^https?:\/\//i.test(url)) continue;
-    const mime = string(attachment.content_type);
-    if (mime.startsWith("image/")) {
-      images.push(url); parts.push({ kind: "image", source: url, mimeType: mime, sourceName: string(attachment.filename) || null });
-    } else if (mime === "voice" || mime.startsWith("audio/")) {
-      const audio = string(attachment.voice_wav_url) || url;
-      audioSources.push(audio); parts.push({ kind: "audio", source: audio });
-    } else {
-      remoteAttachments.push({ source: url, sourceName: string(attachment.filename) || "附件", mimeType: mime, kind: mime.startsWith("video/") ? "video" : "file" });
-      specialSegments.push({ type: "attachment", summary: JSON.stringify({ url, name: string(attachment.filename), mimeType: mime }) });
-      parts.push({ kind: "special", segmentType: "attachment", summary: JSON.stringify({ url, name: string(attachment.filename), mimeType: mime }) });
-    }
-  }
-  const mentions = (Array.isArray(event.mentions) ? event.mentions : []).map((item) => {
+  const addressed = !fullGroup || hasSelfMention(event.mentions, options.selfId);
+  const expired = timestampMs + 5 * 60_000 <= Date.now();
+  if (!fullGroup && expired) return null;
+  if (options.selfId && [author.id, author.member_openid, author.user_openid].includes(options.selfId)) return null;
+  const permit = addressed && !expired ? registry.issue({ chatType: group ? "group" : "private", targetId, messageId, timestampMs }) : undefined;
+  const mentions = (Array.isArray(event.mentions) ? event.mentions.slice(0, 200) : []).map((item) => {
     const user = record(item); return string(user.member_openid) || string(user.user_openid) || string(user.id);
   }).filter(Boolean);
   const ext = record(event.message_scene).ext;
   const reference = (Array.isArray(ext) ? ext : []).find((item): item is string => typeof item === "string" && item.startsWith("ref_msg_idx="));
-  return {
-    permit, messageId, timestampMs,
-    message: {
-      source: "qq_official", sourceRef: { platform: "qq_official", connectionId: registry.connectionId, messageId }, replyContext: permit,
+  const decodedContent = decodeQqMessageContent(event, reference?.slice("ref_msg_idx=".length));
+  const text = decodedContent.text;
+  const message: OfficialMessage = {
+      source: "qq_official", sourceRef: { platform: "qq_official", connectionId: registry.connectionId, messageId },
       channelId: registry.connectionId, externalUserId, chatType: group ? "group" : "private", userId: externalUserId,
       ...(group ? { groupId: targetId } : {}), senderName: string(author.username) || externalUserId,
-      text, contentParts: parts, remoteAttachments, images, audioSources, audioIds: [], emojiSources: [], imageIds: [], emojiIds: [],
+      text, contentParts: decodedContent.parts, remoteAttachments: decodedContent.remoteAttachments, images: decodedContent.images, audioSources: decodedContent.audioSources, audioIds: [], emojiSources: [], imageIds: [], emojiIds: [],
       forwardIds: [], replyMessageId: reference?.slice("ref_msg_idx=".length) || null,
-      mentionUserIds: mentions, mentionedAll: text.includes("<@all>"), isAtMentioned: group,
-      ...(specialSegments.length ? { specialSegments } : {})
-    }
+      mentionUserIds: mentions, mentionedAll: text.includes("<@all>"), isAtMentioned: group && addressed,
+      ...(decodedContent.specialSegments.length ? { specialSegments: decodedContent.specialSegments } : {})
   };
+  return permit
+    ? { contextOnly: false, permit, messageId, timestampMs, message: { ...message, replyContext: permit } }
+    : { contextOnly: true, messageId, timestampMs, message };
+}
+
+function hasSelfMention(value: unknown, selfId: string | undefined): boolean {
+  const mentions = Array.isArray(value) ? value.slice(0, 200) : [];
+  return mentions.some(raw => {
+    const mention = record(raw);
+    if (mention.scope === "all") return false;
+    if (mention.is_you === true) return true;
+    return Boolean(selfId && [mention.id, mention.member_openid, mention.user_openid].includes(selfId));
+  });
 }

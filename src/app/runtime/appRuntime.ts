@@ -1,4 +1,4 @@
-import { isOfficialMessageAllowed } from "./officialMessageAdmission.ts";
+import { receiveOfficialMessage } from "./officialMessageIngress.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import { createAppServiceBootstrap } from "../bootstrap/appServiceBootstrap.ts";
 import type { AppServiceBootstrapOptions } from "../bootstrap/appServiceBootstrap.ts";
@@ -43,6 +43,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     router,
     oneBotClient,
     qqOfficialClient,
+    incomingMessageReceiptStore,
     messaging,
     sessionManager,
     debounceManager,
@@ -340,10 +341,14 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
 
     if (qqOfficialClient) {
       qqOfficialClient.on("message", (event) => {
-        const message = event.message;
-        const allowed = isOfficialMessageAllowed(message, config.whitelist.enabled, whitelistStore, userIdentityStore);
-        if (!allowed) return;
-        void messageIngress.handleIncomingMessage(message, { kind: "qq_official", replyContext: event.permit })
+        void receiveOfficialMessage({
+          receipts: incomingMessageReceiptStore,
+          whitelistEnabled: config.whitelist.enabled,
+          allowGroupContext: config.qqOfficial.groupContext === "all_received",
+          whitelist: whitelistStore,
+          identities: userIdentityStore,
+          handleIncomingMessage: messageIngress.handleIncomingMessage
+        }, event)
           .catch((error: unknown) => logger.error({ error }, "qq_official_ingress_failed"));
       });
       await qqOfficialClient.start();

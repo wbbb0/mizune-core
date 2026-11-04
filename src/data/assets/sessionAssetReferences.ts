@@ -1,3 +1,4 @@
+import { walkMessageContentParts } from "#messages/contentParts.ts";
 import type {
   InternalTranscriptItem,
   InternalToolResultItem,
@@ -109,7 +110,7 @@ function collectFromContentParts(
   add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
   contentParts: readonly TranscriptMessageContentPart[] | undefined
 ): void {
-  for (const part of contentParts ?? []) {
+  for (const part of walkMessageContentParts(contentParts)) {
     if ((part.kind === "image" || part.kind === "emoji" || part.kind === "asset_file") && part.fileId) {
       add("chat_file", part.fileId, "content_part");
       continue;

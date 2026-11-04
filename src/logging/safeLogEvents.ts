@@ -145,6 +145,7 @@ export const safeLogEvents: ReadonlySet<string> = new Set([
   "message_queue_task_failed",
   "message_received",
   "message_user_upsert_failed",
+  "qq_official_message_received",
   "qq_official_gateway_ready",
   "qq_official_gateway_resumed",
   "qq_official_gateway_connect_failed",

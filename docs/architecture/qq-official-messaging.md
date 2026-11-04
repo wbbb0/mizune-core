@@ -2,15 +2,29 @@
 
 ## 范围与边界
 
-`qqOfficial` 与 `onebot` 独立配置。修改官方连接凭据或启用状态后需重启进程，运行中的连接持有创建时的配置快照，避免身份与授权漂移。官方连接接收 `C2C_MESSAGE_CREATE`、`GROUP_AT_MESSAGE_CREATE`，全量群消息不进入会话处理。机器人 @ 判定来自已验证的事件类型，不依赖正文或 mentions。群正文可能已被平台移除 @ 前缀。
+`qqOfficial` 与 `onebot` 独立配置。修改官方连接配置后需重启进程，运行中的连接持有创建时的配置快照，避免身份与授权漂移。默认 `groupContext: mentions_only`，接收 `C2C_MESSAGE_CREATE`、`GROUP_AT_MESSAGE_CREATE`。设置 `groupContext: all_received` 后也接收 `GROUP_MESSAGE_CREATE`，需要在 QQ 客户端允许机器人接收群内所有消息。
+
+专用群 @ 事件直接表明机器人被提及。全量事件只从顶层平台 mentions 判断：明确的 `is_you`，或与 READY 确认的机器人 ID 精确匹配；正文、引用中的 @、@全体和另一机器人的标记均不能激活回复。无法确认的普通消息仅保存上下文。群正文可能已被平台移除 @ 前缀。
 
 规范化入站消息位于 `services/messaging/incomingMessage.ts`；连接器位于 `services/qqOfficial`，统一投递入口为 `DeliveryCoordinator`。官方消息不伪造成 OneBot 事件。会话使用 `qq_official.<AppID>:p:<openid>`、`qq_official.<AppID>:g:<group_openid>`，平台消息引用保留字符串 ID 和连接维度。
 
 ## 回复授权
 
-每次官方输入产生固定目标的运行时回复授权，随排队消息保留；不存入 transcript、不借用会话最新消息授权。文字和工具媒体共享序号与预算。官方群仅被动回复，过期或次数耗尽不自动降级主动消息。上传不直接发送。
+只有私聊或确认 @ 机器人的有效输入产生固定目标的运行时回复授权，随排队消息保留；不存入 transcript、不借用会话最新消息授权。文字和工具媒体共享序号与预算。官方群仅被动回复，过期或次数耗尽不自动降级主动消息。上传不直接发送。
 
 官方指令回复不启用自动撤回；OneBot 继续在一分钟后自动撤回指令回复。手动 `.retract` 与自动撤回独立。
+
+## 群上下文与引用内容
+
+`all_received` 只收集平台实时推送的消息，不额外调用历史 REST 接口。当前没有已核实可用的官方群历史拉取接口，不能保证补齐停机期间未推送的消息。已存内容受统一会话保留、压缩及模型上下文预算限制。
+
+普通群消息直接保存为独立用户记录，更新 Sessions 清单及实时流，不执行命令、初始化引导、媒体导入、媒体描述或模型调用。仅保留文字、引用层级和媒体类型说明。每个官方群会话按入站顺序处理，确保较早收到的上下文先落库。专用 @ 和全量事件使用连接、场景、目标及平台消息 ID 去重；先收到普通上下文再收到有效 @ 时，原记录保留 ID 和时间并升级，避免上下文重复。
+
+消息接受的唯一权威是独立于聊天历史的 SQLite 接收记录，位于 state 数据库。准入通过后、执行任何媒体或命令操作前，原子接受消息或将上下文状态升级为已激活；同源后续事件拒绝重复执行。记录只保留来源标识、激活状态及过期时间，不含正文、身份权限或回复授权。记录保留 10 分钟（覆盖当前 5 分钟回复时效），最多 10000 条，容量用尽时拒绝接收，不驱逐仍有效记录。清空或重置会话不清除接收记录，重启也不会使 `.clear` 再次执行。处理失败的已接受消息不自动重放，以免重复执行结果未知的外部操作；这不保证消息处理恰好成功一次。
+
+平台提供的 `msg_elements` 递归映射为 `embedded_message`，保留引用、聊天记录、并行消息、作者及索引；缺少正文时只展示引用 ID，不伪造 OneBot forward ID 或借 OneBot 拉取内容。外层发送者始终是身份、权限和媒体导入的主体，引用作者只作为用户提供的资料进入模型上下文，不产生新消息角色或管理权限。
+
+解析限制为 6 层、200 条嵌套消息、24000 字符及 16 个媒体，超限明确标记截断。持久化与 SSE 使用统一递归合同；运行时媒体 URL 入史前解析为本地资产，普通上下文仅保留类型说明。WebUI 引用默认展开、聊天记录默认折叠，递归展示作者、索引、媒体与截断状态。诊断日志受 `logIncludeConversationContent` 显式控制，只记录有界内容及字段结构，排除事件授权值和附件下载 URL。
 
 ## 私聊流式
 
@@ -31,5 +45,7 @@
 默认测试使用假网关和假 HTTP，不读正式实例数据。发布前用专用测试机器人核实账号权限、C2C 回复时效（官方正文与字段说明有差异）、流续片与结束是否计次数、完整快照结束流的客户端展示、首片响应丢失、取消后平台 Pending 行为、文件上传编码与支持格式。未完成上述联调不得宣称真实账号收发已验证。
 
 官方参考：[群 @ 事件](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_at_message_create.html)、[私聊原生流式](https://bot.q.qq.com/wiki/develop/api-v2/autogen/api/v2_users_user_openid_stream_messages.post.html)。
+
+全量消息及递归元素参考：[群消息（全量模式）](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)。
 
 流式线格式参考：[腾讯官方 Node SDK](https://github.com/tencent-connect/qqbot-nodejs/blob/main/src/streaming.ts)。

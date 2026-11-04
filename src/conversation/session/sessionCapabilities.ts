@@ -386,7 +386,7 @@ export interface SessionDirectCommandAccess {
     contentSafetyEvents?: TranscriptContentSafetyEvent[];
   },
     timestampMs?: number,
-    options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string }
+    options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string; upsertSource?: boolean }
   ): void;
   canInsertUserHistoryByTimestamp(
     sessionId: string,
@@ -484,7 +484,7 @@ export interface SessionMessagingAccess {
       contentSafetyEvents?: TranscriptContentSafetyEvent[];
     },
     timestampMs?: number,
-    options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string }
+    options?: { transcriptGroup?: "pending" | "standalone"; transcriptGroupId?: string; upsertSource?: boolean }
   ): void;
   hasHistorySource(sessionId: string, sourceRef: TranscriptItemSourceRef): boolean;
   appendAssistantHistory(

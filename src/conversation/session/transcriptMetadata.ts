@@ -7,6 +7,7 @@ import type {
   TranscriptItemRuntimeExclusionReason
 } from "./sessionTypes.ts";
 import type { TranscriptItemPatch } from "./transcriptContract.ts";
+import { transcriptUserMessagePatchSchema } from "./transcriptContract.ts";
 
 export function createTranscriptItemId(): string {
   return `ti_${randomUUID()}`;
@@ -94,6 +95,28 @@ export function buildTranscriptItemPatch(
   }
   if (JSON.stringify(previous.tokenStats ?? null) !== JSON.stringify(current.tokenStats ?? null) && current.tokenStats != null) {
     patch.tokenStats = current.tokenStats;
+  }
+  if (previous.kind === "user_message" && current.kind === "user_message") {
+    // Empty arrays explicitly clear passive metadata when the same source becomes an @ message.
+    const previousFields = transcriptUserMessagePatchSchema.parse({
+      ...previous,
+      contentParts: previous.contentParts ?? [],
+      specialSegments: previous.specialSegments ?? [],
+      contentSafetyEvents: previous.contentSafetyEvents ?? []
+    });
+    const currentFields = transcriptUserMessagePatchSchema.parse({
+      ...current,
+      contentParts: current.contentParts ?? [],
+      specialSegments: current.specialSegments ?? [],
+      contentSafetyEvents: current.contentSafetyEvents ?? []
+    });
+    for (const key of Object.keys(currentFields) as Array<keyof typeof currentFields>) {
+      const value = currentFields[key];
+      if (value !== undefined && JSON.stringify(previousFields[key]) !== JSON.stringify(value)) {
+        Object.assign(patch, { [key]: value });
+      }
+    }
+    if (previous.tokenStats != null && current.tokenStats == null) patch.tokenStats = {};
   }
 
   return Object.keys(patch).length > 0 ? patch : null;

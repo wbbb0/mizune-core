@@ -15,7 +15,7 @@ import {
 } from "#data/sqlite/sqliteService.ts";
 import { createTableGroupsFromDataDomain, migrateDataDomainSchema, listDataModelRows } from "#data/model/index.ts";
 import { chatAttachmentSchema } from "#types/chatContracts.ts";
-import { internalTranscriptItemSchema, transcriptMessageContentPartSchema } from "./transcriptContract.ts";
+import { internalTranscriptItemSchema, transcriptMessageContentPartsSchema } from "./transcriptContract.ts";
 import { sessionDataDomain, sessionsTableModel, sessionTranscriptItemsTableModel } from "./sessionDataModel.ts";
 import { createEmptySessionTaskTracker, sessionTaskTrackerSchema } from "#conversation/taskTracker/taskTrackerTypes.ts";
 import { normalizeTaskTracker } from "#conversation/taskTracker/taskTrackerNormalize.ts";
@@ -86,7 +86,7 @@ const persistedSessionMessageSchema = z.object({
   senderName: z.string().min(1),
   chatType: z.enum(["private", "group"]),
   text: z.string(),
-  contentParts: z.array(transcriptMessageContentPartSchema).optional(),
+  contentParts: transcriptMessageContentPartsSchema.optional(),
   images: z.array(z.string()),
   audioSources: z.array(z.string()).default([]),
   audioIds: z.array(z.string()).default([]),
