@@ -231,6 +231,14 @@ agent 在实现前后产生的 spec、plan、review、执行 checklist、临时�
 - 这样做的原因是浏览器演示服务会产生 `.pid` 等本地运行痕迹；这类运行时垃圾文件应优先留在 worktree 中，而不是污染主目录稳定副本。
 - 多个 worktree 并行开发时，尽量按目录或职责切分改动范围；最终冲突合并应由了解主线结构的人统一处理，不要让多个并行分支各自随意解决同一组结构冲突。
 
+## 正式部署范围约定
+
+- 用户只说“部署”“提交部署”等且未指定实例时，默认自动部署所有有效的正式 `llm-bot@<实例>.service`，不固定为 acc1 或某份历史清单。
+- 每次合并发现 systemd 已加载单元与已安装具体实例单元，核实 `LoadState=loaded`、实例配置存在且属于当前项目。有效但 inactive/failed 的正式实例也包含在默认范围。
+- 排除模板、not-found/错误单元、无配置残留、其他项目以及 `dev`/`dev-*` 开发实例；`llm-bot-dev@*` 与 NapCat 服务不属于发布范围。明确指定实例时仅部署指定目标。
+- 对齐 `config/production.yml` 与本次目标后使用 `npm run deploy:production`；不得修改业务配置或凭据。部署脚本本身仍以清单为准，不会自动扫描 systemd。
+- 使用通用 skill：`/home/wbbb/.codex/skills/llm-onebot-production-deploy/SKILL.md`。稳定运维说明见 `docs/operations/production-deployment.md`。逐实例核对新 Release、MainPID、health 和 WebUI，不能只报告命令成功。
+
 ## Prompt 语言约定
 
 - 与用户的默认沟通语言为中文；除非用户明确要求使用其他语言，否则分析、说明、计划、总结等都应使用中文。
