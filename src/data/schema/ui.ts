@@ -1,4 +1,4 @@
-import { BaseSchema } from "./base.ts";
+import type { BaseSchema } from "./base.ts";
 import type { ObjectFieldMeta, SchemaMeta, UiNode } from "./types.ts";
 
 export function buildUiTree(schema: BaseSchema<any>): UiNode {

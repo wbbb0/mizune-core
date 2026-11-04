@@ -53,7 +53,7 @@
 
 当前契约如下：
 
-- 后端 schema / editor service 负责导出 `schemaMeta`
+- 后端 schema / editor service 负责导出元数据，配置编辑接口通过 `schema.meta` 传输
 - 前端编辑器根据 `schemaMeta` 决定显示名称与提示说明
 - 不在前端再做一层自动翻译或额外兼容映射
 
@@ -88,3 +88,16 @@
 - WebUI 编辑器展示是否按照 `title` / `description` 契约渲染
 
 如果未来继续扩展编辑器资源，默认沿用这套元数据口径，而不是在不同资源类型之间重新发明命名规则。
+
+## 配置编辑接口的传输与缓存
+
+`GET /api/editors/:resource` 将静态结构和当前配置值分开返回：
+
+- `schemaVersion` 是 `schema` 描述的 SHA-256 内容版本。
+- 首次加载返回 `schema: { meta, template, defaultValue }`；服务端在 editor service 生命周期内复用这份描述。
+- 前端缓存对应资源的描述，后续加载携带 `?schemaVersion=<已缓存版本>`。只有版本相符时，响应才省略 `schema`；服务重启或发布造成结构变化时会自动重新下发。
+- `editor` 始终返回最新配置值、继承关系、编辑功能和文件 revision。Schema 版本不能代替 LLM 目录的文件 revision，也不能跳过保存事务的冲突检查。
+
+`webui/src/api/editorModelLoader.ts` 在传输边界调用共享的 `buildUiTreeFromMeta`，在内存中构建并复用 UI 树，再还原组件库需要的完整 `EditorModel`。接口不再序列化 UI 树中每层重复引用的元数据；Schema 和 UI 树标记为非响应式结构，配置草稿仍保持响应式。
+
+保存成功后仍会重新读取后端结果，以取得规范化配置和最新文件 revision。这次读取复用已知 Schema，只传当前配置状态，不再重复下载整个 UI 树。缓存仅存在于当前页面内存，不写入 localStorage 或持久化缓存。

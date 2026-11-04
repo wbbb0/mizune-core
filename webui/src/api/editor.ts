@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { createEditorModelLoader } from "./editorModelLoader";
 import type {
   EditorModel,
   EditorOptionsResult,
@@ -68,12 +69,14 @@ export type {
   UiNode
 } from "@workbench-kit/vue";
 
+const loadEditorModel = createEditorModelLoader((path) => api.get(path));
+
 export const editorApi: ResourceEditorClient = {
   list(): Promise<{ resources: EditorResourceSummary[] }> {
     return api.get("/api/editors");
   },
   load(key: string): Promise<{ editor: EditorModel }> {
-    return api.get<{ editor: EditorModel & { revision?: string } }>(`/api/editors/${encodeURIComponent(key)}`).then((result) => {
+    return loadEditorModel(key).then((result) => {
       if (key === "llm_catalog") {
         editorBaselines.set(key, cloneEditorValue(result.editor.currentValue));
       }
