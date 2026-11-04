@@ -59,9 +59,10 @@ test("stream batches deltas, uses one msg_seq, monotonically increments index, a
   const receipt = await stream.finish();
   const calls = f.calls.filter((call) => call.url.endsWith("stream_messages"));
   assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.body.content_type === "markdown" && call.body.input_mode === "replace"));
   assert.deepEqual(calls.map((call) => call.body.index), [0, 1]);
   assert.deepEqual(calls.map((call) => call.body.msg_seq), [1, 1]);
-  assert.deepEqual(calls.map((call) => call.body.content_raw), ["你好", ""]);
+  assert.deepEqual(calls.map((call) => call.body.content_raw), ["你好", "你好"]);
   assert.deepEqual(calls.map((call) => call.body.input_state), [1, 10]);
   assert.equal(calls[1]!.body.stream_msg_id, "platform-message");
   assert.equal(receipt?.acceptedText, "你好");
@@ -95,11 +96,33 @@ test("interrupt waits for in-flight acceptance, discards later local text, and s
   stream.append("已提交");
   await start;
   stream.append("丢弃");
-  const completion = stream.interrupt();
+  const completion = stream.finish();
+  assert.equal(stream.interrupt(), completion);
   release();
   const receipt = await completion;
   assert.equal(receipt?.acceptedText, "已提交");
-  assert.deepEqual(f.calls.filter((call) => call.url.endsWith("stream_messages")).map((call) => call.body.content_raw), ["已提交", ""]);
+  assert.deepEqual(f.calls.filter((call) => call.url.endsWith("stream_messages")).map((call) => call.body.content_raw), ["已提交", "已提交"]);
+});
+
+test("stream replaces one message with cumulative markdown and seals the complete snapshot", async () => {
+  let firstAccepted!: () => void;
+  const first = new Promise<void>((resolve) => { firstAccepted = resolve; });
+  const f = fixture();
+  const registry = new QqReplyPermitRegistry("qq_official.test-app");
+  const permit = registry.issue({ chatType: "private", targetId: "user", messageId: "trigger", timestampMs: Date.now() });
+  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), registry, permit, {
+    onAccepted: () => firstAccepted(), flushIntervalMs: 1
+  });
+  stream.append("**第一段**\n");
+  await first;
+  stream.append("第二段");
+  await stream.finish();
+  const frames = f.calls.filter((call) => call.url.endsWith("stream_messages")).map((call) => call.body);
+  assert.deepEqual(frames.map((frame) => frame.content_raw), ["**第一段**\n", "**第一段**\n第二段", "**第一段**\n第二段"]);
+  assert.ok(frames.every((frame) => frame.input_mode === "replace" && frame.content_type === "markdown"));
+  assert.deepEqual(frames.map((frame) => frame.msg_seq), [1, 1, 1]);
+  assert.deepEqual(frames.map((frame) => frame.index), [0, 1, 2]);
+  assert.deepEqual(frames.map((frame) => frame.input_state), [1, 1, 10]);
 });
 
 test("unknown first stream request is never retried and never seals using an invented id", async () => {
@@ -109,6 +132,29 @@ test("unknown first stream request is never retried and never seals using an inv
   stream.append("正文");
   await assert.rejects(stream.finish(), (error: unknown) => error instanceof QqDeliveryError && error.kind === "unknown" && !error.message.includes(config.appSecret));
   assert.equal(f.calls.filter((call) => call.url.endsWith("stream_messages")).length, 1);
+  assert.equal(stream.state, "closure_unknown");
+});
+
+test("an unknown continuation retains the accepted prefix and never sends a shorter final snapshot", async () => {
+  let firstAccepted!: () => void;
+  const first = new Promise<void>((resolve) => { firstAccepted = resolve; });
+  const f = fixture((_path, body) => {
+    if (body.index === 1) throw new Error("continuation response lost");
+    return response({ id: "native-stream" });
+  });
+  const registry = new QqReplyPermitRegistry("qq_official.test-app");
+  const permit = registry.issue({ chatType: "private", targetId: "user", messageId: "trigger", timestampMs: Date.now() });
+  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), registry, permit, {
+    onAccepted: () => firstAccepted(), flushIntervalMs: 1
+  });
+  stream.append("已确认");
+  await first;
+  stream.append("结果未知");
+  await assert.rejects(stream.finish(), (error: unknown) => error instanceof QqDeliveryError && error.kind === "unknown");
+  const frames = f.calls.filter((call) => call.url.endsWith("stream_messages")).map((call) => call.body);
+  assert.deepEqual(frames.map((frame) => frame.content_raw), ["已确认", "已确认结果未知"]);
+  assert.ok(frames.every((frame) => frame.input_state === 1));
+  assert.equal(stream.receipt?.acceptedText, "已确认");
   assert.equal(stream.state, "closure_unknown");
 });
 

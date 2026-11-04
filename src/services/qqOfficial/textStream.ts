@@ -2,6 +2,9 @@ import type { QqHttpClient } from "./httpClient.ts";
 import { qqTargetPath, type QqReplyPermitRegistry } from "./replyPermit.ts";
 import { QqDeliveryError, type QqDeliveryReceipt, type QqMessageResponse, type QqReplyPermit } from "./types.ts";
 
+const DEFAULT_FLUSH_INTERVAL_MS = 500;
+const MIN_FLUSH_INTERVAL_MS = 300;
+
 export type QqTextStreamState = "open" | "sealing" | "sealed" | "failed" | "closure_unknown";
 
 export function qqReceipt(permit: QqReplyPermit, response: QqMessageResponse, acceptedText?: string): QqDeliveryReceipt {
@@ -53,7 +56,7 @@ export class QqTextStream {
     if (this.pending.length + text.length > 1_048_576) throw new QqDeliveryError("rejected", "stream_buffer_limit");
     this.pending += text;
     if (!this.timer) {
-      this.timer = setTimeout(() => { this.timer = null; this.scheduleFlush(); }, this.options.flushIntervalMs ?? 150);
+      this.timer = setTimeout(() => { this.timer = null; this.scheduleFlush(); }, Math.max(MIN_FLUSH_INTERVAL_MS, this.options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS));
     }
   }
 
@@ -103,16 +106,19 @@ export class QqTextStream {
   private async submit(text: string, final: boolean): Promise<void> {
     this.registry.assert(this.permit);
     if (this.sequence == null) this.sequence = this.registry.allocate(this.permit);
+    const fullText = this.accepted + text;
     const response = await this.http.request<QqMessageResponse>("POST", `${qqTargetPath(this.permit)}/stream_messages`, {
-      input_mode: "append", input_state: final ? 10 : 1,
-      index: this.index, content_type: "text", content_raw: text,
+      // Follow the official SDK's wire format: replace carries the full immutable prefix,
+      // including on DONE. Local buffering stays incremental so interruption can discard it.
+      input_mode: "replace", input_state: final ? 10 : 1,
+      index: this.index, content_type: "markdown", content_raw: fullText,
       msg_id: this.permit.messageId, msg_seq: this.sequence,
       ...(this.streamId ? { stream_msg_id: this.streamId } : {})
     });
-    const receipt = qqReceipt(this.permit, response, this.accepted + text);
+    const receipt = qqReceipt(this.permit, response, fullText);
     this.streamId = response.id;
     this.index += 1;
-    this.accepted += text;
+    this.accepted = fullText;
     this.lastReceipt = receipt;
     // Observer failures cannot convert an accepted platform request into a retry.
     try { this.options.onAccepted?.(receipt); } catch { /* caller persists its own projection errors */ }
