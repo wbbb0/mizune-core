@@ -4,6 +4,7 @@ import { createGenerationPromptBuilder } from "../../src/app/generation/generati
 import { createConfiguredTestAppConfig as createTestAppConfig } from "../helpers/character-fixtures.ts";
 import { hasPromptSection, readPromptSystemText } from "../helpers/prompt-fixtures.tsx";
 import { buildTag } from "../../src/utils/structuredEnvelope.ts";
+import { formatHistoryContent } from "../../src/conversation/session/historyContext.ts";
 
 type TestPromptHistoryMessage = {
   role: "user" | "assistant";
@@ -98,6 +99,42 @@ function createActiveTaskTracker() {
     parked: []
   };
 }
+
+test("reply preparation analyzes cached images from earlier ordinary messages and nested forwards", async () => {
+  const requestedCaptions: string[][] = [];
+  const requestedAudio: string[][] = [];
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    mediaCaptionService: { ensureReady: async (ids: string[]) => {
+      requestedCaptions.push(ids);
+      return new Map(ids.map(id => [id, "此前群消息中的测试图片"]));
+    } },
+    audioTranscriber: { ensureReady: async (ids: string[]) => {
+      requestedAudio.push(ids);
+      return new Map(ids.map(audioId => [audioId, { audioId, status: "ready", text: "此前群语音的转写" }]));
+    } }
+  }));
+  const result = await builder.buildChatPromptMessages({
+    sessionId: "qq_official.app:g:group", interactionMode: "normal", mainModelRef: ["main"],
+    visibleToolNames: [], activeToolsets: [], persona: { name: "测试机器人", temperament: "冷静", voiceStyle: "简洁" } as any,
+    relationship: "known", participantProfiles: [], currentUser: { userId: "member", relationship: "known" } as any,
+    historySummary: null, internalTranscript: [], lastLlmUsage: null,
+    historyForPrompt: [{ role: "user", timestampMs: 1, content: formatHistoryContent({ text: "之前的媒体", contentParts: [
+      { kind: "image", fileId: "cached_root_image" },
+      { kind: "embedded_message", relation: "forward", senderName: "引用作者", parts: [
+        { kind: "image", fileId: "cached_nested_image" }, { kind: "audio", audioId: "cached_nested_audio" }
+      ] }
+    ] }) }],
+    batchMessages: [{ userId: "member", senderName: "当前发送者", text: "看看上面的图和语音", receivedAt: 2,
+      images: [], audioSources: [], audioIds: [], emojiSources: [], imageIds: [], emojiIds: [], forwardIds: [],
+      replyMessageId: null, mentionUserIds: [], mentionedAll: false, isAtMentioned: true }]
+  });
+  assert.deepEqual(requestedCaptions, [["cached_root_image", "cached_nested_image"]]);
+  assert.deepEqual(requestedAudio, [["cached_nested_audio"]]);
+  const rendered = JSON.stringify(result.promptMessages);
+  assert.match(rendered, /此前群消息中的测试图片/);
+  assert.match(rendered, /此前群语音的转写/);
+  assert.match(rendered, /引用作者/);
+});
 
   test("setup prompt prepares image visuals when vision is enabled", async () => {
     const capturedImageIdCalls: string[][] = [];

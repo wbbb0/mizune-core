@@ -25,7 +25,8 @@ function fixture(ensureUserIdentity: (input: { externalId: string }) => Promise<
     userIdentityStore: { ensureUserIdentity },
     userStore: { touchSeenUser: async () => ({ relationship: "known" }) },
     setupStore: { get: async () => ({ state: "ready" }) },
-    audioStore: { registerSources: forbidden }, chatFileStore: { importRemoteSource: forbidden }
+    audioStore: { registerSources: async (sources: string[]) => { assert.deepEqual(sources, []); return []; } },
+    chatFileStore: { importRemoteSource: forbidden }
   };
   const ingress = createRuntimeMessageIngress({ services,
     directCommandDeps: { ...services, onebotSendImmediateText: forbidden, flushSession: forbidden },

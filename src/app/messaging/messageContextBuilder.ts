@@ -1,5 +1,5 @@
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
-import { importIncomingContent, metadataOnlyContent } from "./incomingContentImport.ts";
+import { importIncomingContent } from "./incomingContentImport.ts";
 import type { MessageHandlerServices, MessageProcessingContext } from "./messageHandlerTypes.ts";
 
 export async function createMessageProcessingContext(
@@ -11,7 +11,6 @@ export async function createMessageProcessingContext(
   options?: {
     targetSessionId?: string;
     delivery?: "onebot" | "qq_official" | "web";
-    metadataOnly?: boolean;
   }
 ): Promise<MessageProcessingContext> {
   const channelId = incomingMessage.channelId ?? "qqbot";
@@ -26,16 +25,12 @@ export async function createMessageProcessingContext(
       })).internalUserId;
   const [setupState, user, imported] = await Promise.all([
     services.setupStore.get(), services.userStore.touchSeenUser({ userId: resolvedUserId }),
-    options?.metadataOnly
-      ? Promise.resolve({ contentParts: metadataOnlyContent(incomingMessage.contentParts ?? []),
-          audioSources: [], audioIds: [], imageIds: [], emojiIds: [], attachments: [] })
-      : importIncomingContent(services, incomingMessage, resolvedUserId)
+    importIncomingContent(services, incomingMessage, resolvedUserId)
   ]);
   const { remoteAttachments: _remote, ...messageWithoutRemoteAttachments } = incomingMessage;
   const enrichedMessage = {
     ...messageWithoutRemoteAttachments, channelId, externalUserId, userId: resolvedUserId,
-    ...imported,
-    ...(options?.metadataOnly ? { images: [], emojiSources: [] } : {})
+    ...imported
   };
 
   return {

@@ -102,7 +102,7 @@ const onebotConfigSchema = s.object({
 }).title("OneBot").describe("配置 OneBot 连接方式与消息发送行为。").default(emptyObject);
 
 const qqOfficialConfigSchema = s.object({
-  groupContext: s.enum(["mentions_only", "all_received"] as const).title("群上下文接收").describe("仅群 @，或在平台已授予全量权限时保存收到的普通群消息作为上下文。只有明确 @ 触发回复；普通消息不下载媒体或调用模型。").default("mentions_only"),
+  groupContext: s.enum(["mentions_only", "all_received"] as const).title("群上下文接收").describe("仅群 @，或在平台已授予全量权限时保存收到的普通群消息作为上下文。媒体接收后缓存，仅明确 @ 后才做媒体分析并回复。").default("mentions_only"),
   enabled: s.boolean().title("启用").default(false),
   appId: s.string().trim().title("应用 ID").default(""),
   appSecret: s.string().title("应用密钥").default(""),
@@ -389,7 +389,8 @@ const localFilesConfigSchema = s.object({
 const chatFilesConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(true),
   root: s.string().trim().nonempty().title("根目录").default("chat-files"),
-  maxUploadBytes: s.number().int().positive().title("最大上传字节数").default(32 * 1024 * 1024)
+  maxUploadBytes: s.number().int().positive().title("最大上传字节数").default(32 * 1024 * 1024),
+  downloadTimeoutMs: s.number().int().positive().title("远程媒体下载总超时毫秒").describe("覆盖远程媒体请求和完整正文下载，超时后记录媒体不可用并继续处理后续消息。").default(15000)
 }).title("聊天文件").describe("管理聊天上传文件的存储与清理。").default(emptyObject);
 
 const assetsConfigSchema = s.object({

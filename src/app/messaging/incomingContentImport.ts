@@ -79,15 +79,3 @@ export async function importIncomingContent(
         sourceName: asset.sourceName, mimeType: asset.mimeType, semanticKind: part.kind }))])
   };
 }
-
-/** Passive group context stores media descriptions without network downloads or model calls. */
-export function metadataOnlyContent(parts: readonly MessageContentPart[]): PersistedMessageContentPart[] {
-  return parts.map(part => {
-    if (part.kind === "embedded_message") return { ...part, parts: metadataOnlyContent(part.parts) };
-    if (part.kind === "remote_file") return { kind: "special", segmentType: "media_metadata", summary: `文件：${part.sourceName}` };
-    if ((part.kind === "image" || part.kind === "emoji") && part.source && !part.fileId)
-      return { kind: "special", segmentType: "media_metadata", summary: part.kind === "emoji" ? "表情" : "图片" };
-    if (part.kind === "audio" && part.source && !part.audioId) return { kind: "special", segmentType: "media_metadata", summary: "语音消息" };
-    return part;
-  });
-}

@@ -256,6 +256,7 @@ chatFiles:
   enabled: true
   root: chat-files
   maxUploadBytes: 33554432
+  downloadTimeoutMs: 15000 # 远程媒体请求及正文下载共用的总超时。
 assets:
   gc:
     enabled: true

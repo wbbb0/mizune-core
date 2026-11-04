@@ -84,13 +84,12 @@ export async function processIncomingMessage(
     incomingMessage,
     {
       ...options,
-      delivery: deps.inboundDelivery,
-      metadataOnly: incomingMessage.contextOnly === true
+      delivery: deps.inboundDelivery
     }
   );
 
   if (incomingMessage.contextOnly) {
-    // Passive context has no reply permit and must never execute commands, setup, captioning or model calls.
+    // Media is cached through the shared ingress pipeline. Passive context never executes commands, setup or model calls.
     const decision = {
       groupMatched: false, userMatched: false, directlyAddressed: context.enrichedMessage.isAtMentioned,
       shouldTriggerResponse: false, threadAction: "record_only" as const, replyDecision: "no_reply" as const,

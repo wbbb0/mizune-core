@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import pino from "pino";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
@@ -51,7 +52,7 @@ async function startServer(handler: TestRequestHandler): Promise<{
   };
 }
 
-function createChatFileStore(rootDir: string): ChatFileStore {
+function createChatFileStore(rootDir: string, downloadTimeoutMs = 15000): ChatFileStore {
   const config = createTestAppConfig({
     localFiles: {
       enabled: true,
@@ -61,7 +62,8 @@ function createChatFileStore(rootDir: string): ChatFileStore {
     chatFiles: {
       enabled: true,
       root: "chat-files",
-      maxUploadBytes: 1024 * 1024
+      maxUploadBytes: 1024 * 1024,
+      downloadTimeoutMs
     }
   });
   const localFileService = new LocalFileService(config, rootDir);
@@ -72,6 +74,36 @@ const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII=",
   "base64"
 );
+
+for (const phase of ["headers", "body"] as const) {
+  test(`remote media deadline covers stalled ${phase} and leaves the store usable`, async () => {
+    await withTempDir(async dir => {
+      const store = createChatFileStore(dir, 100);
+      await store.init();
+      let requests = 0;
+      const server = await startServer((req, res) => {
+        requests += 1;
+        if (req.url === "/ok.png") { res.writeHead(200, { "Content-Type": "image/png" }).end(TINY_PNG); return; }
+        if (phase === "body") {
+          res.writeHead(200, { "Content-Type": "image/png" });
+          res.write(TINY_PNG.subarray(0, 8));
+        }
+      });
+      try {
+        await assert.rejects(Promise.race([
+          store.importRemoteSource({ source: `${server.baseUrl}/stalled.png`, origin: "chat_message" }),
+          delay(2000, undefined, { ref: false }).then(() => { throw new Error("download deadline was not enforced"); })
+        ]), { name: "TimeoutError" });
+        assert.equal(requests, 1);
+        assert.deepEqual(await store.listFiles(), []);
+        const file = await store.importRemoteSource({ source: `${server.baseUrl}/ok.png`, origin: "chat_message" });
+        assert.equal(file.kind, "image");
+        assert.equal(file.captionStatus, "missing");
+        assert.equal(file.caption, null);
+      } finally { await server.close(); }
+    });
+  });
+}
 
   test("importRemoteSource rejects corrupted downloaded images", async () => {
     await withTempDir(async (dir) => {

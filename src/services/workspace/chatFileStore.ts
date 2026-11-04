@@ -249,9 +249,10 @@ export class ChatFileStore {
       throw new Error("source is required");
     }
     if (/^https?:\/\//i.test(source)) {
+      const signal = AbortSignal.timeout(this.config.chatFiles.downloadTimeoutMs);
       const response = input.proxyConsumer
-        ? await fetchWithProxy(this.config, input.proxyConsumer, source)
-        : await undiciFetch(source);
+        ? await fetchWithProxy(this.config, input.proxyConsumer, source, { signal })
+        : await undiciFetch(source, { signal });
       if (!response.ok) {
         throw new Error(`failed to download asset: ${response.status} ${response.statusText}`);
       }
