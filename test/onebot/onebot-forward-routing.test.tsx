@@ -1,3 +1,4 @@
+import { withReferenceToolServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventRouter } from "../../src/services/onebot/eventRouter.ts";
@@ -83,8 +84,8 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
 
   test("view_forward_record repairs rounded forward_id from recent session refs", async () => {
     const sessionManager = new SessionManager(createForwardFeatureConfig());
-    sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
-    sessionManager.appendUserHistory("qqbot:p:owner", {
+    sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
+    sessionManager.appendUserHistory("qqbot:p:10001", {
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
@@ -96,16 +97,16 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
     const result = await forwardToolHandlers.view_forward_record!(
       { id: "tool_forward_1", type: "function", function: { name: "view_forward_record", arguments: "{\"forward_id\":7618168520610782000}" } },
       { forward_id: "7618168520610782000" },
-      {
-        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+      withReferenceToolServices({
+        lastMessage: { sessionId: "qqbot:p:10001", userId: "owner", senderName: "Owner" },
         sessionManager,
-        forwardResolver: {
-          async resolveForwardRecord(forwardId: string) {
-            capturedForwardId = forwardId;
-            return { forwardId, fetchedAt: 1, nodes: [] };
+        oneBotReferenceResolver: {
+          async expand(_scope: unknown, parts: any[]) {
+            capturedForwardId = parts[0].forwardId;
+            return [];
           }
         } as any
-      } as any
+      } as any, { forward: "7618168520610782000" })
     );
 
     assert.equal(capturedForwardId, "7618168520610781740");
@@ -114,8 +115,8 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
 
   test("view_message repairs rounded message_id from recent session refs", async () => {
     const sessionManager = new SessionManager(createForwardFeatureConfig());
-    sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
-    sessionManager.appendUserHistory("qqbot:p:owner", {
+    sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
+    sessionManager.appendUserHistory("qqbot:p:10001", {
       chatType: "private",
       userId: "owner",
       senderName: "Owner",
@@ -127,8 +128,8 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
     await messageToolHandlers.view_message!(
       { id: "tool_message_1", type: "function", function: { name: "view_message", arguments: "{\"message_id\":1234567890123456800}" } },
       { message_id: "1234567890123456800" },
-      {
-        lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
+      withReferenceToolServices({
+        lastMessage: { sessionId: "qqbot:p:10001", userId: "owner", senderName: "Owner" },
         sessionManager,
         oneBotClient: {
           async getMessage(messageId: string) {
@@ -136,7 +137,7 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
             return {
               message_id: null,
               message_type: "private",
-              user_id: null,
+              user_id: 10001,
               group_id: null,
               message: [],
               sender: {},
@@ -145,7 +146,7 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
             };
           }
         } as any
-      } as any
+      } as any, { reply: "1234567890123456800" })
     );
 
     assert.equal(capturedMessageId, "1234567890123456789");
@@ -160,25 +161,28 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
 
 test("view_message retains native market sticker metadata when importing a quoted message", async () => {
   const sessionManager = new SessionManager(createForwardFeatureConfig());
-  sessionManager.ensureSession({ id: "qqbot:p:owner", type: "private" });
+  sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
   const imports: any[] = [];
   const result = await messageToolHandlers.view_message!(
     { id: "view-sticker", type: "function", function: { name: "view_message", arguments: '{"message_id":"123"}' } },
     { message_id: "123" },
-    {
-      lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" }, sessionManager,
+    withReferenceToolServices({
+      lastMessage: { sessionId: "qqbot:p:10001", userId: "owner", senderName: "Owner" }, sessionManager,
       oneBotClient: { getMessage: async () => ({
-        message_id: 123, message_type: "private", sender: {},
+        message_id: 123, user_id: 10001, message_type: "private", sender: {},
         message: [{ type: "image", data: { url: "https://example.com/face.gif", emoji_id: "face", emoji_package_id: 123, key: "market-key", summary: "笑" } }]
       }) },
       chatFileStore: { importRemoteSource: async (input: any) => {
         imports.push(input);
         return { fileId: "file_sticker", kind: "animated_image", sourceName: "face.gif", mimeType: "image/gif", sourceContext: input.sourceContext };
       } }
-    } as any
+    } as any, { reply: "123" })
   );
   assert.equal(imports.length, 1);
-  assert.deepEqual(imports[0].sourceContext, {
+  const { userId, senderName, media_source_ref, ...sourceContext } = imports[0].sourceContext;
+  assert.equal(userId, "owner");
+  assert.match(media_source_ref, /^media_/);
+  assert.deepEqual(sourceContext, {
     mediaKind: "emoji", emojiId: "face", emojiPackageId: 123, emojiKey: "market-key", emojiSummary: "笑"
   });
   assert.doesNotMatch(typeof result === "string" ? result : result.content, /market-key/);

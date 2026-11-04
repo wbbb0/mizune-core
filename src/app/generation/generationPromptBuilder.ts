@@ -1,3 +1,4 @@
+import { recoverPromptMedia } from "./promptMediaRecovery.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { characterPrompt } from "../../character/prompt.ts";
 import {
@@ -1092,6 +1093,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
   }) => {
+    input = await recoverPromptMedia(deps.mediaImportService, input);
     const scenarioHostMode = isScenarioHostMode(input.modeId);
     const statefulRpMode = input.modeId === "stateful_rp";
     const assistantMode = isAssistantMode(input.modeId);
@@ -1352,6 +1354,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     abortSignal?: AbortSignal;
     modeProfile?: PromptInput["modeProfile"];
   }) => {
+    input = await recoverPromptMedia(deps.mediaImportService, input);
     const scenarioHostMode = isScenarioHostMode(input.modeId);
     const statefulRpMode = input.modeId === "stateful_rp";
     const assistantMode = isAssistantMode(input.modeId);
@@ -1563,6 +1566,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     abortSignal?: AbortSignal;
     contentSafetyAlreadyProjected?: boolean;
   }) => {
+    input = await recoverPromptMedia(deps.mediaImportService, input);
     const mainProfile = getPrimaryModelProfile(deps.config, getModelRefsForRole(deps.config, "main_small"));
     const safetyProjected = await projectPromptContentSafety(deps, {
       sessionId: input.sessionId,

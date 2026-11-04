@@ -1,12 +1,13 @@
+import { assertKnownOneBotReference, assertKnownMediaReference } from "#services/onebot/referenceAccess.ts";
+import { mediaScopeForSession } from "#services/workspace/mediaSources/content.ts";
+import { importReferenceMedia } from "#services/onebot/referenceMedia.ts";
 import {
   type ExtractedFileSource,
   extractFileSources,
   extractForwardIds,
   extractMentions,
   extractReplyMessageId,
-  extractText,
-  marketFaceSourceContext,
-  normalizeSegmentsForTool
+  extractText
 } from "#services/onebot/messageSegments.ts";
 import { importOneBotMessageFile } from "#services/onebot/fileSourceImport.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
@@ -19,12 +20,18 @@ import { projectToolResult, type JsonObject } from "../core/toolResultProjection
 
 export const messageToolDescriptors: ToolDescriptor[] = [
   {
+    definition: { type: "function", function: {
+      name: "resolve_media_reference", description: "补下载本会话中 pending_media 标记的媒体，返回真实 asset 句柄；受下载退避与平台可用来源限制。",
+      parameters: { type: "object", properties: { media_ref: { type: "string" } }, required: ["media_ref"], additionalProperties: false }
+    } }, resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
+  },
+  {
     requiresOneBot: true,
     definition: {
       type: "function",
       function: {
         name: "view_message",
-        description: "按 prompt 里的精确 message_id 展开一条引用消息，返回正文、回复引用、提及、image ids、forward ids 和消息文件提示。不会自动下载文件。",
+        description: "按 prompt 里的精确 message_id 展开一条引用消息，返回正文、引用层级、真实图片资产和消息文件提示；图片会补下载，消息文件按需下载。",
         parameters: {
           type: "object",
           properties: {
@@ -62,6 +69,14 @@ export const messageToolDescriptors: ToolDescriptor[] = [
 ];
 
 export const messageToolHandlers: Record<string, ToolHandler> = {
+  async resolve_media_reference(_call, args, context) {
+    const ref = getStringArg(args, "media_ref");
+    if (!/^media_[a-f0-9]{32}$/.test(ref)) return JSON.stringify({ error: "需要有效的媒体引用" });
+    assertKnownMediaReference(context.sessionManager, context.lastMessage.sessionId, ref);
+    const resolution = await context.mediaImportService.resolve(mediaScopeForSession(context.lastMessage.sessionId), ref, context.abortSignal);
+    return resolution ? JSON.stringify({ ok: true, ...buildChatFileHandleResultFromContext(resolution.file, context) })
+      : JSON.stringify({ ok: false, media_ref: ref, reason: "媒体暂不可用、仍在退避期，或不属于本会话；没有可用来源时请重新发送。" });
+  },
   async view_message(toolCall, args, context) {
     const requestedMessageId = getStringArg(args, "message_id");
     const messageId = resolveMessageIdArg(requestedMessageId, toolCall.function.arguments, context);
@@ -70,27 +85,11 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      const message = await context.oneBotClient.getMessage(messageId);
-      const normalizedSegments = normalizeSegmentsForTool(message.message);
-      const imageSources = normalizedSegments.flatMap((segment) => (
-        segment.kind === "image"
-          ? [{ source: segment.source, kind: segment.mediaKind, marketFace: segment.marketFace }]
-          : []
-      ));
-      const workspaceImageAssets = await Promise.all(
-        imageSources
-          .map(async (item) => context.chatFileStore.importRemoteSource({
-            source: item.source,
-            kind: "image",
-            origin: "chat_message",
-            sourceContext: {
-              mediaKind: item.kind,
-              ...marketFaceSourceContext(item.marketFace)
-            }
-          }).catch(() => null))
-      );
+      assertKnownOneBotReference(context.sessionManager, context.lastMessage.sessionId, "reply", messageId);
+      const { message, parts } = await context.oneBotReferenceResolver.readMessage(mediaScopeForSession(context.lastMessage.sessionId), messageId);
+      const imported = await importReferenceMedia(context, context.lastMessage, parts);
+      const workspaceImageAssets = await context.chatFileStore.getMany([...imported.imageIds, ...imported.emojiIds]);
       const fileSources = extractFileSources(message.message);
-      let imageIndex = 0;
       const mentions = extractMentions(message.message);
       const sender = message.sender ?? {};
       const senderName = getFirstNonEmptyString([
@@ -126,60 +125,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
           }))
         ],
         files: fileSources.map(formatExtractedFileSource),
-        segments: normalizedSegments.map((segment) => {
-          if (segment.kind === "image") {
-            const registered = workspaceImageAssets[imageIndex];
-            imageIndex += 1;
-            return {
-              kind: segment.kind,
-              mediaKind: segment.mediaKind,
-              fileId: registered?.fileId ?? null,
-              viewable: Boolean(registered)
-            };
-          }
-          if (segment.kind === "mention") {
-            return {
-              kind: segment.kind,
-              target: segment.target,
-              ...(segment.userId ? { userId: segment.userId } : {})
-            };
-          }
-          if (segment.kind === "forward") {
-            return {
-              kind: segment.kind,
-              forwardId: segment.forwardId
-            };
-          }
-          if (segment.kind === "reply") {
-            return {
-              kind: segment.kind,
-              messageId: segment.messageId
-            };
-          }
-          if (segment.kind === "file") {
-            return {
-              kind: segment.kind,
-              fileId: segment.fileId,
-              filename: segment.filename,
-              busid: segment.busid,
-              sizeBytes: segment.sizeBytes,
-              mimeType: segment.mimeType,
-              downloadTool: "download_message_file",
-              summary: segment.summary
-            };
-          }
-          if (segment.kind === "text") {
-            return {
-              kind: segment.kind,
-              text: segment.text
-            };
-          }
-          return {
-            kind: segment.kind,
-            type: segment.type,
-            summary: segment.summary
-          };
-        })
+        contentParts: imported.contentParts
       };
       return projectToolResult({
         toolName: "view_message",
@@ -201,7 +147,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
             forwardIds: item.forwardIds,
             attachments: item.attachments,
             files: item.files,
-            segments: item.segments,
+            contentParts: item.contentParts,
             summary: `消息 ${String(item.messageId)} 已展开，图片 asset 与消息文件下载入口已列出。`
           })
         }

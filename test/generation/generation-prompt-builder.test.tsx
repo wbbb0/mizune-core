@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createGenerationPromptBuilder } from "../../src/app/generation/generationPromptBuilder.ts";
@@ -17,7 +18,7 @@ type TestPromptBatchMessage = {
 };
 
 function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {}) {
-  return {
+  return withMediaServices({
     config: createTestAppConfig(),
     oneBotClient: {} as any,
     audioStore: {} as any,
@@ -79,7 +80,7 @@ function createMinimalPromptBuilderDeps(overrides: Record<string, unknown> = {})
       }
     } as any,
     ...overrides
-  } as any;
+  }) as any;
 }
 
 function createActiveTaskTracker() {
@@ -99,6 +100,39 @@ function createActiveTaskTracker() {
     parked: []
   };
 }
+
+test("recovered assets are projected through content safety again even after earlier prompt projection", async () => {
+  const ref = `media_${"b".repeat(32)}`;
+  let projected = 0;
+  const captions: string[][] = [];
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    mediaImportService: { resolve: async () => ({ ref, kind: "image", file: {
+      fileId: "file_blocked", sourceName: "测试图.png", mimeType: "image/png"
+    } }) },
+    mediaCaptionService: { ensureReady: async (ids: string[]) => { captions.push(ids); return new Map(); } },
+    contentSafetyService: {
+      projectPromptMessages: async (input: any) => {
+        projected++;
+        assert.match(input.recentMessages[0].content, /file_blocked/);
+        return { ...input, recentMessages: input.recentMessages.map((message: any) => ({ ...message, content: "<内容安全：该图片已屏蔽>" })) };
+      },
+      projectLlmMessages: async (input: any) => input
+    }
+  }));
+  const result = await builder.buildChatPromptMessages({
+    sessionId: "qq_official.app:g:group", interactionMode: "normal", mainModelRef: ["main"],
+    visibleToolNames: [], activeToolsets: [], persona: { name: "测试机器人", temperament: "冷静", voiceStyle: "简洁" } as any,
+    relationship: "known", participantProfiles: [], currentUser: { userId: "member", relationship: "known" } as any,
+    historySummary: null, internalTranscript: [], lastLlmUsage: null, contentSafetyAlreadyProjected: true,
+    historyForPrompt: [{ role: "user", timestampMs: 1, content: formatHistoryContent({ text: "", contentParts: [
+      { kind: "pending_media", mediaRef: ref, mediaKind: "image", sourceName: "测试图.png" }
+    ] }) }], batchMessages: []
+  });
+  assert.equal(projected, 1);
+  assert.deepEqual(captions, [[]]);
+  assert.match(JSON.stringify(result.promptMessages), /该图片已屏蔽/);
+  assert.doesNotMatch(JSON.stringify(result.promptMessages), /file_blocked/);
+});
 
 test("reply preparation analyzes cached images from earlier ordinary messages and nested forwards", async () => {
   const requestedCaptions: string[][] = [];
@@ -138,7 +172,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
 
   test("setup prompt prepares image visuals when vision is enabled", async () => {
     const capturedImageIdCalls: string[][] = [];
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig({
         llm: {
           enabled: true,
@@ -214,7 +248,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildSetupPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -284,7 +318,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
         caption: null
       }];
     }));
-    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps(withMediaServices({
       chatFileStore: {
         async getMany(fileIds: string[]) {
           requestedFileIds.push(fileIds);
@@ -294,7 +328,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
             .filter((file): file is NonNullable<typeof file> => Boolean(file));
         }
       }
-    }));
+    })));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -439,7 +473,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
       lastAccessedAtMs: index + 1,
       expiresAtMs: null
     }));
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
       audioStore: {} as any,
@@ -534,7 +568,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -596,7 +630,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("chat prompt applies content safety projection before rendering messages", async () => {
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
       audioStore: {} as any,
@@ -677,7 +711,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -1029,7 +1063,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("comfy completed scheduled prompt enriches result file handles from asset store", async () => {
-    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps(withMediaServices({
       chatFileStore: {
         async getMany(fileIds: string[]) {
           assert.deepEqual(fileIds, ["file_comfy_1"]);
@@ -1048,7 +1082,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           }];
         }
       } as any
-    }));
+    })));
 
     const result = await builder.buildScheduledPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -1097,7 +1131,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("download completed scheduled prompt enriches result asset handle from asset store", async () => {
-    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps(withMediaServices({
       chatFileStore: {
         async getFile(fileId: string) {
           assert.equal(fileId, "file_download_1");
@@ -1116,7 +1150,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           };
         }
       } as any
-    }));
+    })));
 
     const result = await builder.buildScheduledPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -1161,7 +1195,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("assistant chat prompt injects global persona but still avoids memory rule and scenario stores", async () => {
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
       audioStore: {} as any,
@@ -1219,7 +1253,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -1278,7 +1312,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
 
   test("chat prompt logs suppressed lower-priority memory items", async () => {
     const loggerEvents: Array<{ event: string; payload: Record<string, unknown> }> = [];
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       logger: {
         info(payload: Record<string, unknown>, event: string) {
           loggerEvents.push({ payload, event });
@@ -1357,7 +1391,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -1414,7 +1448,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("scenario_host profile setup prompt uses scenario profile setup section", async () => {
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig({
         llm: {
           enabled: true,
@@ -1514,7 +1548,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           };
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:u1",
@@ -1604,7 +1638,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("scenario_host prompt injects global persona, scenario profile, and scenario state", async () => {
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
       audioStore: {} as any,
@@ -1701,7 +1735,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -2009,7 +2043,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("rp_assistant prompt injects global persona and rp profile together", async () => {
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
       audioStore: {} as any,
@@ -2067,7 +2101,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:u1",
@@ -2126,7 +2160,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("scenario_host profile config prompt uses config-specific profile guidance", async () => {
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
       audioStore: {} as any,
@@ -2217,7 +2251,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:u1",
@@ -2325,7 +2359,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
       retrievedUserContext: unknown[];
       semanticRetrievalAttempted: boolean;
     }> = [];
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig({
         context: {
           retrieval: {
@@ -2472,7 +2506,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",
@@ -2542,7 +2576,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
   });
 
   test("chat prompt does not depend on context deposition methods", async () => {
-    const builder = createGenerationPromptBuilder({
+    const builder = createGenerationPromptBuilder(withMediaServices({
       config: createTestAppConfig(),
       oneBotClient: {} as any,
       audioStore: {} as any,
@@ -2619,7 +2653,7 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
           return [];
         }
       } as any
-    });
+    }));
 
     const result = await builder.buildChatPromptMessages({
       sessionId: "qqbot:p:10001",

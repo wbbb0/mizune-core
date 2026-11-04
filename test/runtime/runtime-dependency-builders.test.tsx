@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -6,7 +7,7 @@ import {
 } from "../../src/app/runtime/runtimeDependencyBuilders.ts";
 
 function createServicesFixture() {
-  return {
+  return withMediaServices({
     config: { key: "config" },
     logger: { key: "logger" },
     llmClient: { key: "llmClient" },
@@ -31,7 +32,7 @@ function createServicesFixture() {
     comfyClient: { key: "comfyClient" },
     comfyTaskStore: { key: "comfyTaskStore" },
     comfyTemplateCatalog: { key: "comfyTemplateCatalog" },
-    forwardResolver: { key: "forwardResolver" },
+    oneBotReferenceResolver: { key: "oneBotReferenceResolver" },
     userStore: { key: "userStore" },
     personaStore: { key: "personaStore" },
     globalRuleStore: { key: "globalRuleStore" },
@@ -40,7 +41,7 @@ function createServicesFixture() {
     setupStore: { key: "setupStore" },
     conversationAccess: { key: "conversationAccess" },
     npcDirectory: { key: "npcDirectory" }
-  } as any;
+  }) as any;
 }
 
 function createTaskFixture(overrides: Record<string, unknown> = {}) {
@@ -83,7 +84,7 @@ function createTaskFixture(overrides: Record<string, unknown> = {}) {
     assert.equal(deps.identity.userStore, services.userStore);
     assert.equal(deps.identity.npcDirectory, services.npcDirectory);
     assert.equal(deps.toolRuntime.browserService, services.browserService);
-    assert.equal(deps.toolRuntime.forwardResolver, services.forwardResolver);
+    assert.equal(deps.toolRuntime.oneBotReferenceResolver, services.oneBotReferenceResolver);
     assert.equal(deps.lifecycle.persistSession, persistSession);
     assert.equal(deps.lifecycle.getScheduler, getScheduler);
   });

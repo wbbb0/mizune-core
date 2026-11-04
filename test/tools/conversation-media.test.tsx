@@ -1,3 +1,4 @@
+import { withReferenceToolServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -523,7 +524,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
     const result = await messageToolHandlers.view_message!(
       createFunctionToolCall("view_message", "tool_3"),
       { message_id: "555" },
-      {
+      withReferenceToolServices({
         oneBotClient: {
           async getMessage() {
             return {
@@ -560,7 +561,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
             };
           }
         } as any
-      } as any
+      } as any, { reply: "555" }, "qqbot:g:20001")
     );
 
     const parsed = parseToolJson<any>(result);
@@ -569,12 +570,12 @@ function parseCanonicalToolJson<T>(result: unknown): T {
     assert.equal(parsed.replyMessageId, "444");
     assert.deepEqual(parsed.mentions.userIds, ["30003"]);
     assert.deepEqual(parsed.forwardIds, ["forward-xyz"]);
-    assert.equal(parsed.segments[0].kind, "reply");
-    assert.equal(parsed.segments[1].kind, "mention");
-    assert.equal(parsed.segments[3].kind, "forward");
-    assert.equal(parsed.segments[4].kind, "image");
-    assert.equal(parsed.segments[4].fileId, "file_test_1");
-    assert.equal(parsed.segments[4].mediaKind, "image");
+    assert.equal(parsed.contentParts[0].kind, "embedded_message");
+    assert.equal(parsed.contentParts[1].kind, "mention");
+    assert.equal(parsed.contentParts[3].kind, "forward");
+    assert.equal(parsed.contentParts[4].kind, "image");
+    assert.equal(parsed.contentParts[4].fileId, "file_test_1");
+    assert.equal(parsed.contentParts[4].kind, "image");
     assert.equal(canonical.time, 1710000000);
   });
 
@@ -582,7 +583,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
     const result = await messageToolHandlers.view_message!(
       createFunctionToolCall("view_message", "tool_file_view"),
       { message_id: "556" },
-      {
+      withReferenceToolServices({
         oneBotClient: {
           async getMessage() {
             return {
@@ -607,7 +608,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
             throw new Error("view_message should not download message files");
           }
         } as any
-      } as any
+      } as any, { reply: "556" })
     );
 
     const parsed = parseToolJson<any>(result);
@@ -615,7 +616,8 @@ function parseCanonicalToolJson<T>(result: unknown): T {
     assert.deepEqual(parsed.attachments, []);
     assert.equal(parsed.files[0].fileId, "onebot-file-1");
     assert.equal(parsed.files[0].filename, "report.pdf");
-    assert.match(parsed.segments[0].summary, /download_message_file/);
+    assert.equal(parsed.contentParts[0].kind, "file");
+    assert.equal(parsed.contentParts[0].file.downloadTool, "download_message_file");
   });
 
   test("download_message_file resolves OneBot file_id and returns an asset handle", async () => {

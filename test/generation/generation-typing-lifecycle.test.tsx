@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import { characterRepository } from "../../src/character/repository.ts";
 import { expandCharacterSetupToolsets } from "../../src/character/setupToolsets.ts";
 import { getSkillStore } from "../../src/skills/skillStore.ts";
@@ -315,7 +316,7 @@ function createExecutorHarness(options?: {
       } as never,
       sessionManager
     },
-    toolRuntime: {
+    toolRuntime: withMediaServices({
       oneBotClient: {
         async setTyping(params: { enabled: boolean; userId: string; groupId?: string }) {
           typingCalls.push(params);
@@ -365,8 +366,8 @@ function createExecutorHarness(options?: {
       comfyClient: {} as never,
       comfyTaskStore: {} as never,
       comfyTemplateCatalog: {} as never,
-      forwardResolver: {} as never
-    },
+      oneBotReferenceResolver: {} as never
+    }),
     identity: {
       userStore: {} as never,
       whitelistStore: {} as never,

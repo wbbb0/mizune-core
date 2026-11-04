@@ -1,5 +1,6 @@
 import type { ParsedIncomingMessage } from "../messaging/incomingMessage.ts";
 import { decodeQqMessageContent } from "./embeddedMessages.ts";
+import { normalizeQqAddressing } from "./messageAddressing.ts";
 import type { QqReplyPermitRegistry } from "./replyPermit.ts";
 import type { QqReplyPermit } from "./types.ts";
 
@@ -9,7 +10,7 @@ interface QqIncomingBase {
 }
 type OfficialMessage = Omit<ParsedIncomingMessage, "replyContext"> & {
   source: "qq_official";
-  sourceRef: { platform: "qq_official"; connectionId: string; messageId: string };
+  sourceRef: { platform: "qq_official"; connectionId: string; messageId: string; referenceId?: string };
 };
 export interface QqInteractiveIncoming extends QqIncomingBase {
   contextOnly: false;
@@ -58,15 +59,17 @@ export function decodeQqMessage(type: string, data: unknown, registry: QqReplyPe
   }).filter(Boolean);
   const ext = record(event.message_scene).ext;
   const reference = (Array.isArray(ext) ? ext : []).find((item): item is string => typeof item === "string" && item.startsWith("ref_msg_idx="));
+  const ownIndex = (Array.isArray(ext) ? ext : []).find((item): item is string => typeof item === "string" && item.startsWith("msg_idx="))?.slice("msg_idx=".length, "msg_idx=".length + 160);
   const decodedContent = decodeQqMessageContent(event, reference?.slice("ref_msg_idx=".length));
-  const text = decodedContent.text;
+  const normalized = normalizeQqAddressing(decodedContent.parts, Array.isArray(event.mentions) ? event.mentions : [], options.selfId);
+  const text = normalized.text;
   const message: OfficialMessage = {
-      source: "qq_official", sourceRef: { platform: "qq_official", connectionId: registry.connectionId, messageId },
+      source: "qq_official", sourceRef: { platform: "qq_official", connectionId: registry.connectionId, messageId, ...(ownIndex ? { referenceId: ownIndex } : {}) },
       channelId: registry.connectionId, externalUserId, chatType: group ? "group" : "private", userId: externalUserId,
       ...(group ? { groupId: targetId } : {}), senderName: string(author.username) || externalUserId,
-      text, contentParts: decodedContent.parts, remoteAttachments: decodedContent.remoteAttachments, images: decodedContent.images, audioSources: decodedContent.audioSources, audioIds: [], emojiSources: [], imageIds: [], emojiIds: [],
+      text, contentParts: normalized.parts, remoteAttachments: decodedContent.remoteAttachments, images: decodedContent.images, audioSources: decodedContent.audioSources, audioIds: [], emojiSources: [], imageIds: [], emojiIds: [],
       forwardIds: [], replyMessageId: reference?.slice("ref_msg_idx=".length) || null,
-      mentionUserIds: mentions, mentionedAll: text.includes("<@all>"), isAtMentioned: group && addressed,
+      mentionUserIds: mentions, mentionedAll: normalized.parts.some(part => part.kind === "mention" && part.target === "all"), isAtMentioned: group && addressed,
       ...(decodedContent.specialSegments.length ? { specialSegments: decodedContent.specialSegments } : {})
   };
   return permit

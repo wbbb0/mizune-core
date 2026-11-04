@@ -1,3 +1,5 @@
+import { applySessionMediaResolution } from "./sessionMediaRecovery.ts";
+import type { MediaResolution } from "#services/workspace/mediaSources/types.ts";
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getSessionSummary, isSessionGenerating, isSessionResponding } from "./sessionQueries.ts";
@@ -100,7 +102,7 @@ export class SessionManager {
   private readonly sessionListeners = new Map<string, Set<() => void>>();
   private readonly allSessionListeners = new Set<(sessionId: string) => void>();
 
-  constructor(config: AppConfig) {
+  constructor(private readonly config: AppConfig) {
     this.historyService = new SessionHistoryService(config);
   }
 
@@ -858,6 +860,13 @@ export class SessionManager {
     const session = this.requireSession(sessionId);
     clearPendingTranscriptGroup(session);
     this.notifySessionChanged(sessionId);
+  }
+
+  applyResolvedMedia(sessionId: string, resolution: MediaResolution): boolean {
+    const session = this.sessionStore.get(sessionId);
+    if (!session || !applySessionMediaResolution(session, resolution, this.config)) return false;
+    this.notifySessionChanged(sessionId);
+    return true;
   }
 
   clearSession(sessionId: string): void {

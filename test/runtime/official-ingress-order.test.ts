@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
@@ -20,14 +21,14 @@ function fixture(ensureUserIdentity: (input: { externalId: string }) => Promise<
   const config = createTestAppConfig();
   const sessionManager = new SessionManager(config);
   const forbidden = () => { throw new Error("passive context cannot execute active work"); };
-  const services = {
+  const services = withMediaServices({
     config, sessionManager, logger: pino({ level: "silent" }),
     userIdentityStore: { ensureUserIdentity },
     userStore: { touchSeenUser: async () => ({ relationship: "known" }) },
     setupStore: { get: async () => ({ state: "ready" }) },
     audioStore: { registerSources: async (sources: string[]) => { assert.deepEqual(sources, []); return []; } },
     chatFileStore: { importRemoteSource: forbidden }
-  };
+  });
   const ingress = createRuntimeMessageIngress({ services,
     directCommandDeps: { ...services, onebotSendImmediateText: forbidden, flushSession: forbidden },
     persistSession: () => undefined

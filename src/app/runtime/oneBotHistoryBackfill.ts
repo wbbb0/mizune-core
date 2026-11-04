@@ -26,6 +26,8 @@ interface OneBotHistoryBackfillDeps {
   sessionManager: SessionAppRuntimeAccess;
   audioStore: MessageHandlerServices["audioStore"];
   chatFileStore: MessageHandlerServices["chatFileStore"];
+  mediaImportService: MessageHandlerServices["mediaImportService"];
+  oneBotReferenceResolver: MessageHandlerServices["oneBotReferenceResolver"];
   userIdentityStore: MessageHandlerServices["userIdentityStore"];
   userStore: MessageHandlerServices["userStore"];
   setupStore: MessageHandlerServices["setupStore"];
@@ -171,6 +173,8 @@ async function appendSessionBackfillMessages(
       {
         audioStore: deps.audioStore,
         chatFileStore: deps.chatFileStore,
+        mediaImportService: deps.mediaImportService,
+        oneBotReferenceResolver: deps.oneBotReferenceResolver,
         sessionManager: deps.sessionManager,
         userStore: deps.userStore,
         setupStore: deps.setupStore,

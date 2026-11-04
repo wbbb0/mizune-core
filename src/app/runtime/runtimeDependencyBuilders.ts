@@ -28,6 +28,7 @@ export function buildGenerationPromptBuilderDeps(services: AppServiceBootstrap):
     localFileService: services.localFileService,
     temporaryWorkspaceService: services.temporaryWorkspaceService,
     chatFileStore: services.chatFileStore,
+    mediaImportService: services.mediaImportService,
     downloadRuntime: services.downloadRuntime,
     mediaVisionService: services.mediaVisionService,
     mediaCaptionService: services.mediaCaptionService,
@@ -93,7 +94,8 @@ export function buildGenerationToolRuntimeDeps(services: AppServiceBootstrap): G
     documentSummaryService: services.documentSummaryService,
     contextEmbeddingService: services.contextEmbeddingService,
     structuredSuggestionService: services.structuredSuggestionService,
-    forwardResolver: services.forwardResolver,
+    oneBotReferenceResolver: services.oneBotReferenceResolver,
+    mediaImportService: services.mediaImportService,
     comfyClient: services.comfyClient,
     comfyTaskStore: services.comfyTaskStore,
     comfyTemplateCatalog: services.comfyTemplateCatalog

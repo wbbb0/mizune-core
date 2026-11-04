@@ -52,6 +52,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "sticker_search",
       "sticker_send",
       "view_message",
+      "resolve_media_reference",
       "download_message_file",
       "view_forward_record",
       "view_current_group_info",

@@ -111,10 +111,12 @@ test("download runtime rejects responses larger than asset limit", async () => {
   });
 });
 
-test("download runtime pauses and resumes with the latest checkpoint", async () => {
+test("download runtime pauses and resumes with the latest checkpoint", { timeout: 5000 }, async () => {
   await withTempDir(async (dir) => {
     let calls = 0;
     let resumedCheckpoint: unknown = null;
+    let markPausable!: () => void;
+    const pausable = new Promise<void>(resolve => { markPausable = resolve; });
     const checkpoint = {
       schemaVersion: 1 as const,
       resource: { url: "https://example.com/resume.bin", totalBytes: 4, strongEtag: '"resume"', lastModified: null },
@@ -128,7 +130,11 @@ test("download runtime pauses and resumes with the latest checkpoint", async () 
         calls += 1;
         if (calls === 1) {
           await request.onEvent?.({ type: "checkpoint", checkpoint });
-          await new Promise<void>((_resolve, reject) => request.signal?.addEventListener("abort", () => reject(request.signal?.reason), { once: true }));
+          await new Promise<void>((_resolve, reject) => {
+            request.signal?.throwIfAborted();
+            request.signal?.addEventListener("abort", () => reject(request.signal?.reason), { once: true });
+            markPausable();
+          });
         }
         resumedCheckpoint = request.checkpoint;
         await writeFile(request.destinationPath, "data");
@@ -145,6 +151,7 @@ test("download runtime pauses and resumes with the latest checkpoint", async () 
       foregroundWaitMs: 1
     });
     assert.equal(started.status, "running");
+    await pausable;
     assert.equal((await runtime.pause(started.resource_id))?.status, "paused");
     assert.equal((await runtime.resume(started.resource_id))?.status, "running");
     await waitForDownloadStatus(runtime, started.resource_id, "completed");

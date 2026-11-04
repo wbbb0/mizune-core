@@ -1,3 +1,4 @@
+import type { MediaImportService } from "#services/workspace/mediaSources/service.ts";
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import type { StickerService } from "#services/stickers/stickerService.ts";
 import type { TemporaryWorkspaceService } from "#services/workspace/temporaryWorkspaceService.ts";
@@ -17,7 +18,7 @@ import type {
   SessionGenerationOutboundAccess,
   SessionTurnPlannerAccess
 } from "#conversation/session/sessionCapabilities.ts";
-import type { ForwardResolver } from "../../forwards/forwardResolver.ts";
+import type { OneBotReferenceResolver } from "#services/onebot/referenceResolver.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { AudioTranscriber } from "#audio/audioTranscriber.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
@@ -61,6 +62,7 @@ import type { ContentSafetyService } from "#contentSafety/contentSafetyService.t
 // The broad runtime bundle still exists at the composition root, but lower-level modules
 // should depend on the narrowest type below that matches the use case they own.
 export interface GenerationPromptBuilderDeps {
+  mediaImportService: MediaImportService;
   logger?: Logger;
   config: AppConfig;
   oneBotClient: OneBotClient;
@@ -132,7 +134,8 @@ export interface GenerationToolRuntimeDeps {
   documentSummaryService?: DocumentSummaryService;
   contextEmbeddingService?: ContextEmbeddingService;
   structuredSuggestionService?: StructuredSuggestionService;
-  forwardResolver: ForwardResolver;
+  oneBotReferenceResolver: OneBotReferenceResolver;
+  mediaImportService: MediaImportService;
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;

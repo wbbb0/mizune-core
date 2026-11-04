@@ -2,15 +2,17 @@ import type { MediaSemanticKind, MarketFaceMetadata } from "#services/onebot/mes
 import type { OneBotMessageFileSummary } from "#services/onebot/types.ts";
 import type { ChatFileKind } from "#types/chatContracts.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
+import type { MediaLocator, MediaKind } from "#services/workspace/mediaSources/types.ts";
 
 export type MessageContentPart =
   | { kind: "text"; text: string }
-  | { kind: "image"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; marketFace?: MarketFaceMetadata }
-  | { kind: "emoji"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; marketFace?: MarketFaceMetadata }
+  | { kind: "image"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; mediaRef?: string | undefined; marketFace?: MarketFaceMetadata; mediaLocator?: MediaLocator }
+  | { kind: "emoji"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; mediaRef?: string | undefined; marketFace?: MarketFaceMetadata; mediaLocator?: MediaLocator }
+  | { kind: "pending_media"; mediaRef: string; mediaKind: MediaKind; sourceName: string | null }
   | { kind: "file"; file: OneBotMessageFileSummary }
   | { kind: "embedded_message"; relation: "reply" | "forward" | "message"; messageId?: string | undefined; senderId?: string | undefined; senderName?: string | undefined; parts: MessageContentPart[]; truncated?: boolean | undefined }
   | { kind: "remote_file"; source: string; sourceName: string; mimeType: string; fileKind: "file" | "video" }
-  | { kind: "asset_file"; fileId: string; fileKind: ChatFileKind; sourceName: string | null; mimeType: string | null; sizeBytes: number | null }
+  | { kind: "asset_file"; fileId: string; fileKind: ChatFileKind; sourceName: string | null; mimeType: string | null; sizeBytes: number | null; mediaRef?: string | undefined }
   | { kind: "mention"; target: "self" | "all" | "user"; userId?: string | undefined }
   | { kind: "reply"; messageId: string }
   | { kind: "forward"; forwardId: string }
@@ -54,6 +56,11 @@ export function collectContentPartAttachments(contentParts: readonly MessageCont
   const attachments: ChatAttachment[] = [];
   const seen = new Set<string>();
   for (const part of walkMessageContentParts(contentParts)) {
+    if (part.kind === "asset_file" && !seen.has(part.fileId)) {
+      seen.add(part.fileId);
+      attachments.push({ fileId: part.fileId, kind: part.fileKind, source: "chat_message", sourceName: part.sourceName, mimeType: part.mimeType });
+      continue;
+    }
     if ((part.kind !== "image" && part.kind !== "emoji") || !part.fileId || seen.has(part.fileId)) {
       continue;
     }

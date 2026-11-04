@@ -280,6 +280,21 @@ function validateAssetSessionRefsSchema(db: SqliteDatabase): void {
 
 const ASSETS_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   {
+    groupId: "assets.media_sources", schemaVersion: 1, resetPolicy: "block_reset",
+    ownedTables: ["media_sources"], ownedIndexes: ["idx_media_sources_expiry"],
+    createSchema(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS media_sources (
+        id TEXT PRIMARY KEY NOT NULL, source_key TEXT NOT NULL UNIQUE,
+        connection_id TEXT NOT NULL, session_id TEXT NOT NULL,
+        expires_at_ms INTEGER NOT NULL, record_json TEXT NOT NULL
+      ); CREATE INDEX IF NOT EXISTS idx_media_sources_expiry ON media_sources(expires_at_ms);`);
+    },
+    validateSchema(db) {
+      assertTableColumns(db, "media_sources", { id: "TEXT", source_key: "TEXT", connection_id: "TEXT",
+        session_id: "TEXT", expires_at_ms: "INTEGER", record_json: "TEXT" });
+    }
+  },
+  {
     groupId: "assets.audio_files",
     schemaVersion: 1,
     resetPolicy: "block_reset",

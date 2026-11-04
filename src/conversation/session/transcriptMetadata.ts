@@ -96,18 +96,18 @@ export function buildTranscriptItemPatch(
   if (JSON.stringify(previous.tokenStats ?? null) !== JSON.stringify(current.tokenStats ?? null) && current.tokenStats != null) {
     patch.tokenStats = current.tokenStats;
   }
-  if (previous.kind === "user_message" && current.kind === "user_message") {
+  if ((previous.kind === "user_message" || previous.kind === "user_media_message") && previous.kind === current.kind) {
     // Empty arrays explicitly clear passive metadata when the same source becomes an @ message.
     const previousFields = transcriptUserMessagePatchSchema.parse({
       ...previous,
       contentParts: previous.contentParts ?? [],
-      specialSegments: previous.specialSegments ?? [],
+      specialSegments: previous.kind === "user_message" ? previous.specialSegments ?? [] : [],
       contentSafetyEvents: previous.contentSafetyEvents ?? []
     });
     const currentFields = transcriptUserMessagePatchSchema.parse({
       ...current,
       contentParts: current.contentParts ?? [],
-      specialSegments: current.specialSegments ?? [],
+      specialSegments: current.kind === "user_message" ? current.specialSegments ?? [] : [],
       contentSafetyEvents: current.contentSafetyEvents ?? []
     });
     for (const key of Object.keys(currentFields) as Array<keyof typeof currentFields>) {

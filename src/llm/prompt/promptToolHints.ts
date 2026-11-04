@@ -17,6 +17,8 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
     lines.push(`看到 ${buildTagHint("file", { file_id: "...", name: "..." })} 表示用户发来了文件；不要说没看到文件。需要展开消息、转发、图片或消息文件引用时再调用查看/下载工具；message_id、forward_id、image_id、file_id 必须逐字复制。消息文件只在确实需要读取、查看或发送内容时调用 download_message_file 下载。`);
   }
 
+  if (visibleToolNames.has("resolve_media_reference")) lines.push("pending_media 表示媒体来源已登记但尚未下载成功；需要其内容时用 resolve_media_reference 补下载，取得 asset_handle 后再查看。来源过期或平台未提供来源时明确说明不可用，不要编造图像内容。");
+
   if (hasAnyTool(visibleToolNames, ["view_current_group_info", "list_current_group_announcements", "view_current_group_announcement", "list_current_group_files", "download_current_group_file", "list_current_group_members"])) {
     lines.push("当前群工具只能读取本会话所在群；查询群公告、群文件或群成员时用 query 缩小范围，并设置合理 limit；公告全文用 view_current_group_announcement 按 startLine/lineCount 分段查看；群文件先 list_current_group_files 再 download_current_group_file。");
   }

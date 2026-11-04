@@ -1,7 +1,8 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
-import { importIncomingContent } from "../../src/app/messaging/incomingContentImport.ts";
+import { importIncomingContent } from "../../src/services/messaging/importIncomingContent.ts";
 import { collectReferencedImageIds } from "../../src/images/imagePromptContext.ts";
 import { processIncomingMessage } from "../../src/app/messaging/messageEventHandler.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
@@ -23,14 +24,14 @@ function message(): ParsedIncomingMessage {
 
 test("recursive import resolves embedded assets in place and keeps authors scoped", async () => {
   const calls: string[] = [];
-  const services = {
+  const services = withMediaServices({
     audioStore: { registerSources: async (sources: string[]) => sources.map(source => ({ id: "aud_embedded", source })) },
     chatFileStore: { importRemoteSource: async (input: { source: string; kind: string; sourceContext: Record<string, string> }) => {
       calls.push(input.source);
       assert.equal(input.sourceContext.userId, "root-actor");
       return { fileId: input.kind === "image" ? "chat_image" : "chat_file", kind: input.kind, sourceName: "资产", mimeType: "application/test", sizeBytes: 2 };
     } }
-  } as unknown as Parameters<typeof importIncomingContent>[0];
+  }) as unknown as Parameters<typeof importIncomingContent>[0];
   const result = await importIncomingContent(services, message(), "root-actor");
   assert.equal(calls.length, 2);
   const embedded = result.contentParts[1]!;
@@ -51,7 +52,7 @@ test("passive group context caches media for later prompts without commands, set
   const imports: string[] = [];
   const deps = {
     inboundDelivery: "qq_official",
-    services: { config, sessionManager: manager, logger: pino({ level: "silent" }),
+    services: withMediaServices({ config, sessionManager: manager, logger: pino({ level: "silent" }),
       audioStore: { registerSources: async (sources: string[]) => sources.map(source => ({ id: "aud_embedded", source })) },
       chatFileStore: { importRemoteSource: async (input: { source: string; kind: string }) => {
         imports.push(input.source);
@@ -62,7 +63,7 @@ test("passive group context caches media for later prompts without commands, set
       audioTranscriber: { transcribeMany: forbidden, ensureReady: forbidden },
       userIdentityStore: { ensureUserIdentity: async () => ({ internalUserId: "known" }) },
       userStore: { touchSeenUser: async () => ({ relationship: "known" }) },
-      setupStore: { get: async () => ({ state: "ready" }) } },
+      setupStore: { get: async () => ({ state: "ready" }) } }),
     handleDirectCommand: forbidden, sendImmediateText: forbidden, flushSession: forbidden,
     persistSession: (_id: string, reason: string) => reasons.push(reason)
   } as unknown as Parameters<typeof processIncomingMessage>[0];
@@ -87,10 +88,10 @@ test("passive group context caches media for later prompts without commands, set
 });
 
 test("failed media downloads retain bounded unavailable markers in their original quoted positions", async () => {
-  const result = await importIncomingContent({
+  const result = await importIncomingContent(withMediaServices({
     audioStore: { registerSources: async () => [] },
     chatFileStore: { importRemoteSource: async () => { throw new Error("synthetic download failure"); } }
-  } as unknown as Parameters<typeof importIncomingContent>[0], message(), "root-actor");
+  }) as unknown as Parameters<typeof importIncomingContent>[0], message(), "root-actor");
   assert.deepEqual(result.imageIds, []);
   assert.deepEqual(result.audioIds, []);
   assert.deepEqual(result.attachments, []);
@@ -98,7 +99,7 @@ test("failed media downloads retain bounded unavailable markers in their origina
   assert.equal(quoted?.kind, "embedded_message");
   if (quoted?.kind === "embedded_message") {
     assert.equal(quoted.senderName, "记录作者");
-    assert.ok(quoted.parts.every(part => part.kind === "special" && part.segmentType === "unavailable_media"));
+    assert.deepEqual(quoted.parts.map(part => part.kind), ["pending_media", "special", "pending_media"]);
   }
   assert.equal(JSON.stringify(result.contentParts).includes("https://"), false);
 });

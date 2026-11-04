@@ -1,3 +1,4 @@
+import type { MediaImportService } from "#services/workspace/mediaSources/service.ts";
 import type { QqOfficialClient } from "#services/qqOfficial/client.ts";
 import type { IncomingMessageReceiptStore } from "#data/state/incomingMessageReceiptStore.ts";
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
@@ -18,7 +19,7 @@ import type { TurnPlanner } from "../../conversation/turnPlanner.ts";
 import type { SessionAppRuntimeAccess } from "#conversation/session/sessionCapabilities.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type { SessionSnapshotStore } from "#conversation/session/sessionSnapshotStore.ts";
-import type { ForwardResolver } from "../../forwards/forwardResolver.ts";
+import type { OneBotReferenceResolver } from "#services/onebot/referenceResolver.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { AudioTranscriber } from "#audio/audioTranscriber.ts";
 import type { LlmClient } from "#llm/llmClient.ts";
@@ -123,7 +124,8 @@ export interface AppServiceBootstrap {
   comfyClient: ComfyClient;
   comfyTaskStore: ComfyTaskStore;
   comfyTemplateCatalog: ComfyTemplateCatalogService;
-  forwardResolver: ForwardResolver;
+  oneBotReferenceResolver: OneBotReferenceResolver;
+  mediaImportService: MediaImportService;
   conversationAccess: ConversationAccessService;
   shellRuntime: ShellRuntime;
   runtimeResourceRegistry: RuntimeResourceRegistry;

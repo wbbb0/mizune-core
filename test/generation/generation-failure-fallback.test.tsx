@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
@@ -63,7 +64,7 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       } as never,
       sessionManager
     },
-    toolRuntime: {
+    toolRuntime: withMediaServices({
       oneBotClient: {
         async sendText(params: { text: string }) {
           sentTexts.push(params.text);
@@ -91,8 +92,8 @@ test("unrecoverable model failures send and persist an assistant fallback reply"
       comfyClient: {} as never,
       comfyTaskStore: {} as never,
       comfyTemplateCatalog: {} as never,
-      forwardResolver: {} as never
-    },
+      oneBotReferenceResolver: {} as never
+    }),
     identity: {
       userStore: {} as never,
       contextStore: {} as never,

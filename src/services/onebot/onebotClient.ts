@@ -467,10 +467,10 @@ export class OneBotClient extends EventEmitter {
     return extractHistoryMessages(payload.data, "group");
   }
 
-  async getForwardMessage(forwardId: string): Promise<unknown[]> {
+  async getForwardMessage(forwardId: string, signal = AbortSignal.timeout(15000)): Promise<unknown[]> {
     const payload = await this.postApi<OneBotApiResponse>("get_forward_msg", {
       id: forwardId
-    });
+    }, signal);
     this.assertApiSuccess("get_forward_msg", payload, { forwardId });
     const container = payload.data;
     if (Array.isArray(container)) {
@@ -485,10 +485,10 @@ export class OneBotClient extends EventEmitter {
     return [];
   }
 
-  async getMessage(messageId: string): Promise<OneBotRetrievedMessage> {
+  async getMessage(messageId: string, signal = AbortSignal.timeout(15000)): Promise<OneBotRetrievedMessage> {
     const payload = await this.postApi<OneBotApiResponse>("get_msg", {
       message_id: Number(messageId)
-    });
+    }, signal);
     this.assertApiSuccess("get_msg", payload, { messageId });
     const data = payload.data && typeof payload.data === "object"
       ? payload.data as Record<string, unknown>
@@ -658,11 +658,12 @@ export class OneBotClient extends EventEmitter {
     return headers;
   }
 
-  private async postApi<T extends OneBotApiResponse>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  private async postApi<T extends OneBotApiResponse>(endpoint: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
     const response = await undiciFetch(`${this.config.onebot.httpUrl}/${endpoint}`, {
       method: "POST",
       headers: this.buildHeaders(),
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      ...(signal ? { signal } : {})
     });
 
     if (!response.ok) {

@@ -57,6 +57,8 @@ export async function processIncomingMessage(
     debounceManager,
     audioStore,
     chatFileStore,
+    mediaImportService,
+    oneBotReferenceResolver,
     mediaCaptionService,
     userStore,
     setupStore,
@@ -80,7 +82,7 @@ export async function processIncomingMessage(
   }
 
   let context = await createMessageProcessingContext(
-    { audioStore, chatFileStore, sessionManager, userStore, setupStore, userIdentityStore },
+    { audioStore, chatFileStore, mediaImportService, oneBotReferenceResolver, sessionManager, userStore, setupStore, userIdentityStore },
     incomingMessage,
     {
       ...options,

@@ -98,9 +98,11 @@ export function formatStructuredAssetFile(file: {
   sourceName?: string | null;
   sizeBytes?: number | null;
   mimeType?: string | null;
+  mediaRef?: string | undefined;
 }): string {
   return formatStructuredTag("asset_file", {
     file_id: file.fileId,
+    ...(file.mediaRef ? { media_ref: file.mediaRef } : {}),
     ...(file.fileKind ? { file_kind: file.fileKind } : {}),
     ...(file.sourceName ? { name: file.sourceName } : {}),
     ...(file.sizeBytes != null ? { size_bytes: String(file.sizeBytes) } : {}),
@@ -596,7 +598,7 @@ function formatMessageContentParts(
       case "image":
       case "emoji":
         if (part.fileId) {
-          parts.push(formatStructuredMediaReference(part.kind, part.fileId));
+          parts.push(formatStructuredTag("ref", { kind: part.kind, image_id: part.fileId, ...(part.mediaRef ? { media_ref: part.mediaRef } : {}) }));
         }
         break;
       case "embedded_message": {
@@ -618,6 +620,12 @@ function formatMessageContentParts(
       }
       case "remote_file":
         parts.push(formatStructuredSpecialSegment({ type: "unresolved_attachment", summary: `未导入附件：${part.sourceName}（${part.mimeType}）` }));
+        break;
+      case "pending_media":
+        parts.push(formatStructuredTag("pending_media", {
+          media_ref: part.mediaRef, kind: part.mediaKind,
+          ...(part.sourceName ? { name: part.sourceName } : {})
+        }));
         break;
       case "file":
         parts.push(formatStructuredMessageFile(part.file));

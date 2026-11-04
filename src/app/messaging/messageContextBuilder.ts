@@ -1,11 +1,14 @@
+import { walkMessageContentParts } from "#messages/contentParts.ts";
+import { resolveLocalReferences } from "#services/messaging/localReferences.ts";
+import { buildSessionId } from "#conversation/session/sessionIdentity.ts";
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
-import { importIncomingContent } from "./incomingContentImport.ts";
+import { importIncomingContent } from "#services/messaging/importIncomingContent.ts";
 import type { MessageHandlerServices, MessageProcessingContext } from "./messageHandlerTypes.ts";
 
 export async function createMessageProcessingContext(
   services: Pick<
     MessageHandlerServices,
-    "audioStore" | "chatFileStore" | "sessionManager" | "userStore" | "setupStore" | "userIdentityStore"
+    "audioStore" | "chatFileStore" | "mediaImportService" | "oneBotReferenceResolver" | "sessionManager" | "userStore" | "setupStore" | "userIdentityStore"
   >,
   incomingMessage: ParsedIncomingMessage,
   options?: {
@@ -23,9 +26,20 @@ export async function createMessageProcessingContext(
         scope: incomingMessage.source === "qq_official" && incomingMessage.chatType === "group" ? "group_member" : "private_user",
         externalId: externalUserId
       })).internalUserId;
+  let messageWithReferences = incomingMessage;
+  if (incomingMessage.contentParts?.some(part => part.kind === "reply" || part.kind === "embedded_message")) {
+    let items: import("#conversation/session/sessionTypes.ts").InternalTranscriptItem[] = [];
+    try { items = services.sessionManager.getSession(options?.targetSessionId ?? buildSessionId(incomingMessage)).internalTranscript; }
+    catch (error) { if (!(error instanceof Error && error.message.startsWith("Session not found:"))) throw error; }
+    if (items.length) messageWithReferences = { ...incomingMessage, contentParts: resolveLocalReferences(incomingMessage.contentParts, items) };
+  }
+  const messageForImport = messageWithReferences.source !== "qq_official" && options?.delivery !== "web" && [...walkMessageContentParts(messageWithReferences.contentParts)].some(part => part.kind === "reply" || part.kind === "forward")
+    ? { ...messageWithReferences, contentParts: await services.oneBotReferenceResolver.expand(
+        { sessionId: options?.targetSessionId ?? buildSessionId(incomingMessage), connectionId: channelId }, messageWithReferences.contentParts!) }
+    : messageWithReferences;
   const [setupState, user, imported] = await Promise.all([
     services.setupStore.get(), services.userStore.touchSeenUser({ userId: resolvedUserId }),
-    importIncomingContent(services, incomingMessage, resolvedUserId)
+    importIncomingContent(services, messageForImport, resolvedUserId)
   ]);
   const { remoteAttachments: _remote, ...messageWithoutRemoteAttachments } = incomingMessage;
   const enrichedMessage = {

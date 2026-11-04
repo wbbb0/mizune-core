@@ -49,7 +49,10 @@ const platformMessageRefSchema = z.discriminatedUnion("platform", [
   })
 ]);
 export const transcriptItemDeliveryRefSchema = platformMessageRefSchema;
-export const transcriptItemSourceRefSchema = platformMessageRefSchema;
+export const transcriptItemSourceRefSchema = z.discriminatedUnion("platform", [
+  z.object({ platform: z.literal("onebot"), messageId: z.number().int().nonnegative() }),
+  z.object({ platform: z.literal("qq_official"), connectionId: z.string().min(1), messageId: z.string().min(1), referenceId: z.string().min(1).max(160).optional() })
+]);
 
 export const transcriptSpecialSegmentSchema = z.object({
   type: z.string().min(1),
@@ -73,6 +76,7 @@ const rawTranscriptMessageContentPartSchema: z.ZodType<PersistedMessageContentPa
   }),
   z.object({
     kind: z.literal("image"),
+    mediaRef: z.string().regex(/^media_[a-f0-9]{32}$/).optional(),
     source: z.string().min(1).optional(),
     fileId: z.string().min(1).optional(),
     sourceName: z.string().nullable().optional(),
@@ -80,6 +84,7 @@ const rawTranscriptMessageContentPartSchema: z.ZodType<PersistedMessageContentPa
   }),
   z.object({
     kind: z.literal("emoji"),
+    mediaRef: z.string().regex(/^media_[a-f0-9]{32}$/).optional(),
     source: z.string().min(1).optional(),
     fileId: z.string().min(1).optional(),
     sourceName: z.string().nullable().optional(),
@@ -90,7 +95,12 @@ const rawTranscriptMessageContentPartSchema: z.ZodType<PersistedMessageContentPa
     file: transcriptMessageFileSchema
   }),
   z.object({
+    kind: z.literal("pending_media"), mediaRef: z.string().regex(/^media_[a-f0-9]{32}$/),
+    mediaKind: z.enum(["image", "emoji", "file", "video"]), sourceName: z.string().nullable()
+  }),
+  z.object({
     kind: z.literal("asset_file"),
+    mediaRef: z.string().regex(/^media_[a-f0-9]{32}$/).optional(),
     fileId: z.string().min(1),
     fileKind: z.enum(chatFileKindValues),
     sourceName: z.string().nullable(),

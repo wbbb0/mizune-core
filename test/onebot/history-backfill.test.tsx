@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
@@ -27,7 +28,7 @@ test("OneBot history backfill appends existing session history without triggerin
   sessionManager.getSession("test:p:123").historyBackfillBoundaryMs = 0;
 
   const persisted: string[] = [];
-  const stats = await backfillOneBotSessionHistory({
+  const stats = await backfillOneBotSessionHistory(withMediaServices({
     config,
     logger: pino({ level: "silent" }),
     importBeforeMs: 1710000010000,
@@ -35,7 +36,7 @@ test("OneBot history backfill appends existing session history without triggerin
       async getLoginInfo() {
         return { user_id: 999, nickname: "bot" };
       },
-      async getPrivateMessageHistory(input) {
+      async getPrivateMessageHistory(input: { userId: string; count: number }) {
         assert.equal(input.userId, "123");
         return [{
           message_id: 11,
@@ -79,10 +80,10 @@ test("OneBot history backfill appends existing session history without triggerin
         return { state: "ready" };
       }
     } as any,
-    persistSession(sessionId) {
+    persistSession(sessionId: string) {
       persisted.push(sessionId);
     }
-  });
+  }));
 
   assert.equal(stats.appendedMessages, 1);
   assert.deepEqual(persisted, ["test:p:123"]);
@@ -123,7 +124,7 @@ test("OneBot history backfill skips startup-time messages so live ingress can ha
   });
   sessionManager.getSession("test:p:321").historyBackfillBoundaryMs = 0;
 
-  const stats = await backfillOneBotSessionHistory({
+  const stats = await backfillOneBotSessionHistory(withMediaServices({
     config,
     logger: pino({ level: "silent" }),
     importBeforeMs: 1710000002000,
@@ -172,7 +173,7 @@ test("OneBot history backfill skips startup-time messages so live ingress can ha
     userStore: { async touchSeenUser() { return { relationship: "unknown" }; } } as any,
     setupStore: { async get() { return { state: "ready" }; } } as any,
     persistSession() {}
-  });
+  }));
 
   assert.equal(stats.appendedMessages, 1);
   assert.deepEqual(
@@ -227,7 +228,7 @@ test("OneBot history backfill skips already imported source messages", async () 
     }
   };
 
-  const deps = {
+  const deps = withMediaServices({
     config,
     logger: pino({ level: "silent" }),
     importBeforeMs: 1710000010000,
@@ -243,7 +244,7 @@ test("OneBot history backfill skips already imported source messages", async () 
     userStore: { async touchSeenUser() { return { relationship: "unknown" }; } } as any,
     setupStore: { async get() { return { state: "ready" }; } } as any,
     persistSession() {}
-  };
+  });
 
   const first = await backfillOneBotSessionHistory(deps);
   const second = await backfillOneBotSessionHistory(deps);
@@ -286,7 +287,7 @@ test("OneBot history backfill inserts by timestamp and respects the session back
     text: "already newer"
   }, 1710000003000);
 
-  const stats = await backfillOneBotSessionHistory({
+  const stats = await backfillOneBotSessionHistory(withMediaServices({
     config,
     logger: pino({ level: "silent" }),
     importBeforeMs: 1710000010000,
@@ -335,7 +336,7 @@ test("OneBot history backfill inserts by timestamp and respects the session back
     userStore: { async touchSeenUser() { return { relationship: "unknown" }; } } as any,
     setupStore: { async get() { return { state: "ready" }; } } as any,
     persistSession() {}
-  });
+  }));
 
   assert.equal(stats.appendedMessages, 1);
   assert.deepEqual(

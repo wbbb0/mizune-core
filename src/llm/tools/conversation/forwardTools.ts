@@ -1,3 +1,7 @@
+import { assertKnownOneBotReference } from "#services/onebot/referenceAccess.ts";
+import { mediaScopeForSession } from "#services/workspace/mediaSources/content.ts";
+import { importReferenceMedia } from "#services/onebot/referenceMedia.ts";
+import { buildChatFileHandleResultFromContext } from "../core/fileHandle.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { resolveForwardIdArg } from "../core/structuredIdResolver.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
@@ -10,7 +14,7 @@ export const forwardToolDescriptors: ToolDescriptor[] = [
       type: "function",
       function: {
         name: "view_forward_record",
-        description: "按 prompt 里的精确 forward_id 展开一条合并转发记录，返回节点、嵌套 forward ids 和 image ids。",
+        description: "按 prompt 里的精确 forward_id 展开一条合并转发记录，递归返回记录层级，并补下载其中图片，返回真实 asset 句柄。",
         parameters: {
           type: "object",
           properties: {
@@ -34,47 +38,13 @@ export const forwardToolHandlers: Record<string, ToolHandler> = {
     }
 
     try {
-      const record = await context.forwardResolver.resolveForwardRecord(forwardId);
-      return JSON.stringify({
-        ok: true,
-        forwardId: record.forwardId,
-        fetchedAt: record.fetchedAt,
-        nodeCount: record.nodes.length,
-        nodes: record.nodes.map((node) => ({
-          nodeIndex: node.nodeIndex,
-          senderName: node.senderName,
-          ...(node.userId ? { userId: node.userId } : {}),
-          ...(node.time != null ? { time: node.time, timeText: formatTimestamp(node.time) } : {}),
-          preview: node.preview,
-          segments: node.segments.map((segment) => {
-            if (segment.kind === "image") {
-              return {
-                kind: segment.kind,
-                mediaKind: segment.mediaKind,
-                imageId: segment.imageId,
-                viewable: segment.viewable
-              };
-            }
-            if (segment.kind === "forward") {
-              return {
-                kind: segment.kind,
-                forwardId: segment.forwardId
-              };
-            }
-            if (segment.kind === "text") {
-              return {
-                kind: segment.kind,
-                text: segment.text
-              };
-            }
-            return {
-              kind: segment.kind,
-              type: segment.type,
-              summary: segment.summary
-            };
-          })
-        }))
-      });
+      assertKnownOneBotReference(context.sessionManager, context.lastMessage.sessionId, "forward", forwardId);
+      const parts = await context.oneBotReferenceResolver.expand(mediaScopeForSession(context.lastMessage.sessionId), [{ kind: "forward", forwardId }]);
+      const imported = await importReferenceMedia(context, context.lastMessage, parts);
+      const files = await context.chatFileStore.getMany([...imported.imageIds, ...imported.emojiIds]);
+      return JSON.stringify({ ok: true, forwardId, contentParts: imported.contentParts,
+        assets: files.map(file => buildChatFileHandleResultFromContext(file, context)),
+        summary: "转发内容已按层级展开，图片已登记为可查看的资产；未完成的媒体保留可重试引用。" });
     } catch (error: unknown) {
       return JSON.stringify({
         error: error instanceof Error ? error.message : String(error)
@@ -82,16 +52,3 @@ export const forwardToolHandlers: Record<string, ToolHandler> = {
     }
   }
 };
-
-function formatTimestamp(timestampSeconds: number): string {
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  }).format(new Date(timestampSeconds * 1000));
-}

@@ -1,6 +1,10 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMessageProcessingContext } from "../../src/app/messaging/messageContextBuilder.ts";
+import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
+import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { walkMessageContentParts } from "../../src/messages/contentParts.ts";
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 
   test("web message context preserves pre-resolved attachments and image ids", async () => {
@@ -34,7 +38,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
       type: "private"
     };
 
-    const context = await createMessageProcessingContext({
+    const context = await createMessageProcessingContext(withMediaServices({
       setupStore: {
         async get() {
           return { phase: "ready" };
@@ -66,7 +70,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
           return session as never;
         }
       } as never
-    }, incomingMessage, {
+    }), incomingMessage, {
       targetSessionId: "web:test",
       delivery: "web"
     });
@@ -128,7 +132,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
       }
     };
 
-    const context = await createMessageProcessingContext({
+    const context = await createMessageProcessingContext(withMediaServices({
       setupStore: {
         async get() {
           return { phase: "ready" };
@@ -165,7 +169,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
           return { id: "qqbot:p:2254600711", type: "private" } as never;
         }
       } as never
-    }, incomingMessage, {
+    }), incomingMessage, {
       delivery: "onebot"
     });
 
@@ -200,7 +204,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
       isAtMentioned: false
     };
 
-    const context = await createMessageProcessingContext({
+    const context = await createMessageProcessingContext(withMediaServices({
       setupStore: {
         async get() {
           return { phase: "ready" };
@@ -239,7 +243,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
           return { id: "qqbot:p:2254600711", type: "private" } as never;
         }
       } as never
-    }, incomingMessage, {
+    }), incomingMessage, {
       delivery: "onebot"
     });
 
@@ -272,7 +276,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
       isAtMentioned: false
     };
 
-    const context = await createMessageProcessingContext({
+    const context = await createMessageProcessingContext(withMediaServices({
       setupStore: {
         async get() {
           return { phase: "ready" };
@@ -323,7 +327,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
           return { id: "qqbot:p:2254600711", type: "private" } as never;
         }
       } as never
-    }, incomingMessage, {
+    }), incomingMessage, {
       delivery: "onebot"
     });
 
@@ -371,7 +375,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
       isAtMentioned: false
     };
 
-    const context = await createMessageProcessingContext({
+    const context = await createMessageProcessingContext(withMediaServices({
       setupStore: {
         async get() {
           return { phase: "ready" };
@@ -416,11 +420,15 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
           return { id: "qqbot:p:2254600711", type: "private" } as never;
         }
       } as never
-    }, incomingMessage, {
+    }), incomingMessage, {
       delivery: "onebot"
     });
 
-    assert.deepEqual(context.enrichedMessage.contentParts, [
+    assert.deepEqual(context.enrichedMessage.contentParts?.map(part => {
+      if (part.kind !== "image" && part.kind !== "emoji") return part;
+      assert.match(part.mediaRef ?? "", /^media_[a-f0-9]{32}$/);
+      const { mediaRef, ...rest } = part; return rest;
+    }), [
       { kind: "text", text: "前" },
       { kind: "image", fileId: "file_image_1", sourceName: "pic.png", mimeType: "image/png" },
       { kind: "text", text: "后" }
@@ -452,7 +460,7 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
       isAtMentioned: false
     };
 
-    const context = await createMessageProcessingContext({
+    const context = await createMessageProcessingContext(withMediaServices({
       setupStore: {
         async get() {
           return { phase: "ready" };
@@ -498,14 +506,47 @@ import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.
           return { id: "qqbot:p:2254600711", type: "private" } as never;
         }
       } as never
-    }, incomingMessage, {
+    }), incomingMessage, {
       delivery: "onebot"
     });
 
     assert.deepEqual(context.enrichedMessage.audioIds, ["aud-1"]);
-    assert.deepEqual(context.enrichedMessage.contentParts, [
+    assert.deepEqual(context.enrichedMessage.contentParts?.map(part => {
+      if (part.kind !== "image" && part.kind !== "emoji") return part;
+      assert.match(part.mediaRef ?? "", /^media_[a-f0-9]{32}$/);
+      const { mediaRef, ...rest } = part; return rest;
+    }), [
       { kind: "audio", audioId: "aud-1" },
       { kind: "text", text: "再发一次" },
       { kind: "audio", audioId: "aud-1" }
     ]);
   });
+
+
+test("a cached reply containing an unresolved nested forward still enters the native reference resolver", async () => {
+  const sessionManager = new SessionManager(createTestAppConfig());
+  const sessionId = "qqbot:p:10001";
+  sessionManager.ensureSession({ id: sessionId, type: "private" });
+  sessionManager.appendUserHistory(sessionId, { chatType: "private", userId: "member", senderName: "发送者", text: "记录",
+    sourceRef: { platform: "onebot", messageId: 12345 },
+    contentParts: [{ kind: "embedded_message", relation: "reply", messageId: "quoted", parts: [{ kind: "forward", forwardId: "nested-record" }] }] });
+  const incoming: ParsedIncomingMessage = { chatType: "private", userId: "10001", channelId: "qqbot", senderName: "发送者", text: "看看",
+    contentParts: [{ kind: "reply", messageId: "12345" }], images: [], audioSources: [], audioIds: [], emojiSources: [], imageIds: [], emojiIds: [],
+    forwardIds: [], replyMessageId: "12345", mentionUserIds: [], mentionedAll: false, isAtMentioned: false };
+  let calls = 0;
+  const services = withMediaServices({ sessionManager,
+    setupStore: { get: async () => ({ phase: "ready" }) } as never,
+    userIdentityStore: { ensureUserIdentity: async () => ({ internalUserId: "member" }) } as never,
+    userStore: { touchSeenUser: async () => ({ relationship: "known" }) } as never,
+    audioStore: { registerSources: async () => [] } as never,
+    chatFileStore: { importRemoteSource: async () => { throw new Error("no remote media expected"); } } as never,
+    oneBotReferenceResolver: { expand: async (_scope: unknown, parts: Parameters<typeof walkMessageContentParts>[0]) => {
+      calls++;
+      assert.ok([...walkMessageContentParts(parts)].some(part => part.kind === "forward" && part.forwardId === "nested-record"));
+      return [{ kind: "text", text: "已展开的记录" }];
+    } } as never
+  });
+  const context = await createMessageProcessingContext(services, incoming, { delivery: "onebot" });
+  assert.equal(calls, 1);
+  assert.deepEqual(context.enrichedMessage.contentParts, [{ kind: "text", text: "已展开的记录" }]);
+});

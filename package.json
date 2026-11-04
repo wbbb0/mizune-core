@@ -12,7 +12,6 @@
     "#comfy/*": "./src/comfy/*",
     "#conversation/*": "./src/conversation/*",
     "#data/*": "./src/data/*",
-    "#forwards/*": "./src/forwards/*",
     "#identity/*": "./src/identity/*",
     "#images/*": "./src/images/*",
     "#internalApi/*": "./src/internalApi/*",

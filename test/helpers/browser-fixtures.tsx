@@ -1,3 +1,4 @@
+import { withMediaServices } from "./media-import-fixtures.ts";
 import type { BuiltinToolContext } from "../../src/llm/tools/core/shared.ts";
 import type { BrowserService } from "../../src/services/web/browser/browserService.ts";
 import type {
@@ -100,7 +101,7 @@ export function createBrowserToolContext(
       };
     }
   };
-  return {
+  return withMediaServices<Omit<BuiltinToolContext, "mediaImportService">>({
     browserService: resolvedBrowserService as unknown as BuiltinToolContext["browserService"],
     config: null as unknown as BuiltinToolContext["config"],
     relationship: "owner",
@@ -236,7 +237,7 @@ export function createBrowserToolContext(
         return [];
       }
     } as unknown as BuiltinToolContext["downloadRuntime"],
-    forwardResolver: null as unknown as BuiltinToolContext["forwardResolver"],
+    oneBotReferenceResolver: null as unknown as BuiltinToolContext["oneBotReferenceResolver"],
     requestStore: null as unknown as BuiltinToolContext["requestStore"],
     sessionManager: null as unknown as BuiltinToolContext["sessionManager"],
     whitelistStore: null as unknown as BuiltinToolContext["whitelistStore"],
@@ -268,5 +269,5 @@ export function createBrowserToolContext(
       }
     } as unknown as BuiltinToolContext["localFileService"],
     activeInternalTrigger: null
-  };
+  });
 }

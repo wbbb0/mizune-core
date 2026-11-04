@@ -200,7 +200,8 @@ export function createGenerationExecutor(
     comfyClient,
     comfyTaskStore,
     comfyTemplateCatalog,
-    forwardResolver
+    oneBotReferenceResolver,
+    mediaImportService
   } = toolRuntime;
   const {
     userStore,
@@ -672,7 +673,8 @@ export function createGenerationExecutor(
         comfyClient,
         comfyTaskStore,
         comfyTemplateCatalog,
-        forwardResolver,
+        oneBotReferenceResolver,
+        mediaImportService,
         userStore,
         contextStore: deps.identity.contextStore,
         personaStore,

@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
@@ -39,7 +40,7 @@ for (const scenario of ["immediate", "consume", "promote", "delivering", "switch
     }
     const deps = {
       inboundDelivery: "web",
-      services: {
+      services: withMediaServices({
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
@@ -93,7 +94,7 @@ for (const scenario of ["immediate", "consume", "promote", "delivering", "switch
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
-      },
+      }),
       handleDirectCommand: async () => {},
       persistSession: (_sessionId, reason) => {
         persistedReasons.push(reason);
@@ -239,7 +240,7 @@ for (const scenario of ["immediate", "consume", "promote", "delivering", "switch
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
-      services: {
+      services: withMediaServices({
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
@@ -293,7 +294,7 @@ for (const scenario of ["immediate", "consume", "promote", "delivering", "switch
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
-      },
+      }),
       handleDirectCommand: async () => {},
       persistSession: () => {},
       sendImmediateText: async () => {},
@@ -418,7 +419,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
-      services: {
+      services: withMediaServices({
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
@@ -472,7 +473,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
-      },
+      }),
       handleDirectCommand: async () => {},
       persistSession: (_sessionId, reason) => {
         persistedReasons.push(reason);
@@ -611,7 +612,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
-      services: {
+      services: withMediaServices({
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
@@ -665,7 +666,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
-      },
+      }),
       handleDirectCommand: async () => {},
       persistSession: (_sessionId, reason) => {
         persistedReasons.push(reason);
@@ -777,7 +778,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
-      services: {
+      services: withMediaServices({
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
@@ -831,7 +832,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
-      },
+      }),
       handleDirectCommand: async () => {},
       persistSession: (_sessionId, reason) => {
         persistedReasons.push(reason);
@@ -885,7 +886,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
-      services: {
+      services: withMediaServices({
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
@@ -939,7 +940,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
-      },
+      }),
       handleDirectCommand: async () => {},
       persistSession: () => {},
       sendImmediateText: async () => {},
@@ -980,7 +981,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
 
     await processIncomingMessage({
       inboundDelivery: "onebot",
-      services: {
+      services: withMediaServices({
         config,
         logger: pino({ level: "silent" }),
         whitelistStore: {
@@ -1034,7 +1035,7 @@ for (const mode of ["immediate", "after_tool"] as const) {
         conversationAccess: {
           recordSeenGroupMember: async () => {}
         } as any
-      },
+      }),
       handleDirectCommand: async () => {},
       persistSession: () => {},
       sendImmediateText: async () => {},

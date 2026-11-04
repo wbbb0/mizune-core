@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -66,13 +67,13 @@ for (const scenario of ["clear-first", "clear-after-context", "reset-first", "cl
         } as unknown as Parameters<typeof createDirectCommandHandler>[0]);
         return {
           inboundDelivery: "qq_official",
-          services: {
+          services: withMediaServices({
             config, sessionManager: manager, logger,
             audioStore: { registerSources: async () => [] }, chatFileStore: { importRemoteSource: forbidden },
             userIdentityStore: { ensureUserIdentity: async () => ({ internalUserId: "owner" }) },
             userStore: { touchSeenUser: async () => ({ relationship: "owner" }) },
             setupStore: { get: async () => ({ state: "ready" }) }
-          },
+          }),
           handleDirectCommand: async (input: Parameters<typeof realCommand>[0]) => {
             executions += 1;
             await realCommand(input);

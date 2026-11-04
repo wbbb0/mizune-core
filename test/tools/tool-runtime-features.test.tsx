@@ -1,3 +1,4 @@
+import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -1723,7 +1724,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await timeToolHandlers.get_current_time!(
       { id: "tool_time_1", type: "function", function: { name: "get_current_time", arguments: "{}" } },
       {},
-      {
+      withMediaServices({
         config: createForwardFeatureConfig(),
         relationship: "owner",
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
@@ -1744,13 +1745,13 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         chatFileStore: {},
         mediaVisionService: {},
         mediaCaptionService: {},
-        forwardResolver: {},
+        oneBotReferenceResolver: {},
         userStore: {},
         personaStore: {},
         setupStore: {},
         conversationAccess: {},
         npcDirectory: {}
-      } as any
+      }) as any
     );
     const payload = parseToolContent(result);
     const canonical = parseCanonicalToolContent(result);
@@ -1885,7 +1886,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await chatFileToolHandlers.asset_list!(
       { id: "tool_asset_list_1", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"chat_test0001.png\"}" } },
       { asset_ref: "chat_test0001.png" },
-      {
+      withMediaServices({
         chatFileStore: {
           async getFile() {
             return null;
@@ -1906,7 +1907,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             }];
           }
         }
-      } as any
+      }) as any
     );
 
     const payload = JSON.parse(String(result));
@@ -1953,7 +1954,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await chatFileToolHandlers.asset_list!(
       { id: "tool_asset_list_visible_tools", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"chat_test0001.png\"}" } },
       { asset_ref: "chat_test0001.png" },
-      {
+      withMediaServices({
         debugSnapshot: {
           visibleToolNames: ["asset_send_to_chat", "asset_send_to_chat"]
         },
@@ -1977,7 +1978,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             }];
           }
         }
-      } as any
+      }) as any
     );
 
     const payload = JSON.parse(String(result));
@@ -1997,7 +1998,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await chatFileToolHandlers.asset_list!(
       { id: "tool_asset_list_video_handle", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"clip.mp4\"}" } },
       { asset_ref: "clip.mp4" },
-      {
+      withMediaServices({
         chatFileStore: {
           async getFile() {
             return null;
@@ -2018,7 +2019,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             }];
           }
         }
-      } as any
+      }) as any
     );
 
     const payload = JSON.parse(String(result));
@@ -2041,7 +2042,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await chatFileToolHandlers.asset_list!(
       { id: "tool_asset_list_empty_visible", type: "function", function: { name: "asset_list", arguments: "{\"asset_ref\":\"chat_test0001.png\"}" } },
       { asset_ref: "chat_test0001.png" },
-      {
+      withMediaServices({
         debugSnapshot: {
           visibleToolNames: []
         },
@@ -2065,7 +2066,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             }];
           }
         }
-      } as any
+      }) as any
     );
 
     const payload = JSON.parse(String(result));
@@ -2081,7 +2082,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await chatFileToolHandlers.asset_list!(
       { id: "tool_asset_list_2", type: "function", function: { name: "asset_list", arguments: "{\"query\":\"report\",\"limit\":1}" } },
       { query: "report", limit: 1 },
-      {
+      withMediaServices({
         chatFileStore: {
           async listFiles() {
             return [
@@ -2127,7 +2128,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             ];
           }
         }
-      } as any
+      }) as any
     );
 
     const payload = JSON.parse(String(result));
@@ -2147,7 +2148,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await chatFileToolHandlers.asset_local_path!(
       { id: "tool_asset_local_path", type: "function", function: { name: "asset_local_path", arguments: "{\"asset_ref\":\"report.pdf\",\"absolute\":true}" } },
       { asset_ref: "report.pdf", absolute: true },
-      {
+      withMediaServices({
         chatFileStore: {
           async getFile() {
             return null;
@@ -2172,7 +2173,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             return "/data/chat-files/media/report.pdf";
           }
         }
-      } as any
+      }) as any
     );
 
     assert.deepEqual(JSON.parse(String(result)), {
@@ -2204,7 +2205,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const result = await chatFileToolHandlers.asset_export_to_filesystem!(
         { id: "tool_asset_export", type: "function", function: { name: "asset_export_to_filesystem", arguments: "{\"asset_ref\":\"report.pdf\",\"to_path\":\"exports/\"}" } },
         { asset_ref: "report.pdf", to_path: "exports/" },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return null;
@@ -2236,7 +2237,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               };
             }
           }
-        } as any
+        }) as any
       );
 
       assert.equal(await readFile(exportedPath, "utf8"), "pdf bytes");
@@ -2270,7 +2271,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const result = await chatFileToolHandlers.asset_export_to_filesystem!(
         { id: "tool_asset_export_sanitize", type: "function", function: { name: "asset_export_to_filesystem", arguments: "{\"asset_ref\":\"evil.txt\",\"to_path\":\"exports/\"}" } },
         { asset_ref: "evil.txt", to_path: "exports/" },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return null;
@@ -2305,7 +2306,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               };
             }
           }
-        } as any
+        }) as any
       );
 
       assert.equal(await readFile(join(exportDir, "evil.txt"), "utf8"), "safe");
@@ -2339,7 +2340,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       sourceContext: {},
       caption: null
     };
-    const context = {
+    const context = withMediaServices({
       debugSnapshot: {
         visibleToolNames: ["asset_document_overview", "asset_document_read", "asset_document_search", "asset_send_to_chat"]
       },
@@ -2355,7 +2356,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return filePath;
         }
       }
-    } as any;
+    }) as any;
 
     try {
       const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
@@ -2468,7 +2469,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       caption: null
     };
     let calls = 0;
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile() {
           return file;
@@ -2501,7 +2502,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           };
         }
       }
-    } as any;
+    }) as any;
     try {
       const first = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_summary_1", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"summary.md\"}" } },
@@ -2553,7 +2554,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       sourceContext: {},
       caption: null
     };
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile() {
           return file;
@@ -2597,7 +2598,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           };
         }
       }
-    } as any;
+    }) as any;
     try {
       const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
         { id: "tool_asset_doc_hybrid", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"hybrid.md\",\"query\":\"renewal question\"}" } },
@@ -2681,7 +2682,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_csv_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"report.csv\"}" } },
         { asset_ref: "report.csv" },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return file;
@@ -2693,7 +2694,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               return filePath;
             }
           }
-        } as any
+        }) as any
       )));
       assert.equal(result.ok, true);
       assert.equal(result.document.parser, "plain_text_v1");
@@ -2720,7 +2721,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       sourceContext: {},
       caption: null
     };
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile() {
           return file;
@@ -2732,7 +2733,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return filePath;
         }
       }
-    } as any;
+    }) as any;
 
     try {
       const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
@@ -2783,7 +2784,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       caption: null
     };
     let resolveCount = 0;
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile() {
           return file;
@@ -2799,7 +2800,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return filePath;
         }
       }
-    } as any;
+    }) as any;
     try {
       const first = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_cache_fail_1", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"retry.md\"}" } },
@@ -2843,7 +2844,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_persist_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"persist.md\"}" } },
         { asset_ref: "persist.md" },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return file;
@@ -2858,7 +2859,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               return cacheDir;
             }
           }
-        } as any
+        }) as any
       )));
       assert.equal(overview.ok, true);
       assert.equal(overview.document.cache.text, false);
@@ -2943,7 +2944,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       startOffset: 0,
       endOffset: persistedContent.length
     })}\n`, "utf8");
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile() {
           return file;
@@ -2958,7 +2959,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return cacheDir;
         }
       }
-    } as any;
+    }) as any;
     try {
       const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_persist_hit_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"cached.md\"}" } },
@@ -3037,7 +3038,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       endOffset: persistedContent.length
     })}\n`, "utf8");
     try {
-      const context = {
+      const context = withMediaServices({
         chatFileStore: {
           async getFile() {
             return file;
@@ -3052,7 +3053,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             return cacheDir;
           }
         }
-      } as any;
+      }) as any;
       const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_stale_chunks_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"stale.md\"}" } },
         { asset_ref: "stale.md" },
@@ -3095,7 +3096,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       sourceContext: {},
       caption: null
     };
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile() {
           return file;
@@ -3110,7 +3111,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return cacheDir;
         }
       }
-    } as any;
+    }) as any;
     try {
       const first = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_crlf_overview_1", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"crlf.md\"}" } },
@@ -3164,7 +3165,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_doc_stat_size_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"oversized.md\"}" } },
         { asset_ref: "oversized.md" },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return file;
@@ -3176,7 +3177,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               return filePath;
             }
           }
-        } as any
+        }) as any
       )));
       assert.equal(overview.ok, false);
       assert.equal(overview.status, "too_large");
@@ -3207,7 +3208,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     };
     let inspectedText = "";
     let inspectedChunkKeys: string[] = [];
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile() {
           return file;
@@ -3243,7 +3244,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           };
         }
       }
-    } as any;
+    }) as any;
 
     try {
       const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
@@ -3298,7 +3299,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const inspected = JSON.parse(String(await assetDocumentToolHandlers.asset_document_inspect!(
         { id: "tool_asset_boundary_inspect", type: "function", function: { name: "asset_document_inspect", arguments: "{\"asset_ref\":\"boundary.md\",\"question\":\"what is late_needle\"}" } },
         { asset_ref: "boundary.md", question: "what is late_needle" },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return file;
@@ -3333,7 +3334,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               };
             }
           }
-        } as any
+        }) as any
       )));
       assert.equal(inspected.ok, true);
       assert.match(inspectedText, /late_needle/);
@@ -3367,7 +3368,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const search = JSON.parse(String(await assetDocumentToolHandlers.asset_document_search!(
         { id: "tool_asset_many_search", type: "function", function: { name: "asset_document_search", arguments: "{\"asset_ref\":\"many.md\",\"query\":\"boundary_needle\",\"limit\":2}" } },
         { asset_ref: "many.md", query: "boundary_needle", limit: 2 },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return file;
@@ -3379,7 +3380,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               return filePath;
             }
           }
-        } as any
+        }) as any
       )));
       assert.equal(search.returned, 2);
       assert.equal(search.total_matches, 3);
@@ -3404,7 +3405,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
         { id: "tool_asset_xls_overview", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_ref\":\"legacy.xls\"}" } },
         { asset_ref: "legacy.xls" },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return {
@@ -3428,7 +3429,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               return filePath;
             }
           }
-        } as any
+        }) as any
       )));
       assert.equal(result.ok, false);
       assert.equal(result.status, "unsupported");
@@ -3463,7 +3464,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       const result = JSON.parse(String(await assetDocumentToolHandlers.asset_document_inspect!(
         { id: "tool_asset_zh_inspect", type: "function", function: { name: "asset_document_inspect", arguments: "{\"asset_ref\":\"contract.md\",\"question\":\"付款期限和违约责任是什么？\",\"max_chunks\":1}" } },
         { asset_ref: "contract.md", question: "付款期限和违约责任是什么？", max_chunks: 1 },
-        {
+        withMediaServices({
           chatFileStore: {
             async getFile() {
               return file;
@@ -3498,7 +3499,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               };
             }
           }
-        } as any
+        }) as any
       )));
       assert.equal(result.ok, true);
       assert.equal(inspectedChunks.length, 1);
@@ -3783,7 +3784,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await assetDocumentToolHandlers.asset_document_read!(
       { id: "tool_asset_doc_missing_file", type: "function", function: { name: "asset_document_read", arguments: "{\"asset_ref\":\"missing.md\"}" } },
       { asset_ref: "missing.md" },
-      {
+      withMediaServices({
         chatFileStore: {
           async getFile() {
             return {
@@ -3807,7 +3808,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             throw new Error("file is gone");
           }
         }
-      } as any
+      }) as any
     );
     const payload = JSON.parse(String(result));
     assert.equal(payload.ok, false);
@@ -3853,7 +3854,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       sourceContext: {},
       caption: null
     };
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async getFile(id: string) {
           return id === "file_xlsx_1" ? file : null;
@@ -3865,7 +3866,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           return filePath;
         }
       }
-    } as any;
+    }) as any;
 
     try {
       const overview = JSON.parse(String(await assetDocumentToolHandlers.asset_document_overview!(
@@ -3897,7 +3898,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
     const result = await assetDocumentToolHandlers.asset_document_overview!(
       { id: "tool_asset_doc_pdf", type: "function", function: { name: "asset_document_overview", arguments: "{\"asset_id\":\"file_pdf_1\"}" } },
       { asset_id: "file_pdf_1" },
-      {
+      withMediaServices({
         chatFileStore: {
           async getFile(id: string) {
             return id === "file_pdf_1"
@@ -3923,7 +3924,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
             return filePath;
           }
         }
-      } as any
+      }) as any
     );
     try {
       const payload = JSON.parse(String(result));
@@ -3951,13 +3952,13 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
       caption: null,
       captionStatus: "missing"
     }));
-    const context = {
+    const context = withMediaServices({
       chatFileStore: {
         async listFiles() {
           return files;
         }
       }
-    } as any;
+    }) as any;
 
     const zero = await chatFileToolHandlers.asset_list!(
       { id: "tool_asset_list_limit_zero", type: "function", function: { name: "asset_list", arguments: "{\"limit\":0}" } },
@@ -4547,7 +4548,7 @@ function createRuntimeWaitToolContext() {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_text_reject", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"file_id\":\"file_img_1\",\"text\":\"发你了\"}" } },
       { asset_ref: "img_deadbeef.png", text: "发你了" },
-      {
+      withMediaServices({
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
@@ -4566,7 +4567,7 @@ function createRuntimeWaitToolContext() {
             return [];
           }
         }
-      } as any
+      }) as any
     );
 
     assert.deepEqual(JSON.parse(String(result)), {
@@ -4588,7 +4589,7 @@ function createRuntimeWaitToolContext() {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_1", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
       { asset_ref: "img_deadbeef.png" },
-      {
+      withMediaServices({
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
@@ -4630,7 +4631,7 @@ function createRuntimeWaitToolContext() {
             transcriptCalls.push(item);
           }
         }
-      } as any
+      }) as any
     );
 
     assert.equal(queuedTasks.length, 1);
@@ -4695,7 +4696,7 @@ function createRuntimeWaitToolContext() {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_2", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
       { asset_ref: "file_bead1234.txt" },
-      {
+      withMediaServices({
         config: createNapcatTestConfig(),
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
@@ -4740,7 +4741,7 @@ function createRuntimeWaitToolContext() {
             transcriptCalls.push(item);
           }
         }
-      } as any
+      }) as any
     );
 
     assert.equal(queuedTasks.length, 1);
@@ -4803,7 +4804,7 @@ function createRuntimeWaitToolContext() {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_2_web", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
       { asset_ref: "file_bead1234.txt" },
-      {
+      withMediaServices({
         replyDelivery: "web",
         config: createNapcatTestConfig(),
         lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
@@ -4840,7 +4841,7 @@ function createRuntimeWaitToolContext() {
             transcriptCalls.push(item);
           }
         }
-      } as any
+      }) as any
     );
 
     assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
@@ -4887,7 +4888,7 @@ function createRuntimeWaitToolContext() {
       const result = await chatFileToolHandlers.asset_send_to_chat!(
         { id: "tool_workspace_send_generic_file", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
         { asset_ref: "file_bead1234.txt" },
-        {
+        withMediaServices({
           replyDelivery: "onebot",
           config: createTestAppConfig(),
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
@@ -4919,7 +4920,7 @@ function createRuntimeWaitToolContext() {
               queuedTasks.push(params.send);
             }
           }
-        } as any
+        }) as any
       );
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
@@ -4943,7 +4944,7 @@ function createRuntimeWaitToolContext() {
       const result = await chatFileToolHandlers.asset_send_to_chat!(
         { id: "tool_workspace_send_web_img", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
         { asset_ref: "img_deadbeef.png" },
-        {
+        withMediaServices({
           replyDelivery: "web",
           lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
@@ -4977,7 +4978,7 @@ function createRuntimeWaitToolContext() {
               transcriptCalls.push(item);
             }
           }
-        } as any
+        }) as any
       );
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
@@ -5023,7 +5024,7 @@ function createRuntimeWaitToolContext() {
       const result = await chatFileToolHandlers.asset_send_to_chat!(
         { id: "tool_workspace_send_3", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_deadbeef.jpg\"}" } },
         { asset_ref: "file_deadbeef.jpg" },
-        {
+        withMediaServices({
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
             async getFile(id: string) {
@@ -5079,7 +5080,7 @@ function createRuntimeWaitToolContext() {
             recordSentMessage() {},
             appendInternalTranscript() {}
           }
-        } as any
+        }) as any
       );
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
@@ -5108,7 +5109,7 @@ function createRuntimeWaitToolContext() {
       const result = await localFileToolHandlers.filesystem_send_to_chat!(
         { id: "tool_workspace_send_path_rel", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
         { path: "outputs/diagram.png" },
-        {
+        withMediaServices({
           config: createNapcatTestConfig(),
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           localFileService: {
@@ -5141,7 +5142,7 @@ function createRuntimeWaitToolContext() {
             recordSentMessage() {},
             appendInternalTranscript() {}
           }
-        } as any
+        }) as any
       );
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
@@ -5351,7 +5352,7 @@ function createRuntimeWaitToolContext() {
       updated_at_ms: 2
     } as const;
     let startInput: any = null;
-    const context = {
+    const context = withMediaServices({
       lastMessage: { sessionId: "qqbot:p:10001", userId: "10001", senderName: "Alice" },
       downloadRuntime: {
         async start(input: any) {
@@ -5368,7 +5369,7 @@ function createRuntimeWaitToolContext() {
       chatFileStore: {
         async getFile() { return null; }
       }
-    } as any;
+    }) as any;
 
     const started = parseToolContent(await resourceToolHandlers.start_download_resource!(
       { id: "tool_download_start", type: "function", function: { name: "start_download_resource", arguments: "{}" } },

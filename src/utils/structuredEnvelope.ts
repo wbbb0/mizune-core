@@ -8,6 +8,7 @@ export const PROTOCOL_TAGS = [
   "draft_message",
   "envelope",
   "embedded_message",
+  "pending_media",
   "event",
   "file",
   "history_message",

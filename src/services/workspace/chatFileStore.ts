@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize } from "node:path";
 import { fetch as undiciFetch, type Response as UndiciResponse } from "undici";
 import type { Logger } from "pino";
@@ -110,6 +110,10 @@ export class ChatFileStore {
       WHERE file_id = ?
     `).get(normalizedFileId) as ChatFileRow | undefined;
     return row ? rowToChatFileRecord(row) : null;
+  }
+
+  async isFileAvailable(fileId: string): Promise<boolean> {
+    try { await access(await this.resolveAbsolutePath(fileId)); return true; } catch { return false; }
   }
 
   async getMany(fileIds: string[]): Promise<ChatFileRecord[]> {
@@ -242,6 +246,7 @@ export class ChatFileStore {
     kind?: ChatFileKind;
     origin: ChatFileOrigin;
     proxyConsumer?: ProxyConsumer;
+    signal?: AbortSignal;
     sourceContext?: Record<string, string | number | boolean | null>;
   }): Promise<ChatFileRecord> {
     const source = String(input.source ?? "").trim();
@@ -249,7 +254,8 @@ export class ChatFileStore {
       throw new Error("source is required");
     }
     if (/^https?:\/\//i.test(source)) {
-      const signal = AbortSignal.timeout(this.config.chatFiles.downloadTimeoutMs);
+      const timeout = AbortSignal.timeout(this.config.chatFiles.downloadTimeoutMs);
+      const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
       const response = input.proxyConsumer
         ? await fetchWithProxy(this.config, input.proxyConsumer, source, { signal })
         : await undiciFetch(source, { signal });

@@ -373,13 +373,12 @@ function replaceImagesKeepingLatest(content: string, keepCount: number): { conte
   let seen = 0;
   const next = content.replace(/\r\n/g, "\n").split("\n").map((line) => {
     const parsed = parseProtocolLine(line);
-    if (!parsed || parsed.tag !== "ref" || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
+    if (!parsed || (parsed.tag !== "ref" && parsed.tag !== "pending_media") || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
       return line;
     }
-    const value = String(parsed.attrs.image_id ?? "").trim();
     if (seen < keepCount) {
       seen += 1;
-      return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", value);
+      return line;
     }
     return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", "omitted");
   }).join("\n");
@@ -395,7 +394,7 @@ function replaceExcessImages(content: string, replaceAll: boolean): string {
   }
   return content.replace(/\r\n/g, "\n").split("\n").map((line) => {
     const parsed = parseProtocolLine(line);
-    if (!parsed || parsed.tag !== "ref" || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
+    if (!parsed || (parsed.tag !== "ref" && parsed.tag !== "pending_media") || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
       return line;
     }
     return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", "omitted");

@@ -43,7 +43,6 @@
 - `config/`：配置模型、Schema、加载与管理
 - `conversation/`：会话、debounce、压缩、reply gate 等能力
 - `data/`：数据访问与持久化抽象
-- `forwards/`：合并转发相关处理
 - `identity/`：身份与主体信息处理
 - `images/`：图片资产与图像相关处理
 - `llm/`：模型接入、prompt、工具注册与调用链路
@@ -55,7 +54,8 @@
 - `runtime/`：运行时上下文与共享能力
 - `services/`：外部能力与运行时服务封装
   - `images/`：标准图像生成接口、响应验证与模型路由解析
-  - `onebot/`：OneBot 客户端与消息收发
+  - `messaging/`：平台共用的消息、媒体导入与本地引用处理
+  - `onebot/`：OneBot 客户端、消息收发与引用/转发解析
   - `proxy/`：代理相关能力
   - `shell/`：shell、作业、tmux 相关能力
   - `web/`：搜索、浏览器等网页能力

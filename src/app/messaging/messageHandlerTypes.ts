@@ -24,6 +24,8 @@ export interface MessageEventHandlerDeps {
     | "debounceManager"
     | "audioStore"
     | "chatFileStore"
+    | "mediaImportService"
+    | "oneBotReferenceResolver"
     | "mediaCaptionService"
     | "requestStore"
     | "userStore"

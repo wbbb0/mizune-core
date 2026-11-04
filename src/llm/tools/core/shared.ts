@@ -1,3 +1,4 @@
+import type { MediaImportService } from "#services/workspace/mediaSources/service.ts";
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import type { QqReplyPermit } from "#services/qqOfficial/types.ts";
 import type { LlmClient } from "../../llmClient.ts";
@@ -13,7 +14,7 @@ import type { WhitelistStore } from "#identity/whitelistStore.ts";
 import type { OneBotClient } from "#services/onebot/onebotClient.ts";
 import type { MessageQueue } from "#conversation/messageQueue.ts";
 import type { AppConfig } from "#config/config.ts";
-import type { ForwardResolver } from "#forwards/forwardResolver.ts";
+import type { OneBotReferenceResolver } from "#services/onebot/referenceResolver.ts";
 import type { AudioStore } from "#audio/audioStore.ts";
 import type { UserStore } from "#identity/userStore.ts";
 import type { ContextStore } from "#context/contextStore.ts";
@@ -114,7 +115,8 @@ export interface BuiltinToolCommunicationDeps {
   textInspectionService: TextInspectionService;
   documentSummaryService?: DocumentSummaryService;
   contextEmbeddingService?: Pick<ContextEmbeddingService, "isAvailable" | "getStatus" | "embedTexts">;
-  forwardResolver: ForwardResolver;
+  oneBotReferenceResolver: OneBotReferenceResolver;
+  mediaImportService: MediaImportService;
 }
 
 export interface BuiltinToolStoreDeps {

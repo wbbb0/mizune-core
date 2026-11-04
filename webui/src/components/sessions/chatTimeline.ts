@@ -268,6 +268,9 @@ export function projectTimelineContentParts(contentParts: readonly TranscriptCon
           parts.push({ kind: "text", text: part.text.trim() });
         }
         break;
+      case "pending_media":
+        parts.push({ kind: "meta", text: `${part.mediaKind === "image" ? "图片" : part.mediaKind === "emoji" ? "表情" : "附件"}暂未下载成功，回复时可补下载${part.sourceName ? `：${part.sourceName}` : ""}` });
+        break;
       case "image":
       case "emoji":
         if (part.fileId && isResolvedChatFileId(part.fileId)) {

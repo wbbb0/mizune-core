@@ -20,7 +20,9 @@ import { TurnPlanner } from "../../conversation/turnPlanner.ts";
 import { SessionManager } from "#conversation/session/sessionManager.ts";
 import { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import { SessionSnapshotStore } from "#conversation/session/sessionSnapshotStore.ts";
-import { ForwardResolver } from "../../forwards/forwardResolver.ts";
+import { OneBotReferenceResolver } from "#services/onebot/referenceResolver.ts";
+import { createMediaSourceRepository } from "#services/workspace/mediaSources/repository.ts";
+import { MediaImportService } from "#services/workspace/mediaSources/service.ts";
 import { AudioStore } from "#audio/audioStore.ts";
 import { AudioTranscriber } from "#audio/audioTranscriber.ts";
 import { LlmClient } from "#llm/llmClient.ts";
@@ -176,7 +178,22 @@ export function createBootstrapServices(
     chatFileStore,
     resourceRegistry: sharedResourceRegistry
   }));
-  const forwardResolver = new ForwardResolver(oneBotClient, logger);
+  const oneBotReferenceResolver = new OneBotReferenceResolver(oneBotClient, config.configRuntime.instanceName, (scope, id) => {
+    try {
+      const session = sessionManager.getSession(scope.sessionId);
+      return session.sentMessages.some(message => String(message.messageId) === id)
+        || session.internalTranscript.some(item => item.kind === "assistant_message" && item.deliveryRef?.platform === "onebot" && String(item.deliveryRef.messageId) === id);
+    } catch { return false; }
+  });
+  const mediaImportService = new MediaImportService({
+    sources: createMediaSourceRepository(dataDir, logger), files: chatFileStore,
+    refresh: (scope, locator, signal) => oneBotReferenceResolver.refresh(scope, locator, signal),
+    onResolved: async (scope, resolution) => {
+      if (sessionManager.applyResolvedMedia(scope.sessionId, resolution)) {
+        await sessionPersistence.save(sessionManager.getPersistedSession(scope.sessionId));
+      }
+    }
+  });
   const conversationAccess = new ConversationAccessService(
     sessionManager,
     oneBotClient,
@@ -243,7 +260,8 @@ export function createBootstrapServices(
     comfyClient,
     comfyTaskStore,
     comfyTemplateCatalog,
-    forwardResolver,
+    oneBotReferenceResolver,
+    mediaImportService,
     conversationAccess,
     shellRuntime,
     runtimeResourceRegistry: sharedResourceRegistry,

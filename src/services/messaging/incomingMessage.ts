@@ -9,7 +9,7 @@ export interface ParsedIncomingMessage {
   source?: "onebot" | "qq_official" | "web";
   contextOnly?: boolean;
   activationUpgrade?: boolean;
-  sourceRef?: { platform: "qq_official"; connectionId: string; messageId: string };
+  sourceRef?: { platform: "qq_official"; connectionId: string; messageId: string; referenceId?: string };
   replyContext?: MessageReplyContext;
   channelId?: string;
   externalUserId?: string;
