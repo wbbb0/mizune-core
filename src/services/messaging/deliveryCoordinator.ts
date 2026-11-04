@@ -92,8 +92,11 @@ export class DeliveryCoordinator {
     const target = this.endpoint(address);
     if (target.source === "qq_official") {
       const permit = this.permit(address);
-      const bytes = await readFile(input.filePath);
-      address.signal?.throwIfAborted();
+      let bytes: Buffer;
+      try {
+        bytes = await readFile(input.filePath);
+        address.signal?.throwIfAborted();
+      } catch { throw new QqDeliveryError("rejected", address.signal?.aborted ? "cancelled_before_send" : "media_file_unavailable", undefined, "upload"); }
       const receipt = await this.official!.sendMedia(permit, { fileType: input.kind === "audio" ? 3 : input.kind === "file" ? 4 : 1, bytes, name: input.name?.trim() || basename(input.filePath) }, address.signal);
       return { platform: "qq_official", connectionId: receipt.connectionId, messageId: receipt.messageId };
     }

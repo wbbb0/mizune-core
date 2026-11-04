@@ -219,7 +219,12 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
     historySummary: item.historySummary,
     historyBackfillBoundaryMs: resolveHistoryBackfillBoundaryMs(item),
     taskTracker: normalizeTaskTracker(item.taskTracker),
-    internalTranscript: normalizeTranscriptItems(item.internalTranscript),
+    internalTranscript: normalizeTranscriptItems(item.internalTranscript.map(entry => {
+      if (entry.kind !== "outbound_media_message" || !["queued", "sending"].includes(entry.deliveryStatus)) return entry;
+      return { ...entry, deliveryStatus: entry.deliveryStatus === "queued" ? "cancelled" as const : "unknown" as const,
+        deliveryUpdatedAtMs: Date.now(), deliveryError: { stage: "message" as const, code: "runtime_restarted",
+          message: "服务重启，未自动重发此媒体；请检查投递状态。" } };
+    })),
     debugMarkers: [...item.debugMarkers],
     lastLlmUsage: item.lastLlmUsage,
     sentMessages: [...item.sentMessages],

@@ -389,6 +389,11 @@ export async function initializeBootstrapState(
   );
   const persistedSessions = await sessionPersistence.loadAll();
   sessionManager.restoreSessions(persistedSessions);
+  for (const persisted of persistedSessions) {
+    if (persisted.internalTranscript.some(item => item.kind === "outbound_media_message" && ["queued", "sending"].includes(item.deliveryStatus))) {
+      await sessionPersistence.save(sessionManager.getPersistedSession(persisted.id));
+    }
+  }
   await assetLifecycleService.sweep({
     activeSessions: sessionManager.listSessions(),
     persistedSessions

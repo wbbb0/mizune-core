@@ -1,3 +1,4 @@
+import { mediaDeliveryStatusSchema, mediaDeliveryErrorSchema } from "./mediaDelivery.ts";
 import { z } from "zod";
 import type { PersistedMessageContentPart } from "#messages/contentParts.ts";
 import { chatAttachmentSchema, chatFileKindValues } from "../../types/chatContracts.ts";
@@ -350,6 +351,9 @@ export const transcriptOutboundMediaMessageItemSchema = z.object({
   role: z.literal("assistant"),
   delivery: z.enum(["onebot", "qq_official", "web"]),
   mediaKind: z.enum(["image", "emoji", "audio", "file"]),
+  deliveryStatus: mediaDeliveryStatusSchema,
+  deliveryUpdatedAtMs: z.number().int().nonnegative(),
+  deliveryError: mediaDeliveryErrorSchema.optional(),
   aiGenerated: z.boolean().optional(),
   fileId: z.string().min(1).nullable(),
   fileRef: z.string().nullable(),
@@ -561,6 +565,10 @@ export const transcriptUserMessagePatchSchema = z.object({
 });
 
 export const transcriptItemPatchSchema = z.object({
+  deliveryStatus: mediaDeliveryStatusSchema.optional(),
+  deliveryUpdatedAtMs: z.number().int().nonnegative().optional(),
+  deliveryError: mediaDeliveryErrorSchema.optional(),
+  messageId: z.union([z.number().int().nonnegative(), z.string().min(1)]).nullable().optional(),
   ...transcriptUserMessagePatchSchema.shape,
   reasoningContent: z.string().optional(),
   runtimeExcluded: z.boolean().optional(),

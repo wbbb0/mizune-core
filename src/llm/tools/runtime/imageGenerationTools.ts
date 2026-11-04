@@ -76,7 +76,7 @@ export const imageGenerationToolHandlers: Record<string, ToolHandler> = {
       });
     } catch (error) {
       return JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error),
-        ...(error instanceof ImageGenerationError ? { failure: error.details } : {}) });
+        ...(error instanceof ImageGenerationError ? { detail: error.details } : {}) });
     }
   }
 };

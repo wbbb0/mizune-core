@@ -29,7 +29,9 @@
 
 接收端统一识别 mface、image.sub_type=1，以及携带商城表情标识的 image；普通图片不因 GIF 格式或 summary 文本被判为表情。商城 emojiId/packageId/key 随素材 sourceContext 保存，用于原生发送。
 
-`sticker_send` 复用现有图片发送队列。普通图片表情发送 image.sub_type=1；有完整商城参数时发送 mface。Web 聊天使用本地素材展示。工具返回 queued 仅表示已排队，实际发送成功后才增加 useCount/lastUsedAtMs。发送失败不增加次数。
+`sticker_send` 复用统一媒体发送队列，平台编码留在各自适配器内：OneBot 普通图片表情使用 image.sub_type=1，有完整商城参数时使用 mface；腾讯官方连接使用本地图片素材，不发送 OneBot 商城参数；Web 聊天使用本地素材展示。动图保留原媒体语义，不静默转换为静态图；平台不支持的格式返回明确错误。
+
+工具返回 queued 仅表示已排队，同时在 Sessions 创建稳定 ID 的媒体卡片。后续状态通过 SSE 更新同一张卡片：等待发送、发送中、平台已接受、失败、取消或结果未知。平台已接受不等于客户端已显示；只有平台接受或 Web 本地记录成功后才增加 useCount/lastUsedAtMs，失败、取消及未知不增加次数。
 
 transcript 的 outbound_media_message 支持 mediaKind=emoji 和 toolName=sticker_send。Sessions 页仍用图片组件展示，并将动作标题标为“表情消息”；历史投影保留 emoji 语义。
 
@@ -37,4 +39,4 @@ transcript 的 outbound_media_message 支持 mediaKind=emoji 和 toolName=sticke
 
 配置示例见 global.example.yml。图片精读模型必须启用且路由到 supportsVision=true 的模型。表情库不在主模型前缀中暴露任何下载链接或商城 key，候选只包含 ID、素材引用和简短资料。
 
-默认回归使用临时 dataDir、假视觉模型和假 OneBot 发送，不请求真实模型或操作 QQ 收藏。真实 NapCat 接收、商城发送与图片理解效果需要在隔离实例中联调；不要把模拟发送成功视为真实账号发送验证。
+默认回归使用临时 dataDir、假视觉模型和假 OneBot 发送，不请求真实模型或操作 QQ 收藏。真实 NapCat 接收、商城发送与图片理解效果需要在隔离实例中联调。腾讯官方静态图及 GIF 的实际客户端展示仍需使用本人新私聊触发烟测；不要把模拟测试或平台接受回执视为真实客户端验收。

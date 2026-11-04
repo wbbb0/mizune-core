@@ -1,3 +1,4 @@
+import { describeMediaDelivery, type MediaDeliveryState } from "./mediaDeliveryState.ts";
 import type { TranscriptItem as SessionTranscriptItem } from "../../api/types.ts";
 
 export interface ChatTimelineTranscriptEntry {
@@ -27,6 +28,7 @@ export type ChatTimelineItem =
       parts: ChatTimelineContentPart[];
       senderLabel?: string;
       metaChips?: string[];
+      deliveryState?: MediaDeliveryState;
       actionsEnabled?: boolean;
       timestampMs: number;
     }
@@ -41,6 +43,7 @@ export type ChatTimelineItem =
       content: string;
       senderLabel?: string;
       metaChips?: string[];
+      deliveryState?: MediaDeliveryState;
       timestampMs: number;
       label?: string;
       actionsEnabled?: boolean;
@@ -60,6 +63,7 @@ export type ChatTimelineItem =
       toolName?: string;
       senderLabel?: string;
       metaChips?: string[];
+      deliveryState?: MediaDeliveryState;
       actionsEnabled?: boolean;
       timestampMs: number;
     };
@@ -144,6 +148,7 @@ function toChatTimelineItems(
   }
 
   if (entry.item.kind === "outbound_media_message") {
+    const deliveryState = describeMediaDelivery(entry.item);
     if (entry.item.mediaKind === "audio") {
       const contentUrl = entry.item.fileId
         ? getChatFileContentUrlById(entry.item.fileId)
@@ -159,6 +164,7 @@ function toChatTimelineItems(
         parts: [{ kind: "audio", fileId: entry.item.fileId ?? entry.item.id, name: entry.item.sourceName,
           mimeType: entry.item.mimeType ?? null, contentUrl, aiGenerated: entry.item.aiGenerated === true }],
         metaChips: [entry.item.toolName],
+        deliveryState,
         timestampMs: entry.item.timestampMs
       }];
     }
@@ -184,6 +190,7 @@ function toChatTimelineItems(
           contentUrl
         }],
         metaChips: [entry.item.toolName],
+        deliveryState,
         timestampMs: entry.item.timestampMs
       }];
     }
@@ -192,7 +199,10 @@ function toChatTimelineItems(
       ? getChatFileContentUrlById(entry.item.fileId)
       : (entry.item.sourcePath ? getLocalSendFileContentUrl(entry.item.sourcePath) : "");
     if (!imageUrl) {
-      return [];
+      return [{ id: entry.id, itemId: entry.item.id, groupId: entry.item.groupId,
+        actionTitle: entry.item.mediaKind === "emoji" ? "表情消息" : "图片消息",
+        kind: "text", role: "assistant", side: "left", content: entry.item.sourceName || "媒体预览不可用",
+        deliveryState, timestampMs: entry.item.timestampMs }];
     }
     return [{
       id: entry.id,
@@ -207,6 +217,7 @@ function toChatTimelineItems(
       fileId: entry.item.fileId,
       imageUrl,
       toolName: entry.item.toolName,
+      deliveryState,
       timestampMs: entry.item.timestampMs
     }];
   }

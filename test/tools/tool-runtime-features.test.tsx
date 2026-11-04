@@ -119,14 +119,12 @@ async function sendWebSetupDraftForText(operationMode: unknown): Promise<string>
         }
       },
       messageQueue: {
-        enqueueTextDetached(params: { send: () => Promise<void> | void }) {
-          void params.send();
+        async enqueueText(params: { send: () => Promise<void> | void }) {
+          await params.send(); return true;
         }
       },
       sessionManager: {
-        getSession() {
-          return { pacingPreferences: { outbound: "humanized" }, type: "private" };
-        },
+        getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" }, type: "private" }),
         getOperationMode() {
           return operationMode;
         },
@@ -136,7 +134,7 @@ async function sendWebSetupDraftForText(operationMode: unknown): Promise<string>
   );
 
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+  assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true });
   assert.equal(appended.length, 1);
   return appended[0] ?? "";
 }
@@ -588,14 +586,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           }
         },
         messageQueue: {
-          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
-            void params.send();
+          async enqueueText(params: { send: () => Promise<void> | void }) {
+            await params.send(); return true;
           }
         },
         sessionManager: {
-          getSession() {
-            return { pacingPreferences: { outbound: "humanized" }, type: "private" };
-          },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" }, type: "private" }),
           getOperationMode() {
             return { kind: "normal" };
           },
@@ -608,7 +604,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
     await new Promise((resolve) => setImmediate(resolve));
 
-    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true });
     assert.deepEqual(appended, ["当前草稿：名字=小满"]);
     assert.deepEqual(historyCalls, [{
       sessionId: "web:persona-draft",
@@ -656,14 +652,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           }
         },
         messageQueue: {
-          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
-            void params.send();
+          async enqueueText(params: { send: () => Promise<void> | void }) {
+            await params.send(); return true;
           }
         },
         sessionManager: {
-          getSession() {
-            return { pacingPreferences: { outbound: "humanized" }, id: "web:scenario-draft", type: "private", participantRef: { kind: "user", id: "owner" } };
-          },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" }, id: "web:scenario-draft", type: "private", participantRef: { kind: "user", id: "owner" } }),
           getOperationMode(sessionId: string) {
             assert.equal(sessionId, "web:scenario-draft");
             return operationMode;
@@ -707,7 +701,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
     await new Promise((resolve) => setImmediate(resolve));
 
-    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true });
     assert.equal(appended.length, 1);
     assert.match(appended[0] ?? "", /^Scenario 资料初始化草稿/);
     assert.match(appended[0] ?? "", /主题：钟楼怪谈/);
@@ -790,14 +784,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           }
         },
         messageQueue: {
-          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
-            void params.send();
+          async enqueueText(params: { send: () => Promise<void> | void }) {
+            await params.send(); return true;
           }
         },
         sessionManager: {
-          getSession() {
-            return { pacingPreferences: { outbound: "humanized" }, id: "web:scenario-draft-note", type: "private", participantRef: { kind: "user", id: "owner" } };
-          },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" }, id: "web:scenario-draft-note", type: "private", participantRef: { kind: "user", id: "owner" } }),
           getOperationMode() {
             return operationMode;
           },
@@ -838,7 +830,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
     await new Promise((resolve) => setImmediate(resolve));
 
-    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true });
     assert.match(appended[0] ?? "", /Scenario 资料初始化草稿/);
     assert.match(appended[0] ?? "", /补充说明：\n玩家从旧钟楼门外开始。/);
   });
@@ -900,14 +892,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           }
         },
         messageQueue: {
-          enqueueTextDetached(params: { send: () => Promise<void> | void }) {
-            void params.send();
+          async enqueueText(params: { send: () => Promise<void> | void }) {
+            await params.send(); return true;
           }
         },
         sessionManager: {
-          getSession() {
-            return { pacingPreferences: { outbound: "humanized" }, type: "private" };
-          },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" }, type: "private" }),
           getOperationMode() {
             return { kind: "normal" };
           },
@@ -923,7 +913,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
 
     await new Promise((resolve) => setImmediate(resolve));
 
-    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true, sent: true });
+    assert.deepEqual(JSON.parse(String(result)), { ok: true, queued: true });
     assert.deepEqual(sentTargets, [{
       userId: "10001",
       text: "当前 RP 草稿：前提=雨夜"
@@ -1395,14 +1385,12 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           allowedChatTypes: ["private"]
         }],
         sessionManager: {
-          getSession() {
-            return { pacingPreferences: { outbound: "humanized" },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" },
               id: "qqbot:p:owner",
               type: "private",
               participantUserId: "owner",
               participantLabel: "Owner"
-            };
-          },
+            }),
           getModeId() {
             return "rp_assistant";
           },
@@ -1431,12 +1419,10 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
           senderName: "Owner"
         },
         sessionManager: {
-          getSession() {
-            return { pacingPreferences: { outbound: "humanized" },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" },
               id: "qqbot:g:1000",
               type: "group"
-            };
-          },
+            }),
           getModeId() {
             return "rp_assistant";
           }
@@ -1488,13 +1474,11 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         getModeId() {
           return "scenario_host";
         },
-        getSession() {
-          return { pacingPreferences: { outbound: "humanized" },
+        getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" },
             id: "qqbot:p:owner",
             participantUserId: "owner",
             participantLabel: "Owner"
-          };
-        }
+          })
       },
       scenarioHostStateStore: {
         async ensure() {
@@ -1694,12 +1678,10 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         lastMessage: { sessionId, userId: "u1", senderName: "Alice" },
         sessionManager: {
           getModeId() { return "scenario_host"; },
-          getSession() {
-            return { pacingPreferences: { outbound: "humanized" },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" },
               participantUserId: "u1",
               participantLabel: "Alice"
-            };
-          }
+            })
         },
         scenarioHostStateStore: store,
         persistSession: () => {}
@@ -1732,7 +1714,7 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
         oneBotClient: {},
         requestStore: {},
         sessionManager: {
-          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },},
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" } }),},
         whitelistStore: {},
         scheduledJobStore: {},
         scheduler: {},
@@ -4514,7 +4496,7 @@ function createRuntimeWaitToolContext() {
           }
         },
         sessionManager: {
-          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
+          getSession: stableSessionGetter({ pacingPreferences: { outbound: "humanized" } }),
           recordSentMessage(_sessionId: string, message: unknown) {
             sentMetaCalls.push({ kind: "sent", message });
           },
@@ -4589,7 +4571,7 @@ function createRuntimeWaitToolContext() {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_1", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
       { asset_ref: "img_deadbeef.png" },
-      withMediaServices({
+      withQueuedMediaTestServices({
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
           async getFile(id: string) {
@@ -4642,7 +4624,9 @@ function createRuntimeWaitToolContext() {
       asset_ref: "img_deadbeef.png",
       file_id: "file_img_1",
       deliveredAs: "image",
-      queued: true
+      queued: true,
+      status: "queued",
+      delivery_id: JSON.parse(String((result as any).content ?? result)).delivery_id
     });
 
     await queuedTasks[0]!();
@@ -4661,6 +4645,9 @@ function createRuntimeWaitToolContext() {
     });
     assert.deepEqual(transcriptCalls[0], {
       kind: "outbound_media_message",
+      deliveryStatus: "accepted",
+      deliveryUpdatedAtMs: transcriptCalls[0].deliveryUpdatedAtMs,
+      id: transcriptCalls[0].id,
       llmVisible: false,
       role: "assistant",
       delivery: "onebot",
@@ -4696,7 +4683,7 @@ function createRuntimeWaitToolContext() {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_2", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
       { asset_ref: "file_bead1234.txt" },
-      withMediaServices({
+      withQueuedMediaTestServices({
         config: createNapcatTestConfig(),
         lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
         chatFileStore: {
@@ -4752,7 +4739,9 @@ function createRuntimeWaitToolContext() {
       asset_ref: "file_bead1234.txt",
       file_id: "file_file_1",
       deliveredAs: "file",
-      queued: true
+      queued: true,
+      status: "queued",
+      delivery_id: JSON.parse(String((result as any).content ?? result)).delivery_id
     });
 
     await queuedTasks[0]!();
@@ -4770,6 +4759,9 @@ function createRuntimeWaitToolContext() {
     });
     assert.deepEqual(transcriptCalls[0], {
       kind: "outbound_media_message",
+      deliveryStatus: "accepted",
+      deliveryUpdatedAtMs: transcriptCalls[0].deliveryUpdatedAtMs,
+      id: transcriptCalls[0].id,
       llmVisible: false,
       role: "assistant",
       delivery: "onebot",
@@ -4804,7 +4796,7 @@ function createRuntimeWaitToolContext() {
     const result = await chatFileToolHandlers.asset_send_to_chat!(
       { id: "tool_workspace_send_2_web", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
       { asset_ref: "file_bead1234.txt" },
-      withMediaServices({
+      withQueuedMediaTestServices({
         replyDelivery: "web",
         config: createNapcatTestConfig(),
         lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
@@ -4849,7 +4841,9 @@ function createRuntimeWaitToolContext() {
       asset_ref: "file_bead1234.txt",
       file_id: "file_file_1",
       deliveredAs: "file",
-      queued: true
+      queued: true,
+      status: "queued",
+      delivery_id: JSON.parse(String((result as any).content ?? result)).delivery_id
     });
     assert.equal(queuedTasks.length, 1);
 
@@ -4857,6 +4851,9 @@ function createRuntimeWaitToolContext() {
 
     assert.deepEqual(transcriptCalls[0], {
       kind: "outbound_media_message",
+      deliveryStatus: "accepted",
+      deliveryUpdatedAtMs: transcriptCalls[0].deliveryUpdatedAtMs,
+      id: transcriptCalls[0].id,
       llmVisible: false,
       role: "assistant",
       delivery: "web",
@@ -4888,7 +4885,7 @@ function createRuntimeWaitToolContext() {
       const result = await chatFileToolHandlers.asset_send_to_chat!(
         { id: "tool_workspace_send_generic_file", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_bead1234.txt\"}" } },
         { asset_ref: "file_bead1234.txt" },
-        withMediaServices({
+        withQueuedMediaTestServices({
           replyDelivery: "onebot",
           config: createTestAppConfig(),
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
@@ -4924,7 +4921,8 @@ function createRuntimeWaitToolContext() {
       );
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
-        error: "filesystem/asset file sending requires onebot.provider=napcat for non-image files",
+        ok: false,
+        error: "当前 OneBot 提供方不支持发送普通文件，需要 onebot.provider=napcat。",
         deliveredAs: "unsupported"
       });
       assert.equal(queuedTasks.length, 0);
@@ -4944,7 +4942,7 @@ function createRuntimeWaitToolContext() {
       const result = await chatFileToolHandlers.asset_send_to_chat!(
         { id: "tool_workspace_send_web_img", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"img_deadbeef.png\"}" } },
         { asset_ref: "img_deadbeef.png" },
-        withMediaServices({
+        withQueuedMediaTestServices({
           replyDelivery: "web",
           lastMessage: { sessionId: "web:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
@@ -4986,7 +4984,9 @@ function createRuntimeWaitToolContext() {
         asset_ref: "img_deadbeef.png",
         file_id: "file_img_1",
         deliveredAs: "image",
-        queued: true
+        queued: true,
+      status: "queued",
+      delivery_id: JSON.parse(String((result as any).content ?? result)).delivery_id
       });
       assert.equal(queuedTasks.length, 1);
 
@@ -4994,6 +4994,9 @@ function createRuntimeWaitToolContext() {
 
       assert.deepEqual(transcriptCalls[0], {
         kind: "outbound_media_message",
+        deliveryStatus: "accepted",
+        deliveryUpdatedAtMs: transcriptCalls[0].deliveryUpdatedAtMs,
+      id: transcriptCalls[0].id,
         llmVisible: false,
         role: "assistant",
         delivery: "web",
@@ -5024,7 +5027,7 @@ function createRuntimeWaitToolContext() {
       const result = await chatFileToolHandlers.asset_send_to_chat!(
         { id: "tool_workspace_send_3", type: "function", function: { name: "asset_send_to_chat", arguments: "{\"asset_ref\":\"file_deadbeef.jpg\"}" } },
         { asset_ref: "file_deadbeef.jpg" },
-        withMediaServices({
+        withQueuedMediaTestServices({
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           chatFileStore: {
             async getFile(id: string) {
@@ -5088,7 +5091,9 @@ function createRuntimeWaitToolContext() {
         asset_ref: "img_deadbeef.jpg",
         file_id: "file_deadbeef",
         deliveredAs: "image",
-        queued: true
+        queued: true,
+      status: "queued",
+      delivery_id: JSON.parse(String((result as any).content ?? result)).delivery_id
       });
       assert.equal(queuedTasks.length, 1);
       assert.equal(sentMessages.length, 0);
@@ -5109,7 +5114,7 @@ function createRuntimeWaitToolContext() {
       const result = await localFileToolHandlers.filesystem_send_to_chat!(
         { id: "tool_workspace_send_path_rel", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/diagram.png\"}" } },
         { path: "outputs/diagram.png" },
-        withMediaServices({
+        withQueuedMediaTestServices({
           config: createNapcatTestConfig(),
           lastMessage: { sessionId: "qqbot:p:owner", userId: "owner", senderName: "Owner" },
           localFileService: {
@@ -5150,7 +5155,9 @@ function createRuntimeWaitToolContext() {
         path: "outputs/diagram.png",
         path_mode: "workspace_relative",
         deliveredAs: "image",
-        queued: true
+        queued: true,
+      status: "queued",
+      delivery_id: JSON.parse(String((result as any).content ?? result)).delivery_id
       });
       assert.equal(queuedTasks.length, 1);
 
@@ -5179,7 +5186,7 @@ function createRuntimeWaitToolContext() {
       const result = await localFileToolHandlers.filesystem_send_to_chat!(
         { id: "tool_workspace_send_path_abs", type: "function", function: { name: "filesystem_send_to_chat", arguments: `{\"path\":\"${filePath}\"}` } },
         { path: filePath },
-        {
+        withQueuedMediaTestServices({
           config: createNapcatTestConfig(),
           localFileService: {
             resolvePath(path: string) {
@@ -5205,7 +5212,7 @@ function createRuntimeWaitToolContext() {
               transcriptCalls.push(item);
             }
           }
-        } as any
+        }) as any
       );
 
       assert.deepEqual(JSON.parse(String((result as any).content ?? result)), {
@@ -5213,7 +5220,9 @@ function createRuntimeWaitToolContext() {
         path: filePath,
         path_mode: "absolute",
         deliveredAs: "file",
-        queued: true
+        queued: true,
+      status: "queued",
+      delivery_id: JSON.parse(String((result as any).content ?? result)).delivery_id
       });
       assert.equal(queuedTasks.length, 1);
 
@@ -5226,6 +5235,9 @@ function createRuntimeWaitToolContext() {
       });
       assert.deepEqual(transcriptCalls[0], {
         kind: "outbound_media_message",
+        deliveryStatus: "accepted",
+        deliveryUpdatedAtMs: transcriptCalls[0].deliveryUpdatedAtMs,
+      id: transcriptCalls[0].id,
         llmVisible: false,
         role: "assistant",
         delivery: "onebot",
@@ -5255,7 +5267,7 @@ function createRuntimeWaitToolContext() {
     const result = await localFileToolHandlers.filesystem_send_to_chat!(
       { id: "tool_workspace_send_path_rel_resolve", type: "function", function: { name: "filesystem_send_to_chat", arguments: "{\"path\":\"outputs/demo.txt\"}" } },
       { path: "outputs/demo.txt" },
-      {
+      withQueuedMediaTestServices({
         replyDelivery: "onebot",
         sessionManager: { getSession() { return { pacingPreferences: { outbound: "humanized" } }; } },
         config: createNapcatTestConfig(),
@@ -5272,7 +5284,7 @@ function createRuntimeWaitToolContext() {
         messageQueue: {
           enqueueTextDetached() {}
         }
-      } as any
+      }) as any
     );
 
     assert.equal(JSON.parse(String((result as any).content ?? result)).path, "outputs/demo.txt");
@@ -5440,3 +5452,41 @@ function createRuntimeWaitToolContext() {
     assert.equal(payload.live_resources[0].description, "继续支付流程");
     assert.deepEqual(canonical.live_resources.map((item: any) => item.resource_id), ["res_browser_live"]);
   });
+
+
+/** Controllable media queue: tests explicitly start each send after inspecting its queued result. */
+function withQueuedMediaTestServices(context: any): any {
+  const entries = new Map<string, any>();
+  const listeners = new Set<() => void>();
+  const original = context.sessionManager ?? {};
+  const sessionManager = {
+    ...original,
+    appendInternalTranscript(sessionId: string, item: any) {
+      entries.set(item.id, item);
+      original.appendInternalTranscript?.(sessionId, item);
+    },
+    getMediaDelivery(_sessionId: string, id: string) { return entries.get(id); },
+    patchMediaDelivery(_sessionId: string, id: string, patch: any) {
+      const item = entries.get(id);
+      if (!item) return false;
+      Object.assign(item, patch, { deliveryUpdatedAtMs: Date.now() });
+      for (const listener of listeners) listener();
+      return true;
+    },
+    subscribeSession(_sessionId: string, listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }
+  };
+  const queue = context.messageQueue;
+  return withMediaServices({ ...context, config: context.config ?? createNapcatTestConfig(),
+    replyDelivery: context.replyDelivery ?? "onebot", sessionManager,
+    messageQueue: { ...queue, enqueueText(params: { send: () => Promise<void> }) {
+      return new Promise<boolean>((resolve, reject) => queue.enqueueTextDetached({ ...params, send: async () => {
+        try { await params.send(); resolve(true); } catch (error) { reject(error); throw error; }
+      } }));
+    } }
+  });
+}
+
+function stableSessionGetter<T>(session: T): () => T { return () => session; }

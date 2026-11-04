@@ -756,6 +756,8 @@ function testUserTranscriptItem(id: string, text: string, timestampMs: number): 
           },
           {
             kind: "outbound_media_message",
+            deliveryStatus: "accepted",
+            deliveryUpdatedAtMs: 0,
             llmVisible: false,
             role: "assistant",
             delivery: "web",
@@ -1150,7 +1152,7 @@ test("session v11 pacing migration preserves each explicit artificial delay pref
       const rows = verify.prepare("SELECT pacing_preferences_json FROM sessions").all() as Array<{ pacing_preferences_json: string }>;
       assert.equal(rows.some((row) => row.pacing_preferences_json.includes("oneBotOutbound")), false);
       const meta = verify.prepare("SELECT schema_version FROM __sqlite_schema_groups WHERE group_id = ?").get(sessionDataDomain.tableGroup) as { schema_version: number };
-      assert.equal(meta.schema_version, 12);
+      assert.equal(meta.schema_version, sessionDataDomain.schemaVersion);
     } finally { verify.close(); }
   });
 });

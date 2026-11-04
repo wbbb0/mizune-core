@@ -1,5 +1,4 @@
-import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
-import { sendAudioBytesToChat, sendImageBytesToChat, parseSessionTarget, enqueueToolSend, recordDeliveredMessage } from "../core/chatMediaDelivery.ts";
+import { sendAudioBytesToChat, sendImageBytesToChat, sendFileBytesToChat } from "../core/chatMediaDelivery.ts";
 import { withFilesystemScopeDescriptors, withFilesystemScopeHandlers } from "../core/filesystemScope.ts";
 import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -851,80 +850,7 @@ async function sendGenericFileToChat(
     outputExtras: Record<string, string | number>;
   }
 ) {
-  const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
-  if (context.replyDelivery !== "web" && !target) {
-    return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
-  }
-  if (context.replyDelivery === "onebot" && context.config.onebot.provider !== "napcat") {
-    return JSON.stringify({
-      error: "filesystem/asset file sending requires onebot.provider=napcat for non-image files",
-      deliveredAs: "unsupported"
-    });
-  }
-
-  enqueueToolSend(context, input.previewText, async () => {
-    if (context.replyDelivery === "web") {
-      context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
-        kind: "outbound_media_message",
-        llmVisible: false,
-        role: "assistant",
-        delivery: "web",
-        mediaKind: "file",
-        fileId: input.fileId,
-        fileRef: input.fileRef,
-        sourceName: input.sourceName,
-        chatFilePath: input.chatFilePath,
-        sourcePath: input.sourcePath,
-        mimeType: input.mimeType,
-        sizeBytes: input.sizeBytes,
-        messageId: null,
-        toolName: input.toolName,
-        captionText: null,
-        timestampMs: Date.now()
-      });
-      return;
-    }
-
-    if (!target) {
-      throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
-    }
-    await context.beforeExternalDelivery?.();
-    context.outboundSignal?.throwIfAborted();
-    const reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendMedia({
-      sessionId: context.lastMessage.sessionId, replyContext: context.replyContext, signal: context.outboundSignal
-    }, { filePath: input.absolutePath, kind: "file", name: input.sourceName });
-    const messageId = reference?.messageId ?? null;
-    if (reference) context.sessionManager.recordSentMessage(context.lastMessage.sessionId, {
-      messageId: reference.messageId, text: input.previewText, sentAt: Date.now()
-    });
-    context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
-      kind: "outbound_media_message",
-      llmVisible: false,
-      role: "assistant",
-      delivery: reference?.platform ?? context.replyDelivery,
-      mediaKind: "file",
-      fileId: input.fileId,
-      fileRef: input.fileRef,
-      sourceName: input.sourceName,
-      chatFilePath: input.chatFilePath,
-      sourcePath: input.sourcePath,
-      mimeType: input.mimeType,
-      sizeBytes: input.sizeBytes,
-      messageId,
-      toolName: input.toolName,
-      captionText: null,
-      timestampMs: Date.now()
-    });
-  });
-
-  return {
-    content: JSON.stringify({
-      ok: true,
-      ...input.outputExtras,
-      deliveredAs: "file",
-      queued: true
-    })
-  };
+  return sendFileBytesToChat(context, input);
 }
 
 async function buildUnknownAssetError(

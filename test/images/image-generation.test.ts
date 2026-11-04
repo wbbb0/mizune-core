@@ -1,3 +1,4 @@
+import { commonToolResultCompactors } from "../../src/llm/tools/core/resultObservation.ts";
 import { listTurnToolsets } from "../../src/llm/tools/toolsetSelectionPolicy.ts";
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -271,9 +272,15 @@ test("生图工具返回参数错误详情，过滤供应商密钥，不重试",
   const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
     { prompt: "测试", size: "123x123" }, { config: config() } as BuiltinToolContext)));
   assert.equal(result.ok, false);
-  assert.equal(result.failure.httpStatus, 400);
-  assert.equal(result.failure.param, "size");
-  assert.equal(result.failure.code, "invalid_size");
+  assert.equal(result.detail.httpStatus, 400);
+  assert.equal(result.detail.param, "size");
+  assert.equal(result.detail.code, "invalid_size");
+  const compacted = commonToolResultCompactors.error_summary!({
+    toolName: "generate_image", toolCallId: "test", args: {}, rawContent: JSON.stringify(result),
+    parsedContent: result, rawLength: 0, estimatedTokens: 0, resource: null, refetchHint: null, pinned: false
+  });
+  assert.match(compacted.replayContent, /size/);
+  assert.match(compacted.replayContent, /invalid_size/);
   assert.match(result.error, /1024x1024/);
   assert.doesNotMatch(JSON.stringify(result), /test-only/);
   assert.equal(calls, 1);
@@ -285,8 +292,8 @@ test("生图网络错误返回底层原因，明确没有API响应", async () =>
   });
   const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
     { prompt: "测试" }, { config: config() } as BuiltinToolContext)));
-  assert.equal(result.failure.kind, "transport");
-  assert.equal(result.failure.httpStatus, undefined);
+  assert.equal(result.detail.kind, "transport");
+  assert.equal(result.detail.httpStatus, undefined);
   assert.match(result.error, /ECONNREFUSED/);
   assert.doesNotMatch(result.error, /pass|token=secret/);
 });
@@ -296,7 +303,7 @@ test("HTTP成功状态中的显式API错误仍返回可调整参数的详情", a
   const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
     { prompt: "测试" }, { config: config() } as BuiltinToolContext)));
   assert.equal(result.ok, false);
-  assert.equal(result.failure.param, "quality");
+  assert.equal(result.detail.param, "quality");
   assert.match(result.error, /Unsupported quality/);
 });
 
@@ -304,6 +311,20 @@ test("生图成功状态返回非JSON时不回显正文及密钥", async () => {
   setFetchImplementationForTests(async () => new Response("<html>test-only upstream error</html>"));
   const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
     { prompt: "测试" }, { config: config() } as BuiltinToolContext)));
-  assert.equal(result.failure.kind, "protocol");
+  assert.equal(result.detail.kind, "protocol");
   assert.doesNotMatch(JSON.stringify(result), /test-only|<html>/);
+});
+
+test("图片下载响应体断流时返回下载阶段及底层网络原因", async () => {
+  setFetchImplementationForTests(async url => {
+    if (url.includes("/images/generations")) return Response.json({ data: [{ url: "https://storage.example/image.png" }] });
+    return new Response(new ReadableStream({ start(controller) {
+      controller.error(new TypeError("terminated", { cause: Object.assign(new Error("socket closed"), { code: "ECONNRESET" }) }));
+    } }));
+  });
+  const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
+    { prompt: "测试" }, { config: config() } as BuiltinToolContext)));
+  assert.equal(result.detail.stage, "download");
+  assert.equal(result.detail.kind, "transport");
+  assert.match(result.error, /ECONNRESET/);
 });

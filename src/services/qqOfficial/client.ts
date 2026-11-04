@@ -64,9 +64,11 @@ export class QqOfficialClient extends EventEmitter {
   }
 
   async sendMedia(permit: QqReplyPermit, input: QqMediaInput, signal?: AbortSignal): Promise<QqDeliveryReceipt> {
-    signal?.throwIfAborted();
     let reservation;
-    try { reservation = this.permits.reserve(permit); }
+    try {
+      signal?.throwIfAborted();
+      reservation = this.permits.reserve(permit);
+    }
     catch (error) { throw atQqDeliveryStage(error, "upload"); }
     let fileInfo: string;
     try {

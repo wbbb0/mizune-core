@@ -1,4 +1,5 @@
 import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
+import { captureSessionMutationGuard } from "../core/sessionMutationGuard.ts";
 import { characterPersonaView } from "../../../character/prompt.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
@@ -116,22 +117,33 @@ export const debugToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "literals must contain at least one supported literal" });
     }
 
+    const isCurrent = captureSessionMutationGuard(context.sessionManager, context.lastMessage.sessionId);
     const bodies = await Promise.all(literals.map((literal) => renderDebugLiteral(literal, context)));
     const sentMessageIds: Array<number | string> = [];
     const sessionId = context.lastMessage.sessionId;
     const parsedSession = parseChatSessionIdentity(sessionId);
 
     for (const body of bodies) {
+      if (!isCurrent()) return JSON.stringify({ error: "会话已清空或变更，调试发送已停止。" });
       if (context.replyDelivery === "web") {
         await context.committedTextSink?.commitText(body);
       } else {
         if (!parsedSession) {
           return JSON.stringify({ error: `unsupported session target: ${sessionId}` });
         }
-        await context.beforeExternalDelivery?.();
-        const reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendText({
-          sessionId, replyContext: context.replyContext, signal: context.outboundSignal
-        }, body);
+        const lease = context.beginExternalDelivery?.();
+        const reference = await (async () => {
+          try {
+            await lease?.ready;
+            if (!isCurrent()) return undefined;
+            context.outboundSignal?.throwIfAborted();
+            context.abortSignal?.throwIfAborted();
+            return await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendText({
+              sessionId, replyContext: context.replyContext, signal: context.outboundSignal
+            }, body);
+          } finally { lease?.settle(); }
+        })();
+        if (!isCurrent()) return JSON.stringify({ error: "会话已清空或变更，调试发送已停止。" });
         if (reference) {
           sentMessageIds.push(reference.messageId);
           if (reference.platform === "onebot") context.sessionManager.recordSentMessage(sessionId, {
@@ -141,6 +153,7 @@ export const debugToolHandlers: Record<string, ToolHandler> = {
       }
     }
 
+    if (!isCurrent()) return JSON.stringify({ error: "会话已清空或变更，调试发送已停止。" });
     context.sessionManager.appendDebugMarker(sessionId, {
       kind: "debug_dump_sent",
       timestampMs: Date.now(),

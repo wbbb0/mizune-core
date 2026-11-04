@@ -344,7 +344,8 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
     ],
     toolNames: [
       "get_current_time",
-      "runtime_wait"
+      "runtime_wait",
+      "delivery_status"
     ]
   },
   {

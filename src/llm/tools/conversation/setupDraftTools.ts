@@ -9,6 +9,7 @@ import { formatScenarioHostRuntimeDraftLines } from "#modes/scenarioHost/draftFo
 import { editableScenarioProfileFieldNames, scenarioProfileFieldLabels } from "#modes/scenarioHost/profileSchema.ts";
 import { editablePersonaFieldNames, personaFieldLabels } from "#persona/personaSchema.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
+import { captureSessionMutationGuard } from "../core/sessionMutationGuard.ts";
 
 export const setupDraftToolDescriptors: ToolDescriptor[] = [
   {
@@ -41,18 +42,27 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "scenario_host_state_store_unavailable" });
     }
     const session = context.sessionManager.getSession(sessionId);
+    const isCurrent = captureSessionMutationGuard(context.sessionManager, sessionId);
     const content = await buildDraftContent(context, session, operationMode, getStringArg(args, "content").trim());
+    if (!isCurrent()) return JSON.stringify({ error: "会话已清空或变更，草稿未发送。" });
     if (!content) {
       return JSON.stringify({ error: "content or active setup draft is required" });
     }
-    context.messageQueue.enqueueTextDetached({
+    const lease = context.replyDelivery === "web" ? undefined : context.beginExternalDelivery?.();
+    void context.messageQueue.enqueueText({
       sessionId,
       text: content,
       pacing: session.pacingPreferences.outbound,
       ...(context.outboundSignal ? { abortSignals: [context.outboundSignal] } : {}),
+      ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
       send: async () => {
+        await lease?.ready;
+        if (!isCurrent()) return;
+        context.outboundSignal?.throwIfAborted();
+        context.abortSignal?.throwIfAborted();
         if (context.replyDelivery === "web") {
           await context.committedTextSink?.commitText(content);
+          if (!isCurrent()) return;
           context.sessionManager.appendAssistantHistory(sessionId, {
             chatType: session.type,
             userId: context.lastMessage.userId,
@@ -66,10 +76,10 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
         if (!parsedSession) {
           throw new Error(`unsupported session target: ${sessionId}`);
         }
-        await context.beforeExternalDelivery?.();
         const deliveryRef = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendText({
           sessionId, replyContext: context.replyContext, signal: context.outboundSignal
         }, content);
+        if (!isCurrent()) return;
         if (deliveryRef?.platform === "onebot") {
           context.sessionManager.recordSentMessage(sessionId, { messageId: deliveryRef.messageId, text: content, sentAt: Date.now() });
         }
@@ -81,8 +91,8 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
           ...(deliveryRef ? { deliveryRef } : {})
         });
       }
-    });
-    return JSON.stringify({ ok: true, queued: true, sent: true });
+    }).finally(() => lease?.settle()).catch(() => undefined);
+    return JSON.stringify({ ok: true, queued: true });
   }
 };
 

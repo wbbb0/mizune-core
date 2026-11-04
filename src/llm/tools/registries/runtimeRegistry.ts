@@ -1,3 +1,4 @@
+import { deliveryToolDescriptors, deliveryToolHandlers } from "../runtime/deliveryTools.ts";
 import { nativeCapabilityToolDescriptors, nativeCapabilityToolHandlers } from "../runtime/nativeCapabilityTools.ts";
 import { stickerToolDescriptors, stickerToolHandlers } from "../runtime/stickerTools.ts";
 import { imageGenerationToolDescriptors, imageGenerationToolHandlers } from "../runtime/imageGenerationTools.ts";
@@ -24,6 +25,7 @@ import {
 } from "../runtime/workspaceTools.ts";
 
 const runtimeStaticToolDescriptorsRegistry = [
+  ...deliveryToolDescriptors,
   ...stickerToolDescriptors,
   ...debugToolDescriptors,
   ...resourceToolDescriptors,
@@ -52,6 +54,7 @@ export function runtimeToolDescriptorsRegistry(config?: AppConfig) {
 }
 
 export const runtimeToolHandlersRegistry = {
+  ...deliveryToolHandlers,
   ...stickerToolHandlers,
   ...comfyToolHandlers,
   ...debugToolHandlers,

@@ -5,6 +5,8 @@ import type { StoredToolCall, TranscriptItem } from "@/api/types";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
 import { WorkbenchCard, WorkbenchDisclosure, useWorkbenchWindows } from "@workbench-kit/vue";
 import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
+import MediaDeliveryStatus from "./MediaDeliveryStatus.vue";
+import { describeMediaDelivery } from "./mediaDeliveryState";
 import NativeSearchResults from "./NativeSearchResults.vue";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
 import MessageContentParts from "./MessageContentParts.vue";
@@ -532,7 +534,13 @@ const outboundMediaRows = computed(() => {
     return [];
   }
   return [
+    { label: "投递 ID", value: props.item.id },
+    { label: "状态更新时间", value: props.item.deliveryUpdatedAtMs ? new Date(props.item.deliveryUpdatedAtMs).toLocaleString() : "未记录" },
     { label: "发送到", value: props.item.delivery },
+    ...(props.item.deliveryError ? [
+      { label: "失败阶段", value: props.item.deliveryError.stage === "prepare" ? "准备" : props.item.deliveryError.stage === "upload" ? "上传" : "消息提交" },
+      { label: "错误码", value: props.item.deliveryError.code }
+    ] : []),
     { label: "类型", value: props.item.mediaKind },
     { label: "文件 ID", value: props.item.fileId || "无" },
     { label: "文件引用", value: props.item.fileRef || "无" },
@@ -871,6 +879,7 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'outbound_media_message'" class="flex flex-col gap-2">
+        <MediaDeliveryStatus :state="describeMediaDelivery(item)" />
         <template v-if="item.mediaKind === 'audio'">
           <p v-if="item.aiGenerated" class="text-small text-text-muted">人工智能生成语音</p>
           <audio v-if="item.fileId" :src="`/api/chat-files/${encodeURIComponent(item.fileId)}/content`" controls preload="none" class="max-w-full" :aria-label="item.sourceName || '语音消息'" />

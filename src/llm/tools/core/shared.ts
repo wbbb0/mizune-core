@@ -103,7 +103,7 @@ export interface BuiltinToolCommunicationDeps {
   messaging?: DeliveryCoordinator;
   replyContext?: QqReplyPermit;
   outboundSignal?: AbortSignal;
-  beforeExternalDelivery?: () => Promise<void>;
+  beginExternalDelivery?: () => { ready: Promise<void>; settle: () => void };
   oneBotClient: OneBotClient;
   audioStore: AudioStore;
   chatFileStore: ChatFileStore;

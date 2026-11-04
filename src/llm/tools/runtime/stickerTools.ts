@@ -3,6 +3,7 @@ import type { ToolDescriptor, ToolHandler, BuiltinToolContext } from "../core/sh
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 import { stickerUsagePatchSchema, type StickerRecord } from "#services/stickers/stickerStore.ts";
 import { sendImageBytesToChat } from "../core/chatMediaDelivery.ts";
+import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 
 const id = z.string().trim().min(1);
 const revision = z.number().int().positive();
@@ -29,7 +30,8 @@ const descriptions: Record<keyof typeof schemas, string> = {
 export const stickerToolDescriptors: ToolDescriptor[] = (Object.keys(schemas) as Array<keyof typeof schemas>).map((name) => ({
   requiresOneBot: name === "sticker_qq_list",
   definition: { type: "function", function: { name, description: descriptions[name], parameters: z.toJSONSchema(schemas[name], { io: "input" }) } },
-  isEnabled: (config) => config.stickers.enabled && config.chatFiles.enabled && (name !== "sticker_qq_list" || config.onebot.provider === "napcat"),
+  isEnabled: (config) => config.stickers.enabled && config.chatFiles.enabled && (name !== "sticker_qq_list" || (config.onebot.enabled && config.onebot.provider === "napcat")),
+  ...(name === "sticker_qq_list" ? { isVisible: (context: { sessionId?: string | undefined }) => parseChatSessionIdentity(context.sessionId ?? "")?.source === "onebot" } : {}),
   resultObservation: keepRawUnlessLargePolicy({ replaySafe: name === "sticker_search" || name === "sticker_qq_list" })
 }));
 
@@ -40,6 +42,12 @@ function view(item: StickerRecord) {
 function service(context: BuiltinToolContext) {
   if (!context.config.stickers.enabled || !context.config.chatFiles.enabled || !context.stickerService) throw new Error("表情库未启用。");
   return context.stickerService;
+}
+function assertNativeCollectionAccess(context: BuiltinToolContext): void {
+  const source = parseChatSessionIdentity(context.lastMessage.sessionId);
+  if (!context.config.onebot.enabled || context.config.onebot.provider !== "napcat" || source?.source !== "onebot" || source.channelId !== context.config.configRuntime.instanceName) {
+    throw new Error("QQ原生收藏仅限当前NapCat连接的OneBot会话使用。");
+  }
 }
 const handlers: Record<string, ToolHandler> = {
   async sticker_search(_call, args, context) {
@@ -56,7 +64,7 @@ const handlers: Record<string, ToolHandler> = {
     const replace = input.replace_id ? { id: input.replace_id, revision: input.replace_revision! } : undefined;
     let fileId = input.asset_id;
     if (input.qq_url !== undefined) {
-      if (context.config.onebot.provider !== "napcat") throw new Error("QQ收藏导入需要NapCat。");
+      assertNativeCollectionAccess(context);
       library.store.assertCanAdd(replace);
       const urls = await context.oneBotClient.fetchCustomFaces(200);
       const url = urls.find((candidate) => candidate === input.qq_url);
@@ -98,7 +106,7 @@ const handlers: Record<string, ToolHandler> = {
   },
   async sticker_qq_list(_call, args, context) {
     service(context);
-    if (context.config.onebot.provider !== "napcat") throw new Error("QQ收藏清单需要NapCat。");
+    assertNativeCollectionAccess(context);
     const { count } = schemas.sticker_qq_list.parse(args);
     const urls = await context.oneBotClient.fetchCustomFaces(count);
     return JSON.stringify({ items: urls.map((url) => ({ qq_url: url })), returned: urls.length, requested: count });

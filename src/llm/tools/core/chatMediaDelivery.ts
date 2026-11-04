@@ -1,34 +1,10 @@
+import { createTranscriptItemId } from "#conversation/session/transcriptMetadata.ts";
+import { QqDeliveryError } from "#services/qqOfficial/types.ts";
+import { INITIAL_MEDIA_WAIT_MS, waitForMediaDelivery, mediaDeliveryResult } from "./mediaDeliveryStatus.ts";
 import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { stat } from "node:fs/promises";
 import type { BuiltinToolContext } from "./shared.ts";
 import type { MediaDeliveryInput } from "#services/messaging/mediaDeliveryInput.ts";
-import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
-import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
-
-export function parseSessionTarget(sessionId: string): { userId?: string; groupId?: string } | null {
-  const parsed = parseChatSessionIdentity(sessionId);
-  if (!parsed) {
-    return null;
-  }
-  return parsed.kind === "private"
-    ? { userId: parsed.userId }
-    : { groupId: parsed.groupId };
-}
-
-export function enqueueToolSend(
-  context: BuiltinToolContext,
-  previewText: string,
-  send: () => Promise<void>
-): void {
-  context.messageQueue.enqueueTextDetached({
-    sessionId: context.lastMessage.sessionId,
-    text: previewText,
-    pacing: context.sessionManager.getSession(context.lastMessage.sessionId).pacingPreferences.outbound,
-    ...(context.outboundSignal ? { abortSignals: [context.outboundSignal] } : {}),
-    send,
-    ...(context.abortSignal ? { abortSignal: context.abortSignal } : {})
-  });
-}
 
 interface ChatMediaDeliveryInput {
   absolutePath: string;
@@ -42,7 +18,7 @@ interface ChatMediaDeliveryInput {
   mimeType?: string | null;
   sizeBytes?: number | null;
   aiGenerated?: boolean;
-  outputExtras: Record<string, string>;
+  outputExtras: Record<string, string | number>;
 }
 
 export function sendImageBytesToChat(context: BuiltinToolContext, input: ChatMediaDeliveryInput & {
@@ -59,85 +35,96 @@ export function sendAudioBytesToChat(context: BuiltinToolContext, input: ChatMed
 
 /** Media kinds keep their delivery semantics across OneBot and the local transcript. */
 async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMediaDeliveryInput & {
-  semanticKind: "image" | "emoji" | "audio";
+  semanticKind: "image" | "emoji" | "audio" | "file";
   nativeEmoji?: MediaDeliveryInput["nativeEmoji"];
   onSent?: () => void;
 }) {
-  const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
-  if (context.replyDelivery !== "web" && !target) {
-    return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
-  }
-  context.abortSignal?.throwIfAborted();
-  const file = await stat(input.absolutePath);
-  if (!file.isFile()) throw new Error("发送的媒体不是普通文件。");
-  if (input.semanticKind === "audio" && (!file.size || file.size > context.config.chatFiles.maxUploadBytes)) {
-    throw new Error("发送音频为空或超过资产大小限制");
-  }
-  context.abortSignal?.throwIfAborted();
-  const appendTranscript = (delivery: "web" | "onebot" | "qq_official", messageId: number | string | null) => {
-    context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
-      kind: "outbound_media_message",
-      llmVisible: false,
-      role: "assistant",
-      delivery,
-      mediaKind: input.semanticKind,
-      fileId: input.fileId,
-      fileRef: input.fileRef,
-      sourceName: input.sourceName,
-      chatFilePath: input.chatFilePath,
-      sourcePath: input.sourcePath,
-      ...(input.mimeType !== undefined ? { mimeType: input.mimeType } : {}),
-      ...(input.sizeBytes !== undefined ? { sizeBytes: input.sizeBytes } : {}),
-      ...(input.aiGenerated !== undefined ? { aiGenerated: input.aiGenerated } : {}),
-      messageId,
-      toolName: input.toolName,
-      captionText: null,
-      timestampMs: Date.now()
-    });
-    input.onSent?.();
-  };
-  enqueueToolSend(context, input.previewText, async () => {
-    if (context.replyDelivery === "web") {
-      appendTranscript("web", null);
-      return;
-    }
-    if (!target) throw new Error(`unsupported session target: ${context.lastMessage.sessionId}`);
-    await context.beforeExternalDelivery?.();
-    context.outboundSignal?.throwIfAborted();
-    const reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendMedia({
-      sessionId: context.lastMessage.sessionId, replyContext: context.replyContext, signal: context.outboundSignal
-    }, { filePath: input.absolutePath, kind: input.semanticKind, ...(input.nativeEmoji ? { nativeEmoji: input.nativeEmoji } : {}), name: input.sourceName });
-    if (reference) context.sessionManager.recordSentMessage(context.lastMessage.sessionId, {
-      messageId: reference.messageId, text: input.previewText, sentAt: Date.now()
-    });
-    appendTranscript(reference?.platform ?? context.replyDelivery, reference?.messageId ?? null);
+  const sessionId = context.lastMessage.sessionId;
+  const deliveryId = createTranscriptItemId();
+  const signals = [context.abortSignal, context.outboundSignal].filter((signal): signal is AbortSignal => signal !== undefined);
+  const signal = signals.length ? AbortSignal.any(signals) : undefined;
+  signal?.throwIfAborted();
+  const now = Date.now();
+  context.sessionManager.appendInternalTranscript(sessionId, {
+    id: deliveryId, kind: "outbound_media_message", llmVisible: false, role: "assistant",
+    delivery: context.replyDelivery, deliveryStatus: "queued", deliveryUpdatedAtMs: now,
+    mediaKind: input.semanticKind, fileId: input.fileId, fileRef: input.fileRef, sourceName: input.sourceName,
+    chatFilePath: input.chatFilePath, sourcePath: input.sourcePath,
+    ...(input.mimeType !== undefined ? { mimeType: input.mimeType } : {}),
+    ...(input.sizeBytes !== undefined ? { sizeBytes: input.sizeBytes } : {}),
+    ...(input.aiGenerated !== undefined ? { aiGenerated: input.aiGenerated } : {}),
+    messageId: null, toolName: input.toolName, captionText: null, timestampMs: now
   });
-  return {
-    content: JSON.stringify({
-      ok: true,
-      ...(input.fileRef ? { asset_ref: input.fileRef } : {}),
-      ...(input.fileId ? { file_id: input.fileId } : {}),
-      ...(input.sourcePath ? { path: input.sourcePath } : {}),
-      ...input.outputExtras,
-      deliveredAs: input.semanticKind,
-      queued: true
-    })
+  context.persistSession?.(sessionId, "media_delivery_queued");
+  const patch = (value: import("#conversation/session/mediaDelivery.ts").MediaDeliveryPatch) => {
+    const changed = context.sessionManager.patchMediaDelivery(sessionId, deliveryId, value);
+    if (changed) context.persistSession?.(sessionId, "media_delivery_updated");
+    return changed;
   };
+  let lease: ReturnType<NonNullable<BuiltinToolContext["beginExternalDelivery"]>> | undefined;
+  let barrierFailed = false;
+  try { lease = context.replyDelivery === "web" ? undefined : context.beginExternalDelivery?.(); }
+  catch {
+    barrierFailed = true;
+    patch(signal?.aborted
+      ? { deliveryStatus: "cancelled", deliveryError: { stage: "prepare", code: "cancelled_before_send", message: "发送前已取消。" } }
+      : { deliveryStatus: "failed", deliveryError: { stage: "prepare", code: "delivery_barrier_failed", message: "发送准备失败，未提交此媒体。" } });
+  }
+  let submitted = false;
+  const enqueue = () => context.messageQueue.enqueueText({
+    sessionId, text: input.previewText, pacing: context.sessionManager.getSession(sessionId).pacingPreferences.outbound,
+    ...(context.outboundSignal ? { abortSignals: [context.outboundSignal] } : {}),
+    ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
+    send: async () => {
+      // A reset/clear may remove the record while it waits. Do not send or recreate it.
+      if (!patch({ deliveryStatus: "sending" })) return;
+      await lease?.ready;
+      if (!context.sessionManager.getMediaDelivery(sessionId, deliveryId)) return;
+      signal?.throwIfAborted();
+      const file = await stat(input.absolutePath);
+      if (!file.isFile()) throw new Error("media_file_unavailable");
+      if (input.semanticKind === "audio" && (!file.size || file.size > context.config.chatFiles.maxUploadBytes)) throw new Error("media_size_limit");
+      signal?.throwIfAborted();
+      let reference: import("#services/messaging/deliveryCoordinator.ts").DeliveryReference | undefined;
+      if (context.replyDelivery !== "web") {
+        if (!context.sessionManager.getMediaDelivery(sessionId, deliveryId)) return;
+        submitted = true;
+        reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendMedia({
+          sessionId, replyContext: context.replyContext, signal
+        }, { filePath: input.absolutePath, kind: input.semanticKind,
+          ...(input.nativeEmoji ? { nativeEmoji: input.nativeEmoji } : {}), name: input.sourceName });
+      }
+      if (patch({ deliveryStatus: "accepted", messageId: reference?.messageId ?? null })) {
+        if (reference) context.sessionManager.recordSentMessage(sessionId, { messageId: reference.messageId, text: input.previewText, sentAt: Date.now() });
+        try { input.onSent?.(); } catch { /* A bookkeeping failure must never replay an accepted send. */ }
+      }
+    }
+  });
+  let completion: Promise<boolean>;
+  try { completion = barrierFailed ? Promise.resolve(false) : enqueue(); }
+  catch (error) { completion = Promise.reject(error); }
+  void completion.then(sent => {
+    if (!sent) patch({ deliveryStatus: "cancelled", deliveryError: { stage: "prepare", code: "cancelled_before_send", message: "发送前已取消。" } });
+  }).catch((error: unknown) => {
+    const notSubmitted = error instanceof QqDeliveryError ? error.messageStatus === "not_submitted" : !submitted;
+    const cancelled = notSubmitted && signal?.aborted;
+    const unknown = error instanceof QqDeliveryError ? error.messageStatus === "unknown" : submitted;
+    const code = error instanceof QqDeliveryError && /^[a-zA-Z0-9_:-]{1,80}$/.test(error.code) ? error.code : cancelled ? "cancelled_before_send" : "media_delivery_failed";
+    patch({ deliveryStatus: cancelled ? "cancelled" : unknown ? "unknown" : "failed", deliveryError: {
+      stage: error instanceof QqDeliveryError && error.stage === "upload" ? "upload" : submitted ? "message" : "prepare", code,
+      message: cancelled ? "发送前已取消。" : unknown ? "平台是否接受此媒体尚不确定，请勿自动重发。" : "媒体发送失败，平台未确认接受。"
+    } });
+  }).finally(() => lease?.settle());
+  const item = await waitForMediaDelivery(context.sessionManager, sessionId, deliveryId, INITIAL_MEDIA_WAIT_MS);
+  return { content: JSON.stringify({ ...input.outputExtras,
+    ...(input.fileRef ? { asset_ref: input.fileRef } : {}), ...(input.fileId ? { file_id: input.fileId } : {}),
+    ...(input.sourcePath ? { path: input.sourcePath } : {}), deliveredAs: input.semanticKind,
+    ...mediaDeliveryResult(item, deliveryId) }) };
 }
 
-export function recordDeliveredMessage(
-  context: BuiltinToolContext,
-  text: string,
-  messageIdValue: unknown
-): number | null {
-  const messageId = normalizeOneBotMessageId(messageIdValue);
-  if (messageId == null) {
-    return null;
+export function sendFileBytesToChat(context: BuiltinToolContext, input: ChatMediaDeliveryInput) {
+  if (context.replyDelivery === "onebot" && context.config.onebot.provider !== "napcat") {
+    return Promise.resolve({ content: JSON.stringify({ ok: false, deliveredAs: "unsupported", error: "当前 OneBot 提供方不支持发送普通文件，需要 onebot.provider=napcat。" }) });
   }
-  context.sessionManager.recordSentMessage(context.lastMessage.sessionId, {
-    messageId,
-    text,
-    sentAt: Date.now()
-  });
-  return messageId;
+  return sendMediaBytesToChat(context, { ...input, semanticKind: "file" });
 }

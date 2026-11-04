@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
+import { createMediaTestSessions, deferredMediaQueue } from "../helpers/media-delivery-fixtures.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { withTempDir } from "../helpers/config-test-support.tsx";
 import { nativeCapabilityToolHandlers, isSpeechGenerationAvailable, isDecisionAvailable } from "../../src/llm/tools/runtime/nativeCapabilityTools.ts";
@@ -125,7 +126,7 @@ test("生成语音资产沿音频消息链路投递到 OneBot 与 Web 并可播�
     for (const delivery of ["onebot", "web"] as const) {
       const queued: Array<() => Promise<void>> = [];
       const sends: unknown[] = [];
-      const transcripts: unknown[] = [];
+      const transcripts: any[] = [];
       const context = {
         config: c,
         replyDelivery: delivery,
@@ -134,16 +135,12 @@ test("生成语音资产沿音频消息链路投递到 OneBot 与 Web 并可播�
         nativeCapabilities: {
           async synthesize() { return { buffer: audio, mimeType: "audio/mpeg", extension: "mp3", usage: createEmptyUsage("speech", "speech-model") }; }
         },
-        messageQueue: { enqueueTextDetached(params: { send: () => Promise<void> }) { queued.push(params.send); } },
+        messageQueue: deferredMediaQueue(queued),
         oneBotClient: {
           async sendMessage(params: unknown) { sends.push(params); return { status: "ok", retcode: 0, data: { message_id: 42 } }; },
           async sendFile() { throw new Error("音频不应当作为普通文件上传"); }
         },
-        sessionManager: {
-          getSession() { return { pacingPreferences: { outbound: "humanized" } }; },
-          recordSentMessage() {},
-          appendInternalTranscript(_sessionId: string, item: unknown) { transcripts.push(item); }
-        }
+        sessionManager: createMediaTestSessions(c, ["qqbot:p:123"], transcripts)
       } as unknown as BuiltinToolContext;
       const generated = JSON.parse(String(await nativeCapabilityToolHandlers.generate_speech!(call("generate_speech"), { text: "你好" }, context)));
       assert.equal(generated.ok, true);
@@ -152,7 +149,8 @@ test("生成语音资产沿音频消息链路投递到 OneBot 与 Web 并可播�
       const result = JSON.parse(typeof sent === "string" ? sent : sent.content);
       assert.equal(result.deliveredAs, "audio");
       assert.equal(queued.length, 1);
-      assert.equal(transcripts.length, 0);
+      assert.equal(transcripts.length, 1);
+      assert.equal(transcripts[0].deliveryStatus, "queued");
       await queued[0]!();
       assert.equal(sends.length, delivery === "onebot" ? 1 : 0);
       if (delivery === "onebot") assert.deepEqual(sends[0], { userId: "123", message: [{ type: "record", data: { file: `base64://${audio.toString("base64")}` } }] });
@@ -185,19 +183,21 @@ test("语音排队后取消不会投递或写入已发送事件，预取消不�
     queue.enqueueDetached("qqbot:p:123", () => new Promise<void>(resolve => { release = resolve; }));
     await new Promise(resolve => setImmediate(resolve));
     let sends = 0;
-    let events = 0;
+    const events: any[] = [];
     const context = {
       config: c, abortSignal: controller.signal, replyDelivery: "onebot", lastMessage: { sessionId: "qqbot:p:123" }, chatFileStore: store, messageQueue: queue,
       oneBotClient: { async sendMessage() { sends++; return { data: { message_id: 42 } }; } },
-      sessionManager: { getSession() { return { pacingPreferences: { outbound: "humanized" } }; }, recordSentMessage() { events++; }, appendInternalTranscript() { events++; } }
+      sessionManager: createMediaTestSessions(c, ["qqbot:p:123"], events)
     } as unknown as BuiltinToolContext;
     const result = await chatFileToolHandlers.asset_send_to_chat!(call("asset_send_to_chat"), { asset_ref: source.fileRef }, context);
     assert.equal(JSON.parse(typeof result === "string" ? result : result.content).queued, true);
     controller.abort();
     release();
     await queue.getDrainPromise("qqbot:p:123");
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(sends, 0);
-    assert.equal(events, 0);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].deliveryStatus, "cancelled");
     await assert.rejects(chatFileToolHandlers.asset_send_to_chat!(call("asset_send_to_chat"), { asset_ref: source.fileRef }, context), /abort/i);
   });
 });

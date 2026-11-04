@@ -1,3 +1,4 @@
+import { patchMediaDeliveryState, type MediaDeliveryPatch } from "./mediaDelivery.ts";
 import { applySessionMediaResolution } from "./sessionMediaRecovery.ts";
 import type { MediaResolution } from "#services/workspace/mediaSources/types.ts";
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
@@ -454,6 +455,7 @@ export class SessionManager {
     if (session.responseAbortController != null) {
       session.responseAbortController.abort();
     }
+    session.outboundAbortController?.abort();
     const deleted = this.sessionStore.delete(sessionId);
     if (deleted) {
       this.notifySessionChanged(sessionId);
@@ -610,6 +612,7 @@ export class SessionManager {
     }
     existing?.generationAbortController?.abort();
     existing?.responseAbortController?.abort();
+    existing?.outboundAbortController?.abort();
 
     const restored = restoreSessionState(item);
     restored.historyRevision = (existing?.historyRevision ?? 0) + 1;
@@ -862,6 +865,18 @@ export class SessionManager {
     this.notifySessionChanged(sessionId);
   }
 
+  getMediaDelivery(sessionId: string, deliveryId: string) {
+    const item = this.sessionStore.get(sessionId)?.internalTranscript.find(item => item.id === deliveryId);
+    return item?.kind === "outbound_media_message" ? item : undefined;
+  }
+
+  patchMediaDelivery(sessionId: string, deliveryId: string, patch: MediaDeliveryPatch): boolean {
+    const session = this.sessionStore.get(sessionId);
+    if (!session || !patchMediaDeliveryState(session, deliveryId, patch)) return false;
+    this.notifySessionChanged(sessionId);
+    return true;
+  }
+
   applyResolvedMedia(sessionId: string, resolution: MediaResolution): boolean {
     const session = this.sessionStore.get(sessionId);
     if (!session || !applySessionMediaResolution(session, resolution, this.config)) return false;
@@ -878,6 +893,7 @@ export class SessionManager {
     if (session.responseAbortController != null) {
       session.responseAbortController.abort();
     }
+    session.outboundAbortController?.abort();
     clearSessionState(session);
     this.notifySessionChanged(sessionId);
   }

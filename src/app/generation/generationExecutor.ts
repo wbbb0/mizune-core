@@ -647,7 +647,12 @@ export function createGenerationExecutor(
         oneBotClient,
         ...(toolRuntime.messaging ? { messaging: toolRuntime.messaging } : {}),
         ...(sendTarget.replyContext ? { replyContext: sendTarget.replyContext } : {}),
-        beforeExternalDelivery: () => outbound.finishStream(),
+        beginExternalDelivery(this: { outboundSignal?: AbortSignal | undefined; abortSignal?: AbortSignal | undefined }) {
+          // Tool contexts are snapshots: an old tool must not seal a stream belonging to a later steer.
+          this.outboundSignal?.throwIfAborted();
+          this.abortSignal?.throwIfAborted();
+          return outbound.beginExternalDelivery();
+        },
         ...(sessionManager.getOutboundAbortSignal(sessionId) ? { outboundSignal: sessionManager.getOutboundAbortSignal(sessionId)! } : {}),
         audioStore,
         chatFileStore,

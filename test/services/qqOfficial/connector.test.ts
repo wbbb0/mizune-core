@@ -358,3 +358,15 @@ test("reply authorization expiring during upload prevents final media submission
     error instanceof QqDeliveryError && error.code === "reply_permit_expired" && error.messageStatus === "not_submitted");
   assert.equal(f.calls.some(call => call.url.endsWith("/messages")), false);
 });
+
+test("media cancelled before entry reports upload/not_submitted without consuming budget", async () => {
+  const f = fixture();
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  const abort = new AbortController();
+  abort.abort();
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" }, abort.signal), error =>
+    error instanceof QqDeliveryError && error.stage === "upload" && error.messageStatus === "not_submitted" && error.code === "cancelled");
+  assert.equal(f.calls.length, 0);
+  for (let index = 0; index < 4; index++) client.permits.allocate(permit);
+});

@@ -413,6 +413,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
               :label="msg.kind === 'text' ? msg.label : undefined"
               :sender-label="msg.senderLabel"
               :meta-chips="msg.metaChips"
+              :delivery-state="msg.deliveryState"
               :source-name="msg.kind === 'image' ? msg.sourceName : undefined"
               :file-ref="msg.kind === 'image' ? msg.fileRef : undefined"
               :file-id="msg.kind === 'image' ? msg.fileId : undefined"
@@ -420,7 +421,7 @@ function describeTranscriptItem(item: SessionTranscriptItem): string {
               :tool-name="msg.kind === 'image' ? msg.toolName : undefined"
               :timestamp-ms="msg.timestampMs"
               :actions-enabled="msg.actionsEnabled"
-              @preview-image="(url?: string, title?: string) => msg.kind === 'image' ? previewImage(msg.imageUrl, msg.sourceName || msg.fileRef || msg.fileId || '已发送图片') : url ? previewImage(url, title || '图片消息') : undefined"
+              @preview-image="(url?: string, title?: string) => msg.kind === 'image' ? previewImage(msg.imageUrl, msg.sourceName || msg.fileRef || msg.fileId || '图片消息') : url ? previewImage(url, title || '图片消息') : undefined"
               @open-actions="openChatItemActions(msg)"
             />
           </template>

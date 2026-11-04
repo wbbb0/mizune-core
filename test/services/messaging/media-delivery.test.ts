@@ -8,6 +8,8 @@ import type { OneBotClient } from "../../../src/services/onebot/onebotClient.ts"
 import type { QqOfficialClient } from "../../../src/services/qqOfficial/client.ts";
 import type { QqReplyPermit } from "../../../src/services/qqOfficial/types.ts";
 import { sendImageBytesToChat } from "../../../src/llm/tools/core/chatMediaDelivery.ts";
+import { createMediaTestSessions, deferredMediaQueue } from "../../helpers/media-delivery-fixtures.ts";
+import { createTestAppConfig } from "../../helpers/config-fixtures.tsx";
 import type { BuiltinToolContext } from "../../../src/llm/tools/core/shared.ts";
 
 async function localMedia(run: (path: string, bytes: Buffer) => Promise<void>) {
@@ -41,17 +43,19 @@ test("native sticker metadata is encoded only by OneBot; official receives the b
   assert.deepEqual(media, [{ fileType: 1, bytes, name: "image.png" }]);
 }));
 
-test("chat media helper queues a neutral file request and records only successful sends", async () => localMedia(async (absolutePath) => {
-  const queued: Array<() => Promise<void>> = [], requests: unknown[] = [], transcript: unknown[] = [];
+test("chat media helper queues a neutral file request and updates one queued record through acceptance", async () => localMedia(async (absolutePath) => {
+  const queued: Array<() => Promise<void>> = [], requests: unknown[] = [], transcript: any[] = [];
   const context = {
     replyDelivery: "onebot", lastMessage: { sessionId: "bot:p:123" },
-    messageQueue: { enqueueTextDetached: (job: { send: () => Promise<void> }) => queued.push(job.send) },
-    sessionManager: { getSession: () => ({ pacingPreferences: { outbound: "immediate" } }), recordSentMessage: () => {}, appendInternalTranscript: (_id: string, item: unknown) => transcript.push(item) },
+    messageQueue: deferredMediaQueue(queued),
+    sessionManager: createMediaTestSessions(createTestAppConfig(), ["bot:p:123"], transcript),
     messaging: { sendMedia: async (_address: unknown, input: unknown) => { requests.push(input); return { platform: "onebot", messageId: 7 }; } }
   } as unknown as BuiltinToolContext;
   await sendImageBytesToChat(context, { absolutePath, previewText: "图片", sourceName: "image.png", fileId: "asset", fileRef: "image.png", chatFilePath: "image.png", sourcePath: null, toolName: "asset_send_to_chat", outputExtras: {} });
-  assert.equal(requests.length, 0); assert.equal(transcript.length, 0);
+  assert.equal(requests.length, 0); assert.equal(transcript.length, 1);
+  assert.equal(transcript[0].deliveryStatus, "queued");
   await queued[0]!();
   assert.deepEqual(requests, [{ filePath: absolutePath, kind: "image", name: "image.png" }]);
   assert.equal(transcript.length, 1);
+  assert.equal(transcript[0].deliveryStatus, "accepted");
 }));

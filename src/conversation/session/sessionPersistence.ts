@@ -773,6 +773,15 @@ const SESSION_TABLE_GROUPS = createTableGroupsFromDataDomain(sessionDataDomain).
         '$.oneBotOutbound')
       WHERE json_type(pacing_preferences_json, '$.oneBotOutbound') = 'text'
         AND json_type(pacing_preferences_json, '$.outbound') IS NULL`);
+    // Earlier media rows were appended only after a successful platform/local commit.
+    const rows = db.prepare("SELECT session_id, item_id, item_json FROM session_transcript_items WHERE kind = 'outbound_media_message'").all() as Array<{ session_id: string; item_id: string; item_json: string }>;
+    for (const row of rows) {
+      const item = JSON.parse(row.item_json) as Record<string, unknown>;
+      if (item.deliveryStatus != null) continue;
+      const itemJson = JSON.stringify({ ...item, deliveryStatus: "accepted", deliveryUpdatedAtMs: item.timestampMs });
+      db.prepare("UPDATE session_transcript_items SET item_json = ?, item_hash = ? WHERE session_id = ? AND item_id = ?")
+        .run(itemJson, hashTranscriptItem(itemJson), row.session_id, row.item_id);
+    }
     return true;
   }
 }));

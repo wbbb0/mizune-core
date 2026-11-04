@@ -101,6 +101,9 @@ export interface SessionWebStreamAccess {
 }
 
 export interface SessionToolRuntimeAccess extends SessionOperationModeAccess {
+  getMediaDelivery(sessionId: string, deliveryId: string): Extract<InternalTranscriptItem, { kind: "outbound_media_message" }> | undefined;
+  patchMediaDelivery(sessionId: string, deliveryId: string, patch: import("./mediaDelivery.ts").MediaDeliveryPatch): boolean;
+
   listSessions(): SessionState[];
   ensureSession(target: {
     id: string;
@@ -148,6 +151,7 @@ export interface SessionToolRuntimeAccess extends SessionOperationModeAccess {
 export interface SessionBootstrapPersistenceAccess {
   restoreSessions(items: PersistedSessionState[]): void;
   listSessions(): SessionState[];
+  getPersistedSession(sessionId: string): PersistedSessionState;
 }
 
 export interface SessionOperationModeAccess {

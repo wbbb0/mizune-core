@@ -11,6 +11,7 @@ import { StickerService } from "../../src/services/stickers/stickerService.ts";
 import { AssetLifecycleStore } from "../../src/data/assets/assetLifecycleStore.ts";
 import { stickerToolHandlers } from "../../src/llm/tools/runtime/stickerTools.ts";
 import { extractContentParts, getSegmentMediaKind } from "../../src/services/onebot/messageSegments.ts";
+import { createMediaTestSessions, deferredMediaQueue } from "../helpers/media-delivery-fixtures.ts";
 import type { StickerMetadata } from "../../src/services/stickers/stickerStore.ts";
 
 const metadata: StickerMetadata = {
@@ -137,10 +138,9 @@ test("表情发送进入队列，实际发送后才计数，保留emoji transcri
     const context = {
       config: f.config, stickerService: f.service, chatFileStore: f.files,
       relationship: "known", replyDelivery: "onebot", lastMessage: { sessionId: "qqbot:p:10001" },
-      messageQueue: { enqueueTextDetached: (job: { send: () => Promise<void> }) => queued.push(job.send) },
+      messageQueue: deferredMediaQueue(queued),
       oneBotClient: { sendMessage: async (payload: unknown) => { sent.push(payload); return { data: { message_id: 42 } }; } },
-      sessionManager: {
-          getSession() { return { pacingPreferences: { outbound: "humanized" } }; }, recordSentMessage() {}, appendInternalTranscript: (_id: string, data: unknown) => transcript.push(data) }
+      sessionManager: createMediaTestSessions(f.config, ["qqbot:p:10001"], transcript)
     } as any;
     const response = await stickerToolHandlers.sticker_send!({} as any, { id: item.id }, context);
     assert.equal(typeof response, "object", JSON.stringify(response));
@@ -195,19 +195,19 @@ test("商城参数按原协议发送；失败不计数，Web发送保留表情�
     const context = {
       config: f.config, stickerService: f.service, chatFileStore: f.files,
       replyDelivery: "onebot", lastMessage: { sessionId: "qqbot:g:123" },
-      messageQueue: { enqueueTextDetached: (job: { send: () => Promise<void> }) => queue.push(job.send) },
+      messageQueue: deferredMediaQueue(queue),
       oneBotClient: { sendMessage: async (payload: any) => {
         assert.deepEqual(payload.message, [{ type: "mface", data: { emoji_id: "abc", emoji_package_id: 123, key: "key", summary: "笑" } }]);
         if (fail) throw new Error("发送失败");
         return { data: { message_id: 1 } };
       } },
-      sessionManager: {
-          getSession() { return { pacingPreferences: { outbound: "humanized" } }; }, recordSentMessage() {}, appendInternalTranscript: (_id: string, data: unknown) => transcript.push(data) }
+      sessionManager: createMediaTestSessions(f.config, ["qqbot:g:123", "web:test"], transcript)
     } as any;
     await stickerToolHandlers.sticker_send!({} as any, { id: item.id }, context);
     await assert.rejects(queue.shift()!(), /发送失败/);
     assert.equal(f.service.store.get(item.id).useCount, 0);
-    assert.equal(transcript.length, 0);
+    assert.equal(transcript.length, 1);
+    assert.equal(transcript[0].deliveryStatus, "unknown");
     fail = false;
     await stickerToolHandlers.sticker_send!({} as any, { id: item.id }, context);
     await queue.shift()!();
@@ -216,8 +216,8 @@ test("商城参数按原协议发送；失败不计数，Web发送保留表情�
     context.lastMessage.sessionId = "web:test";
     await stickerToolHandlers.sticker_send!({} as any, { id: item.id }, context);
     await queue.shift()!();
-    assert.equal(transcript[1].delivery, "web");
-    assert.equal(transcript[1].mediaKind, "emoji");
+    assert.equal(transcript[2].delivery, "web");
+    assert.equal(transcript[2].mediaKind, "emoji");
     assert.equal(f.service.store.get(item.id).useCount, 2);
   } finally { await f.cleanup(); }
 });
@@ -226,9 +226,10 @@ test("QQ导入核验稳定URL且本地删除不调用QQ删除；禁用后工具�
   const f = await fixture();
   try {
     f.config.onebot.provider = "napcat";
+    f.config.onebot.enabled = true;
     const file = await f.image("red");
     let imported = 0;
-    const context = { config: f.config, stickerService: f.service, chatFileStore: {
+    const context = { config: f.config, lastMessage: { sessionId: `${f.config.configRuntime.instanceName}:p:user` }, stickerService: f.service, chatFileStore: {
       importRemoteSource: async (input: { source: string }) => { assert.equal(input.source, "https://example.com/emoji.png"); imported++; return file; }
     }, oneBotClient: { fetchCustomFaces: async () => ["https://example.com/emoji.png"] } } as any;
     const missing = await stickerToolHandlers.sticker_collect!({} as any, { qq_url: "https://example.com/old.png", reason: "测试" }, context);

@@ -4,6 +4,8 @@ import { Bot, User, Users } from "lucide-vue-next";
 import MessageContentParts from "./MessageContentParts.vue";
 import MessageMetaLine from "./MessageMetaLine.vue";
 import SessionGlyph, { type SessionGlyphModel } from "./SessionGlyph.vue";
+import MediaDeliveryStatus from "./MediaDeliveryStatus.vue";
+import type { MediaDeliveryState } from "./mediaDeliveryState";
 import type { ChatTimelineContentPart } from "./chatTimeline";
 
 const props = defineProps<{
@@ -15,6 +17,7 @@ const props = defineProps<{
   label?: string;
   senderLabel?: string;
   metaChips?: string[];
+  deliveryState?: MediaDeliveryState;
   sourceName?: string | null;
   fileRef?: string | null;
   fileId?: string | null;
@@ -96,6 +99,7 @@ function openActions(): void {
           <span class="block">{{ content }}</span>
         </template>
       </div>
+      <MediaDeliveryStatus v-if="deliveryState" :state="deliveryState" />
       <MessageMetaLine
         :align="side"
         :sender-label="senderLabel"

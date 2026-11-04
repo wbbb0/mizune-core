@@ -119,6 +119,12 @@ export function buildTranscriptItemPatch(
     if (previous.tokenStats != null && current.tokenStats == null) patch.tokenStats = {};
   }
 
+  if (previous.kind === "outbound_media_message" && current.kind === "outbound_media_message") {
+    if (previous.deliveryStatus !== current.deliveryStatus) patch.deliveryStatus = current.deliveryStatus;
+    if (previous.deliveryUpdatedAtMs !== current.deliveryUpdatedAtMs) patch.deliveryUpdatedAtMs = current.deliveryUpdatedAtMs;
+    if (previous.messageId !== current.messageId) patch.messageId = current.messageId;
+    if (JSON.stringify(previous.deliveryError) !== JSON.stringify(current.deliveryError) && current.deliveryError) patch.deliveryError = current.deliveryError;
+  }
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
