@@ -14,11 +14,12 @@ class Socket extends EventEmitter {
   close() { this.emit("close", 1000); }
   payload(value: unknown) { this.emit("message", Buffer.from(JSON.stringify(value))); }
 }
-function fixture(timeout = 10) {
+function fixture(timeout = 10, url = "wss://api.bot.qq.com/websocket") {
   const socket = new Socket();
-  const http = { timeoutMs: timeout, async request() { return { url: "wss://api.bot.qq.com/websocket" }; }, async accessToken() { return "token"; } } as unknown as QqHttpClient;
-  const gateway = new QqGateway(http, pino({ level: "silent" }), () => {}, () => socket as unknown as WebSocket, timeout);
-  return { socket, gateway };
+  const http = { timeoutMs: timeout, async request() { return { url }; }, async accessToken() { return "token"; } } as unknown as QqHttpClient;
+  const created: string[] = [];
+  const gateway = new QqGateway(http, pino({ level: "silent" }), () => {}, () => { created.push(url); return socket as unknown as WebSocket; }, timeout);
+  return { socket, gateway, created };
 }
 
 for (const hello of [false, true]) {
@@ -44,3 +45,18 @@ test("READY cancels handshake watchdog and stop clears remaining lifecycle timer
   gateway.stop();
   assert.equal(socket.terminated, true);
 });
+
+for (const host of ["api.bot.qq.com", "api.sgroup.qq.com"]) {
+  test(`accepts official gateway returned at ${host}`, async () => {
+    const { gateway, created } = fixture(100, `wss://${host}/websocket`);
+    try { await gateway.start(); assert.equal(created.length, 1); }
+    finally { gateway.stop(); }
+  });
+}
+for (const url of ["wss://api.sgroup.qq.com.attacker.invalid/websocket", "ws://api.sgroup.qq.com/websocket", "wss://api.sgroup.qq.com:8443/websocket"]) {
+  test(`rejects untrusted gateway ${url}`, async () => {
+    const { gateway, created } = fixture(100, url);
+    try { await gateway.start(); assert.equal(created.length, 0); }
+    finally { gateway.stop(); }
+  });
+}

@@ -2,6 +2,8 @@ import WebSocket from "ws";
 import type { Logger } from "pino";
 import type { QqHttpClient } from "./httpClient.ts";
 
+const OFFICIAL_GATEWAY_HOSTS = new Set(["api.bot.qq.com", "api.sgroup.qq.com"]);
+
 interface GatewayPayload { op: number; s?: number; t?: string; d?: unknown; }
 
 export class QqGateway {
@@ -44,7 +46,7 @@ export class QqGateway {
     try {
       const gateway = await this.http.request<{ url: string }>("GET", "/gateway/bot");
       const url = new URL(gateway.url);
-      if (url.protocol !== "wss:" || url.hostname !== "api.bot.qq.com" || url.username || url.password) {
+      if (url.protocol !== "wss:" || !OFFICIAL_GATEWAY_HOSTS.has(url.hostname) || url.username || url.password || (url.port !== "" && url.port !== "443")) {
         throw new Error("非法官方 Bot 网关地址");
       }
       const token = await this.http.accessToken();
@@ -57,7 +59,6 @@ export class QqGateway {
         let payload: GatewayPayload;
         try { payload = JSON.parse(raw.toString()) as GatewayPayload; }
         catch { this.logger.warn("qq_official_gateway_invalid_json"); return; }
-        if (!payload || typeof payload !== "object" || typeof payload.op !== "number") return;
         if (payload == null || typeof payload !== "object" || Array.isArray(payload) || !Number.isInteger(payload.op)) {
           this.logger.warn("qq_official_gateway_invalid_payload"); return;
         }
@@ -93,7 +94,11 @@ export class QqGateway {
             this.sessionId = typeof sessionId === "string" ? sessionId : null;
             this.clearHandshakeWatchdog();
             this.attempt = 0;
-          } else if (payload.t === "RESUMED") { this.clearHandshakeWatchdog(); this.attempt = 0; }
+            this.logger.info("qq_official_gateway_ready");
+          } else if (payload.t === "RESUMED") {
+            this.clearHandshakeWatchdog(); this.attempt = 0;
+            this.logger.info("qq_official_gateway_resumed");
+          }
           try { this.dispatch(payload.t, payload.d); }
           catch { this.logger.warn("qq_official_dispatch_failed"); }
         }
