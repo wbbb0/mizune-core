@@ -1,19 +1,6 @@
 import type { BuiltinToolContext } from "./shared.ts";
 import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 
-export function resolveForwardIdArg(
-  requestedId: string,
-  toolArgumentsRaw: string,
-  context: BuiltinToolContext
-): string {
-  return resolveStructuredIdArg({
-    requestedId,
-    toolArgumentsRaw,
-    key: "forward_id",
-    knownIds: collectKnownForwardIds(context)
-  });
-}
-
 export function resolveMessageIdArg(
   requestedId: string,
   toolArgumentsRaw: string,
@@ -47,38 +34,6 @@ function resolveStructuredIdArg(input: {
   }
 
   return findNearbyKnownId(requestedId, input.knownIds) ?? requestedId;
-}
-
-function collectKnownForwardIds(context: BuiltinToolContext): string[] {
-  const ids = new Set<string>();
-  const sessionId = context.lastMessage?.sessionId;
-  if (!sessionId) {
-    return [];
-  }
-
-  try {
-    const session = context.sessionManager.getSession(sessionId);
-    for (const message of session.pendingMessages) {
-      for (const forwardId of message.forwardIds) {
-        ids.add(forwardId);
-      }
-    }
-  } catch {
-    // Ignore missing session snapshots during tool execution.
-  }
-
-  try {
-    const sessionView = context.sessionManager.getSessionView(sessionId);
-    for (const message of context.sessionManager.getLlmVisibleHistory(sessionId)) {
-      for (const forwardId of extractRefIds(message.content, "forward", "forward_id")) {
-        ids.add(forwardId);
-      }
-    }
-  } catch {
-    // Ignore missing session snapshots during tool execution.
-  }
-
-  return [...ids];
 }
 
 function collectKnownMessageIds(context: BuiltinToolContext): string[] {

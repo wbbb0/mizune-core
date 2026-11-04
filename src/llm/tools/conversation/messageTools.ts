@@ -1,3 +1,5 @@
+import { foldForwardRecords } from "#messages/forwardRecords.ts";
+import { collectContentPartMediaIds } from "#messages/contentParts.ts";
 import { assertKnownOneBotReference, assertKnownMediaReference } from "#services/onebot/referenceAccess.ts";
 import { mediaScopeForSession } from "#services/workspace/mediaSources/content.ts";
 import { importReferenceMedia } from "#services/onebot/referenceMedia.ts";
@@ -88,7 +90,8 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
       assertKnownOneBotReference(context.sessionManager, context.lastMessage.sessionId, "reply", messageId);
       const { message, parts } = await context.oneBotReferenceResolver.readMessage(mediaScopeForSession(context.lastMessage.sessionId), messageId);
       const imported = await importReferenceMedia(context, context.lastMessage, parts);
-      const workspaceImageAssets = await context.chatFileStore.getMany([...imported.imageIds, ...imported.emojiIds]);
+      const visibleParts = foldForwardRecords(imported.contentParts, { nativeReferences: true });
+      const workspaceImageAssets = await context.chatFileStore.getMany([...collectContentPartMediaIds(visibleParts, "image"), ...collectContentPartMediaIds(visibleParts, "emoji")]);
       const fileSources = extractFileSources(message.message);
       const mentions = extractMentions(message.message);
       const sender = message.sender ?? {};
@@ -125,7 +128,7 @@ export const messageToolHandlers: Record<string, ToolHandler> = {
           }))
         ],
         files: fileSources.map(formatExtractedFileSource),
-        contentParts: imported.contentParts
+        contentParts: visibleParts
       };
       return projectToolResult({
         toolName: "view_message",

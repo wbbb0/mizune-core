@@ -1,3 +1,4 @@
+import { cachedForwardRecordRef, nativeForwardRecordRef, forwardRecordMessageCount } from "#messages/forwardRecords.ts";
 import { buildTag, buildCloseTag, escapeAttr, escapeUserText } from "#utils/structuredEnvelope.ts";
 import type { MediaSemanticKind } from "#services/onebot/messageSegments.ts";
 import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
@@ -40,10 +41,13 @@ export function formatStructuredEmojiReference(imageId: string): string {
 }
 
 export function formatStructuredForwardReference(forwardId: string): string {
-  return formatStructuredTag("ref", {
-    kind: "forward",
-    forward_id: forwardId
-  });
+  return formatStructuredForwardRecord(nativeForwardRecordRef(forwardId));
+}
+
+export function formatStructuredForwardRecord(recordRef: string, messageCount?: number, truncated?: boolean): string {
+  return formatStructuredTag("forward_record", { record_ref: recordRef,
+    ...(messageCount != null ? { messages: String(messageCount) } : {}),
+    ...(truncated ? { truncated: "true" } : {}), tool: "view_forward_record" });
 }
 
 export function formatStructuredReplyReference(messageId: string): string {
@@ -602,7 +606,11 @@ function formatMessageContentParts(
         }
         break;
       case "embedded_message": {
-        const label = part.relation === "reply" ? "引用内容" : part.relation === "forward" ? "转发聊天记录" : "记录消息";
+        if (part.relation === "forward") {
+          parts.push(formatStructuredForwardRecord(part.recordRef ?? cachedForwardRecordRef(part), forwardRecordMessageCount(part), part.truncated));
+          break;
+        }
+        const label = part.relation === "reply" ? "引用内容" : "记录消息";
         parts.push([
           formatStructuredTag("embedded_message", {
             relation: part.relation,

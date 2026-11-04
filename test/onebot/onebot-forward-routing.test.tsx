@@ -1,3 +1,4 @@
+import { nativeForwardRecordRef } from "../../src/messages/forwardRecords.ts";
 import { withReferenceToolServices } from "../helpers/media-import-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -82,7 +83,7 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
     assert.deepEqual(parsed?.attachments, []);
   });
 
-  test("view_forward_record repairs rounded forward_id from recent session refs", async () => {
+  test("view_forward_record keeps opaque native identifiers exact", async () => {
     const sessionManager = new SessionManager(createForwardFeatureConfig());
     sessionManager.ensureSession({ id: "qqbot:p:10001", type: "private" });
     sessionManager.appendUserHistory("qqbot:p:10001", {
@@ -95,22 +96,22 @@ import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx"
 
     let capturedForwardId: string | null = null;
     const result = await forwardToolHandlers.view_forward_record!(
-      { id: "tool_forward_1", type: "function", function: { name: "view_forward_record", arguments: "{\"forward_id\":7618168520610782000}" } },
-      { forward_id: "7618168520610782000" },
+      { id: "tool_forward_1", type: "function", function: { name: "view_forward_record", arguments: JSON.stringify({ record_ref: nativeForwardRecordRef("7618168520610781740") }) } },
+      { record_ref: nativeForwardRecordRef("7618168520610781740") },
       withReferenceToolServices({
         lastMessage: { sessionId: "qqbot:p:10001", userId: "owner", senderName: "Owner" },
         sessionManager,
         oneBotReferenceResolver: {
           async expand(_scope: unknown, parts: any[]) {
             capturedForwardId = parts[0].forwardId;
-            return [];
+            return [{ kind: "embedded_message", relation: "forward", messageId: capturedForwardId, parts: [] }];
           }
         } as any
       } as any, { forward: "7618168520610782000" })
     );
 
     assert.equal(capturedForwardId, "7618168520610781740");
-    assert.equal(JSON.parse(String(result)).forwardId, "7618168520610781740");
+    assert.equal(JSON.parse(String(result)).recordRef, nativeForwardRecordRef("7618168520610781740"));
   });
 
   test("view_message repairs rounded message_id from recent session refs", async () => {

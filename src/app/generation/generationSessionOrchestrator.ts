@@ -1,3 +1,4 @@
+import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import { characterPersonaView } from "../../character/prompt.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { characterToolNames } from "../../character/tools.ts";
@@ -412,7 +413,7 @@ function toPromptBatchMessages(messages: GenerationRuntimeBatchMessage[]) {
     mentionedAll: message.mentionedAll,
     isAtMentioned: message.isAtMentioned,
     receivedAt: message.receivedAt
-  }));
+  })).map(foldMessageForModel);
 }
 
 type PromptBatchMessages = ReturnType<typeof toPromptBatchMessages>;

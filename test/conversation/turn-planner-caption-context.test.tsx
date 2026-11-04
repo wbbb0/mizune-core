@@ -6,7 +6,7 @@ import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import type { LlmGenerateParams } from "../../src/llm/llmClient.ts";
 import { buildTag } from "../../src/utils/structuredEnvelope.ts";
 
-test("turn planner injects image captions for non-vision planner models", async () => {
+test("turn planner captions visible media and keeps forwarded media folded", async () => {
   const config = createTestAppConfig({
     llm: {
       enabled: true,
@@ -86,9 +86,12 @@ test("turn planner injects image captions for non-vision planner models", async 
       text: "继续看这些图",
       images: [],
       audioSources: [],
-      imageIds: ["file_image_1"],
+      imageIds: ["file_image_1", "file_forward_hidden"],
+      contentParts: [{ kind: "image", fileId: "file_image_1" }, { kind: "embedded_message", relation: "forward", parts: [
+        { kind: "text", text: "不可提前读取的记录" }, { kind: "image", fileId: "file_forward_hidden" }
+      ] }],
       emojiIds: ["file_emoji_1"],
-      attachments: [{
+      attachments: [{ fileId: "file_forward_hidden", kind: "image", source: "chat_message", sourceName: "隐藏.png", mimeType: "image/png" }, {
         fileId: "file_asset_1",
         kind: "image",
         source: "web_upload",
@@ -106,6 +109,7 @@ test("turn planner injects image captions for non-vision planner models", async 
   });
 
   assert.equal(result.replyDecision, "reply_small");
+  assert.doesNotMatch(capturedPromptText, /不可提前读取的记录|file_forward_hidden/);
   assert.deepEqual(ensuredImageIds, ["file_history_1", "file_image_1", "file_emoji_1", "file_asset_1"]);
   assert.match(capturedPromptText, /图片描述：历史里的一张项目看板截图/);
   assert.match(capturedPromptText, /file_image_1 image 图片描述：当前消息里的一张红色折线图截图/);

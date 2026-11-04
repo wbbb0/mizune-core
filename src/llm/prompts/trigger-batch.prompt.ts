@@ -1,5 +1,6 @@
 import { buildCloseTag, escapeUserText } from "#utils/structuredEnvelope.ts";
 import {
+  formatHistoryContent,
   formatStructuredEmojiReference,
   formatStructuredForwardReference,
   formatStructuredImageReference,
@@ -352,6 +353,12 @@ function formatMessageContentPartsForPrompt(input: {
   const parts: string[] = [];
   for (const part of input.contentParts) {
     switch (part.kind) {
+      case "embedded_message":
+        parts.push(formatHistoryContent({ text: "", contentParts: [part] }));
+        break;
+      case "pending_media":
+        parts.push(formatHistoryContent({ text: "", contentParts: [part] }));
+        break;
       case "text":
         if (!part.text.trim()) {
           break;

@@ -1,3 +1,4 @@
+import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
@@ -144,6 +145,7 @@ export class TurnPlanner {
   }
 
   async decide(input: TurnPlannerInput): Promise<TurnPlannerResult> {
+    input = { ...input, batchMessages: input.batchMessages.map(foldMessageForModel) };
     if (!this.isEnabled() || getTurnPlannerReasons(input.requirements).length === 0) {
       return {
         replyDecision: "reply_small",

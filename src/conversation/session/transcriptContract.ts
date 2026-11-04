@@ -118,7 +118,8 @@ const rawTranscriptMessageContentPartSchema: z.ZodType<PersistedMessageContentPa
   }),
   z.object({
     kind: z.literal("forward"),
-    forwardId: z.string().min(1)
+    forwardId: z.string().min(1),
+    recordRef: z.string().regex(/^onebot_[A-Za-z0-9_-]{1,400}$/).optional()
   }),
   z.object({
     kind: z.literal("audio"),
@@ -133,6 +134,8 @@ const rawTranscriptMessageContentPartSchema: z.ZodType<PersistedMessageContentPa
   z.object({
     kind: z.literal("embedded_message"),
     relation: z.enum(["reply", "forward", "message"]),
+    recordRef: z.string().regex(/^record_[a-f0-9]{32}$/).optional(),
+    recordMessageCount: z.number().int().nonnegative().optional(),
     messageId: z.string().min(1).optional(),
     senderId: z.string().min(1).optional(),
     senderName: z.string().optional(),

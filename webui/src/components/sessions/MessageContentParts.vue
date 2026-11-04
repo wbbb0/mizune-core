@@ -94,6 +94,7 @@ function getFileTypeLabel(part: Extract<ChatTimelineContentPart, { kind: "file" 
       >
         <summary class="cursor-pointer text-small font-medium wrap-break-word">
           {{ embeddedTitle(part.relation) }}
+          <span v-if="part.relation === 'forward'" class="ml-1 font-normal text-text-muted">模型按需读取</span>
           <span v-if="part.senderName || part.senderId" class="ml-1 font-normal text-text-muted">{{ part.senderName || part.senderId }}</span>
         </summary>
         <div class="mt-1.5 flex min-w-0 flex-col gap-1.5 border-l-2 border-border-default pl-2">

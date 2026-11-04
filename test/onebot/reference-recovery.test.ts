@@ -7,6 +7,7 @@ import { imageToolHandlers } from "../../src/llm/tools/conversation/imageTools.t
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createMemoryMediaSources } from "../helpers/media-import-fixtures.ts";
 import { MediaImportService } from "../../src/services/workspace/mediaSources/service.ts";
+import { nativeForwardRecordRef } from "../../src/messages/forwardRecords.ts";
 import { walkMessageContentParts } from "../../src/messages/contentParts.ts";
 import type { OneBotClient } from "../../src/services/onebot/onebotClient.ts";
 import type { ChatFileRecord } from "../../src/services/workspace/types.ts";
@@ -94,17 +95,25 @@ test("forward tools import nested images as real assets accepted by asset_media_
     lastMessage: { sessionId: scope.sessionId, userId: "actor", senderName: "当前发送者" },
     mediaVisionService: { prepareFileForModel: async (fileId: string) => ({ fileId, inputUrl: "data:image/png;base64,AAAA", kind: "image", animated: false }) }
   } as unknown as Parameters<NonNullable<typeof forwardToolHandlers.view_forward_record>>[2];
-  const call = { id: "forward", type: "function" as const, function: { name: "view_forward_record", arguments: '{"forward_id":"outer"}' } };
-  const result = JSON.parse(String(await forwardToolHandlers.view_forward_record!(call, { forward_id: "outer" }, context)));
+  const call = { id: "forward", type: "function" as const, function: { name: "view_forward_record", arguments: JSON.stringify({ record_ref: nativeForwardRecordRef("outer") }) } };
+  const result = JSON.parse(String(await forwardToolHandlers.view_forward_record!(call, { record_ref: nativeForwardRecordRef("outer") }, context)));
   assert.equal(result.ok, true);
   assert.equal(files.size, 2);
-  assert.equal(result.assets.length, 2);
+  assert.equal(result.assets.length, 1, "nested record images stay behind its own view entry");
   assert.equal(JSON.stringify(result).includes("PRIVATE"), false);
   assert.equal(JSON.stringify(result).includes("forward_image:"), false);
   const viewed = await imageToolHandlers.asset_media_view!({ ...call, function: { name: "asset_media_view", arguments: "{}" } }, { asset_ids: [...files.keys()] }, context);
   assert.equal(typeof viewed, "object");
   assert.equal(queries, 2);
-  const forbidden = JSON.parse(String(await forwardToolHandlers.view_forward_record!(call, { forward_id: "unknown-id" }, context)));
+  sessions.appendInternalTranscript(scope.sessionId, { kind: "tool_result", llmVisible: true, toolCallId: call.id,
+    toolName: "view_forward_record", timestampMs: Date.now(), content: JSON.stringify(result) });
+  const nested = [...walkMessageContentParts(result.contentParts)].find(part => part.kind === "forward");
+  assert.ok(nested?.kind === "forward" && nested.recordRef);
+  const inner = JSON.parse(String(await forwardToolHandlers.view_forward_record!(call, { record_ref: nested.recordRef }, context)));
+  assert.equal(inner.ok, true, JSON.stringify(inner));
+  assert.equal(inner.assets.length, 1);
+  assert.equal(queries, 3);
+  const forbidden = JSON.parse(String(await forwardToolHandlers.view_forward_record!(call, { record_ref: nativeForwardRecordRef("unknown-id") }, context)));
   assert.ok(forbidden.error);
-  assert.equal(queries, 2, "unknown identifiers must not query the platform");
+  assert.equal(queries, 3, "unknown identifiers must not query the platform");
 });

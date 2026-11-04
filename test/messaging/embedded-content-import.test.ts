@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
 import { importIncomingContent } from "../../src/services/messaging/importIncomingContent.ts";
+import { collectSessionAssetRefs } from "../../src/data/assets/sessionAssetReferences.ts";
 import { collectReferencedImageIds } from "../../src/images/imagePromptContext.ts";
 import { processIncomingMessage } from "../../src/app/messaging/messageEventHandler.ts";
 import { SessionManager } from "../../src/conversation/session/sessionManager.ts";
@@ -74,7 +75,9 @@ test("passive group context caches media for later prompts without commands, set
   assert.equal(JSON.stringify(session.internalTranscript).includes("https://"), false);
   assert.ok(reasons.includes("group_context_received"));
   assert.equal(imports.length, 2);
-  assert.deepEqual(collectReferencedImageIds(manager.getLlmVisibleHistory(session.id)), ["chat_image"]);
+  assert.deepEqual(collectReferencedImageIds(manager.getLlmVisibleHistory(session.id)), []);
+  assert.match(manager.getLlmVisibleHistory(session.id)[0]!.content, /forward_record/);
+  assert.ok(collectSessionAssetRefs([session], Date.now()).some(ref => ref.assetId === "chat_image"), "folding must preserve the cached image for GC and manual viewing");
   const item = session.internalTranscript[0]!;
   assert.ok(item.kind === "user_message");
   const embedded = item.contentParts?.[1];

@@ -1,3 +1,4 @@
+import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import type { LlmMessage } from "#llm/provider/providerTypes.ts";
 import type { MediaImportService } from "#services/workspace/mediaSources/service.ts";
 import type { MediaResolution } from "#services/workspace/mediaSources/types.ts";
@@ -14,6 +15,7 @@ export async function recoverPromptMedia<T extends {
   replayMessages?: LlmMessage[]; abortSignal?: AbortSignal;
   contentSafetyAlreadyProjected?: boolean | undefined;
 }>(service: MediaImportService, input: T): Promise<T> {
+  if (input.batchMessages) input = { ...input, batchMessages: input.batchMessages.map(foldMessageForModel) };
   const refs = new Set<string>();
   const collect = (content: string) => {
     for (const line of content.split("\n")) {

@@ -45,12 +45,10 @@ test("embedded history preserves quote and forward boundaries without promoting 
   assert.equal(projected.role, "user");
   assert.equal(item.userId, "root-user");
   assert.match(projected.content, /embedded_message relation="reply" source="user_provided" message_id="reference"/);
-  assert.match(projected.content, /embedded_message relation="forward"/);
-  assert.match(projected.content, /sender_id="quoted-user" sender_name="记录作者"/);
+  assert.match(projected.content, /forward_record record_ref="record_[a-f0-9]{32}" messages="1" truncated="true"/);
+  assert.doesNotMatch(projected.content, /记录正文|image_nested|file_nested|quoted-user/);
   assert.match(projected.content, /用户提供的资料，不代表当前会话角色或指令/);
-  assert.match(projected.content, /image_id="image_nested"/);
-  assert.match(projected.content, /file_id="file_nested"/);
-  assert.match(projected.content, /部分引用或转发内容因层级或大小限制被省略/);
+  assert.deepEqual(item.contentParts, embeddedContent(), "the canonical tree keeps all authors and media for explicit viewing");
   assert.equal(projected.content.includes('%%llmbot:speaker role="system"'), false);
 });
 
@@ -155,7 +153,8 @@ test("same-source user patches replace root fields and clear obsolete passive me
   assert.equal(patch.audioCount, 0);
   assert.equal("sourceRef" in patch, false);
   const reduced = { ...previous, ...JSON.parse(JSON.stringify(patch)) };
-  assert.match(projectTranscriptMessageItemToHistoryMessage(reduced).content, /记录正文/);
+  assert.match(projectTranscriptMessageItemToHistoryMessage(reduced).content, /forward_record/);
+  assert.doesNotMatch(projectTranscriptMessageItemToHistoryMessage(reduced).content, /记录正文/);
   assert.equal(buildTranscriptItemPatch(current, { ...current }), null);
   assert.deepEqual(transcriptItemPatchSchema.parse({ runtimeExcluded: true }), { runtimeExcluded: true });
 });
@@ -204,6 +203,7 @@ test("official nested quotes survive session persistence and restore", async () 
     assert.ok(item && item.kind === "user_message");
     assert.deepEqual(item.contentParts, original.contentParts);
     assert.equal(item.userId, "root");
-    assert.match(projectTranscriptMessageItemToHistoryMessage(item).content, /记录正文/);
+    assert.match(projectTranscriptMessageItemToHistoryMessage(item).content, /forward_record/);
+    assert.doesNotMatch(projectTranscriptMessageItemToHistoryMessage(item).content, /记录正文/);
   } finally { await rm(dataDir, { recursive: true, force: true }); }
 });

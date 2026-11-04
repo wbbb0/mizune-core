@@ -10,12 +10,12 @@ export type MessageContentPart =
   | { kind: "emoji"; source?: string | undefined; fileId?: string | undefined; sourceName?: string | null | undefined; mimeType?: string | null | undefined; mediaRef?: string | undefined; marketFace?: MarketFaceMetadata; mediaLocator?: MediaLocator }
   | { kind: "pending_media"; mediaRef: string; mediaKind: MediaKind; sourceName: string | null }
   | { kind: "file"; file: OneBotMessageFileSummary }
-  | { kind: "embedded_message"; relation: "reply" | "forward" | "message"; messageId?: string | undefined; senderId?: string | undefined; senderName?: string | undefined; parts: MessageContentPart[]; truncated?: boolean | undefined }
+  | { kind: "embedded_message"; relation: "reply" | "forward" | "message"; recordRef?: string | undefined; recordMessageCount?: number | undefined; messageId?: string | undefined; senderId?: string | undefined; senderName?: string | undefined; parts: MessageContentPart[]; truncated?: boolean | undefined }
   | { kind: "remote_file"; source: string; sourceName: string; mimeType: string; fileKind: "file" | "video" }
   | { kind: "asset_file"; fileId: string; fileKind: ChatFileKind; sourceName: string | null; mimeType: string | null; sizeBytes: number | null; mediaRef?: string | undefined }
   | { kind: "mention"; target: "self" | "all" | "user"; userId?: string | undefined }
   | { kind: "reply"; messageId: string }
-  | { kind: "forward"; forwardId: string }
+  | { kind: "forward"; forwardId: string; recordRef?: string | undefined }
   | { kind: "audio"; source?: string | undefined; audioId?: string | undefined }
   | { kind: "special"; segmentType: string; summary: string };
 

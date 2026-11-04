@@ -1,3 +1,4 @@
+import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import type { Logger } from "pino";
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { SessionDelivery } from "#conversation/session/sessionTypes.ts";
@@ -258,10 +259,11 @@ export function enqueueTriggeredMessage(
     services.sessionManager.setReplyDelivery(context.session.id, inboundDelivery);
   }
 
+  const modelMessage = foldMessageForModel(context.enrichedMessage);
   services.mediaCaptionService.schedule(
     [
-      ...collectVisualAttachmentFileIds(context.enrichedMessage.attachments, "image"),
-      ...collectVisualAttachmentFileIds(context.enrichedMessage.attachments, "emoji")
+      ...collectVisualAttachmentFileIds(modelMessage.attachments, "image"),
+      ...collectVisualAttachmentFileIds(modelMessage.attachments, "emoji")
     ],
     context.enrichedMessage.chatType === "private" ? "incoming_private_message" : "incoming_group_trigger"
   );

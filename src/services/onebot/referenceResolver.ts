@@ -104,7 +104,8 @@ export class OneBotReferenceResolver {
           this.assertMessageScope(scope, id, message.group_id, message.user_id);
           const sender = record(message.sender);
           result.push({ kind: "embedded_message", relation: "reply", messageId: id,
-            senderId: label(message.user_id), senderName: label(sender.card || sender.nickname),
+            ...(label(message.user_id) ? { senderId: label(message.user_id) } : {}),
+            ...(label(sender.card || sender.nickname) ? { senderName: label(sender.card || sender.nickname) } : {}),
             parts: await this.expandParts(scope, this.located(message.message, { kind: "onebot_message", id }), depth + 1, budget) });
         } else {
           const entries = await this.client.getForwardMessage(id, budget.signal);
@@ -112,7 +113,8 @@ export class OneBotReferenceResolver {
           for (let index = 0; index < Math.min(entries.length, 100) && budget.nodes > 0; index++) {
             budget.nodes -= 1;
             const node = this.entry(entries[index]);
-            nodes.push({ kind: "embedded_message", relation: "message", senderName: node.senderName, senderId: node.senderId,
+            nodes.push({ kind: "embedded_message", relation: "message",
+              ...(node.senderName ? { senderName: node.senderName } : {}), ...(node.senderId ? { senderId: node.senderId } : {}),
               parts: await this.expandParts(scope, this.located(node.segments, { kind: "onebot_forward", id, nodeIndex: index }), depth + 2, budget) });
           }
           result.push({ kind: "embedded_message", relation: "forward", messageId: id, parts: nodes,

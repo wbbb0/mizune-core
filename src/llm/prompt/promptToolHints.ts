@@ -13,8 +13,11 @@ export function buildToolHintLines(visibleToolNamesInput: string[] | undefined):
 
   const lines: string[] = [];
 
+  if (visibleToolNames.has("view_forward_record")) {
+    lines.push("转发聊天记录默认折叠；按 forward_record 中的 record_ref 调用 view_forward_record 分页读取，nextOffset 非空时继续翻页。嵌套记录分别展开。图片只列出资产引用，先读文字，再挑少量相关图片调用 asset_media_view；不要一次加载整条记录的全部图片。");
+  }
   if (hasAnyTool(visibleToolNames, ["view_message", "download_message_file", "view_forward_record", "asset_media_view", "filesystem_media_view"])) {
-    lines.push(`看到 ${buildTagHint("file", { file_id: "...", name: "..." })} 表示用户发来了文件；不要说没看到文件。需要展开消息、转发、图片或消息文件引用时再调用查看/下载工具；message_id、forward_id、image_id、file_id 必须逐字复制。消息文件只在确实需要读取、查看或发送内容时调用 download_message_file 下载。`);
+    lines.push(`看到 ${buildTagHint("file", { file_id: "...", name: "..." })} 表示用户发来了文件；不要说没看到文件。需要展开消息、转发、图片或消息文件引用时再调用查看/下载工具；message_id、record_ref、image_id、file_id 必须逐字复制。消息文件只在确实需要读取、查看或发送内容时调用 download_message_file 下载。`);
   }
 
   if (visibleToolNames.has("resolve_media_reference")) lines.push("pending_media 表示媒体来源已登记但尚未下载成功；需要其内容时用 resolve_media_reference 补下载，取得 asset_handle 后再查看。来源过期或平台未提供来源时明确说明不可用，不要编造图像内容。");

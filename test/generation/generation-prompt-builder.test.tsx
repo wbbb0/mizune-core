@@ -134,7 +134,7 @@ test("recovered assets are projected through content safety again even after ear
   assert.doesNotMatch(JSON.stringify(result.promptMessages), /file_blocked/);
 });
 
-test("reply preparation analyzes cached images from earlier ordinary messages and nested forwards", async () => {
+test("reply preparation analyzes visible cached media while forward records remain folded", async () => {
   const requestedCaptions: string[][] = [];
   const requestedAudio: string[][] = [];
   const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
@@ -162,12 +162,12 @@ test("reply preparation analyzes cached images from earlier ordinary messages an
       images: [], audioSources: [], audioIds: [], emojiSources: [], imageIds: [], emojiIds: [], forwardIds: [],
       replyMessageId: null, mentionUserIds: [], mentionedAll: false, isAtMentioned: true }]
   });
-  assert.deepEqual(requestedCaptions, [["cached_root_image", "cached_nested_image"]]);
-  assert.deepEqual(requestedAudio, [["cached_nested_audio"]]);
+  assert.deepEqual(requestedCaptions, [["cached_root_image"]]);
+  assert.deepEqual(requestedAudio, []);
   const rendered = JSON.stringify(result.promptMessages);
   assert.match(rendered, /此前群消息中的测试图片/);
-  assert.match(rendered, /此前群语音的转写/);
-  assert.match(rendered, /引用作者/);
+  assert.doesNotMatch(rendered, /此前群语音的转写|cached_nested_image|cached_nested_audio/);
+  assert.match(rendered, /forward_record/);
 });
 
   test("setup prompt prepares image visuals when vision is enabled", async () => {

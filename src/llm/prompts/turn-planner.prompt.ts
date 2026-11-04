@@ -2,6 +2,7 @@ import type { LlmResponseFormat } from "#llm/provider/providerTypes.ts";
 import { buildOpenTag, buildCloseTag, escapeAttr, escapeUserText } from "#utils/structuredEnvelope.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
 import {
+  formatHistoryContent,
   formatStructuredAssetFile,
   formatStructuredCount,
   formatStructuredEmojiReference,
@@ -383,6 +384,10 @@ function formatContentPartsForPlanner(contentParts: readonly MessageContentPart[
   const parts: string[] = [];
   for (const part of contentParts) {
     switch (part.kind) {
+      case "embedded_message":
+      case "pending_media":
+        parts.push(formatHistoryContent({ text: "", contentParts: [part] }));
+        break;
       case "text":
         if (part.text.trim()) {
           parts.push(part.text.trim());
