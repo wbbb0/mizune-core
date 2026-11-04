@@ -30,6 +30,16 @@ const errorCodes = new Set([
   "ABORT_ERR", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
   "UND_ERR_SOCKET"
 ]);
+const qqDeliveryCodes = new Set([
+  "cancelled", "operation_failed", "http_error", "transport", "invalid_response",
+  "invalid_token_response", "invalid_upload_url", "upload_transport", "upload_http",
+  "invalid_reply_permit", "reply_permit_expired", "reply_budget_exhausted",
+  "invalid_reply_reservation", "reply_permit_capacity", "invalid_media_type",
+  "media_source_required", "invalid_media_url", "media_size_limit", "media_name_required",
+  "invalid_image_format", "invalid_file_info", "invalid_upload_plan", "invalid_upload_part",
+  "incomplete_upload_plan", "missing_message_id", "group_stream_unsupported",
+  "stream_closed", "stream_buffer_limit"
+]);
 
 /** 接收 Pino 已序列化的整条记录，覆盖格式化消息、Error 和 child bindings。 */
 export function filterLogContent(record: Record<string, unknown>): Record<string, unknown> {
@@ -69,8 +79,29 @@ function filterError(value: unknown): Record<string, unknown> {
       filtered[key] = error[key];
     }
   }
+  if (name === "QqDeliveryError") filterQqDeliveryError(error, filtered);
   // stack/cause/自定义属性都可能包含上游回显的聊天正文，不保留。
   return filtered;
+}
+
+// QQ 投递诊断只保留协议分类；message、URL、响应体、stack/cause 仍按默认策略过滤。
+function filterQqDeliveryError(error: Record<string, unknown>, filtered: Record<string, unknown>): void {
+  filtered.name = "QqDeliveryError";
+  if (error.kind === "rejected" || error.kind === "unknown") filtered.kind = error.kind;
+  if (error.stage === "upload" || error.stage === "message" || error.stage === "stream") filtered.stage = error.stage;
+  if (error.messageStatus === "not_submitted" || error.messageStatus === "rejected" || error.messageStatus === "unknown") {
+    filtered.messageStatus = error.messageStatus;
+  } else if (filtered.stage === "upload") {
+    // Pino 的 Error serializer 不保证保留 prototype getter。
+    filtered.messageStatus = "not_submitted";
+  } else if (filtered.stage && filtered.kind) {
+    filtered.messageStatus = filtered.kind;
+  }
+  const code = typeof error.code === "number" && Number.isSafeInteger(error.code) ? String(error.code) : error.code;
+  if (typeof code === "string" && (/^\d{1,10}$/.test(code) || qqDeliveryCodes.has(code))) filtered.code = code;
+  if (typeof error.httpStatus === "number" && Number.isInteger(error.httpStatus) && error.httpStatus >= 100 && error.httpStatus <= 599) {
+    filtered.httpStatus = error.httpStatus;
+  }
 }
 
 function filterErrorMessage(value: unknown): string {

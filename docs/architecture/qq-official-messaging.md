@@ -51,3 +51,11 @@
 全量消息及递归元素参考：[群消息（全量模式）](https://bot.q.qq.com/wiki/develop/api-v2/autogen/event/group_message_create.html)。
 
 流式线格式参考：[腾讯官方 Node SDK](https://github.com/tencent-connect/qqbot-nodejs/blob/main/src/streaming.ts)。
+
+## 媒体出站
+
+工具提交平台中立的本地媒体请求；OneBot 消息段编码仅在 OneBot 适配器内执行。官方图片先校验来源、大小和图片签名，10 MiB 以内的本地图片使用 `/files` 的纯 Base64 `file_data`；较大图片及其他本地媒体使用分片上传。两条路径都设置 `srv_send_msg: false`，随后显式提交媒体消息。
+
+上传前原子预留当前回复授权的消息额度；上传失败或提交前取消释放预留容量，序号不复用。最终消息提交开始后保守保留额度，不因超时盲目重发。错误分别记录上传与消息提交阶段；上传结果未知仍表示消息尚未提交。平台接受回执不代表客户端已显示。
+
+标准 `generate_image` 只生成资产，需要另外调用资产发送工具。生成工具错误返回有界的 HTTP 状态、参数名、错误码及说明；网络失败返回底层原因，明确区别于 API 参数错误。错误中的供应商密钥及完整网络地址被过滤，无效 JSON 不回显响应正文。接口调用不自动重试或切换模型，避免重复计费。

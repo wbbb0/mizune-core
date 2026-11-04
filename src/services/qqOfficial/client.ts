@@ -6,6 +6,7 @@ import { QqReplyPermitRegistry, qqTargetPath } from "./replyPermit.ts";
 import { decodeQqMessage, type QqOfficialIncoming, type QqInteractiveIncoming } from "./eventDecoder.ts";
 import { QqTextStream, qqReceipt } from "./textStream.ts";
 import { uploadQqMedia } from "./mediaUpload.ts";
+import { atQqDeliveryStage } from "./types.ts";
 import type { QqDeliveryReceipt, QqMediaInput, QqMessageResponse, QqOfficialConfig, QqReplyPermit } from "./types.ts";
 
 export class QqOfficialClient extends EventEmitter {
@@ -64,13 +65,32 @@ export class QqOfficialClient extends EventEmitter {
 
   async sendMedia(permit: QqReplyPermit, input: QqMediaInput, signal?: AbortSignal): Promise<QqDeliveryReceipt> {
     signal?.throwIfAborted();
-    const fileInfo = await uploadQqMedia(this.http, this.permits, permit, input, signal);
-    signal?.throwIfAborted();
-    const sequence = this.permits.allocate(permit);
-    const response = await this.http.request<QqMessageResponse>("POST", `${qqTargetPath(permit)}/messages`, {
-      msg_type: 7, media: { file_info: fileInfo }, msg_id: permit.messageId, msg_seq: sequence
-    }, signal);
-    return qqReceipt(permit, response);
+    let reservation;
+    try { reservation = this.permits.reserve(permit); }
+    catch (error) { throw atQqDeliveryStage(error, "upload"); }
+    let fileInfo: string;
+    try {
+      fileInfo = await uploadQqMedia(this.http, this.permits, permit, input, signal);
+      signal?.throwIfAborted();
+    } catch (error) {
+      this.permits.release(permit, reservation);
+      throw atQqDeliveryStage(error, "upload");
+    }
+    let sequence: number;
+    try {
+      sequence = this.permits.commit(permit, reservation);
+    } catch (error) {
+      this.permits.release(permit, reservation);
+      throw atQqDeliveryStage(error, "upload");
+    }
+    try {
+      const response = await this.http.request<QqMessageResponse>("POST", `${qqTargetPath(permit)}/messages`, {
+        msg_type: 7, media: { file_info: fileInfo }, msg_id: permit.messageId, msg_seq: sequence
+      }, signal);
+      return qqReceipt(permit, response);
+    } catch (error) {
+      throw atQqDeliveryStage(error, "message");
+    }
   }
 
   openTextStream(permit: QqReplyPermit, options: { onAccepted?: (receipt: QqDeliveryReceipt) => void } = {}): QqTextStream {

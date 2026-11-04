@@ -1,3 +1,4 @@
+import { validateQqMedia, QQ_SMALL_IMAGE_UPLOAD_BYTES } from "./mediaValidation.ts";
 import { createHash } from "node:crypto";
 import type { QqHttpClient } from "./httpClient.ts";
 import { qqTargetPath, type QqReplyPermitRegistry } from "./replyPermit.ts";
@@ -10,7 +11,7 @@ export async function uploadQqMedia(http: QqHttpClient, registry: QqReplyPermitR
   permit: QqReplyPermit, input: QqMediaInput, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
   registry.assert(permit);
-  if ((input.url == null) === (input.bytes == null)) throw new QqDeliveryError("rejected", "media_source_required");
+  validateQqMedia(input);
   const path = qqTargetPath(permit);
   let payload: Record<string, unknown>;
   if (input.url) {
@@ -21,7 +22,15 @@ export async function uploadQqMedia(http: QqHttpClient, registry: QqReplyPermitR
     const bytes = input.bytes!;
     if (!bytes.length || bytes.length > 200 * 1024 * 1024) throw new QqDeliveryError("rejected", "media_size_limit");
     if (!input.name) throw new QqDeliveryError("rejected", "media_name_required");
-    // Use the documented split upload for all local assets; file_data encoding is underspecified.
+    if (input.fileType === 1 && bytes.length <= QQ_SMALL_IMAGE_UPLOAD_BYTES) {
+      // Match the official SDK's small-image wire format: raw base64, never a data URL or OneBot prefix.
+      const uploaded = await http.request<{ file_info: string }>("POST", `${path}/files`, {
+        file_type: input.fileType, file_data: bytes.toString("base64"), srv_send_msg: false
+      }, signal);
+      if (typeof uploaded.file_info !== "string" || !uploaded.file_info) throw new QqDeliveryError("unknown", "invalid_file_info", undefined, "upload");
+      return uploaded.file_info;
+    }
+    // Larger images and other local media use the documented split upload path.
     const prepared = await http.request<{
       upload_id: string; block_size: string;
       parts: Array<{ index: number; presigned_url: string; block_size: string }>;

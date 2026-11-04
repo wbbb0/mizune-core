@@ -136,3 +136,35 @@ for (const fails of [false, true]) {
     }
   });
 }
+
+test("QQ delivery failures retain controlled protocol diagnostics without exposing upstream text", async () => {
+  const { QqDeliveryError } = await import("../../src/services/qqOfficial/types.ts");
+  const { logger, records, lines } = setup();
+  const error = new QqDeliveryError("rejected", "40093001", 400, "upload");
+  Object.assign(error, { responseBody: secret, url: `https://example.test/${secret}`, cause: new Error(secret) });
+  logger.warn({ err: error }, "message_queue_task_failed");
+  assert.deepEqual(records()[0].err, {
+    message: FILTERED_LOG_MESSAGE, name: "QqDeliveryError", kind: "rejected", stage: "upload",
+    messageStatus: "not_submitted", code: "40093001", httpStatus: 400
+  });
+  logger.error({ error: new QqDeliveryError("unknown", "transport", undefined, "message") }, "generation_failed");
+  assert.equal(records()[1].error.code, "transport");
+  assert.equal(records()[1].error.messageStatus, "unknown");
+  assert.ok(!lines.join("").includes(secret));
+});
+
+test("QQ diagnostic filtering rejects arbitrary enum strings, URLs, oversized codes and unrelated error types", async () => {
+  const { filterLogContent } = await import("../../src/logging/logContentFilter.ts");
+  for (const code of [secret, "https://example.test/token", "12345678901", "-1", "1.5", "transport secret"]) {
+    const result = filterLogContent({ msg: "message_queue_task_failed", err: {
+      type: "QqDeliveryError", code, stage: secret, kind: secret, messageStatus: secret,
+      httpStatus: 999, message: secret, stack: secret, cause: { message: secret }
+    } });
+    assert.deepEqual(result.err, { message: FILTERED_LOG_MESSAGE, name: "QqDeliveryError" });
+    assert.ok(!JSON.stringify(result).includes(secret));
+  }
+  const unrelated = filterLogContent({ msg: "generation_failed", error: {
+    type: "Error", kind: "unknown", stage: "upload", code: "40093001", httpStatus: 400
+  } });
+  assert.deepEqual(unrelated.error, { message: FILTERED_LOG_MESSAGE, name: "Error" });
+});

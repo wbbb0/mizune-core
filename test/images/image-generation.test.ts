@@ -261,3 +261,49 @@ test("局部重绘接受灰度透明 PNG 蒙版", async () => {
   const result = await generateConfiguredImage(c, { prompt: "局部编辑", referenceImages: [{ buffer: png }], mask: { buffer: mask } });
   assert.deepEqual(result.buffer, png);
 });
+
+test("生图工具返回参数错误详情，过滤供应商密钥，不重试", async () => {
+  let calls = 0;
+  setFetchImplementationForTests(async () => {
+    calls++;
+    return Response.json({ error: { message: "size must be 1024x1024; test-only", code: "invalid_size", type: "invalid_request_error", param: "size" } }, { status: 400 });
+  });
+  const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
+    { prompt: "测试", size: "123x123" }, { config: config() } as BuiltinToolContext)));
+  assert.equal(result.ok, false);
+  assert.equal(result.failure.httpStatus, 400);
+  assert.equal(result.failure.param, "size");
+  assert.equal(result.failure.code, "invalid_size");
+  assert.match(result.error, /1024x1024/);
+  assert.doesNotMatch(JSON.stringify(result), /test-only/);
+  assert.equal(calls, 1);
+});
+
+test("生图网络错误返回底层原因，明确没有API响应", async () => {
+  setFetchImplementationForTests(async () => {
+    throw new TypeError("fetch failed", { cause: Object.assign(new Error("connection refused https://user:pass@example.test/?token=secret"), { code: "ECONNREFUSED" }) });
+  });
+  const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
+    { prompt: "测试" }, { config: config() } as BuiltinToolContext)));
+  assert.equal(result.failure.kind, "transport");
+  assert.equal(result.failure.httpStatus, undefined);
+  assert.match(result.error, /ECONNREFUSED/);
+  assert.doesNotMatch(result.error, /pass|token=secret/);
+});
+
+test("HTTP成功状态中的显式API错误仍返回可调整参数的详情", async () => {
+  setFetchImplementationForTests(async () => Response.json({ error: { message: "Unsupported quality", param: "quality", code: "invalid_quality" } }));
+  const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
+    { prompt: "测试" }, { config: config() } as BuiltinToolContext)));
+  assert.equal(result.ok, false);
+  assert.equal(result.failure.param, "quality");
+  assert.match(result.error, /Unsupported quality/);
+});
+
+test("生图成功状态返回非JSON时不回显正文及密钥", async () => {
+  setFetchImplementationForTests(async () => new Response("<html>test-only upstream error</html>"));
+  const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({} as never,
+    { prompt: "测试" }, { config: config() } as BuiltinToolContext)));
+  assert.equal(result.failure.kind, "protocol");
+  assert.doesNotMatch(JSON.stringify(result), /test-only|<html>/);
+});

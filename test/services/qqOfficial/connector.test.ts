@@ -235,7 +235,7 @@ test("media cancellation after upload never consumes a reply slot or sends a mes
   const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
   await assert.rejects(client.sendMedia(permit, { fileType: 1, url: "https://example.com/a.png" }, abort.signal));
   assert.equal(f.calls.filter(call => call.url.endsWith("/messages")).length, 0);
-  assert.equal(client.permits.allocate(permit), 1);
+  assert.equal(client.permits.allocate(permit), 2, "released upload reservations do not reuse sequence numbers");
 });
 
 test("multipart cancellation after PUT stops part completion and message delivery", async () => {
@@ -249,4 +249,112 @@ test("multipart cancellation after PUT stops part completion and message deliver
   const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
   await assert.rejects(client.sendMedia(permit, { fileType: 4, bytes: Buffer.from("abc"), name: "a.txt" }, abort.signal));
   assert.equal(f.calls.filter(call => call.url.endsWith("upload_part_finish") || call.url.endsWith("/files") || call.url.endsWith("/messages")).length, 0);
+});
+
+const tinyImage = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN0kAAAAASUVORK5CYII=", "base64");
+
+test("small local images use official SDK raw base64 upload then one passive media message", async () => {
+  const f = fixture(path => path.endsWith("/files") ? response({ file_info: "private-file-info", ttl: 300 }) : response({ id: "media-message" }));
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  const receipt = await client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" });
+  const upload = f.calls.find(call => call.url.endsWith("/files"))!;
+  assert.deepEqual(upload.body, { file_type: 1, file_data: tinyImage.toString("base64"), srv_send_msg: false });
+  assert.equal(f.calls.some(call => call.url.includes("upload_prepare")), false);
+  const send = f.calls.find(call => call.url.endsWith("/messages"))!;
+  assert.deepEqual(send.body, { msg_type: 7, media: { file_info: "private-file-info" }, msg_id: permit.messageId, msg_seq: 1 });
+  assert.equal(receipt.status, "accepted");
+});
+
+test("exhausted reply budget is rejected before upload or token acquisition", async () => {
+  const f = fixture();
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  for (let index = 0; index < 4; index++) client.permits.allocate(permit);
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" }), error =>
+    error instanceof QqDeliveryError && error.stage === "upload" && error.messageStatus === "not_submitted" && error.code === "reply_budget_exhausted");
+  assert.equal(f.calls.length, 0);
+});
+
+test("concurrent media uploads reserve remaining slots before either upload completes", async () => {
+  let started!: () => void, release!: () => void;
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const f = fixture(async path => {
+    if (path.endsWith("/files")) { started(); await gate; return response({ file_info: "file" }); }
+    return response({ id: "media-message" });
+  });
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  for (let index = 0; index < 3; index++) client.permits.allocate(permit);
+  const first = client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" });
+  await ready;
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" }), /reply_budget_exhausted/);
+  release();
+  await first;
+  assert.equal(f.calls.filter(call => call.url.endsWith("/files")).length, 1);
+});
+
+test("unknown upload is not an unknown message submission and releases only its upload reservation", async () => {
+  const f = fixture(() => { throw new Error("private URL must never escape"); });
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" }), error =>
+    error instanceof QqDeliveryError && error.kind === "unknown" && error.stage === "upload" && error.messageStatus === "not_submitted" && !error.message.includes("private URL"));
+  assert.equal(f.calls.some(call => call.url.endsWith("/messages")), false);
+  assert.deepEqual(Array.from({ length: 4 }, () => client.permits.allocate(permit)), [2, 3, 4, 5]);
+});
+
+test("unknown final media POST is retained as submitted and its slot is never released", async () => {
+  const f = fixture(path => {
+    if (path.endsWith("/files")) return response({ file_info: "file" });
+    throw new Error("final response lost");
+  });
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" }), error =>
+    error instanceof QqDeliveryError && error.stage === "message" && error.messageStatus === "unknown");
+  for (let index = 0; index < 3; index++) client.permits.allocate(permit);
+  assert.throws(() => client.permits.allocate(permit), /reply_budget_exhausted/);
+  assert.equal(f.calls.filter(call => call.url.endsWith("/messages")).length, 1);
+});
+
+test("invalid image bytes and oversized images are rejected before any network upload", async () => {
+  const f = fixture();
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: Buffer.from("not-an-image"), name: "fake.png" }), /invalid_image_format/);
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: Buffer.alloc(20 * 1024 * 1024 + 1), name: "large.png" }), /media_size_limit/);
+  assert.equal(f.calls.length, 0);
+});
+
+test("local images over the small-upload threshold keep the fixed split-upload route", async () => {
+  const bytes = Buffer.alloc(10 * 1024 * 1024 + 1);
+  tinyImage.copy(bytes);
+  const f = fixture(path => {
+    if (path.endsWith("upload_prepare")) return response({ upload_id: "large", block_size: String(bytes.length), parts: [{ index: 0, block_size: String(bytes.length), presigned_url: "https://upload.example.com/large" }] });
+    if (path.endsWith("/files")) return response({ file_info: "large-image" });
+    return response({ id: "large-message" });
+  });
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  await client.sendMedia(permit, { fileType: 1, bytes, name: "large.png" });
+  assert.equal(f.calls.filter(call => call.url.endsWith("upload_prepare")).length, 1);
+  const upload = f.calls.find(call => call.url.endsWith("/files"))!;
+  assert.equal(upload.body.upload_id, "large");
+  assert.equal(upload.body.file_data, undefined);
+  assert.equal(upload.body.srv_send_msg, false);
+});
+
+test("reply authorization expiring during upload prevents final media submission", async () => {
+  let now = Date.now();
+  const f = fixture(path => {
+    if (path.endsWith("/files")) { now += 300_000; return response({ file_info: "uploaded" }); }
+    return response({ id: "unexpected" });
+  });
+  const client = new QqOfficialClient(config, logger, { fetch: f.fetch, now: () => now });
+  const permit = client.acceptEvent("C2C_MESSAGE_CREATE", event())!.permit;
+  await assert.rejects(client.sendMedia(permit, { fileType: 1, bytes: tinyImage, name: "image.png" }), error =>
+    error instanceof QqDeliveryError && error.code === "reply_permit_expired" && error.messageStatus === "not_submitted");
+  assert.equal(f.calls.some(call => call.url.endsWith("/messages")), false);
 });

@@ -1,3 +1,4 @@
+import { ImageGenerationError } from "#services/images/imageGenerationError.ts";
 import { generateConfiguredImage, isImageGenerationAvailable } from "#services/images/imageGeneration.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { chatFileListPolicy } from "../core/resultObservationPresets.ts";
@@ -74,7 +75,8 @@ export const imageGenerationToolHandlers: Record<string, ToolHandler> = {
         next_actions: file.next_actions ?? []
       });
     } catch (error) {
-      return JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      return JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof ImageGenerationError ? { failure: error.details } : {}) });
     }
   }
 };

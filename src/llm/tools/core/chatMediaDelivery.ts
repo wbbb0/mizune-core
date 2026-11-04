@@ -1,7 +1,7 @@
 import { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
-import { readFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import type { BuiltinToolContext } from "./shared.ts";
-import type { OneBotMessageSegment } from "#services/onebot/types.ts";
+import type { MediaDeliveryInput } from "#services/messaging/mediaDeliveryInput.ts";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 
@@ -47,7 +47,7 @@ interface ChatMediaDeliveryInput {
 
 export function sendImageBytesToChat(context: BuiltinToolContext, input: ChatMediaDeliveryInput & {
   semanticKind?: "image" | "emoji";
-  segments?: OneBotMessageSegment[];
+  nativeEmoji?: MediaDeliveryInput["nativeEmoji"];
   onSent?: () => void;
 }) {
   return sendMediaBytesToChat(context, { ...input, semanticKind: input.semanticKind ?? "image" });
@@ -60,7 +60,7 @@ export function sendAudioBytesToChat(context: BuiltinToolContext, input: ChatMed
 /** Media kinds keep their delivery semantics across OneBot and the local transcript. */
 async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMediaDeliveryInput & {
   semanticKind: "image" | "emoji" | "audio";
-  segments?: OneBotMessageSegment[];
+  nativeEmoji?: MediaDeliveryInput["nativeEmoji"];
   onSent?: () => void;
 }) {
   const target = context.replyDelivery === "web" ? null : parseSessionTarget(context.lastMessage.sessionId);
@@ -68,18 +68,12 @@ async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMedi
     return JSON.stringify({ error: `unsupported session target: ${context.lastMessage.sessionId}` });
   }
   context.abortSignal?.throwIfAborted();
-  const bytes = await readFile(input.absolutePath);
-  if (input.semanticKind === "audio" && (!bytes.length || bytes.length > context.config.chatFiles.maxUploadBytes)) {
+  const file = await stat(input.absolutePath);
+  if (!file.isFile()) throw new Error("发送的媒体不是普通文件。");
+  if (input.semanticKind === "audio" && (!file.size || file.size > context.config.chatFiles.maxUploadBytes)) {
     throw new Error("发送音频为空或超过资产大小限制");
   }
   context.abortSignal?.throwIfAborted();
-  const segments: OneBotMessageSegment[] = input.segments ?? [{
-    type: input.semanticKind === "audio" ? "record" : "image",
-    data: {
-      file: `base64://${bytes.toString("base64")}`,
-      ...(input.semanticKind === "emoji" ? { sub_type: 1, summary: "[表情]" } : {})
-    }
-  }];
   const appendTranscript = (delivery: "web" | "onebot" | "qq_official", messageId: number | string | null) => {
     context.sessionManager.appendInternalTranscript(context.lastMessage.sessionId, {
       kind: "outbound_media_message",
@@ -112,7 +106,7 @@ async function sendMediaBytesToChat(context: BuiltinToolContext, input: ChatMedi
     context.outboundSignal?.throwIfAborted();
     const reference = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendMedia({
       sessionId: context.lastMessage.sessionId, replyContext: context.replyContext, signal: context.outboundSignal
-    }, { filePath: input.absolutePath, kind: input.semanticKind, segments, name: input.sourceName });
+    }, { filePath: input.absolutePath, kind: input.semanticKind, ...(input.nativeEmoji ? { nativeEmoji: input.nativeEmoji } : {}), name: input.sourceName });
     if (reference) context.sessionManager.recordSentMessage(context.lastMessage.sessionId, {
       messageId: reference.messageId, text: input.previewText, sentAt: Date.now()
     });

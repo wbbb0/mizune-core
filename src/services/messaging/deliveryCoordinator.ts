@@ -1,3 +1,5 @@
+import { encodeOneBotMedia } from "#services/onebot/mediaDelivery.ts";
+import type { MediaDeliveryInput } from "./mediaDeliveryInput.ts";
 import { basename } from "node:path";
 import { readFile } from "node:fs/promises";
 import { parseChatSessionIdentity } from "#conversation/session/sessionIdentity.ts";
@@ -28,7 +30,7 @@ export class DeliveryCoordinator {
       if (this.reportedFailures.has(error)) return;
       this.reportedFailures.add(error);
     }
-    try { this.onFailure?.(address, error instanceof QqDeliveryError ? error.kind : "rejected"); } catch { /* observation must not cause a retry */ }
+    try { this.onFailure?.(address, error instanceof QqDeliveryError && error.messageStatus === "unknown" ? "unknown" : "rejected"); } catch { /* observation must not cause a retry */ }
   }
 
   private async run<T>(address: DeliveryAddress, send: () => Promise<T>): Promise<T> {
@@ -82,11 +84,11 @@ export class DeliveryCoordinator {
     return messageId == null ? undefined : { platform: "onebot", messageId };
   }
 
-  sendMedia(address: DeliveryAddress, input: { filePath: string; kind: "image" | "emoji" | "audio" | "file"; name?: string | null; segments?: OneBotMessageSegment[] }): Promise<DeliveryReference | undefined> {
+  sendMedia(address: DeliveryAddress, input: MediaDeliveryInput): Promise<DeliveryReference | undefined> {
     return this.run(address, () => this.sendMediaImpl(address, input));
   }
 
-  private async sendMediaImpl(address: DeliveryAddress, input: { filePath: string; kind: "image" | "emoji" | "audio" | "file"; name?: string | null; segments?: OneBotMessageSegment[] }): Promise<DeliveryReference | undefined> {
+  private async sendMediaImpl(address: DeliveryAddress, input: MediaDeliveryInput): Promise<DeliveryReference | undefined> {
     const target = this.endpoint(address);
     if (target.source === "qq_official") {
       const permit = this.permit(address);
@@ -100,7 +102,8 @@ export class DeliveryCoordinator {
       const messageId = normalizeOneBotMessageId(result.data?.message_id);
       return messageId == null ? undefined : { platform: "onebot", messageId };
     }
-    const segments = input.segments ?? [{ type: input.kind === "audio" ? "record" : "image", data: { file: `base64://${(await readFile(input.filePath)).toString("base64")}` } }];
+    const segments = await encodeOneBotMedia(input);
+    address.signal?.throwIfAborted();
     return this.sendSegments(address, segments);
   }
 

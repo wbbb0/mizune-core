@@ -85,14 +85,14 @@ const handlers: Record<string, ToolHandler> = {
     const file = await context.chatFileStore.getFile(item.fileId);
     if (!file) throw new Error("表情素材不存在。");
     const source = file.sourceContext;
-    const marketFace = source.emojiId && source.emojiPackageId && source.emojiKey ? [{ type: "mface", data: {
-      emoji_id: source.emojiId, emoji_package_id: Number(source.emojiPackageId), key: source.emojiKey, summary: source.emojiSummary ?? "[表情]"
-    } }] : undefined;
+    const nativeEmoji = source.emojiId && source.emojiPackageId && source.emojiKey ? {
+      id: String(source.emojiId), packageId: Number(source.emojiPackageId), key: String(source.emojiKey), summary: String(source.emojiSummary ?? "[表情]")
+    } : undefined;
     return sendImageBytesToChat(context, {
       absolutePath: await context.chatFileStore.resolveAbsolutePath(file.fileId),
       previewText: `[表情：${item.metadata.description}]`, sourceName: file.sourceName,
       fileId: file.fileId, fileRef: file.fileRef, chatFilePath: file.chatFilePath, sourcePath: null,
-      toolName: "sticker_send", semanticKind: "emoji", ...(marketFace ? { segments: marketFace } : {}),
+      toolName: "sticker_send", semanticKind: "emoji", ...(nativeEmoji ? { nativeEmoji } : {}),
       outputExtras: { sticker_id: item.id }, onSent: () => library.store.markUsed(item.id)
     });
   },
