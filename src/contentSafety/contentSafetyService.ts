@@ -629,13 +629,13 @@ export class ContentSafetyService {
       }
       const nextParts: LlmContentPart[] = [];
       for (const [partIndex, part] of message.content.entries()) {
-        if (part.type === "image_url") {
+        if (part.type === "image_url" || part.type === "video_url") {
           const event = await this.projectContentPartMedia({
             sessionId: input.sessionId,
             source: input.source,
             subjectKind: "local_media",
-            sourceName: `content_part:${messageIndex}:${partIndex}:image`,
-            mediaUrl: part.image_url.url,
+            sourceName: `content_part:${messageIndex}:${partIndex}:${part.type === "video_url" ? "video" : "image"}`,
+            mediaUrl: part.type === "video_url" ? part.video_url.url : part.image_url.url,
             rule: input.profile.image,
             ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
           });

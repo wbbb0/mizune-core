@@ -591,7 +591,7 @@ test("模型组件状态在窗口快照刷新后保留，向量模型仍可提�
   `);
   const iconsUrl = createDataModule(`export const AlertCircle = {}, Check = {}, DownloadCloud = {}, RefreshCw = {}, Search = {};`);
   const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, {
-    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl
+    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href
   });
   const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
     vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
@@ -635,7 +635,7 @@ test("新增模型按供应商展示原生用途，官方转写不展示聊天�
     export const ResponsiveSplitPane = { setup: (_, { slots }) => () => h('div', [slots.primary?.({compact: false}), slots.secondary?.({compact: false})]) };
   `);
   const iconsUrl = createDataModule(`export const AlertCircle = {}, Check = {}, DownloadCloud = {}, RefreshCw = {}, Search = {};`);
-  const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, { vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl });
+  const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, { vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href });
   const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
     vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
     'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl
@@ -648,6 +648,7 @@ test("新增模型按供应商展示原生用途，官方转写不展示聊天�
     assert.equal(options.some((item: { value: string }) => item.value === 'speech'), type === 'openai');
     assert.equal(options.some((item: { value: string }) => item.value === 'decision'), type === 'openai');
     assert.equal(wrapper.text().includes('可关闭思考'), type !== 'openai');
+    assert.equal(wrapper.text().includes('原生视频输入'), type === 'google');
     assert.equal(wrapper.text().includes('保存后可在目录表单设置语言代码和转写提示'), type === 'openai');
     wrapper.unmount();
   }

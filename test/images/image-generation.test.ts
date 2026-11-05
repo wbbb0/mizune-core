@@ -16,6 +16,7 @@ import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
 import { LocalFileService } from "../../src/services/workspace/localFileService.ts";
 import { withTempDir } from "../helpers/config-test-support.tsx";
 import pino from "pino";
+import { createAnimatedGif } from "../helpers/animated-image-fixtures.ts";
 
 function config() {
   return createTestAppConfig({
@@ -35,6 +36,49 @@ function config() {
 }
 const png = await sharp({ create: { width: 8, height: 6, channels: 3, background: "orange" } }).png().toBuffer();
 afterEach(() => setFetchImplementationForTests(null));
+
+test("GIF 生图透传帧参数，按单帧尺寸返回并保留动图资产", async () => {
+  const gif = await createAnimatedGif();
+  await withTempDir("generated-gif", async dir => {
+    const c = config(); c.dataDir = dir;
+    const store = new ChatFileStore(c, pino({ level: "silent" }), new LocalFileService(c, dir));
+    await store.init();
+    setFetchImplementationForTests(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.output_format, "gif");
+      assert.equal(body.frame_count, 2);
+      assert.equal(body.frame_duration_ms, 210);
+      return Response.json({ data: [{ b64_json: gif.toString("base64") }] });
+    });
+    const args = { prompt: "小猫挥手", output_format: "gif", frame_count: 2, frame_duration_ms: 207 };
+    const image = await generateConfiguredImage(c, { prompt: args.prompt, outputFormat: "gif", frameCount: 2, frameDurationMs: 207 });
+    assert.equal(image.width, 8);
+    assert.equal(image.height, 6);
+    assert.equal(image.mimeType, "image/gif");
+    assert.deepEqual(image.buffer, gif);
+    const context = { config: c, chatFileStore: store, replyDelivery: "web", lastMessage: { sessionId: "web:test", userId: "owner", senderName: "测试" } } as unknown as BuiltinToolContext;
+    const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({ id: "gif", type: "function", function: { name: "generate_image", arguments: "{}" } }, args, context)));
+    assert.equal(result.ok, true);
+    assert.equal((await store.getFile(result.file_id))?.kind, "animated_image");
+  });
+});
+
+test("GIF 参数非法组合在发请求前失败", async () => {
+  let calls = 0;
+  setFetchImplementationForTests(async () => { calls++; throw new Error("不应发送"); });
+  for (const input of [
+    { outputFormat: "gif", frameCount: 1 }, { outputFormat: "gif", frameCount: 65 },
+    { outputFormat: "gif", frameCount: 2.5 }, { outputFormat: "gif", frameDurationMs: 19 },
+    { outputFormat: "gif", frameDurationMs: 2001 }, { outputFormat: "png", frameCount: 2 },
+    { outputFormat: "invalid" }, { frameDurationMs: 200 }
+  ]) await assert.rejects(generateConfiguredImage(config(), { prompt: "动图", ...input }));
+  const c = config();
+  c.llm.models.image!.image!.capabilities.referenceImages = true;
+  await assert.rejects(generateConfiguredImage(c, { prompt: "动图", outputFormat: "gif", referenceImages: [{ buffer: png }] }), /仅支持生成/);
+  c.llm.models.image!.image!.defaults.output_compression = 50;
+  await assert.rejects(generateConfiguredImage(c, { prompt: "动图", outputFormat: "gif" }), /output_compression/);
+  assert.equal(calls, 0);
+});
 
 test("标准生图按路由发送模型参数，隔离对话参数并解析 Base64", async () => {
   let calls = 0;

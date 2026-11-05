@@ -336,6 +336,7 @@ function convertContentPart(part: LlmContentPart): Record<string, unknown> {
       detail: "auto"
     };
   }
+  if (part.type === "video_url") throw new Error("当前 Responses 协议未实现原生视频输入");
   return {
     type: "input_audio",
     input_audio: {

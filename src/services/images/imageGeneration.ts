@@ -42,6 +42,9 @@ export async function generateConfiguredImage(config: AppConfig, input: {
   logger?: Logger;
   skipDebugDump?: boolean;
   size?: string;
+  outputFormat?: string;
+  frameCount?: number;
+  frameDurationMs?: number;
   referenceImages?: ImageEditSource[];
   mask?: ImageEditSource;
   abortSignal?: AbortSignal;
@@ -54,7 +57,11 @@ export async function generateConfiguredImage(config: AppConfig, input: {
   return withProviderExchangeDump({ config, modelRef: target.modelRef, model: target.profile.model, ...(input.logger ? { logger: input.logger } : {}) }, input.skipDebugDump, async () => {
     const prompt = input.prompt.trim();
     if (!prompt) throw new Error("图片描述不能为空");
-    const settings = buildImageRequestParameters(target.profile, target.provider, input.size?.trim(), editing);
+    const settings = buildImageRequestParameters(target.profile, target.provider, input.size?.trim(), editing, {
+      ...(input.outputFormat !== undefined ? { output_format: input.outputFormat } : {}),
+      ...(input.frameCount !== undefined ? { frame_count: input.frameCount } : {}),
+      ...(input.frameDurationMs !== undefined ? { frame_duration_ms: input.frameDurationMs } : {})
+    });
     const signal = AbortSignal.any([
       AbortSignal.timeout(config.llm.imageGeneration.timeoutMs),
       ...(input.abortSignal ? [input.abortSignal] : [])
@@ -146,17 +153,17 @@ export async function generateConfiguredImage(config: AppConfig, input: {
     }
     signal.throwIfAborted();
     if (!buffer.length || buffer.length > maxBytes) throw new Error("生成图片为空或超过资产大小限制");
-    const metadata = await sharp(buffer).metadata();
+    const metadata = await sharp(buffer, { animated: true }).metadata();
     const format = metadata.format;
-    if (!format || !["png", "jpeg", "webp"].includes(format) || !metadata.width || !metadata.height) {
-      throw new Error("图像生成接口未返回有效的 PNG、JPEG 或 WebP 图片");
+    if (!format || !["png", "jpeg", "webp", "gif"].includes(format) || !metadata.width || !metadata.height) {
+      throw new Error("图像生成接口未返回有效的 PNG、JPEG、WebP 或 GIF 图片");
     }
     return {
       buffer,
       mimeType: `image/${format}`,
       extension: format === "jpeg" ? "jpg" : format,
       width: metadata.width,
-      height: metadata.height,
+      height: metadata.pageHeight ?? metadata.height,
       modelRef: target.modelRef,
       ...(typeof row.revised_prompt === "string" ? { revisedPrompt: row.revised_prompt } : {})
     };

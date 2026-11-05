@@ -4,7 +4,7 @@ import { generateConfiguredImage, isImageGenerationAvailable } from "#services/i
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { chatFileListPolicy } from "../core/resultObservationPresets.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
-import { getStringArg } from "../core/toolArgHelpers.ts";
+import { getStringArg, getNumberArg } from "../core/toolArgHelpers.ts";
 import { parseReferenceImageSelectors, resolveStaticImageAsset } from "../core/imageAssetReferences.ts";
 import { readFile, stat } from "node:fs/promises";
 import type { ImageEditSource } from "#services/images/imageEditInputs.ts";
@@ -14,12 +14,15 @@ export const imageGenerationToolDescriptors: ToolDescriptor[] = [{
     type: "function",
     function: {
       name: "generate_image",
-      description: "通过已配置的图像接口生成或编辑一张图片，等待完成并返回可发送的图片资产。描述用中文；编辑时用 reference_images 指定已有图片资产，需要局部重绘时提供带透明区域的 mask_image 蒙版资产。不要用于下载已有图片。",
+      description: "通过已配置的图像接口生成静态图片、GIF 动图或编辑一张静态图片，等待完成并返回可发送的图片资产。描述用中文；编辑时用 reference_images 指定已有图片资产，需要局部重绘时提供带透明区域的 mask_image 蒙版资产。GIF 动图仅支持新生成，不能同时提供参考图或蒙版。不要用于下载已有图片。",
       parameters: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "完整的图片描述。" },
           size: { type: "string", description: "可选尺寸，例如 1024x1024；省略使用配置默认值，必须是供应商支持的尺寸。" },
+          output_format: { type: "string", enum: ["png", "jpeg", "webp", "gif"], description: "可选输出格式；需要动图时选择 gif。" },
+          frame_count: { type: "integer", minimum: 2, maximum: 64, description: "GIF 帧数，省略使用模型默认值。" },
+          frame_duration_ms: { type: "integer", minimum: 20, maximum: 2000, description: "GIF 每帧时长（毫秒），按 10 毫秒取整；仅用于 GIF。" },
           reference_images: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 16, description: "编辑所用参考图片的 asset_ref 或 file_id；必须是已导入的静态图片资产。省略时生成新图。" },
           mask_image: { type: "string", description: "可选局部重绘蒙版资产，必须为有透明区域的 PNG，与第一张参考图尺寸一致。透明区域表示编辑位置。" }
         },
@@ -48,6 +51,9 @@ export const imageGenerationToolHandlers: Record<string, ToolHandler> = {
       const mask = maskSelector ? await readImageAsset(context, maskSelector, context.config.chatFiles.maxUploadBytes - inputBytes) : undefined;
       const image = await generateConfiguredImage(context.config, {
         prompt: getStringArg(args, "prompt"),
+        ...(getStringArg(args, "output_format") ? { outputFormat: getStringArg(args, "output_format") } : {}),
+        ...(getNumberArg(args, "frame_count") !== undefined ? { frameCount: getNumberArg(args, "frame_count")! } : {}),
+        ...(getNumberArg(args, "frame_duration_ms") !== undefined ? { frameDurationMs: getNumberArg(args, "frame_duration_ms")! } : {}),
         ...(getStringArg(args, "size") ? { size: getStringArg(args, "size") } : {}),
         ...(referenceImages.length ? { referenceImages } : {}),
         ...(mask ? { mask } : {}),

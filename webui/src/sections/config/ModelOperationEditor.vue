@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { supportsNativeVideoInput, type LlmProviderType } from "../../../../src/config/llmProviderDefinitions.ts";
 import { WorkbenchFormField, WorkbenchSelect, WorkbenchTextInput } from "@workbench-kit/vue";
 const profile = defineModel<Record<string, unknown>>({ required: true });
 const props = defineProps<{ operations: string[]; providerType: string }>();
 const capabilityLabels: Record<string, string> = {
-  supportsVision: "图片输入", supportsAudioInput: "音频输入", supportsTools: "工具调用",
+  supportsVision: "图片输入", supportsVideoInput: "原生视频输入", supportsAudioInput: "音频输入", supportsTools: "工具调用",
   supportsStructuredOutput: "原生结构化输出", supportsThinking: "思考", thinkingControllable: "可关闭思考", supportsSearch: "原生搜索"
 };
-const visibleCapabilityLabels = computed(() => Object.fromEntries(Object.entries(capabilityLabels).filter(([key]) => props.providerType !== "openai" || key !== "supportsAudioInput")));
+const visibleCapabilityLabels = computed(() => Object.fromEntries(Object.entries(capabilityLabels).filter(([key]) => (props.providerType !== "openai" || key !== "supportsAudioInput") && (key !== "supportsVideoInput" || supportsNativeVideoInput(props.providerType as LlmProviderType)))));
 const booleanOptions = [{ value: "unknown", label: "未知" }, { value: "true", label: "支持" }, { value: "false", label: "不支持" }];
 const limitLabels: Record<string, string> = { contextTokens: "上下文总上限", maxInputTokens: "输入上限", maxOutputTokens: "输出上限" };
 function read(operation: string, group: string, key: string): unknown {
@@ -46,6 +47,6 @@ function writeLimit(operation: string, key: string, raw: string) {
     </template>
     <p v-else-if="operation === 'speech'" class="text-small text-text-subtle">语音通过原生语音生成接口调用，保存后可在目录表单设置声音、语速与格式。</p>
     <p v-else-if="operation === 'decision'" class="text-small text-text-subtle">原生决策支持条件概率、分类和评分；具体问题由调用方提供。</p>
-    <p v-else class="text-small text-text-subtle">图像工具使用独立 Images 接口，生成单张非流式图片。已发现的参数范围会保存在目录中，可在目录表单中调整默认参数。</p>
+    <p v-else class="text-small text-text-subtle">图像工具使用独立 Images 接口，生成一张静态图片或 GIF 动图，使用非流式调用。已发现的参数范围会保存在目录中，可在目录表单中调整默认参数。</p>
   </section>
 </template>

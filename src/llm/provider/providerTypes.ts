@@ -16,6 +16,13 @@ export interface LlmContentPartImageUrl {
   };
 }
 
+export interface LlmContentPartVideoUrl {
+  type: "video_url";
+  video_url: { url: string };
+  durationMs?: number;
+  fps?: number;
+}
+
 export interface LlmContentPartInputAudio {
   type: "input_audio";
   input_audio: {
@@ -25,7 +32,7 @@ export interface LlmContentPartInputAudio {
   };
 }
 
-export type LlmContentPart = LlmContentPartText | LlmContentPartImageUrl | LlmContentPartInputAudio;
+export type LlmContentPart = LlmContentPartText | LlmContentPartImageUrl | LlmContentPartVideoUrl | LlmContentPartInputAudio;
 
 export interface LlmToolDefinition {
   type: "function";

@@ -19,3 +19,16 @@ export const llmProviderDefinitions = {
 export function supportsStandardImageGeneration(type: LlmProviderType): boolean {
   return type === "openai" || type === "openrouter" || type === "openai_compatible" || type === "openai_responses_compatible";
 }
+
+/** 仅这些协议已实现视频内容块；模型本身还必须明确声明 supportsVideoInput。 */
+export function supportsNativeVideoInput(type: LlmProviderType): boolean {
+  return ["google", "vertex", "vertex_express", "dashscope", "openrouter", "openai_compatible"].includes(type);
+}
+
+/** 供应商原生视频限制，和通用本地资源上限共同生效。 */
+export function getNativeVideoInputLimits(type: LlmProviderType) {
+  // DashScope Base64（编码后）必须小于 10 MB，视频时长至少 2 秒。
+  return type === "dashscope"
+    ? { minDurationMs: 2000, minFrames: 4, maxBytes: 7 * 1024 * 1024 }
+    : { minDurationMs: 0, minFrames: 1, maxBytes: 20 * 1024 * 1024 };
+}

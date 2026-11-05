@@ -1,3 +1,4 @@
+import { createVisualInputProjector } from "./provider/visualInputProjection.ts";
 import { getRequestDiagnostic, diagnosticFromToolResult } from "./provider/requestDiagnostics.ts";
 import { getProviderFeatureFromContext } from "./provider/providerFeatures.ts";
 import { renderNativeSearchCitations } from "./shared/nativeSearchCitations.ts";
@@ -658,6 +659,7 @@ export class LlmClient {
       throw new Error("LLM 配置不完整");
     }
 
+    const projectVisualInputs = createVisualInputProjector(this.config);
     const resolvedEnableThinking = params.enableThinkingOverride ?? false;
     let lastError: unknown = null;
     const messageProjection = repairToolCallMessageSequence(params.messages);
@@ -698,10 +700,12 @@ export class LlmClient {
         // Keep the accepted projection across tool iterations and fallback candidates.
         params.messages.splice(0, params.messages.length, ...preparedMessages);
         messageProjection.messages = preparedMessages;
-        const maxOutputTokens = resolveRequestOutputBudget(providerContext, preparedMessages, resolvedTools ?? [], params.maxOutputTokensOverride);
+        const providerMessages = await projectVisualInputs(preparedMessages, providerContext, params.abortSignal);
+        throwIfAbortSignalAborted(params.abortSignal);
+        const maxOutputTokens = resolveRequestOutputBudget(providerContext, providerMessages, resolvedTools ?? [], params.maxOutputTokensOverride);
         const result = await withProviderExchangeDump(providerContext, params.skipDebugDump, () => provider.generate(providerContext, {
           ...(params.responseFormat ? { responseFormat: params.responseFormat } : {}),
-          messages: preparedMessages,
+          messages: providerMessages,
           ...(params.abortSignal ? { abortSignal: params.abortSignal } : {}),
           ...(resolvedTools ? { tools: resolvedTools } : {}),
           onTextDelta: async (delta) => {

@@ -118,6 +118,7 @@ conversation:
     #     mode: live # 或 last_completed_reply
     links: []
   images:
+    # 静态图/动图拼图的像素预算；动图原生视频每帧另限制在 512×512 像素内。
     maxSerializedPixels: 1048576
     maxCachedFiles: 100
   debounce:

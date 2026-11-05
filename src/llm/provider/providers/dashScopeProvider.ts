@@ -45,7 +45,7 @@ interface DashScopeStreamChunk {
       finish_reason?: string | null;
       message?: {
         role?: string;
-        content?: string | Array<{ text?: string; image?: string; audio?: string }>;
+        content?: string | Array<{ text?: string; image?: string; audio?: string; video?: string; fps?: number }>;
         reasoning_content?: string;
         tool_calls?: Array<{
           index?: number;
@@ -61,7 +61,7 @@ interface DashScopeStreamChunk {
   };
 }
 
-type DashScopeMessageContent = string | Array<{ text?: string; image?: string; audio?: string }>;
+type DashScopeMessageContent = string | Array<{ text?: string; image?: string; audio?: string; video?: string; fps?: number }>;
 
 interface DashScopeRequestMessage {
   role: LlmMessage["role"];
@@ -210,7 +210,7 @@ function isDashScopeDataInspectionError(errorText: string): boolean {
   return /data_inspection_failed|DataInspectionFailed/i.test(errorText);
 }
 
-function extractDashScopeText(content: string | Array<{ text?: string; image?: string; audio?: string }> | undefined): string {
+function extractDashScopeText(content: string | Array<{ text?: string; image?: string; audio?: string; video?: string; fps?: number }> | undefined): string {
   if (typeof content === "string") {
     return content;
   }
@@ -228,6 +228,7 @@ function buildDashScopeEndpoint(context: LlmProviderRequestContext): string {
     return trimmed;
   }
   return getGenerationSettings(context)?.capabilities.supportsVision
+    || getGenerationSettings(context)?.capabilities.supportsVideoInput
     || getGenerationSettings(context)?.capabilities.supportsAudioInput
     ? `${trimmed}/services/aigc/multimodal-generation/generation`
     : `${trimmed}/services/aigc/text-generation/generation`;
@@ -275,7 +276,7 @@ function buildDashScopeRequestMessages(
 ): DashScopeRequestMessage[] {
   return messages.map((message) => convertMessageForDashScope(
     message,
-    getGenerationSettings(context)?.capabilities.supportsVision === true || getGenerationSettings(context)?.capabilities.supportsAudioInput === true
+    getGenerationSettings(context)?.capabilities.supportsVision === true || getGenerationSettings(context)?.capabilities.supportsVideoInput === true || getGenerationSettings(context)?.capabilities.supportsAudioInput === true
   ));
 }
 
@@ -306,12 +307,12 @@ function convertTextContent(content: string | LlmContentPart[]): string {
   return textParts.join("\n");
 }
 
-function convertVisionContent(content: string | LlmContentPart[]): Array<{ text?: string; image?: string; audio?: string }> {
+function convertVisionContent(content: string | LlmContentPart[]): Array<{ text?: string; image?: string; audio?: string; video?: string; fps?: number }> {
   if (typeof content === "string") {
     return content.length > 0 ? [{ text: content }] : [];
   }
 
-  const parts: Array<{ text?: string; image?: string; audio?: string }> = [];
+  const parts: Array<{ text?: string; image?: string; audio?: string; video?: string; fps?: number }> = [];
   for (const part of content) {
     if (part.type === "text") {
       if (part.text.length > 0) {
@@ -321,6 +322,10 @@ function convertVisionContent(content: string | LlmContentPart[]): Array<{ text?
     }
     if (part.type === "image_url") {
       parts.push({ image: part.image_url.url });
+      continue;
+    }
+    if (part.type === "video_url") {
+      parts.push({ video: part.video_url.url, ...(part.fps !== undefined ? { fps: part.fps } : {}) });
       continue;
     }
     parts.push({

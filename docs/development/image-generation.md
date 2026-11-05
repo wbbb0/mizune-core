@@ -30,7 +30,7 @@ images_provider:
   apiKey: replace-me
   models:
     image:
-      upstreamModel: gpt-image-2.5-sunburst
+      upstreamModel: gpt-image-2.6-sunburst
       image:
         capabilities:
           referenceImages: true
@@ -40,7 +40,7 @@ images_provider:
           output_format: png
 ```
 
-`image.defaults` 仅用于 Images API，模型的对话 `chat.defaults` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size` 可覆盖模型默认尺寸。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，官方 provider 会在发请求前拒绝该参数。`background`、`output_compression` 可按具体模型支持情况配置；仅编辑所用的 `input_fidelity` 在生成新图时不发送。参数支持情况由模型决定，未知时留空。
+`image.defaults` 仅用于 Images API，模型的对话 `chat.defaults` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size`、`output_format`、`frame_count`、`frame_duration_ms` 可覆盖模型默认值。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，官方 provider 会在发请求前拒绝该参数。`background`、`output_compression` 可按具体模型支持情况配置；仅编辑所用的 `input_fidelity` 在生成新图时不发送。参数支持情况由模型决定，未知时留空。
 
 在 `llm.routing-presets.yml` 为所用预设指定目标（或在 `default` 中设置，由其他预设继承）：
 
@@ -65,7 +65,26 @@ chatFiles:
   enabled: true
 ```
 
-调用 `POST <baseUrl>/images/generations`，固定 `n: 1`，接受标准 `data[].b64_json` 或 `data[].url`。URL 图片下载不会携带供应商密钥。响应、图片大小受资产上传限制约束；生成结果验证为 PNG、JPEG 或 WebP 后导入资产，返回 `asset_ref` 供现有发送工具使用。取消或失败时不导入结果，不自动发送消息。
+调用 `POST <baseUrl>/images/generations`，固定 `n: 1`，接受标准 `data[].b64_json` 或 `data[].url`。URL 图片下载不会携带供应商密钥。响应、图片大小受资产上传限制约束；生成结果验证为 PNG、JPEG、WebP 或 GIF 后导入资产，返回 `asset_ref` 供现有发送工具使用。取消或失败时不导入结果，不自动发送消息。
+
+## GIF 动图生成
+
+GPT Image 2.6 Sunburst / Flare 继续使用 `/images/generations`，设置 `output_format: gif`，返回的 `data[].b64_json` 解码后就是完整 GIF。可在 `image.defaults` 设置默认参数，也可按次调用：
+
+```json
+{
+  "prompt": "一只小猫挥手，无缝循环动画",
+  "output_format": "gif",
+  "frame_count": 9,
+  "frame_duration_ms": 200
+}
+```
+
+`frame_count` 是 2–64 的整数；`frame_duration_ms` 是 20–2000 的整数毫秒，发送时按 10 毫秒取整。省略时使用模型默认值，未配置则使用上游默认（9 帧、每帧 200 毫秒）。`size` 表示每帧尺寸，帧数、尺寸仍受上游总像素预算限制。
+
+GIF 仅支持生成，不能与参考图或蒙版一起使用；不支持 `output_compression`。帧参数不能用于静态格式。当前 OpenRouter `/images` 适配器不发送 GIF 请求。工具沿用非流式单次调用，不自动重试或切换模型。结果保留完整动画字节，以 `animated_image` 资产存储，宽高表示单帧尺寸，发送和 WebUI 展示复用现有动图链路。
+
+官方协议：[GIF 输出说明](https://developers.openai.com/api/docs/guides/image-generation#generate-animated-gif-output)。
 
 ## 参考图编辑与局部重绘
 
@@ -86,7 +105,7 @@ chatFiles:
 
 ## 手动真实接口验证
 
-默认测试不访问模型服务。配置完成后可运行 `npm run smoke:llm:image -- --instance acc1 --config-dir /path/to/config`；此命令会实际生成一张图片，只在临时目录导入资产并将样图复制至本地 `.superpowers/image-generation-smoke/`，不读写实例正式数据。
+默认测试不访问模型服务。配置完成后可运行 `npm run smoke:llm:image -- --instance acc1 --config-dir /path/to/config`；此命令会实际生成一张图片，只在临时目录导入资产并将样图复制至本地 `.superpowers/image-generation-smoke/`，不读写实例正式数据。可追加 `--model-ref openai/gpt_image_2_6_sunburst --output-format gif --frame-count 2 --frame-duration-ms 200 --size auto` 验证 GIF；模型引用需在当前目录中存在，覆盖仅在该进程生效。
 
 ## OpenRouter
 

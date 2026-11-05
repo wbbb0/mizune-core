@@ -1,6 +1,6 @@
 import { s } from "#data/schema/index.ts";
 import { createModelApiParametersSchema, modelApiParametersSchema } from "./modelApiParameterSchema.ts";
-import type { LlmProviderType } from "./llmProviderDefinitions.ts";
+import { supportsNativeVideoInput, type LlmProviderType } from "./llmProviderDefinitions.ts";
 
 export const modelOperations = ["chat", "embedding", "image", "transcription", "speech", "decision"] as const;
 export type ModelOperation = typeof modelOperations[number];
@@ -13,6 +13,7 @@ const limits = () => s.object({
 const capabilities = (type?: LlmProviderType) => s.object({
   supportsThinking: capability("支持思考"), thinkingControllable: capability("可关闭思考"),
   supportsVision: capability("支持图片输入"),
+  ...(!type || supportsNativeVideoInput(type) ? { supportsVideoInput: capability("支持原生视频输入") } : {}),
   ...(type === "openai" ? {} : { supportsAudioInput: capability("支持音频输入") }),
   supportsTools: capability("支持工具"), supportsStructuredOutput: capability("支持原生结构化输出"), supportsSearch: capability("支持原生搜索")
 }).title("已知能力").default(empty);
@@ -44,7 +45,11 @@ export function createModelOperationShape(type?: LlmProviderType) {
           resolution: s.string().trim().nonempty().title("分辨率（OpenRouter）").optional(),
           seed: s.number().int().title("种子（OpenRouter）").optional() } : {}),
         quality: s.string().trim().nonempty().title("质量").optional(),
-        output_format: s.enum(["png", "jpeg", "webp"] as const).title("输出格式").optional(),
+        output_format: s.enum(type === "openrouter" ? ["png", "jpeg", "webp"] as const : ["png", "jpeg", "webp", "gif"] as const).title("输出格式").optional(),
+        ...(type === "openrouter" ? {} : {
+          frame_count: s.number().int().min(2).max(64).title("动图帧数").optional(),
+          frame_duration_ms: s.number().int().min(20).max(2000).title("每帧时长（毫秒）").optional()
+        }),
         background: s.enum(["auto", "transparent", "opaque"] as const).title("背景").optional(),
         output_compression: s.number().int().min(0).max(100).title("输出压缩质量").optional(),
         input_fidelity: s.enum(["high", "low"] as const).title("参考图保真度").optional(),

@@ -11,6 +11,7 @@ dashscope:
         capabilities:
           supportsThinking: true
           supportsVision: true
+          supportsVideoInput: true
           supportsTools: true
           supportsSearch: true
         defaults:
@@ -107,12 +108,16 @@ openai_official:
         format: mp3
         speed: 1
     image:
-      upstreamModel: gpt-image-2.5-sunburst
+      upstreamModel: gpt-image-2.6-sunburst
       image:
         capabilities:
           referenceImages: true
         defaults:
           size: 1024x1024
+          output_format: png
+          # 生成 GIF 时改为 gif；也可由 generate_image 按次指定格式、帧数和时长。
+          # frame_count: 9
+          # frame_duration_ms: 200
     decision:
       upstreamModel: gpt-6-luna
       decision: {}
@@ -144,6 +149,7 @@ vertex:
         capabilities:
           supportsThinking: true
           supportsVision: true
+          supportsVideoInput: true
           supportsSearch: true
         defaults:
           maxOutputTokens: 4096

@@ -20,6 +20,7 @@ import {
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 
 interface GoogleInlineDataPart {
+  videoMetadata?: { fps: number };
   inlineData: {
     mimeType: string;
     data: string;
@@ -512,13 +513,14 @@ function convertContentToGoogleParts(
       continue;
     }
 
-    if (part.type === "image_url") {
-      const inlineData = dataUrlToBase64(part.image_url.url);
+    if (part.type === "image_url" || part.type === "video_url") {
+      const inlineData = dataUrlToBase64(part.type === "video_url" ? part.video_url.url : part.image_url.url);
       if (!inlineData) {
         throw compatibility.createInlineDataError();
       }
       parts.push({
-        inlineData
+        inlineData,
+        ...(part.type === "video_url" && part.fps !== undefined ? { videoMetadata: { fps: part.fps } } : {})
       });
       continue;
     }

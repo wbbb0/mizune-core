@@ -306,6 +306,7 @@ test("projectLlmMessages moderates multimodal content parts", async () => {
         content: [
           { type: "text", text: "part 违规词" },
           { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+          { type: "video_url", video_url: { url: "data:video/mp4;base64,AAAA" } },
           { type: "input_audio", input_audio: { data: "AAAA", format: "mp3", mimeType: "audio/mpeg" } }
         ]
       }]
@@ -315,7 +316,7 @@ test("projectLlmMessages moderates multimodal content parts", async () => {
     assert.ok(Array.isArray(content));
     assert.equal(content.every((part) => part.type === "text"), true);
     assert.equal(hasContentSafetyEnvelope(content.map((part) => part.type === "text" ? part.text : "").join("\n")), true);
-    assert.equal(result.events.length, 3);
+    assert.equal(result.events.length, 4);
   } finally {
     await harness.cleanup();
   }

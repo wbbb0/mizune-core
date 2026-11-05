@@ -288,7 +288,7 @@ npm run typecheck:all
 npm run test
 ```
 
-标准图像模型通过 `imageGenerator` 路由调用 OpenAI Images API；ComfyUI 保留独立工作流配置，两者分别提供可独立开关的工具集，并共用图片资产体系。配置见 [图像生成](docs/development/image-generation.md)。
+标准图像模型通过 `imageGenerator` 路由调用 OpenAI Images API；ComfyUI 保留独立工作流配置，两者分别提供可独立开关的工具集，并共用图片资产体系。支持 GPT Image 2.6 GIF 动图生成，配置见 [图像生成](docs/development/image-generation.md)。聊天动图可按目标模型能力转为原生视频输入，详见 [动图视觉输入](docs/development/animated-media.md)。
 
 ### 日志聊天内容过滤
 

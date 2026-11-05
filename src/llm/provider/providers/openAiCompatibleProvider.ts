@@ -86,6 +86,7 @@ interface OpenAiRequestContentPartInputAudio {
 
 type OpenAiRequestContentPart =
   | OpenAiRequestContentPartText
+  | { type: "video_url"; video_url: { url: string } }
   | OpenAiRequestContentPartImageUrl
   | OpenAiRequestContentPartInputAudio;
 
@@ -346,6 +347,10 @@ function convertOpenAiMessageContent(message: LlmMessage): string | OpenAiReques
       continue;
     }
 
+    if (part.type === "video_url") {
+      parts.push({ type: "video_url", video_url: { url: part.video_url.url } });
+      continue;
+    }
     parts.push({
       type: "input_audio",
       input_audio: {

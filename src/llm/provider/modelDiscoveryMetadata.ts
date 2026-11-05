@@ -38,6 +38,7 @@ export function parseDiscoveredModels(payload: unknown, source: string, kind: "g
       profile.chat = {
         limits, capabilities: defined({
           supportsVision: typeof caps.vision === "boolean" ? caps.vision : boolean(caps.image_input?.supported) ?? (Array.isArray(input) ? input.includes("image") : undefined),
+          supportsVideoInput: Array.isArray(input) ? input.includes("video") : undefined,
           supportsAudioInput: Array.isArray(input) ? input.includes("audio") : undefined,
           supportsTools: boolean(caps.trained_for_tool_use) ?? (parameters ? parameters.includes("tools") : undefined),
           supportsThinking: boolean(caps.thinking?.supported) ?? (typeof item.thinking === "boolean" ? item.thinking : parameters ? parameters.includes("reasoning") || parameters.includes("reasoning_effort") : undefined),

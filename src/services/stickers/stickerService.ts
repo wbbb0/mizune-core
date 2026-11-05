@@ -94,7 +94,7 @@ export class StickerService {
         messages: [
           { role: "system", content: ANALYSIS_PROMPT },
           { role: "user", content: [
-            { type: "text", text: visual.animated ? `请整理此动图。时长毫秒=${visual.durationMs}，抽帧数=${visual.sampledFrameCount}。` : "请整理这张表情。" },
+            { type: "text", text: visual.animated ? `请整理此动图。时长毫秒=${visual.durationMs}。输入将按模型能力呈现为视频或抽帧拼图。` : "请整理这张表情。" },
             { type: "image_url", image_url: { url: visual.inputUrl } }
           ] }
         ]

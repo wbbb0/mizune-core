@@ -12,6 +12,7 @@ export function estimateMessageContentTokens(content: LlmMessage["content"], wei
     switch (part.type) {
       case "text": return total + estimateTokens(part.text, weights);
       case "image_url": return total + IMAGE_TOKEN_ALLOWANCE;
+      case "video_url": return total + Math.max(1024, Math.ceil((part.durationMs ?? 16000) / 1000 * (part.fps ?? 1)) * 512);
       case "input_audio": return total + AUDIO_TOKEN_ALLOWANCE;
     }
   }, 0);
