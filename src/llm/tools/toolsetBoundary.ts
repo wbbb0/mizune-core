@@ -1,4 +1,5 @@
 import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
+import { isSkillRuntimeAllowedForSession, SKILL_TOOL_NAMES } from "../../skills/skillPolicy.ts";
 import { resolveSessionModeSetupOperation } from "#modes/types.ts";
 import { resolveProfileToolScopeFromOperationMode } from "./profileToolScope.ts";
 import { requireSessionModeDefinition } from "#modes/registry.ts";
@@ -54,5 +55,7 @@ export function resolveSessionBoundaryToolNames(
   return new Set(TOOLSET_DEFINITIONS.filter((toolset) => {
     const enabled = defaults.get(toolset.id);
     return enabled != null && resolveSessionToolsetEnabled(preferences, toolset.id, enabled);
-  }).flatMap((toolset) => toolset.toolNames));
+  }).flatMap((toolset) => toolset.toolNames).concat(
+    isSkillRuntimeAllowedForSession(modeId, operationMode) ? SKILL_TOOL_NAMES : []
+  ));
 }

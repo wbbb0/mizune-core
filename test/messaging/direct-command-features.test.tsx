@@ -165,7 +165,7 @@ function createScenarioState(input: {
     }), {
       name: "invalid",
       rawText: ".config",
-      message: "`.config` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.config persona` / `.config rp` / `.config scenario`。"
+      message: "`.config` 需要一个目标参数：persona、social、embodiment、state、scenario 或 skill。\n用法：`.config persona` / `.config social` / `.config embodiment` / `.config state` / `.config scenario` / `.config skill [id]`（技能配置仅限私聊）。"
     });
   });
 

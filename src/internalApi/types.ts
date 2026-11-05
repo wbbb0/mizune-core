@@ -1,4 +1,5 @@
 import { characterRepository } from "../character/repository.ts";
+import { assertSkillDraftFinished } from "../skills/skillDrafts.ts";
 import { enqueueCharacterIntroduction } from "../character/introduction.ts";
 import type { SessionSkillsView } from '../types/skills.ts';
 import type { StickerService } from "#services/stickers/stickerService.ts";
@@ -310,6 +311,7 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
           // participantRef 使用内部身份；WebUI 新建私聊也固定绑定 owner。
           // 管理端切换群聊或其他用户的模式，不代表允许在该会话配置全局角色。
           if (session.type !== "private" || session.participantRef.kind !== "user" || session.participantRef.id !== "owner") return;
+          assertSkillDraftFinished(deps.config, sessionId, session.operationMode);
           const draft = characterRepository(deps.config.dataDir).ensureSetup(sessionId, session.modeId);
           if (!draft) return;
           deps.sessionManager.setOperationMode(sessionId, { kind: "character_config", stage: draft.stage });

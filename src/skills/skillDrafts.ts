@@ -5,6 +5,8 @@ import type { AppConfig } from "../config/config.ts";
 import type { SkillWriteInput } from "../types/skills.ts";
 import { getSkillStore } from "./skillStore.ts";
 import { validateSkillId } from "./skillDocument.ts";
+import { validateSkillWriteInput } from "./skillWriteValidation.ts";
+import { SkillError } from "./skillError.ts";
 export interface SkillDraft {
   id: string;
   input: SkillWriteInput;
@@ -18,6 +20,7 @@ export function readSkillDraft(config: AppConfig, sessionId: string): SkillDraft
 }
 export function writeSkillDraft(config: AppConfig, sessionId: string, draft: SkillDraft): void {
   validateSkillId(draft.id);
+  validateSkillWriteInput(draft.input);
   mkdirSync(join(config.dataDir, "skills", "drafts"), { recursive: true });
   writeFileSync(path(config, sessionId), JSON.stringify(draft), { mode: 0o600 });
 }
@@ -36,6 +39,13 @@ export function cancelSkillDraft(config: AppConfig, sessionId: string): void {
   const file = path(config, sessionId);
   if (existsSync(file))
     unlinkSync(file);
+}
+
+/** 所有会话模式切换入口都必须先结束用户的技能配置事务。 */
+export function assertSkillDraftFinished(config: AppConfig | undefined, sessionId: string, operationMode: { kind: string }): void {
+  if (operationMode.kind === "skill_config" || (config && readSkillDraft(config, sessionId))) {
+    throw new SkillError("请先确认或取消当前技能配置草稿。", 409);
+  }
 }
 export function confirmSkillDraft(config: AppConfig, sessionId: string): void {
   const draft = readSkillDraft(config, sessionId);

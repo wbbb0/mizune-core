@@ -121,14 +121,10 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
     ...options.session
   };
 
+  const config = createTestAppConfig({ shell: { enabled: true }, ...options.config });
   const handler = createDirectCommandHandler({
     ...(options.stickerService ? { stickerService: options.stickerService } : {}),
-    config: createTestAppConfig({
-      shell: {
-        enabled: true
-      },
-      ...options.config
-    }),
+    config,
     sessionManager: {
       ensureSession() {
         return session;
@@ -314,6 +310,7 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
   });
 
   return {
+    config,
     calls,
     handler
   };

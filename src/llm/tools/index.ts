@@ -20,7 +20,7 @@ import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { hasNativeSearchFeature } from "../provider/providerFeatures.ts";
 import { executeBuiltinToolHandler, getBuiltinToolDescriptors } from "./toolRegistry.ts";
 import { projectRawToolContent } from "./core/toolResultProjection.ts";
-import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
+import { sessionOperationKey, type SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import {
   filterProfileToolNamesForScope,
   resolveProfileToolScopeFromOperationMode,
@@ -32,6 +32,9 @@ interface BuiltinToolSelectionOptions {
   currentUser: BuiltinToolContext["currentUser"];
   config?: AppConfig;
   modelRef?: string | string[];
+  modeId?: string | null | undefined;
+  operationMode?: SessionOperationMode | undefined;
+  setupMode?: boolean | undefined;
   availableToolNames?: string[];
   includeDebugTools?: boolean;
   profileToolScope?: ProfileToolScope | null;
@@ -86,7 +89,9 @@ export function getBuiltinTools(
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
-    operationMode?: SessionOperationMode;
+    modeId?: string | null | undefined;
+    setupMode?: boolean | undefined;
+    operationMode?: SessionOperationMode | undefined;
     profileToolScope?: ProfileToolScope | null;
     visibilityContext?: ToolVisibilityContext;
   }
@@ -101,6 +106,9 @@ export function getBuiltinTools(
   );
   return selectBuiltinToolDescriptors({
     relationship,
+    modeId: options?.modeId,
+    operationMode: options?.operationMode,
+    setupMode: options?.setupMode,
     currentUser: resolvedCurrentUser,
     ...(resolvedConfig ? { config: resolvedConfig } : {}),
     ...(options?.modelRef ? { modelRef: options.modelRef } : {}),
@@ -125,7 +133,9 @@ export function getBuiltinToolNames(
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
-    operationMode?: SessionOperationMode;
+    modeId?: string | null | undefined;
+    setupMode?: boolean | undefined;
+    operationMode?: SessionOperationMode | undefined;
     profileToolScope?: ProfileToolScope | null;
     visibilityContext?: ToolVisibilityContext;
   }
@@ -141,7 +151,9 @@ export function createBuiltinToolExecutor(
     modelRef?: string | string[];
     availableToolNames?: string[];
     includeDebugTools?: boolean;
-    operationMode?: SessionOperationMode;
+    modeId?: string | null | undefined;
+    setupMode?: boolean | undefined;
+    operationMode?: SessionOperationMode | undefined;
     profileToolScope?: ProfileToolScope | null;
     visibilityContext?: ToolVisibilityContext;
   }
@@ -149,6 +161,9 @@ export function createBuiltinToolExecutor(
   const allowedToolNames = new Set(
     selectBuiltinToolDescriptors({
       relationship: context.relationship,
+      modeId: context.sessionManager.getSession(context.lastMessage.sessionId)?.modeId,
+      operationMode: context.sessionManager.getOperationMode(context.lastMessage.sessionId),
+      setupMode: options?.setupMode,
       currentUser: context.currentUser,
       config: context.config,
       ...(options?.modelRef ? { modelRef: options.modelRef } : {}),
@@ -165,7 +180,6 @@ export function createBuiltinToolExecutor(
   );
 
   const initialOperation = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
-  const operationKey = (operation: SessionOperationMode) => `${operation.kind}:${"modeId" in operation ? operation.modeId : ""}:${"stage" in operation ? operation.stage : ""}`;
   const expectedDraftId = options?.expectedCharacterDraftId !== undefined
     ? options.expectedCharacterDraftId
     : allowedToolNames.has("edit_character_section")
@@ -176,6 +190,9 @@ export function createBuiltinToolExecutor(
     const currentMode = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
     const currentTools = new Set(selectBuiltinToolDescriptors({
       relationship: context.relationship, currentUser: context.currentUser, config: context.config,
+      modeId: context.sessionManager.getSession(context.lastMessage.sessionId)?.modeId,
+      operationMode: currentMode,
+      setupMode: options?.setupMode,
       ...(options?.modelRef ? { modelRef: options.modelRef } : {}),
       includeDebugTools: options?.includeDebugTools === true,
       visibilityContext: { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery, modelSelfUpgradeAvailable: options?.visibilityContext?.modelSelfUpgradeAvailable },
@@ -190,14 +207,16 @@ export function createBuiltinToolExecutor(
   };
 
   const execute = async (toolCall: LlmToolCall, args: unknown): Promise<string | LlmToolExecutionResult> => {
+    context.abortSignal?.throwIfAborted();
     if (context.resolveActorAuthorization) {
       const actor = await context.resolveActorAuthorization();
+      context.abortSignal?.throwIfAborted();
       if (!actor) return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: "触发者身份已变化，本轮工具授权失效。" }));
       context.relationship = actor.relationship;
       context.currentUser = actor.currentUser;
     }
     const currentMode = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
-    if (operationKey(currentMode) !== operationKey(initialOperation)) return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: "会话配置阶段已变化，本轮工具授权失效。" }));
+    if (sessionOperationKey(currentMode) !== sessionOperationKey(initialOperation)) return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: "会话配置阶段已变化，本轮工具授权失效。" }));
     const currentTools = resolveCurrentToolNames();
     context.projectionToolNames = [...currentTools].filter(name => allowedToolNames.has(name));
     const baseName = isCharacterSetupToolName(toolCall.function.name) ? "edit_character_section" : toolCall.function.name;
@@ -220,7 +239,7 @@ export function createBuiltinToolExecutor(
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
       try {
-        const result = await handler(toolCall, args, { ...context, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
+        const result = await handler(toolCall, args, { ...context, executionSetupMode: options?.setupMode, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
         if (typeof result !== "string") return result;
         let parsed: { error?: unknown };
         try { parsed = JSON.parse(result); } catch { return projectRawToolContent(toolCall.function.name, result); }
@@ -236,7 +255,7 @@ export function createBuiltinToolExecutor(
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
     }
-    const result = await handler(toolCall, args, { ...context, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
+    const result = await handler(toolCall, args, { ...context, executionSetupMode: options?.setupMode, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
     return typeof result === "string"
       ? projectRawToolContent(toolCall.function.name, result)
       : result;

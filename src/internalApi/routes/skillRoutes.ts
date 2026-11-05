@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../../config/config.ts";
 import type { SkillWriteInput } from "../../types/skills.ts";
-import { getSkillStore, SkillError } from "../../skills/skillStore.ts";
+import { getSkillStore } from "../../skills/skillStore.ts";
+import { SkillError } from "../../skills/skillError.ts";
 import { TOOLSET_DEFINITIONS } from "../../llm/tools/toolsetCatalog.ts";
 export function registerSkillRoutes(app: FastifyInstance, config: AppConfig): void {
   const store = () => getSkillStore(config);

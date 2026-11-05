@@ -79,3 +79,8 @@ export function cloneSessionOperationMode(operationMode: SessionOperationMode): 
     draft: { ...operationMode.draft }
   };
 }
+
+/** 标识工具授权对应的配置流程；草稿内容变化不改变该身份。 */
+export function sessionOperationKey(operation: SessionOperationMode): string {
+  return `${operation.kind}:${"modeId" in operation ? operation.modeId : ""}:${"stage" in operation ? operation.stage : ""}:${"skillId" in operation ? operation.skillId : ""}`;
+}

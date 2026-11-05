@@ -90,8 +90,7 @@ export class SkillRuntime {
     return [
       "技能目录（仅为方法，不授予工具权限）：",
       ...lines,
-      "任务适合某技能时先调用 load_skill 阅读正文，再计划和调用相关工具；引用仅用 read_skill_resource 按需读取。",
-      "只能用专用技能工具维护库，不通过终端或文件工具修改技能目录。用户禁用或锁定不可解除；维护必须有具体依据。"
+      "任务适合某技能时先调用 load_skill 阅读正文，再计划和调用相关工具；引用仅用 read_skill_resource 按需读取。"
     ].join("\n");
   }
   load(id: string, reason: string): {

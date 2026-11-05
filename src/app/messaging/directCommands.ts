@@ -978,12 +978,18 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
       const configCommand = command as Extract<ParsedDirectCommand, { name: "config" }>;
       if (configCommand.target === "skill") {
+        if (ctx.session.type !== "private") { await ctx.send("请在私聊中配置技能。"); return; }
         if (!ctx.input.config.skills.enabled) { await ctx.send("技能库未启用。"); return; }
         if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind !== "normal" || characterRepository(ctx.input.config.dataDir).draft(ctx.session.id)) { await ctx.send("请先确认或取消当前资料配置草稿。"); return; }
-        const draft = startSkillDraft(ctx.input.config, ctx.session.id, configCommand.id);
-        ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "skill_config", skillId: draft.id });
-        ctx.input.persistSession(ctx.session.id, "skill_draft_started");
-        await ctx.send(`已进入技能 ${draft.id} 编辑。接下来的修改仅保存临时草稿，.confirm 发布，.cancel 放弃。\n${draft.input.document}\n工具集绑定：${draft.input.toolsetIds.join(", ") || "无"}`);
+        try {
+          const draft = startSkillDraft(ctx.input.config, ctx.session.id, configCommand.id);
+          ctx.input.sessionManager.interruptResponse(ctx.session.id);
+          ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "skill_config", skillId: draft.id });
+          ctx.input.persistSession(ctx.session.id, "skill_draft_started");
+          await ctx.send(`已进入技能 ${draft.id} 编辑。接下来的修改仅保存临时草稿，.confirm 发布，.cancel 放弃。\n${draft.input.document}\n工具集绑定：${draft.input.toolsetIds.join(", ") || "无"}`);
+        } catch (error) {
+          await ctx.send(error instanceof Error ? error.message : String(error));
+        }
         return;
       }
       await ctx.send(await enterConfigurationMode(ctx, "config", configCommand.target));
@@ -1068,12 +1074,14 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         return;
       }
       if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") {
-        if (!readSkillDraft(ctx.input.config, ctx.session.id)) {
-          ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
-          await ctx.send("技能草稿文件已不存在，已退出配置流程。");
-          return;
-        }
+        ctx.input.sessionManager.interruptResponse(ctx.session.id);
         try {
+          if (!readSkillDraft(ctx.input.config, ctx.session.id)) {
+            ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
+            ctx.input.persistSession(ctx.session.id, "skill_draft_missing");
+            await ctx.send("技能草稿文件已不存在，已退出配置流程。");
+            return;
+          }
           requireActiveSkillDraft(ctx.input.config, ctx.session.id, ctx.input.sessionManager.getOperationMode(ctx.session.id));
           confirmSkillDraft(ctx.input.config, ctx.session.id);
           ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
@@ -1133,6 +1141,7 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         return;
       }
       if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind === "skill_config") {
+        ctx.input.sessionManager.interruptResponse(ctx.session.id);
         cancelSkillDraft(ctx.input.config, ctx.session.id);
         ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "normal" });
         ctx.input.persistSession(ctx.session.id, "skill_draft_cancelled");
@@ -1243,7 +1252,7 @@ function resolveInvalidDirectCommand(text: string): InvalidDirectCommand | null 
     return {
       name: "invalid",
       rawText: text,
-      message: "`.config` 需要一个目标参数：persona、rp 或 scenario。\n用法：`.config persona` / `.config rp` / `.config scenario`。"
+      message: "`.config` 需要一个目标参数：persona、social、embodiment、state、scenario 或 skill。\n用法：`.config persona` / `.config social` / `.config embodiment` / `.config state` / `.config scenario` / `.config skill [id]`（技能配置仅限私聊）。"
     };
   }
   return null;

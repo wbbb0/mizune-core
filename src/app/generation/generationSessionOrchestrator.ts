@@ -1,3 +1,4 @@
+import { isSkillRuntimeAllowedForSession, SKILL_TOOL_NAMES } from "../../skills/skillPolicy.ts";
 import { createGenerationFailureLifecycle } from "./generationFailureLifecycle.ts";
 import { createGenerationOutbound } from "./generationOutbound.ts";
 import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
@@ -138,7 +139,7 @@ function resolveActiveDraftOperation(input: {
       break;
   }
 
-  if (!input.readinessOperation) {
+  if (input.operationMode.kind !== "normal" || !input.readinessOperation) {
     return null;
   }
   return toActiveDraftOperation({
@@ -757,6 +758,8 @@ export function createGenerationSessionOrchestrator(
             relationship,
             currentUser: user,
             modeId: sessionModeId,
+            operationMode: refreshedSession.operationMode,
+            setupMode,
             modeSignalLine,
             batchMessages: promptSafety.runtimeBatchMessages,
             availableToolsets: plannerToolsets,
@@ -915,6 +918,9 @@ export function createGenerationSessionOrchestrator(
       const toolNamesFromPlanner = resolveToolNamesFromToolsets(plannerToolsets, plannedToolsetIds);
       const activeChatToolsets = plannerToolsets.filter((toolset) => plannedToolsetIds.includes(toolset.id));
       const chatVisibleToolNames = getBuiltinToolNames(relationship, user, config, {
+        modeId: sessionModeId,
+        operationMode: refreshedSession.operationMode,
+        setupMode,
         modelRef: resolvedModelRef,
         includeDebugTools: interactionMode === "debug",
         visibilityContext: {
@@ -924,6 +930,7 @@ export function createGenerationSessionOrchestrator(
         availableToolNames: [
           ...toolNamesFromPlanner,
           ...TURN_PLANNER_ALWAYS_TOOL_NAMES,
+          ...(plannerToolsets.length > 0 && isSkillRuntimeAllowedForSession(sessionModeId, refreshedSession.operationMode, { setupMode }) ? SKILL_TOOL_NAMES : []),
           ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]
       });
@@ -1173,6 +1180,8 @@ export function createGenerationSessionOrchestrator(
       const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, trigger.kind));
       const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
       const scheduledVisibleToolNames = getBuiltinToolNames("owner", currentUser, config, {
+        modeId: session.modeId,
+        operationMode: session.operationMode,
         modelRef: scheduledModelRef,
         includeDebugTools: interactionMode === "debug",
         visibilityContext: {
@@ -1185,6 +1194,7 @@ export function createGenerationSessionOrchestrator(
             scheduledAvailableToolsets,
             activeScheduledToolsets.map((toolset) => toolset.id)
           ),
+          ...(scheduledAvailableToolsets.length > 0 && isSkillRuntimeAllowedForSession(session.modeId, session.operationMode) ? SKILL_TOOL_NAMES : []),
           ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]
       });
@@ -1384,6 +1394,8 @@ export function createGenerationSessionOrchestrator(
       const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, primaryTrigger.kind));
       const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
       const scheduledVisibleToolNames = getBuiltinToolNames("owner", currentUser, config, {
+        modeId: session.modeId,
+        operationMode: session.operationMode,
         modelRef: scheduledModelRef,
         includeDebugTools: interactionMode === "debug",
         visibilityContext: {
@@ -1396,6 +1408,7 @@ export function createGenerationSessionOrchestrator(
             scheduledAvailableToolsets,
             activeScheduledToolsets.map((toolset) => toolset.id)
           ),
+          ...(scheduledAvailableToolsets.length > 0 && isSkillRuntimeAllowedForSession(session.modeId, session.operationMode) ? SKILL_TOOL_NAMES : []),
           ...(modelSelfUpgradePlan ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]
       });

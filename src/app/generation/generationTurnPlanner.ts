@@ -1,3 +1,4 @@
+import { isSkillRuntimeAllowedForSession, type SkillSessionContext } from "../../skills/skillPolicy.ts";
 import { getSkillStore } from '../../skills/skillStore.ts';
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
@@ -15,7 +16,7 @@ import {
   isPendingChatAttachmentId
 } from "#services/workspace/chatAttachments.ts";
 
-export interface GenerationTurnPlannerInput {
+export interface GenerationTurnPlannerInput extends SkillSessionContext {
   sessionId: string;
   relationship: Relationship;
   currentUser: GenerationCurrentUser;
@@ -87,7 +88,7 @@ export async function handleGenerationTurnPlanner(
   const selectableSkills = (
     config.skills.enabled
     && config.skills.plannerSelectionEnabled
-    && input.modeId !== "stateful_rp"
+    && isSkillRuntimeAllowedForSession(input.modeId, input.operationMode, input)
   )
     ? getSkillStore(config).list().filter(skill => skill.effectiveAvailable)
     : [];

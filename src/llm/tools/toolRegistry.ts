@@ -34,6 +34,9 @@ const rawBuiltinToolHandlers: Record<string, ToolHandler> = {
 export const executeBuiltinToolHandler: ToolHandler = async (call, args, context) => {
   const descriptor = getBuiltinToolDescriptorByName(call.function.name, context.config);
   const availabilityContext = { ...(context.executionModelRef ? { modelRef: context.executionModelRef } : {}), config: context.config, relationship: context.relationship, currentUser: context.currentUser,
+    modeId: context.sessionManager.getSession(context.lastMessage.sessionId)?.modeId,
+    operationMode: context.sessionManager.getOperationMode(context.lastMessage.sessionId),
+    setupMode: context.executionSetupMode,
     visibilityContext: { sessionId: context.lastMessage.sessionId, replyDelivery: context.replyDelivery, modelSelfUpgradeAvailable: context.modelRoutingAccess !== undefined } };
   if (!descriptor) return JSON.stringify({ error: "不支持的工具。" });
   const availability = resolveToolAvailability(descriptor, availabilityContext);

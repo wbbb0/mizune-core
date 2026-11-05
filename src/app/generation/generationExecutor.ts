@@ -6,7 +6,9 @@ import { resolveSkillTaskId } from "../../skills/skillTaskIdentity.ts";
 import { skillObservation, projectSkillObservations } from "../../skills/skillObservation.ts";
 import { beginSkillTask, readPreviousSkillTaskId } from '../../skills/skillRuntime.ts';
 import { readSkillDraft } from '../../skills/skillDrafts.ts';
-import { SKILL_TOOL_NAMES, projectSkillForModel } from '../../llm/tools/runtime/skillTools.ts';
+import { projectSkillForModel } from '../../llm/tools/runtime/skillTools.ts';
+import { isSkillRuntimeAllowedForSession, SKILL_TOOL_NAMES } from '../../skills/skillPolicy.ts';
+import { sessionOperationKey } from '#conversation/session/sessionOperationMode.ts';
 import type { TurnPlannerResult } from '../../conversation/turnPlanner.ts';
 import { publishConversation } from "#conversation/crossConversationContext.ts";
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
@@ -480,7 +482,7 @@ export function createGenerationExecutor(
       }
       const taskSession = sessionManager.getSession(sessionId);
       const isSkillRuntimeActiveForTurn = (): boolean => (
-        input.modeId !== "stateful_rp" || sessionManager.getOperationMode(sessionId).kind === "skill_config"
+        config.skills.enabled && isSkillRuntimeAllowedForSession(sessionManager.getModeId(sessionId), sessionManager.getOperationMode(sessionId), { setupMode })
       );
       const previousSkillTaskId = config.skills.enabled ? readPreviousSkillTaskId(config, sessionId) : null;
       const planner = input.skillPlannerDecision;
@@ -520,7 +522,6 @@ export function createGenerationExecutor(
           return undefined;
         }
         return Array.from(new Set([
-          ...(setupMode ? skillToolNames : []),
           ...baseToolNames.filter((name) => name !== MODEL_SELF_UPGRADE_TOOL_NAME),
           ...(isModelSelfUpgradeAvailable() ? [MODEL_SELF_UPGRADE_TOOL_NAME] : [])
         ]));
@@ -535,6 +536,8 @@ export function createGenerationExecutor(
         return {
           expectedCharacterDraftId: characterDraftId,
           operationMode: sessionManager.getOperationMode(sessionId),
+          modeId: sessionManager.getModeId(sessionId),
+          setupMode,
           modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug",
           visibilityContext: {
@@ -559,7 +562,7 @@ export function createGenerationExecutor(
       let providerToolNames = new Set<string>();
       const operationKey = () => {
         const operation = sessionManager.getOperationMode(sessionId);
-        return `${operation.kind}:${"modeId" in operation ? operation.modeId : ""}:${"stage" in operation ? operation.stage : ""}`;
+        return sessionOperationKey(operation);
       };
       let providerOperationKey = operationKey();
       const resolveProviderTools = () => {
@@ -833,9 +836,14 @@ export function createGenerationExecutor(
             consumeInlineTriggers,
             projectMessagesBeforeProvider: async (messages) => {
               assertGenerationCurrent();
-              const skillDraft = sessionManager.getOperationMode(sessionId).kind === "skill_config" ? readSkillDraft(config, sessionId) : null;
+              const skillDraft = isSkillRuntimeActiveForTurn() && builtinToolContext.relationship === "owner"
+                && sessionManager.getOperationMode(sessionId).kind === "skill_config" ? readSkillDraft(config, sessionId) : null;
+              const maintenanceInstructions = builtinToolContext.relationship === "owner" && config.skills.enabled && config.skills.modelMaintenanceEnabled
+                && resolveAllowedTools().some(tool => tool.function.name === "save_skill")
+                ? "技能库允许自主维护。可用 get_skill 查看、save_skill 新增或改进技能、set_skill_paused 暂停或恢复；即使目录为空也可新增。只能用专用技能工具维护库，不通过终端或文件工具修改技能目录。用户禁用或锁定不可解除；维护必须有具体依据。"
+                : "";
               const skillInstructions = isSkillRuntimeActiveForTurn()
-                ? [skills.catalog(), skills.documents(), ...(skillDraft ? [
+                ? [skills.catalog(), skills.documents(), maintenanceInstructions, ...(skillDraft ? [
                     `当前在技能 ${skillDraft.id} 的临时草稿编辑流程。用 get_skill 查看、save_skill 更新完整草稿和绑定；明确展示草稿，等待用户 .confirm 发布或 .cancel 放弃。当前草稿：${JSON.stringify(skillDraft)}`
                   ] : [])].filter(Boolean).join("\n\n")
                 : "";

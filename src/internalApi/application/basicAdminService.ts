@@ -1,4 +1,5 @@
 import { characterRepository } from "../../character/repository.ts";
+import { assertSkillDraftFinished, cancelSkillDraft } from "../../skills/skillDrafts.ts";
 import { getSessionSkillsView } from '../../skills/skillRuntime.ts';
 import type {
   InternalApiConfigSummaryDeps,
@@ -649,6 +650,7 @@ export async function switchSessionMode(
   requireSessionModeDefinition(body.modeId);
   const session = deps.sessionManager.getSession(sessionId);
   assertSessionModeAllowed(body.modeId, session.type);
+  assertSkillDraftFinished(deps.config, sessionId, session.operationMode);
   if (deps.config && characterRepository(deps.config.dataDir).draft(sessionId)) throw new Error("请先确认或取消当前角色配置");
   deps.sessionManager.setModeId(sessionId, body.modeId);
   if (body.modeId === "scenario_host") {
@@ -953,6 +955,7 @@ export async function deleteSession(
   if (!deleted) {
     return { ok: false as const };
   }
+  if (deps.config) cancelSkillDraft(deps.config, sessionId);
   deps.contextSessionCleanupService?.cleanupDeletedSession({ sessionId });
   await deps.sessionSnapshotStore.deleteAllForSession(sessionId);
   await deps.scenarioHostStateStore.delete(sessionId);

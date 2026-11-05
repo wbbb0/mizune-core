@@ -2,12 +2,10 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join, resolve } from "node:path";
 import type { AppConfig } from "../config/config.ts";
 import type { SkillRecord, SkillSummary, SkillWriteInput } from "../types/skills.ts";
-import { parseSkillDocument, validateSkillId, validateSkillResources, estimateSkillTokens, skillFingerprint } from "./skillDocument.ts";
+import { parseSkillDocument, validateSkillId, estimateSkillTokens, skillFingerprint } from "./skillDocument.ts";
+import { validateSkillWriteInput } from "./skillWriteValidation.ts";
 import { builtinSkills } from "./builtinSkills.ts";
-import { TOOLSET_DEFINITIONS } from "../llm/tools/toolsetCatalog.ts";
-export class SkillError extends Error {
-  constructor(message: string, readonly statusCode = 400) { super(message); }
-}
+import { SkillError } from "./skillError.ts";
 interface SkillIndex {
   entries: Record<string, number>;
   deleted: Record<string, number>;
@@ -91,6 +89,7 @@ export class SkillStore {
   }
   write(id: string, input: SkillWriteInput, actor: SkillRecord["updatedBy"]): SkillRecord {
     validateSkillId(id);
+    const parsed = validateSkillWriteInput(input);
     const current = this.get(id);
     if (input.expectedRevision !== (current?.revision ?? null))
       throw new SkillError("技能版本已变化，请刷新后重试。", 409);
@@ -104,12 +103,6 @@ export class SkillStore {
       if (!input.changeReason?.trim())
         throw new SkillError("自主维护必须说明依据和变更理由。");
     }
-    const parsed = parseSkillDocument(input.document);
-    validateSkillResources(input.resources);
-    if (typeof input.modelEditable !== "boolean" || typeof input.modelPaused !== "boolean" || !["auto", "disabled"].includes(input.userPolicy))
-      throw new SkillError("技能策略无效。");
-    if (!Array.isArray(input.toolsetIds) || input.toolsetIds.some(id => !TOOLSET_DEFINITIONS.some(toolset => toolset.id === id)))
-      throw new SkillError("绑定了未知工具集。");
     if (!current && this.list().length >= this.config.skills.maxCount)
       throw new SkillError("技能数量已达上限。");
     const fingerprint = skillFingerprint(parsed.body);
@@ -120,8 +113,6 @@ export class SkillStore {
       if (other.name === parsed.name || this.stats(other).fingerprint === fingerprint)
         throw new SkillError("技能名称或正文与已有技能重复。", 409);
     }
-    if (input.modelPaused && !input.modelPauseReason?.trim())
-      throw new SkillError("暂停技能时必须填写原因。");
     let revision = Math.max(current?.revision ?? 0, (Object.hasOwn(this.index.deleted, id) ? this.index.deleted[id]! : 0)) + 1;
     while (existsSync(join(this.root, id, String(revision))))
       revision += 1;

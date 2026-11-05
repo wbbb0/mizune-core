@@ -1,3 +1,4 @@
+import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import type { MediaImportService } from "#services/workspace/mediaSources/service.ts";
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import type { QqReplyPermit } from "#services/qqOfficial/types.ts";
@@ -86,7 +87,7 @@ export interface ToolDescriptor {
   debugOnly?: boolean;
   modelVisible?: boolean;
   isVisible?: (context: ToolVisibilityContext) => boolean;
-  isEnabled?: (config: AppConfig, options?: { modelRef?: string | string[] }) => boolean;
+  isEnabled?: (config: AppConfig, options?: { modelRef?: string | string[]; operationMode?: SessionOperationMode | undefined }) => boolean;
   resultObservation?: ToolResultObservationPolicy;
 }
 
@@ -182,6 +183,7 @@ export interface BuiltinToolContext extends
   BuiltinToolStoreDeps,
   BuiltinToolRuntimeDeps {
   executionModelRef?: string | string[];
+  executionSetupMode?: boolean | undefined;
   projectionToolNames?: readonly string[];
   resolveActorAuthorization?: () => Promise<{ relationship: Relationship; currentUser: BuiltinToolContext["currentUser"] } | null>;
   skillAccess?: SkillAccess;

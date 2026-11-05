@@ -1,4 +1,5 @@
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { createConfiguredTestAppConfig } from "../helpers/character-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -64,6 +65,24 @@ test("自动进入自然命名的角色配置阶段，不覆盖现有草稿", as
   operation = { kind: "skill_config", skillId: "example" };
   await ensureAutomaticSetupOperationMode(services, context as any, () => {});
   assert.equal(operation.kind, "skill_config");
+});
+
+test("自动场景初始化等待期间不能覆盖新开启的技能配置", async () => {
+  const config = createConfiguredTestAppConfig();
+  let operation: any = { kind: "normal" };
+  let release!: () => void;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const services = {
+    config,
+    sessionManager: { getOperationMode: () => operation, setOperationMode: (_id: string, value: unknown) => { operation = value; } },
+    scenarioHostStateStore: { async ensureForSession() { await waiting; return createScenarioState(); } }
+  } as any;
+  const context = createContext({ modeId: "scenario_host" });
+  const pending = ensureAutomaticSetupOperationMode(services, context as any, () => {});
+  operation = { kind: "skill_config", skillId: "example" };
+  release();
+  await pending;
+  assert.deepEqual(operation, { kind: "skill_config", skillId: "example" });
 });
 
 test("post-router setup block forwards external user id to immediate replies", async () => {

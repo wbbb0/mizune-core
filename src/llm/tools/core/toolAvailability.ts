@@ -2,8 +2,9 @@ import type { AppConfig } from "#config/config.ts";
 import type { BuiltinToolContext, Relationship, ToolDescriptor, ToolVisibilityContext } from "./shared.ts";
 import { resolveConnectorCapabilities } from "#services/messaging/connectorCapabilities.ts";
 import type { LlmToolDefinition } from "../../llmClient.ts";
+import { isSkillRuntimeAllowedForSession, SKILL_TOOL_NAMES, type SkillSessionContext } from "../../../skills/skillPolicy.ts";
 
-export interface ToolAvailabilityContext {
+export interface ToolAvailabilityContext extends SkillSessionContext {
   config?: AppConfig | undefined;
   relationship: Relationship;
   currentUser: BuiltinToolContext["currentUser"];
@@ -15,7 +16,8 @@ export function resolveToolAvailability(tool: ToolDescriptor, context: ToolAvail
   const denied = (reasonCode: ToolUnavailableReason, reason: string) => ({ available: false, reason, reasonCode });
   const access = tool.accessLevel ?? (tool.ownerOnly ? "owner" : "any");
   if (access === "owner" && context.relationship !== "owner" || access === "operator" && context.relationship !== "owner" && context.currentUser?.specialRole !== "npc") return denied("permission_denied", "当前用户没有使用权限");
-  if (context.config && tool.isEnabled && !tool.isEnabled(context.config, context.modelRef ? { modelRef: context.modelRef } : {})) return denied("service_disabled", "功能配置未启用");
+  if (SKILL_TOOL_NAMES.includes(tool.definition.function.name) && !isSkillRuntimeAllowedForSession(context.modeId, context.operationMode, context)) return denied("wrong_session_scope", "当前会话模式或配置阶段不允许使用技能工具");
+  if (context.config && tool.isEnabled && !tool.isEnabled(context.config, context)) return denied("service_disabled", "功能配置未启用");
   if (tool.capabilities) {
     const available = context.config ? resolveConnectorCapabilities(context.config, context.visibilityContext ?? {}) : new Set();
     if (tool.capabilities.all?.some(capability => !available.has(capability)) || tool.capabilities.any && !tool.capabilities.any.some(capability => available.has(capability))) return denied("unsupported_capability", "当前会话连接不支持所需能力");

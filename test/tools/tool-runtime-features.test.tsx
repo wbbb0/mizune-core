@@ -1408,6 +1408,9 @@ test("sendNapCatFile rejects missing or non-numeric target ids", async () => {
               participantUserId: "owner",
               participantLabel: "Owner"
             }),
+          getOperationMode() {
+            return { kind: "normal" };
+          },
           getModeId() {
             return "rp_assistant";
           },

@@ -1,3 +1,6 @@
+import { SKILL_TOOL_NAMES } from "../../src/skills/skillPolicy.ts";
+import { startSkillDraft } from "../../src/skills/skillDrafts.ts";
+import type { SessionOperationMode } from "../../src/conversation/session/sessionOperationMode.ts";
 import { withMediaServices } from "../helpers/media-import-fixtures.ts";
 import { characterRepository } from "../../src/character/repository.ts";
 import { expandCharacterSetupToolsets } from "../../src/character/setupToolsets.ts";
@@ -93,7 +96,10 @@ async function waitForCondition(predicate: () => boolean, message: string): Prom
 
 function createExecutorHarness(options?: {
   setupMode?: boolean;
+  operationMode?: SessionOperationMode;
+  unrestrictedTools?: boolean;
   prepareConfig?: (config: ReturnType<typeof createTestAppConfig>) => void;
+  prepareSession?: (manager: SessionManager, sessionId: string) => void;
   skillPlannerDecision?: import("../../src/conversation/turnPlanner.ts").TurnPlannerResult;
   failAfterReasoning?: boolean;
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
@@ -108,6 +114,7 @@ function createExecutorHarness(options?: {
   streamResponse?: boolean;
   onGenerateTitle?: () => Promise<string | null> | string | null;
   currentUser?: { userId: string; relationship: "owner" | "known" };
+  relationship?: "owner" | "known";
   contextExtractionQueue?: { enqueueTurn: (turn: unknown) => void };
   pacingPreferences?: SessionPacingPreferences;
   availableToolsets?: ToolsetView[];
@@ -205,6 +212,8 @@ function createExecutorHarness(options?: {
   if (options?.initialTaskTracker) {
     sessionManager.setTaskTracker(sessionId, options.initialTaskTracker);
   }
+  if (options?.operationMode) sessionManager.setOperationMode(sessionId, options.operationMode);
+  options?.prepareSession?.(sessionManager, sessionId);
   const started = sessionManager.beginSyntheticGeneration(sessionId);
   const events: string[] = [];
   const typingCalls: Array<{ enabled: boolean; userId: string; groupId?: string }> = [];
@@ -411,7 +420,7 @@ function createExecutorHarness(options?: {
     responseEpoch: started.responseEpoch,
     abortController: started.abortController,
     modeId: sessionManager.getModeId(sessionId),
-    relationship: "owner",
+    relationship: options?.relationship ?? "owner",
     interactionMode: "normal",
     setupMode: options?.setupMode,
     internalTranscript: [],
@@ -453,7 +462,7 @@ function createExecutorHarness(options?: {
       imageCaptions: [],
       lastLlmUsage: null
     },
-    availableToolNames: options?.availableToolNames ?? [],
+    ...(options?.unrestrictedTools ? {} : { availableToolNames: options?.availableToolNames ?? [] }),
     ...(options?.availableToolsets !== undefined
       ? {
           availableToolsets: options.availableToolsets,
@@ -1863,6 +1872,128 @@ function seedTimeSkill(config: ReturnType<typeof createTestAppConfig>): void {
     resources: {}, toolsetIds: ["time_utils"], userPolicy: "auto", modelEditable: true, modelPaused: false
   }, "user");
 }
+
+for (const selection of ["all", "planned", "unrestricted"] as const) {
+  for (const phase of ["setup", "persona", "character"] as const) {
+    test(`${selection} 工具选择下 ${phase} 阶段不暴露技能工具或注入技能上下文`, async () => {
+      let checked = false;
+      const harness = createExecutorHarness({
+        prepareConfig: seedTimeSkill,
+        modeId: "scenario_host",
+        setupMode: phase === "setup",
+        ...(phase === "persona" ? { operationMode: { kind: "persona_config", draft: {} as never } as const } : {}),
+        ...(phase === "character" ? { operationMode: { kind: "character_config", stage: "persona" } as const } : {}),
+        ...(selection === "unrestricted" ? { unrestrictedTools: true } : { availableToolsets: [timeToolset] }),
+        configOverrides: { llm: { turnPlanner: { toolSelection: selection === "planned" ? "planned" : "all" } } },
+        customGenerate: async input => {
+          const tools = typeof input.tools === "function" ? input.tools() : input.tools ?? [];
+          assert.equal(tools.some(tool => SKILL_TOOL_NAMES.includes(tool.function.name)), false);
+          const messages = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
+          assert.doesNotMatch(JSON.stringify(messages), /实例技能上下文|time-guide|技能库允许自主维护/);
+          checked = true;
+          return { text: "完成", usage: createUsage() };
+        }
+      });
+      harness.resolveDrain();
+      await harness.runPromise;
+      assert.equal(checked, true);
+    });
+  }
+}
+
+for (const maintenanceEnabled of [true, false]) {
+  test(`全部技能暂停时自主维护引导遵循开关 ${maintenanceEnabled}`, async () => {
+    let checked = false;
+    const harness = createExecutorHarness({
+      availableToolsets: [timeToolset],
+      configOverrides: { skills: { modelMaintenanceEnabled: maintenanceEnabled } },
+      prepareConfig: config => {
+        const store = getSkillStore(config);
+        for (const skill of store.list()) {
+          store.write(skill.id, { ...store.get(skill.id)!, expectedRevision: skill.revision, modelPaused: true, modelPauseReason: "暂不使用" }, "user");
+        }
+      },
+      customGenerate: async input => {
+        const messages = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
+        assert.equal(JSON.stringify(messages).includes("技能库允许自主维护"), maintenanceEnabled);
+        checked = true;
+        return { text: "完成", usage: createUsage() };
+      }
+    });
+    harness.resolveDrain();
+    await harness.runPromise;
+    assert.equal(checked, true);
+  });
+}
+
+test("显式空工具名单不开放维护工具，也不注入维护引导", async () => {
+  let checked = false;
+  const harness = createExecutorHarness({
+    availableToolNames: [],
+    customGenerate: async input => {
+      const tools = typeof input.tools === "function" ? input.tools() : input.tools ?? [];
+      assert.equal(tools.length, 0);
+      const messages = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
+      assert.doesNotMatch(JSON.stringify(messages), /技能库允许自主维护/);
+      checked = true;
+      return { text: "完成", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await harness.runPromise;
+  assert.equal(checked, true);
+});
+
+for (const disabledBy of ["switch", "actor"] as const) {
+  test(`技能草稿恢复后${disabledBy === "switch" ? "总开关关闭" : "触发者失去 owner 身份"}不再注入草稿正文`, async () => {
+    let checked = false;
+    const harness = createExecutorHarness({
+      prepareConfig: config => { startSkillDraft(config, "qqbot:p:owner", "private-guide"); },
+      configOverrides: { skills: { enabled: disabledBy !== "switch" } },
+      relationship: disabledBy === "actor" ? "known" : "owner",
+      operationMode: { kind: "skill_config", skillId: "private-guide" },
+      availableToolsets: [timeToolset],
+      customGenerate: async input => {
+        const tools = typeof input.tools === "function" ? input.tools() : input.tools ?? [];
+        assert.equal(tools.some(tool => ["get_skill", "save_skill", "set_skill_paused"].includes(tool.function.name)), false);
+        const messages = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
+        assert.doesNotMatch(JSON.stringify(messages), /临时草稿编辑流程|private-guide|请填写中文方法说明/);
+        checked = true;
+        return { text: "完成", usage: createUsage() };
+      }
+    });
+    harness.resolveDrain();
+    await harness.runPromise;
+    assert.equal(checked, true);
+  });
+}
+
+test("同轮切换到 stateful_rp 后技能 schema 和上下文立即撤回", async () => {
+  let currentManager!: SessionManager;
+  let currentId!: string;
+  let checked = false;
+  const harness = createExecutorHarness({
+    modeId: "assistant", availableToolsets: [timeToolset], prepareConfig: seedTimeSkill,
+    prepareSession: (manager, sessionId) => { currentManager = manager; currentId = sessionId; },
+    customGenerate: async input => {
+      const tools = () => typeof input.tools === "function" ? input.tools() : input.tools ?? [];
+      assert.ok(tools().some(tool => tool.function.name === "load_skill"));
+      const before = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
+      assert.match(JSON.stringify(before), /实例技能上下文/);
+      // 已初始化的模式切换保持 normal，不依靠配置操作变化来撤回技能。
+      currentManager.setModeId(currentId, "stateful_rp");
+      assert.equal(currentManager.getOperationMode(currentId).kind, "normal");
+      assert.equal(tools().some(tool => SKILL_TOOL_NAMES.includes(tool.function.name)), false);
+      const after = await input.projectMessagesBeforeProvider!(before);
+      assert.doesNotMatch(JSON.stringify(after), /实例技能上下文|time-guide/);
+      checked = true;
+      return { text: "完成", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await harness.runPromise;
+  assert.equal(checked, true);
+});
 const timeToolset = { id: "time_utils", title: "时间", description: "查询时间", toolNames: ["get_current_time"] };
 const timeToolCall = { id: "time-call", type: "function" as const, function: { name: "get_current_time", arguments: "{}" } };
 function toolPayload(result: string | { content: string }): Record<string, unknown> {

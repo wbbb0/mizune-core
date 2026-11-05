@@ -54,6 +54,7 @@ export async function ensureAutomaticSetupOperationMode(
   }
   if (context.session.modeId === "scenario_host") {
     const state = await services.scenarioHostStateStore.ensureForSession(context.session);
+    if (services.sessionManager.getOperationMode(context.session.id).kind !== "normal") return;
     if (!isScenarioSetupComplete(state)) {
       services.sessionManager.setOperationMode(context.session.id, { kind: "mode_setup", modeId: "scenario_host", draft: state.profile });
       persistSession(context.session.id, "scenario_setup_entered");

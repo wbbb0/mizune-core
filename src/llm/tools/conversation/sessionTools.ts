@@ -1,4 +1,5 @@
 import { characterRepository } from "../../../character/repository.ts";
+import { assertSkillDraftFinished } from "../../../skills/skillDrafts.ts";
 import { canReferenceConversation, readConversationContext } from "#conversation/crossConversationContext.ts";
 import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { getNumberArg, getStringArg } from "../core/toolArgHelpers.ts";
@@ -120,6 +121,7 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     if (!sessionModeSupportsChatType(modeId, session.type)) {
       return JSON.stringify({ error: `Session mode ${modeId} does not support ${session.type} chat` });
     }
+    assertSkillDraftFinished(context.config, session.id, context.sessionManager.getOperationMode(session.id));
     const currentModeId = context.sessionManager.getModeId(context.lastMessage.sessionId);
     if (currentModeId === modeId) {
       return JSON.stringify({
@@ -137,6 +139,8 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     } else if (modeId === "stateful_rp") {
       await context.statefulRpStateStore?.ensureForSession(session);
     }
+    context.abortSignal?.throwIfAborted();
+    assertSkillDraftFinished(context.config, session.id, context.sessionManager.getOperationMode(session.id));
     const draft = context.relationship === "owner" && session.type === "private" ? characters.ensureSetup(session.id, modeId) : null;
     if (draft) context.sessionManager.setOperationMode(session.id, { kind: "character_config", stage: draft.stage });
     context.persistSession?.(context.lastMessage.sessionId, "session_mode_switched_by_tool");
