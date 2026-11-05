@@ -4,7 +4,7 @@ import { createGenerationOutbound } from "./generationOutbound.ts";
 import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import { characterPersonaView } from "../../character/prompt.ts";
 import { characterRepository } from "../../character/repository.ts";
-import { characterToolNames } from "../../character/tools.ts";
+import { characterSetupToolsetOverrides } from "../../character/setupToolsets.ts";
 import { prepareCrossConversationContext } from "#conversation/crossConversationContext.ts";
 import { extractWindowUsers } from "#conversation/session/historyContext.ts";
 import type { InlineSessionTriggerExecution, InternalSessionTriggerExecution, SessionDelivery, SessionReplyTarget } from "#conversation/session/sessionTypes.ts";
@@ -686,7 +686,7 @@ export function createGenerationSessionOrchestrator(
         modeId: sessionModeId
       });
       const setupPhaseSelection = characterDraft
-        ? { setupPhase: { setupToolsetOverrides: [{ toolsetId: "memory_profile", title: "角色分块配置", description: "按分块填写当前阶段草稿", toolNames: characterToolNames, plannerSignals: ["角色配置"] }] } }
+        ? { setupPhase: { setupToolsetOverrides: characterSetupToolsetOverrides } }
         : activeDraftOperation?.setupToolsetOverrides
         ? { setupPhase: { setupToolsetOverrides: activeDraftOperation.setupToolsetOverrides } }
         : {};

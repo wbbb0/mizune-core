@@ -1,6 +1,7 @@
 import { jsonSchemaToMeta } from "#data/schema/jsonSchemaMeta.ts";
 import { personaJsonSchema, socialJsonSchema, embodimentJsonSchema } from "../../character/schemaCatalog.ts";
 import { characterRepository } from "../../character/repository.ts";
+import { saveCharacterProfileWithAssets, validateCharacterProfileWithAssets, type CharacterAssetStore } from "../../character/writes.ts";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { AppConfig } from "#config/config.ts";
@@ -112,7 +113,7 @@ export function createDataRegistryService(input: {
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "patchEntry" | "deleteEntry">;
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "deleteContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">;
-  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile"> & CharacterAssetStore;
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows" | "removeRefsForAsset">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
@@ -148,7 +149,7 @@ function createInitialDataResourceDefinitions(input: {
   whitelistStore: Pick<WhitelistStore, "listEntries" | "upsertEntry" | "patchEntry" | "deleteEntry">;
   contextStore: Pick<ContextStore, "listContextItems" | "getContextItem" | "deleteContextItem" | "listRawMessages" | "listMaintenanceJobs" | "listContextItemSources" | "listContextItemEmbeddings" | "listEmbeddingProfiles" | "listManualAuditEvents">;
   audioStore: Pick<AudioStore, "listRows" | "getRow" | "deleteAudio">;
-  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile">;
+  chatFileStore: Pick<ChatFileStore, "listRows" | "getRow" | "deleteFile"> & CharacterAssetStore;
   assetLifecycleStore: Pick<AssetLifecycleStore, "listRows" | "removeRefsForAsset">;
   sessionPersistence: Pick<SessionPersistence, "listSessionRows" | "listTranscriptRows">;
   runtimeResourceStore: Pick<RuntimeResourceStore, "listRows" | "list" | "listBrowserPageRows" | "listShellSessionRows">;
@@ -158,7 +159,7 @@ function createInitialDataResourceDefinitions(input: {
   statefulRpStateStore?: Pick<StatefulRpStateStore, "listRows">;
 }): DataResourceDefinition[] {
   const definitions: DataResourceDefinition[] = [
-    createCharacterProfileResource(input.config.dataDir),
+    createCharacterProfileResource(input.config, input.chatFileStore),
     singletonSqliteResource({
       key: "setup_state",
       title: "初始化状态",
@@ -1781,7 +1782,14 @@ async function listDirectoryItems(dirPath: string): Promise<Array<{
   }
 }
 
-function createCharacterProfileResource(dataDir: string): DataResourceDefinition {
+function createCharacterProfileResource(
+  config: Pick<AppConfig, "dataDir"> & {
+    chatFiles?: AppConfig["chatFiles"] | undefined;
+    localFiles?: AppConfig["localFiles"] | undefined;
+  },
+  chatFileStore?: CharacterAssetStore
+): DataResourceDefinition {
+  const { dataDir } = config;
   const schemaMeta = jsonSchemaToMeta({
     type: "object", required: ["persona", "social", "embodiment"],
     properties: {
@@ -1800,8 +1808,8 @@ function createCharacterProfileResource(dataDir: string): DataResourceDefinition
     export: { enabled: true, fileName: "character-profile.json", format: "json" },
     adapter: {
       get: async () => characterRepository(dataDir).profile(),
-      validate: async (value: unknown) => characterRepository(dataDir).validateProfile(value),
-      patch: async (value: unknown) => characterRepository(dataDir).saveProfile(value)
+      validate: async (value: unknown) => validateCharacterProfileWithAssets({ dataDir, config, chatFileStore, value }),
+      patch: async (value: unknown) => saveCharacterProfileWithAssets({ dataDir, config, chatFileStore, value })
     }
   };
 }

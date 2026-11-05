@@ -1,4 +1,5 @@
 import { ModelCapabilityProbeBusyError } from "#llm/provider/modelCapabilityProbe.ts";
+import { editCharacterSectionWithAssets } from "../../character/writes.ts";
 import { characterRepository } from "../../character/repository.ts";
 import type { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
@@ -877,7 +878,17 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
     const store = characterRepository(services.config.config!.dataDir);
     const session = services.config.sessionManager.getSession(params.sessionId);
     const draft = store.draft(session.id);
-    return { stage: draft?.stage ?? null, draftId: draft?.id ?? null, sections: store.sections(session.id, session.modeId).map(section => ({ id: section.id, description: section.description, collectionKey: section.collectionKey, touched: draft?.touched.includes(section.id) ?? false })) };
+    return {
+      stage: draft?.stage ?? null,
+      draftId: draft?.id ?? null,
+      sections: store.sections(session.id, session.modeId).map(section => ({
+        id: section.id,
+        description: section.description,
+        collectionKey: section.collectionKey,
+        writable: section.writable,
+        touched: section.touched
+      }))
+    };
   });
 
   app.post("/api/sessions/:sessionId/character/section", async (request, reply) => {
@@ -890,9 +901,28 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       const session = services.config.sessionManager.getSession(params.sessionId);
       if (body.action !== undefined) {
         if (!["set", "upsert", "remove", "skip"].includes(String(body.action))) throw new Error("未知编辑动作");
-        store.edit(session.id, session.modeId, body.id, body.action as "set" | "upsert" | "remove" | "skip", body.value, typeof body.itemId === "string" ? body.itemId : undefined, typeof body.draftId === "string" ? body.draftId : undefined);
+        if (body.itemId !== undefined && typeof body.itemId !== "string") throw new Error("需要有效的 itemId");
+        const expectedMode = session.modeId;
+        await editCharacterSectionWithAssets({
+          dataDir: services.config.config!.dataDir,
+          config: services.config.config,
+          chatFileStore: services.workspace.chatFileStore,
+          sessionId: session.id,
+          modeId: expectedMode,
+          assertCurrent: () => {
+            if (services.config.sessionManager.getSession(session.id).modeId !== expectedMode) {
+              throw new Error("会话模式已变化，请重新读取后再修改");
+            }
+          },
+          id: body.id,
+          action: body.action as "set" | "upsert" | "remove" | "skip",
+          value: body.value,
+          ...(body.itemId !== undefined ? { itemId: body.itemId } : {}),
+          ...(typeof body.draftId === "string" ? { draftId: body.draftId } : {})
+        });
+        return store.section(session.id, session.modeId, body.id);
       }
-      return store.section(session.id, session.modeId, body.id);
+      return store.section(session.id, session.modeId, body.id, body.itemId);
     } catch (error) { return respondBadRequest(reply, String(error)); }
   });
 

@@ -132,11 +132,14 @@ export interface LlmUsage {
   model: string | null;
 }
 
+export type LlmCompletionStatus = "completed" | "truncated" | "unknown";
+
 export interface LlmGenerateResult {
   text: string;
   reasoningContent: string;
   usage: LlmUsage;
   finishReason: LlmGenerateFinishReason;
+  completionStatus?: LlmCompletionStatus;
   providerCallUsages?: LlmProviderCallUsage[];
   assistantMetadata?: Record<string, unknown>;
 }
@@ -236,6 +239,7 @@ export interface LlmProviderGenerateResult {
   reasoningContent: string;
   toolCalls: LlmToolCall[];
   usage: LlmUsage;
+  completionStatus?: LlmCompletionStatus;
   assistantMetadata?: Record<string, unknown>;
 }
 

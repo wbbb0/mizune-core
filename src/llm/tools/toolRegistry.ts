@@ -12,7 +12,7 @@ export function getBuiltinToolDescriptors(config?: AppConfig) {
     ...skillToolDescriptors,
     ...runtimeToolDescriptorsRegistry(config),
     ...conversationToolDescriptors,
-    ...profileToolDescriptorsRegistry,
+    ...profileToolDescriptorsRegistry(config),
     ...webToolDescriptorsRegistry,
   ];
 }

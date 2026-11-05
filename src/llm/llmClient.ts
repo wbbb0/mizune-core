@@ -418,6 +418,7 @@ export class LlmClient {
           reasoningContent: lastReasoningContent,
           usage: aggregatedUsage,
           finishReason: { kind: "completed" },
+          ...(streamed.completionStatus ? { completionStatus: streamed.completionStatus } : {}),
           providerCallUsages,
           ...(streamed.assistantMetadata ? { assistantMetadata: streamed.assistantMetadata } : {})
         };
@@ -647,6 +648,7 @@ export class LlmClient {
     toolCalls: LlmToolCall[];
     usage: LlmUsage;
     modelRef: string | null;
+    completionStatus?: import("./provider/providerTypes.ts").LlmCompletionStatus;
     assistantMetadata?: Record<string, unknown>;
   }> {
     if (!this.config.llm.enabled) {

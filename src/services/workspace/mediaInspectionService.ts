@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { LlmClient, LlmContentPart, LlmMessage } from "#llm/llmClient.ts";
+import type { LlmCompletionStatus } from "#llm/provider/providerTypes.ts";
 import { parseJsonObjectFromText } from "#llm/shared/jsonObjectExtraction.ts";
 import { normalizeModelRefs } from "#llm/shared/modelProfiles.ts";
 import { resolveVisionInputModelRefsForRole } from "#llm/shared/visionModelRouting.ts";
@@ -36,6 +37,7 @@ export interface MediaInspectionResultItem {
   parseStatus: MediaInspectionParseStatus;
   schemaIssues: string[];
   modelRef: string;
+  completionStatus?: LlmCompletionStatus;
 }
 
 export interface MediaInspectionResult {
@@ -113,7 +115,7 @@ export class MediaInspectionService {
       });
       const rawAnswer = result.text.trim();
       const modelRef = result.usage.modelRef ?? normalizeModelRefs(modelRefs)[0] ?? "unknown";
-      return normalizeInspectionResult(media.mediaId, rawAnswer, modelRef);
+      return normalizeInspectionResult(media.mediaId, rawAnswer, modelRef, result.completionStatus);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn({ mediaId: media.mediaId, error: message }, "media_inspection_failed");
@@ -173,34 +175,60 @@ function buildInspectionPrompt(question: string, media: PreparedMediaInspectionI
 function normalizeInspectionResult(
   mediaId: string,
   rawAnswer: string,
-  modelRef: string
+  modelRef: string,
+  completionStatus?: LlmCompletionStatus
 ): MediaInspectionResultItem {
   const parsed = parseJsonObjectFromText(rawAnswer);
   if (!parsed) {
-    return createUnstructuredResult(mediaId, rawAnswer, modelRef, ["json_parse_failed"]);
+    return createUnstructuredResult(mediaId, rawAnswer, modelRef, ["json_parse_failed"], completionStatus);
   }
 
   const schemaIssues: string[] = [];
-  const status = normalizeStatus(parsed.value.status);
+  const obj = parsed.value;
+  if (!Object.hasOwn(obj, "status")) {
+    schemaIssues.push("missing_status");
+  }
+  const status = normalizeStatus(obj.status);
   if (!status) {
     schemaIssues.push("invalid_status");
   }
-  const answer = normalizeString(parsed.value.answer);
-  if (!answer) {
+  if (!Object.hasOwn(obj, "found") || (typeof obj.found !== "boolean" && obj.found !== null)) {
+    schemaIssues.push("invalid_found");
+  }
+  if (!Object.hasOwn(obj, "answer") || typeof obj.answer !== "string") {
     schemaIssues.push("missing_answer");
   }
-  const visibleContentSummary = normalizeNullableString(
-    parsed.value.visibleContentSummary ?? parsed.value.visible_content_summary
-  );
+  const answer = normalizeString(obj.answer);
+  if (!answer && !schemaIssues.includes("missing_answer")) {
+    schemaIssues.push("missing_answer");
+  }
+  const hasVisibleContentSummary = Object.hasOwn(obj, "visibleContentSummary") || Object.hasOwn(obj, "visible_content_summary");
+  const rawVisibleSummary = Object.hasOwn(obj, "visibleContentSummary")
+    ? obj.visibleContentSummary
+    : obj.visible_content_summary;
+  if (!hasVisibleContentSummary || (typeof rawVisibleSummary !== "string" && rawVisibleSummary !== null)) {
+    schemaIssues.push("invalid_visible_content_summary");
+  }
+  const visibleContentSummary = normalizeNullableString(rawVisibleSummary);
   if (status === "not_found" && !visibleContentSummary) {
     schemaIssues.push("not_found_missing_visible_content_summary");
   }
-  const nearMatches = normalizeStringArray(parsed.value.nearMatches ?? parsed.value.near_matches);
-  const confidenceNotes = normalizeStringArray(parsed.value.confidenceNotes ?? parsed.value.confidence_notes);
-  const found = normalizeFound(parsed.value.found, status);
+  const hasNearMatches = Object.hasOwn(obj, "nearMatches") || Object.hasOwn(obj, "near_matches");
+  const rawNearMatches = Object.hasOwn(obj, "nearMatches") ? obj.nearMatches : obj.near_matches;
+  if (!hasNearMatches || !Array.isArray(rawNearMatches) || !rawNearMatches.every((item) => typeof item === "string")) {
+    schemaIssues.push("invalid_near_matches");
+  }
+  const nearMatches = normalizeStringArray(rawNearMatches);
+  const hasConfidenceNotes = Object.hasOwn(obj, "confidenceNotes") || Object.hasOwn(obj, "confidence_notes");
+  const rawConfidenceNotes = Object.hasOwn(obj, "confidenceNotes") ? obj.confidenceNotes : obj.confidence_notes;
+  if (!hasConfidenceNotes || !Array.isArray(rawConfidenceNotes) || !rawConfidenceNotes.every((item) => typeof item === "string")) {
+    schemaIssues.push("invalid_confidence_notes");
+  }
+  const confidenceNotes = normalizeStringArray(rawConfidenceNotes);
+  const found = normalizeFound(obj.found, status);
 
   if (schemaIssues.length > 0) {
-    return createUnstructuredResult(mediaId, rawAnswer, modelRef, ["schema_validation_failed", ...schemaIssues]);
+    return createUnstructuredResult(mediaId, rawAnswer, modelRef, ["schema_validation_failed", ...schemaIssues], completionStatus);
   }
   const normalizedStatus = status as Exclude<MediaInspectionStatus, "unstructured" | "error">;
 
@@ -215,7 +243,8 @@ function normalizeInspectionResult(
     rawAnswer,
     parseStatus: parsed.parseStatus,
     schemaIssues: [],
-    modelRef
+    modelRef,
+    ...(completionStatus ? { completionStatus } : {})
   };
 }
 
@@ -267,7 +296,8 @@ function createUnstructuredResult(
   mediaId: string,
   rawAnswer: string,
   modelRef: string,
-  schemaIssues: string[]
+  schemaIssues: string[],
+  completionStatus?: LlmCompletionStatus
 ): MediaInspectionResultItem {
   return {
     mediaId,
@@ -280,7 +310,8 @@ function createUnstructuredResult(
     rawAnswer,
     parseStatus: "fallback_text",
     schemaIssues,
-    modelRef
+    modelRef,
+    ...(completionStatus ? { completionStatus } : {})
   };
 }
 

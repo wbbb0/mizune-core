@@ -472,6 +472,15 @@ function createRegistryService(dataDir: string, options: {
       }
     },
     chatFileStore: {
+      async getFile(fileId) {
+        return workspaceRows.find((row) => row.fileId === fileId) ?? null;
+      },
+      async isFileAvailable(fileId) {
+        return workspaceRows.some((row) => row.fileId === fileId);
+      },
+      async withRetainedFiles(_ids, operation) {
+        return await operation();
+      },
       async listRows(input = {}) {
         const offset = input.offset ?? 0;
         const limit = input.limit ?? 100;

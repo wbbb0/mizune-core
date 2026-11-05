@@ -4,6 +4,7 @@ import { resolveToolAvailability, projectToolDefinition } from "./core/toolAvail
 import { characterRepository } from "../../character/repository.ts";
 import { executeCharacterSetupTool } from "../../character/setupToolExecution.ts";
 import { isCharacterSetupToolName } from "../../character/setupEditing.ts";
+import { characterToolNames } from "../../character/tools.ts";
 import { executeSetupAttempt } from "./setup/retryGuard.ts";
 import { initializationToolDefinition, isScenarioSetupTool, isScenarioSetupToolName } from "./setup/initializationContracts.ts";
 import { setupInputErrors, setupInputFailure } from "./setup/inputValidation.ts";
@@ -182,7 +183,7 @@ export function createBuiltinToolExecutor(
   const initialOperation = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
   const expectedDraftId = options?.expectedCharacterDraftId !== undefined
     ? options.expectedCharacterDraftId
-    : allowedToolNames.has("edit_character_section")
+    : (allowedToolNames.has("edit_character_section") || allowedToolNames.has("import_character_reference"))
       ? characterRepository(context.config.dataDir).draft(context.lastMessage.sessionId)?.id ?? null
       : null;
 
@@ -224,7 +225,7 @@ export function createBuiltinToolExecutor(
     if (isCharacterSetupToolName(toolCall.function.name) && allowedToolNames.has("edit_character_section")
       && (options?.availableToolNames === undefined || options.availableToolNames.includes("edit_character_section")
         || options.availableToolNames.includes(toolCall.function.name))) {
-      return projectRawToolContent(toolCall.function.name, executeCharacterSetupTool(toolCall.function.name, args, context, expectedDraftId));
+      return projectRawToolContent(toolCall.function.name, await executeCharacterSetupTool(toolCall.function.name, args, context, expectedDraftId));
     }
     if (!allowedToolNames.has(toolCall.function.name)) {
       return projectRawToolContent(toolCall.function.name, JSON.stringify({
@@ -239,7 +240,7 @@ export function createBuiltinToolExecutor(
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
       try {
-        const result = await handler(toolCall, args, { ...context, executionSetupMode: options?.setupMode, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
+        const result = await handler(toolCall, args, { ...context, expectedCharacterDraftId: expectedDraftId, executionSetupMode: options?.setupMode, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
         if (typeof result !== "string") return result;
         let parsed: { error?: unknown };
         try { parsed = JSON.parse(result); } catch { return projectRawToolContent(toolCall.function.name, result); }
@@ -249,20 +250,20 @@ export function createBuiltinToolExecutor(
         return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: error instanceof Error ? error.message : String(error), code: "setup_operation_rejected", nextStep: "先读取当前草稿或场景状态确认结果，再按错误修正参数；不要原样重试。", expectedSchema: schema }));
       }
     }
-    if (["list_character_sections", "read_character_section"].includes(toolCall.function.name)
+    if (["list_character_sections", "read_character_section", "import_character_reference"].includes(toolCall.function.name)
       && context.sessionManager.getOperationMode(context.lastMessage.sessionId).kind === "character_config") {
       const schema = getBuiltinToolDescriptors(context.config).find(tool => tool.definition.function.name === toolCall.function.name)!.definition.function.parameters;
       const errors = setupInputErrors(schema, args);
       if (errors.length) return projectRawToolContent(toolCall.function.name, setupInputFailure(errors, schema));
     }
-    const result = await handler(toolCall, args, { ...context, executionSetupMode: options?.setupMode, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
+    const result = await handler(toolCall, args, { ...context, expectedCharacterDraftId: expectedDraftId, executionSetupMode: options?.setupMode, ...(options?.modelRef ? { executionModelRef: options.modelRef } : {}) });
     return typeof result === "string"
       ? projectRawToolContent(toolCall.function.name, result)
       : result;
   };
   return async (toolCall, args) => {
     const name = toolCall.function.name;
-    const candidate = isCharacterSetupToolName(name) || ["list_character_sections", "read_character_section", "edit_character_section"].includes(name) || isScenarioSetupToolName(name);
+    const candidate = isCharacterSetupToolName(name) || characterToolNames.includes(name) || isScenarioSetupToolName(name);
     const run = async () => {
       const result = await execute(toolCall, args);
       const content = typeof result === "string" ? result : result.content;

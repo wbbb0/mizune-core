@@ -55,3 +55,58 @@ test("维护器不能通过返回其他分块修改周期或固定档案", async
   const f = await fixture(t, async system => system.includes("只估计") ? '{"elapsedMinutes":30}' : '{"edits":[{"id":"persona.name","value":"越权"}]}');
   assert.equal(await f.maintainer.runPostTurn(f.input), null); assert.deepEqual(await f.store.get("session"), f.state);
 });
+test("后置维护器传入模型的角色档案对 social.referenceImages 做轻量投影，剥离长 description 且不修改原档案", async t => {
+  const dir = await mkdtemp(join(tmpdir(), "rp-maintenance-projection-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const config = createTestAppConfig(), logger = createSilentLogger();
+  const store = new StatefulRpStateStore(dir, config, logger);
+  store.characters.ensureSetup("session", "stateful_rp");
+  store.characters.confirm("session", "stateful_rp"); // persona
+  store.characters.ensureSetup("session", "stateful_rp"); // social
+  store.characters.edit("session", "stateful_rp", "social.referenceImages", "upsert", {
+    id: "ref_1",
+    fileId: "cf_ref_maint",
+    label: "正视图",
+    subject: "主角",
+    description: "后置维护器不应携带的超长视觉特征描述_SECRET_LONG_DESC"
+  }, "ref_1", store.characters.draft("session")?.id);
+  store.characters.confirm("session", "stateful_rp"); // social
+  store.characters.ensureSetup("session", "stateful_rp"); // embodiment
+  store.characters.confirm("session", "stateful_rp"); // embodiment
+  store.characters.ensureSetup("session", "stateful_rp"); // state
+  store.characters.confirm("session", "stateful_rp"); // state -> normal
+  const state = (await store.get("session"))!;
+  const capturedPayloads: string[] = [];
+  const client = {
+    generate: async (input: { messages: Array<{ role: string; content: string }> }) => {
+      const userMsg = input.messages.find(m => m.role === "user")?.content ?? "";
+      capturedPayloads.push(userMsg);
+      const sysMsg = input.messages[0]!.content;
+      return { text: sysMsg.includes("只估计") ? '{"elapsedMinutes":60}' : '{"edits":[]}' };
+    }
+  } as unknown as LlmClient;
+  const maintainer = new StatefulRpPostTurnMaintainer(config, client, store, logger);
+  const res = await maintainer.runPostTurn({
+    sessionId: "session",
+    userText: "推进一小时",
+    assistantText: "好的",
+    personaName: "测试角色",
+    clockBeforeTurnIso: state.simulation.clock.currentIso
+  });
+  assert.ok(res);
+  assert.ok(capturedPayloads.length >= 1);
+  for (const payload of capturedPayloads) {
+    assert.doesNotMatch(payload, /后置维护器不应携带的超长视觉特征描述_SECRET_LONG_DESC/);
+    const parsed = JSON.parse(payload);
+    assert.deepEqual(parsed.character.social.referenceImages, [{
+      id: "ref_1",
+      fileId: "cf_ref_maint",
+      label: "正视图",
+      subject: "主角"
+    }]);
+  }
+  assert.equal(
+    store.characters.profile().social.referenceImages[0]!.description,
+    "后置维护器不应携带的超长视觉特征描述_SECRET_LONG_DESC"
+  );
+});

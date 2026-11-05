@@ -56,6 +56,7 @@ export class ChatFileStore {
   private readonly storeRootPath: string;
   private readonly storeRootDir: string;
   private readonly mediaDir: string;
+  private readonly retainedFileCounts = new Map<string, number>();
   private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
@@ -63,7 +64,8 @@ export class ChatFileStore {
     private readonly logger: Logger,
     private readonly localFileService: LocalFileService,
     assetsDataDir = localFileService.rootDir,
-    private readonly assetsDatabase = new AssetsDatabase(assetsDataDir, logger)
+    private readonly assetsDatabase = new AssetsDatabase(assetsDataDir, logger),
+    private readonly getAdditionalReferencedFileIds: () => Iterable<string> | Promise<Iterable<string>> = () => []
   ) {
     this.storeRootPath = normalizeChatFilesRoot(this.config.chatFiles.root);
     this.storeRootDir = join(this.localFileService.rootDir, this.storeRootPath);
@@ -414,21 +416,70 @@ export class ChatFileStore {
     return { removed, kept };
   }
 
+  retainFiles(fileIds: Iterable<string>): () => void {
+    const acquired: string[] = [];
+    for (const raw of fileIds) {
+      const id = typeof raw === "string" ? raw.trim() : "";
+      if (!id) continue;
+      this.retainedFileCounts.set(id, (this.retainedFileCounts.get(id) ?? 0) + 1);
+      acquired.push(id);
+    }
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      for (const id of acquired) {
+        const next = (this.retainedFileCounts.get(id) ?? 1) - 1;
+        if (next <= 0) this.retainedFileCounts.delete(id);
+        else this.retainedFileCounts.set(id, next);
+      }
+    };
+  }
+
+  listRetainedFileIds(): Set<string> {
+    return new Set(this.retainedFileCounts.keys());
+  }
+
+  async withRetainedFiles<T>(fileIds: Iterable<string>, operation: () => Promise<T> | T): Promise<T> {
+    const release = this.retainFiles(fileIds);
+    try {
+      await this.writeChain.catch(() => undefined);
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
   async deleteFile(fileId: string): Promise<boolean> {
-    const file = await this.getFile(fileId);
-    if (!file) {
+    const normalizedFileId = String(fileId ?? "").trim();
+    if (!normalizedFileId) {
       return false;
     }
-    const absolutePath = await this.resolveAbsolutePath(fileId);
-    await this.withWriteLock(async () => {
+    return this.withWriteLock(async () => {
+      if ((this.retainedFileCounts.get(normalizedFileId) ?? 0) > 0) {
+        throw new Error(`文件 ${normalizedFileId} 正在使用中，请等待操作完成后再删除`);
+      }
+      for (const referencedId of await this.getAdditionalReferencedFileIds()) {
+        if (referencedId.trim() === normalizedFileId) {
+          throw new Error(`文件 ${normalizedFileId} 仍被长期资料引用，请先解除引用后再删除`);
+        }
+      }
+      const file = await this.getFile(normalizedFileId);
+      if (!file) {
+        return false;
+      }
+      const absolutePath = this.localFileService.resolvePath(file.chatFilePath).absolutePath;
       const db = await this.getReadyDb();
-      db.prepare("DELETE FROM chat_files WHERE file_id = ?").run(fileId);
+      if ((this.retainedFileCounts.get(normalizedFileId) ?? 0) > 0) {
+        throw new Error(`文件 ${normalizedFileId} 正在使用中，请等待操作完成后再删除`);
+      }
+      db.prepare("DELETE FROM chat_files WHERE file_id = ?").run(normalizedFileId);
+      await rm(absolutePath, { force: true });
+      await rm(this.resolveDocumentCacheDirectory(normalizedFileId), { recursive: true, force: true }).catch((error: unknown) => {
+        this.logger.warn({ fileId: normalizedFileId, error }, "chat_file_document_cache_cleanup_failed");
+      });
+      return true;
     });
-    await rm(absolutePath, { force: true });
-    await rm(this.resolveDocumentCacheDirectory(fileId), { recursive: true, force: true }).catch((error: unknown) => {
-      this.logger.warn({ fileId, error }, "chat_file_document_cache_cleanup_failed");
-    });
-    return true;
   }
 
   private async getRequiredFile(fileId: string): Promise<ChatFileRecord> {

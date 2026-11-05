@@ -6,6 +6,7 @@ import { join } from "node:path";
 import pino from "pino";
 import { AssetLifecycleService } from "../../src/data/assets/assetLifecycleService.ts";
 import { AssetLifecycleStore } from "../../src/data/assets/assetLifecycleStore.ts";
+import { characterReferencedFileIds, characterRepository } from "../../src/character/repository.ts";
 import type { StoredAudioFile } from "../../src/audio/audioStore.ts";
 import type { ComfyTaskRecord } from "../../src/comfy/taskSchema.ts";
 import type { ChatFileRecord } from "../../src/services/workspace/types.ts";
@@ -35,6 +36,7 @@ test("asset lifecycle deletes only unreferenced expired assets", async () => {
       new AssetLifecycleStore(dataDir, pino({ level: "silent" })),
       {
         chatFileStore: {
+          listRetainedFileIds: () => [],
           async listFiles() {
             return chatFiles;
           },
@@ -151,6 +153,7 @@ test("asset lifecycle removes session refs before sweeping deleted sessions", as
       new AssetLifecycleStore(dataDir, pino({ level: "silent" })),
       {
         chatFileStore: {
+          listRetainedFileIds: () => [],
           async listFiles() {
             return chatFiles;
           },
@@ -224,6 +227,7 @@ test("asset lifecycle self-heals refs whose sessions disappeared", async () => {
       store,
       {
         chatFileStore: {
+          listRetainedFileIds: () => [],
           async listFiles() {
             return chatFiles;
           },
@@ -316,6 +320,118 @@ test("asset lifecycle store removes refs for one asset", async () => {
 
     assert.equal(await store.removeRefsForAsset("chat_file", "file-1"), 1);
     assert.deepEqual((await store.listRefs()).map((ref) => `${ref.assetKind}:${ref.assetId}`), ["audio:audio-1"]);
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
+test("asset lifecycle preserves character profile/draft/leased reference images across TTL and size-pressure GC, and skips chat_file deletion on reference load error", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "llm-onebot-asset-lifecycle-character-refs-"));
+  try {
+    const charStore = characterRepository(dataDir);
+    charStore.begin("s1", "persona", "setup", "stateful_rp");
+    charStore.confirm("s1", "stateful_rp");
+    const s1Social = charStore.begin("s1", "social", "setup", "stateful_rp");
+    charStore.edit(
+      "s1",
+      "stateful_rp",
+      "social.referenceImages",
+      "upsert",
+      { id: "ref-profile", fileId: "file-profile", label: "已发布立绘", subject: null, description: "已发布描述" },
+      "ref-profile",
+      s1Social.id
+    );
+    charStore.confirm("s1", "stateful_rp");
+
+    const s2Draft = charStore.begin("s2", "social", "config", "stateful_rp");
+    charStore.edit(
+      "s2",
+      "stateful_rp",
+      "social.referenceImages",
+      "upsert",
+      { id: "ref-draft", fileId: "file-draft", label: "草稿立绘", subject: null, description: "草稿描述" },
+      "ref-draft",
+      s2Draft.id
+    );
+    const retainedFileIds = new Set(["file-leased"]);
+    assert.equal(characterReferencedFileIds(dataDir).has("file-leased"), false);
+
+    const chatFiles: ChatFileRecord[] = [
+      chatFile("file-profile", 0, 100),
+      chatFile("file-draft", 0, 100),
+      chatFile("file-leased", 0, 100),
+      chatFile("file-unreferenced", 0, 100)
+    ];
+    let shouldThrowOnRefLoad = false;
+    const service = new AssetLifecycleService(
+      new AssetLifecycleStore(dataDir, pino({ level: "silent" })),
+      {
+        chatFileStore: {
+          listRetainedFileIds: () => retainedFileIds,
+          async listFiles() {
+            return chatFiles;
+          },
+          async deleteFile(fileId) {
+            removeBy(chatFiles, (file) => file.fileId === fileId);
+            return true;
+          },
+          async cleanupOrphanDocumentCaches() {
+            return { removed: 0, kept: 0 };
+          },
+          async cleanupOrphanMediaFiles() {
+            return { removed: 0, kept: 0 };
+          }
+        },
+        audioStore: {
+          async listRows() {
+            return { rows: [], total: 0, offset: 0, limit: 500 };
+          },
+          async deleteAudio() {
+            return false;
+          }
+        },
+        comfyTaskStore: {
+          async listRows() {
+            return { rows: [], total: 0, offset: 0, limit: 500 };
+          },
+          async deleteById() {
+            return false;
+          }
+        },
+        getAdditionalReferencedChatFileIds: () => {
+          if (shouldThrowOnRefLoad) throw new Error("sqlite read failure");
+          return characterReferencedFileIds(dataDir);
+        }
+      },
+      pino({ level: "silent" }),
+      {
+        enabled: true,
+        ttlMs: 50,
+        orphanFileTtlMs: 50,
+        maxTotalBytes: 100,
+        targetTotalBytes: 50
+      }
+    );
+    await service.init();
+
+    // 读取角色引用失败时，跳过本次 chat_file 删除，绝不误删
+    shouldThrowOnRefLoad = true;
+    const failedSweep = await service.sweep({ now: 200, activeSessions: [], persistedSessions: [] });
+    assert.deepEqual(failedSweep.deletedChatFileIds, []);
+    assert.equal(chatFiles.length, 4);
+
+    // 正常读取时，即使原会话已删除且触发 TTL + 容量压力，profile、draft 与 lease 保护的图片均不被回收
+    shouldThrowOnRefLoad = false;
+    const firstSweep = await service.sweep({ now: 200, activeSessions: [], persistedSessions: [] });
+    assert.deepEqual(firstSweep.deletedChatFileIds, ["file-unreferenced"]);
+    assert.deepEqual(chatFiles.map(f => f.fileId), ["file-profile", "file-draft", "file-leased"]);
+
+    // 释放临时租约并取消草稿后，对应未引用图片可被后续 sweep 回收，已发布参考图继续保留
+    retainedFileIds.delete("file-leased");
+    charStore.cancel("s2");
+    const secondSweep = await service.sweep({ now: 300, activeSessions: [], persistedSessions: [] });
+    assert.deepEqual(secondSweep.deletedChatFileIds.sort(), ["file-draft", "file-leased"]);
+    assert.deepEqual(chatFiles.map(f => f.fileId), ["file-profile"]);
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }

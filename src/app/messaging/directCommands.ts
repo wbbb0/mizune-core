@@ -1,5 +1,6 @@
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
 import { characterPersonaView } from "../../character/prompt.ts";
+import { confirmCharacterDraftWithAssets, type CharacterAssetStore } from "../../character/writes.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { enqueueCharacterIntroduction } from "../../character/introduction.ts";
 import type { CharacterStage } from "../../character/model.ts";
@@ -84,6 +85,7 @@ interface DirectCommandIncomingMessage {
 interface DirectCommandHandlerInput {
   messaging?: DeliveryCoordinator;
   config: AppConfig;
+  chatFileStore?: CharacterAssetStore;
   stickerService?: Pick<StickerService, "init" | "store">;
   sessionManager: SessionDirectCommandAccess;
   oneBotClient: OneBotClient;
@@ -1063,7 +1065,21 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
       if (characterStore.draft(ctx.session.id)) {
         ctx.input.sessionManager.interruptResponse(ctx.session.id);
         try {
-          const stage = characterStore.confirm(ctx.session.id, ctx.session.modeId);
+          const expectedMode = ctx.session.modeId;
+          const expectedOperation = JSON.stringify(ctx.input.sessionManager.getOperationMode(ctx.session.id));
+          const stage = await confirmCharacterDraftWithAssets({
+            dataDir: ctx.input.config.dataDir,
+            config: ctx.input.config,
+            chatFileStore: ctx.input.chatFileStore,
+            sessionId: ctx.session.id,
+            modeId: expectedMode,
+            assertCurrent: () => {
+              if (ctx.session.modeId !== expectedMode
+                || JSON.stringify(ctx.input.sessionManager.getOperationMode(ctx.session.id)) !== expectedOperation) {
+                throw new Error("会话模式或配置阶段已变化，请重新确认");
+              }
+            }
+          });
           if (stage === "persona") await syncSelfAccountNicknameFromPersona(ctx, characterPersonaView(ctx.input.config.dataDir));
           const next = characterStore.ensureSetup(ctx.session.id, ctx.session.modeId);
           ctx.input.sessionManager.setOperationMode(ctx.session.id, next ? { kind: "character_config", stage: next.stage } : { kind: "normal" });

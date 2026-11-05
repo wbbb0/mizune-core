@@ -1,6 +1,16 @@
 import type { ToolsetView } from "../llm/tools/toolsetCatalog.ts";
+import type { SessionModeSetupToolsetOverride } from "#modes/types.ts";
 import { characterRepository } from "./repository.ts";
 import { stageSetupBindings } from "./setupEditing.ts";
+import { characterToolNames } from "./tools.ts";
+
+export const characterSetupToolsetOverrides: SessionModeSetupToolsetOverride[] = [{
+  toolsetId: "memory_profile",
+  title: "角色分块配置",
+  description: "按分块填写当前阶段草稿",
+  toolNames: characterToolNames,
+  plannerSignals: ["角色配置"]
+}];
 
 /** 当前阶段全部编辑工具直接展开；读取角色资料不改变工具集合。 */
 export function expandCharacterSetupToolsets(toolsets: ToolsetView[], dataDir: string, sessionId?: string): ToolsetView[] {

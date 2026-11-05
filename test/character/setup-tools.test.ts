@@ -1,6 +1,8 @@
 import { setupEditBindings, stageSetupBindings } from "../../src/character/setupEditing.ts";
 import { getCharacterSection } from "../../src/character/schemaCatalog.ts";
 import { listTurnToolsets } from "../../src/llm/tools/toolsetSelectionPolicy.ts";
+import { resolveSessionBoundaryToolNames } from "../../src/llm/tools/toolsetBoundary.ts";
+import { characterToolNames } from "../../src/character/tools.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { characterRepository } from "../../src/character/repository.ts";
@@ -13,15 +15,144 @@ import { initializationToolDefinition } from "../../src/llm/tools/setup/initiali
 import type { BuiltinToolContext } from "../../src/llm/tools/core/shared.ts";
 
 function fixture(stage = "social") {
-  const config = createTestAppConfig(), store = characterRepository(config.dataDir);
+  const config = createTestAppConfig({
+    llm: {
+      enabled: true,
+      providers: {
+        vision: {
+          type: "openai_compatible",
+          baseUrl: "https://example.com/v1",
+          apiKey: "test-key",
+          proxy: false
+        }
+      },
+      models: {
+        visual: {
+          provider: "vision",
+          model: "visual-model",
+          chat: {
+            capabilities: { supportsThinking: false, supportsVision: true, supportsAudioInput: false, supportsTools: true, supportsSearch: false },
+            preserveThinking: false
+          }
+        }
+      },
+      routingPresets: {
+        test: {
+          mainSmall: ["visual"],
+          mainLarge: ["visual"],
+          summarizer: ["visual"],
+          sessionCaptioner: ["visual"],
+          imageCaptioner: ["visual"],
+          imageInspector: ["visual"],
+          audioTranscription: ["visual"],
+          turnPlanner: ["visual"]
+        }
+      },
+      imageInspector: {
+        enabled: true,
+        timeoutMs: 5000,
+        enableThinking: false,
+        maxConcurrency: 2
+      }
+    }
+  }), store = characterRepository(config.dataDir);
   if (stage !== "persona") { store.begin("s", "persona", "setup", "stateful_rp"); store.confirm("s", "stateful_rp"); }
   if (stage === "embodiment" || stage === "state") { store.begin("s", "social", "setup", "stateful_rp"); store.confirm("s", "stateful_rp"); }
   if (stage === "state") { store.begin("s", "embodiment", "setup", "stateful_rp"); store.confirm("s", "stateful_rp"); }
   const draft = store.ensureSetup("s", "stateful_rp")!;
-  const ctx = { config, relationship: "owner", currentUser: null, lastMessage: { sessionId: "s" },
-    sessionManager: { getSession: () => ({ modeId: "stateful_rp", toolsetPreferences: { overrides: {} } }), getOperationMode: () => ({ kind: "character_config", stage: draft.stage }) }
+  const files = new Map<string, any>([
+    ["cf_ref_1", { fileId: "cf_ref_1", fileRef: "upload_ref_1.png", kind: "image", available: true }],
+    ["cf_ref_2", { fileId: "cf_ref_2", fileRef: "upload_ref_2.png", kind: "image", available: true }],
+    ["cf_gif_1", { fileId: "cf_gif_1", fileRef: "upload_gif_1.gif", kind: "animated_image", available: true }],
+    ["cf_missing_disk", { fileId: "cf_missing_disk", fileRef: "upload_missing.png", kind: "image", available: false }]
+  ]);
+  for (let i = 1; i <= 10; i++) {
+    files.set(`cf_cap_${i}`, { fileId: `cf_cap_${i}`, fileRef: `upload_cap_${i}.png`, kind: "image", available: true });
+  }
+  const retainedFileCounts = new Map<string, number>();
+  const chatFileStore = {
+    async getFile(id: string) {
+      return files.get(id) ?? null;
+    },
+    async listFiles() {
+      return [...files.values()];
+    },
+    async isFileAvailable(id: string) {
+      return Boolean(files.get(id)?.available);
+    },
+    async withRetainedFiles<T>(ids: Iterable<string>, op: () => Promise<T> | T) {
+      const acquired = [...new Set(ids)];
+      for (const id of acquired) retainedFileCounts.set(id, (retainedFileCounts.get(id) ?? 0) + 1);
+      try {
+        return await op();
+      } finally {
+        for (const id of acquired) {
+          const count = (retainedFileCounts.get(id) ?? 1) - 1;
+          if (count === 0) retainedFileCounts.delete(id);
+          else retainedFileCounts.set(id, count);
+        }
+      }
+    },
+    listRetainedFileIds() {
+      return new Set(retainedFileCounts.keys());
+    }
+  };
+  let inspectionCallCount = 0;
+  let nextInspectionItem: any = {
+    mediaId: "cf_ref_1",
+    status: "answered",
+    found: true,
+    answer: "1. 【整体轮廓与构图】：单人全身立绘。\n2. 【头发与头部装饰】：银白长发，蓝丝带。",
+    visibleContentSummary: "银发少女全身立绘",
+    nearMatches: [],
+    confidenceNotes: [],
+    rawAnswer: "{}",
+    parseStatus: "parsed",
+    schemaIssues: [],
+    modelRef: "visual",
+    completionStatus: "completed"
+  };
+  let onDuringInspection: (() => void) | null = null;
+  const mediaVisionService = {
+    async prepareFileForModel(fileId: string) {
+      return {
+        inputUrl: `data:image/png;base64,${fileId}`,
+        kind: "image",
+        animated: false,
+        durationMs: null,
+        sampledFrameCount: null
+      };
+    }
+  };
+  const mediaInspectionService = {
+    isEnabled() {
+      return config.llm.imageInspector.enabled;
+    },
+    async inspectPreparedMedia(input: { question: string; media: Array<{ mediaId: string }> }) {
+      inspectionCallCount += 1;
+      onDuringInspection?.();
+      const item = typeof nextInspectionItem === "function" ? nextInspectionItem(input) : nextInspectionItem;
+      return {
+        ok: item.status !== "error",
+        requestedCount: input.media.length,
+        results: [{ ...item, mediaId: input.media[0]?.mediaId ?? item.mediaId }]
+      };
+    }
+  };
+  const ctx = {
+    config,
+    relationship: "owner",
+    currentUser: null,
+    lastMessage: { sessionId: "s" },
+    chatFileStore,
+    mediaVisionService,
+    mediaInspectionService,
+    sessionManager: {
+      getSession: () => ({ id: "s", modeId: "stateful_rp", toolsetPreferences: { overrides: {} } }),
+      getOperationMode: () => ({ kind: "character_config", stage: draft.stage })
+    }
   } as unknown as BuiltinToolContext;
-  const availableToolNames = ["list_character_sections", "read_character_section", "edit_character_section"];
+  const availableToolNames = [...characterToolNames];
   const call = async (name: string, args: unknown, allowed = availableToolNames) => {
     const execute = createBuiltinToolExecutor(ctx, { availableToolNames: allowed, expectedCharacterDraftId: draft.id });
     const result = await execute({ id: "test", type: "function", function: { name, arguments: JSON.stringify(args) } }, args);
@@ -32,7 +163,20 @@ function fixture(stage = "social") {
   const tools = () => getBuiltinTools("owner", null, config, { availableToolNames, visibilityContext: { sessionId: "s" } });
   const tool = (action: string) => tools().find(tool => tool.function.name === setupEditBindings(getCharacterSection(sectionId), draft.id).find(binding => binding.action === action)!.definition.function.name)!.function;
   const edit = (args: unknown, action = "fill") => call(tool(action).name, args);
-  return { store, draft, ctx, call, read, edit, tools, tool };
+  return {
+    store,
+    draft,
+    ctx,
+    files,
+    call,
+    read,
+    edit,
+    tools,
+    tool,
+    getInspectionCallCount: () => inspectionCallCount,
+    setNextInspectionItem: (item: any) => { nextInspectionItem = item; },
+    setOnDuringInspection: (fn: (() => void) | null) => { onDuringInspection = fn; }
+  };
 }
 
 test("名称直接填写业务字段，不再有 value/action/id/draftId 参数", async () => {
@@ -228,4 +372,260 @@ test("所有阶段工具名称稳定、唯一并符合长度限制", () => {
     assert.equal(new Set(names).size, names.length);
     for (const name of names) assert.ok(name.length <= 64 && /^[a-zA-Z0-9_]+$/.test(name), name);
   }
+});
+
+test("social.referenceImages 专用修改工具隐藏 fileId 与 subject，embodiment 阶段可按 itemId 只读读取参考图且不暴露编辑工具", async () => {
+  const f = fixture("social");
+  const refSection = await f.read("social.referenceImages");
+  assert.equal(refSection.writable, true);
+  const addParams = f.tool("add").parameters as any;
+  const updateParams = f.tool("update").parameters as any;
+  assert.ok(addParams.properties.fileId);
+  assert.ok(addParams.required.includes("fileId"));
+  assert.equal(updateParams.properties.fileId, undefined);
+  assert.equal(updateParams.properties.subject, undefined);
+  assert.ok(updateParams.properties.label);
+  assert.ok(updateParams.properties.description);
+
+  const added = await f.edit({ fileId: "cf_ref_1", label: "常服立绘", subject: "  小满 ", description: "白衬衫与百褶裙" }, "add");
+  assert.equal(added.saved, true);
+  assert.ok(added.itemId);
+
+  // update 工具拒绝传入不可变字段 fileId / subject，允许修改 label / description
+  assert.equal((await f.edit({ itemId: added.itemId, fileId: "cf_other", label: "篡改" }, "update")).code, "setup_input_invalid");
+  assert.equal((await f.edit({ itemId: added.itemId, subject: "其他主体", label: "篡改" }, "update")).code, "setup_input_invalid");
+  const updated = await f.edit({ itemId: added.itemId, label: "校服立绘" }, "update");
+  assert.equal(updated.saved, true);
+
+  f.store.confirm("s", "stateful_rp");
+  f.store.ensureSetup("s", "stateful_rp"); // 进入 embodiment 阶段
+
+  const listResult = await f.call("list_character_sections", {});
+  const listedRef = listResult.sections.find((s: any) => s.id === "social.referenceImages");
+  assert.ok(listedRef);
+  assert.equal(listedRef.writable, false);
+  assert.match(listedRef.nextStep, /只读/);
+
+  const readAllInEmbodiment = await f.call("read_character_section", { id: "social.referenceImages" });
+  assert.equal(readAllInEmbodiment.writable, false);
+  assert.equal(readAllInEmbodiment.editTools, undefined);
+  assert.equal(readAllInEmbodiment.value.length, 1);
+
+  const readSingleInEmbodiment = await f.call("read_character_section", { id: "social.referenceImages", itemId: added.itemId });
+  assert.equal(readSingleInEmbodiment.writable, false);
+  assert.equal(readSingleInEmbodiment.editTools, undefined);
+  assert.equal(readSingleInEmbodiment.itemId, added.itemId);
+  assert.equal(readSingleInEmbodiment.value.label, "校服立绘");
+  assert.equal(readSingleInEmbodiment.value.subject, "小满");
+});
+
+test("import_character_reference 暴露边界、character_config 工具集选择与单人/多人/重复导入/刷新/容量/截断/并发保护", async () => {
+  const fPersona = fixture("persona");
+  assert.equal(fPersona.tools().some(t => t.function.name === "import_character_reference"), false);
+
+  const fSocial = fixture("social");
+  assert.equal(fSocial.tools().some(t => t.function.name === "import_character_reference"), true);
+  assert.equal(
+    getBuiltinTools("known", null, fSocial.ctx.config, { visibilityContext: { sessionId: "s" } })
+      .some(t => t.function.name === "import_character_reference"),
+    false
+  );
+
+  // resolveSessionBoundaryToolNames 与 listTurnToolsets 在 character_config 阶段放行角色工具与 availableDuringSetup 工具集
+  const boundary = resolveSessionBoundaryToolNames("stateful_rp", { overrides: {} }, { kind: "character_config", stage: "social" });
+  assert.equal(boundary.has("import_character_reference"), true);
+  assert.equal(boundary.has("asset_send_to_chat"), true);
+  assert.equal(boundary.has("generate_image"), true);
+  const disabledBoundary = resolveSessionBoundaryToolNames(
+    "stateful_rp",
+    { overrides: { asset_io: "disabled", image_generation: "disabled" } },
+    { kind: "character_config", stage: "social" }
+  );
+  assert.equal(disabledBoundary.has("import_character_reference"), true);
+  assert.equal(disabledBoundary.has("asset_send_to_chat"), false);
+  assert.equal(disabledBoundary.has("generate_image"), false);
+
+  const turnToolsets = listTurnToolsets({
+    config: fSocial.ctx.config,
+    relationship: "owner",
+    currentUser: null,
+    modelRef: ["visual"],
+    includeDebugTools: false,
+    modeId: "stateful_rp",
+    operationMode: { kind: "character_config", stage: "social" },
+    visibilityContext: { sessionId: "s" }
+  });
+  const turnToolNames = turnToolsets.flatMap(ts => ts.toolNames);
+  assert.ok(turnToolNames.includes("import_character_reference"));
+
+  // 1. 单人图按 asset_ref 导入（自动归一化为规范 file_id，缺省 label 为“角色设定图”）
+  const imported1 = await fSocial.call("import_character_reference", { asset_ref: "upload_ref_1.png" });
+  assert.equal(imported1.ok, true);
+  assert.equal(imported1.reused, false);
+  assert.equal(imported1.draftOnly, true);
+  assert.equal(imported1.fileId, "cf_ref_1");
+  assert.equal(imported1.label, "角色设定图");
+  assert.equal(imported1.subject, null);
+  assert.equal(fSocial.getInspectionCallCount(), 1);
+
+  // 2. 默认重复导入不重复调用模型，也不覆盖人工修正的标签/描述
+  await fSocial.read("social.referenceImages");
+  await fSocial.edit({ itemId: imported1.itemId, label: "人工修正标签", description: "人工修正描述" }, "update");
+  const reused = await fSocial.call("import_character_reference", { asset_ref: "cf_ref_1", label: "新标签不生效" });
+  assert.equal(reused.ok, true);
+  assert.equal(reused.reused, true);
+  assert.equal(reused.label, "人工修正标签");
+  assert.equal(reused.description, "人工修正描述");
+  assert.equal(fSocial.getInspectionCallCount(), 1);
+
+  // 3. 同一张多人图按不同 subject 建立独立条目（subject 去除首尾空白）
+  fSocial.setNextInspectionItem((input: { question: string }) => {
+    assert.match(input.question, /右侧黑发角色/);
+    return {
+      mediaId: "cf_ref_1",
+      status: "answered",
+      found: true,
+      answer: "右侧黑发高马尾少女描述",
+      visibleContentSummary: "双人立绘",
+      nearMatches: [],
+      confidenceNotes: ["披风背面被遮挡"],
+      rawAnswer: "{}",
+      parseStatus: "parsed",
+      schemaIssues: [],
+      modelRef: "visual",
+      completionStatus: "unknown"
+    };
+  });
+  const importedSubject = await fSocial.call("import_character_reference", {
+    asset_ref: "cf_ref_1",
+    subject: "  右侧黑发角色  "
+  });
+  assert.equal(importedSubject.ok, true);
+  assert.equal(importedSubject.reused, false);
+  assert.equal(importedSubject.subject, "右侧黑发角色");
+  assert.equal(importedSubject.label, "右侧黑发角色");
+  assert.equal(importedSubject.completionStatus, "unknown");
+  assert.match(importedSubject.completionNote, /completionStatus=unknown/);
+  assert.equal(fSocial.getInspectionCallCount(), 2);
+
+  // 4. 拒绝 repaired / truncated / uncertain / not_found / 非静态图片 / 丢失磁盘文件，不写入半成品
+  const badAsset = await fSocial.call("import_character_reference", { asset_ref: "cf_gif_1" });
+  assert.equal(badAsset.ok, false);
+  assert.equal(badAsset.code, "setup_edit_rejected");
+
+  const missingDisk = await fSocial.call("import_character_reference", { asset_ref: "cf_missing_disk" });
+  assert.equal(missingDisk.ok, false);
+  assert.equal(missingDisk.code, "setup_edit_rejected");
+
+  for (const rejectedCase of [
+    { parseStatus: "repaired" as const, completionStatus: "completed" as const, status: "answered" as const, found: true, expectedCode: "inspection_incomplete" },
+    { parseStatus: "parsed" as const, completionStatus: "truncated" as const, status: "answered" as const, found: true, expectedCode: "inspection_incomplete" },
+    { parseStatus: "parsed" as const, completionStatus: "completed" as const, status: "uncertain" as const, found: null, expectedCode: "inspection_uncertain" },
+    { parseStatus: "parsed" as const, completionStatus: "completed" as const, status: "not_found" as const, found: false, expectedCode: "inspection_target_not_found" }
+  ]) {
+    fSocial.setNextInspectionItem({
+      mediaId: "cf_ref_2",
+      status: rejectedCase.status,
+      found: rejectedCase.found,
+      answer: "候选或残缺文本",
+      visibleContentSummary: "画面摘要",
+      nearMatches: ["左侧角色", "右侧角色"],
+      confidenceNotes: [],
+      rawAnswer: "{}",
+      parseStatus: rejectedCase.parseStatus,
+      schemaIssues: [],
+      modelRef: "visual",
+      completionStatus: rejectedCase.completionStatus
+    });
+    const failed = await fSocial.call("import_character_reference", { asset_ref: "cf_ref_2" });
+    assert.equal(failed.ok, false);
+    assert.equal(failed.code, rejectedCase.expectedCode);
+  }
+  assert.equal((await fSocial.read("social.referenceImages")).value.length, 2);
+
+  // 5. refresh: true 在条目未被并发修改时成功刷新，若精读期间条目被修改则拒绝覆盖
+  fSocial.setNextInspectionItem({
+    mediaId: "cf_ref_1",
+    status: "answered",
+    found: true,
+    answer: "刷新后的全新视觉描述",
+    visibleContentSummary: "立绘",
+    nearMatches: [],
+    confidenceNotes: [],
+    rawAnswer: "{}",
+    parseStatus: "parsed",
+    schemaIssues: [],
+    modelRef: "visual",
+    completionStatus: "completed"
+  });
+  fSocial.setOnDuringInspection(() => {
+    const d = fSocial.store.draft("s")!;
+    d.value.social.referenceImages[0].description = "精读期间并发修改";
+    fSocial.store.edit("s", "stateful_rp", "social.referenceImages", "upsert", d.value.social.referenceImages[0], imported1.itemId, d.id);
+  });
+  const conflictRefresh = await fSocial.call("import_character_reference", {
+    asset_ref: "cf_ref_1",
+    refresh: true
+  });
+  assert.equal(conflictRefresh.ok, false);
+  assert.match(conflictRefresh.error, /并发修改/);
+  fSocial.setOnDuringInspection(null);
+
+  const okRefresh = await fSocial.call("import_character_reference", {
+    asset_ref: "cf_ref_1",
+    label: "刷新后标签",
+    refresh: true
+  });
+  assert.equal(okRefresh.ok, true);
+  assert.equal(okRefresh.refreshed, true);
+  assert.equal(okRefresh.label, "刷新后标签");
+  assert.equal(okRefresh.description, "刷新后的全新视觉描述");
+
+  // 6. 满 8 张容量上限时在调用精读模型前直接拦截
+  for (let i = 3; i <= 8; i++) {
+    const res = await fSocial.call("import_character_reference", { asset_ref: `cf_cap_${i}` });
+    assert.equal(res.ok, true);
+  }
+  const callsBeforeCapLimit = fSocial.getInspectionCallCount();
+  const capExceeded = await fSocial.call("import_character_reference", { asset_ref: "cf_cap_9" });
+  assert.equal(capExceeded.ok, false);
+  assert.match(capExceeded.error, /上限/);
+  assert.equal(fSocial.getInspectionCallCount(), callsBeforeCapLimit);
+
+  // 7. 执行端校验会话模式层级（tierForMode >= 2）与 operationMode（kind === "character_config"）
+  const assistantCtx = {
+    ...fSocial.ctx,
+    sessionManager: {
+      ...fSocial.ctx.sessionManager,
+      getSession: () => ({ id: "s", modeId: "assistant", toolsetPreferences: { overrides: {} } }) as any
+    }
+  };
+  const rejectedByModeRaw = await createBuiltinToolExecutor(assistantCtx, {
+    availableToolNames: [...characterToolNames],
+    expectedCharacterDraftId: fSocial.draft.id
+  })(
+    { id: "c", type: "function", function: { name: "import_character_reference", arguments: JSON.stringify({ asset_ref: "cf_ref_1" }) } },
+    { asset_ref: "cf_ref_1" }
+  );
+  const rejectedByMode = JSON.parse(typeof rejectedByModeRaw === "string" ? rejectedByModeRaw : rejectedByModeRaw.content);
+  assert.equal(rejectedByMode.ok, false);
+  assert.equal(rejectedByMode.code, "setup_edit_rejected");
+
+  const nonConfigOpCtx = {
+    ...fSocial.ctx,
+    sessionManager: {
+      ...fSocial.ctx.sessionManager,
+      getOperationMode: () => ({ kind: "normal" }) as any
+    }
+  };
+  const rejectedByOpModeRaw = await createBuiltinToolExecutor(nonConfigOpCtx, {
+    availableToolNames: [...characterToolNames],
+    expectedCharacterDraftId: fSocial.draft.id
+  })(
+    { id: "c", type: "function", function: { name: "import_character_reference", arguments: JSON.stringify({ asset_ref: "cf_ref_1" }) } },
+    { asset_ref: "cf_ref_1" }
+  );
+  const rejectedByOpMode = JSON.parse(typeof rejectedByOpModeRaw === "string" ? rejectedByOpModeRaw : rejectedByOpModeRaw.content);
+  assert.equal(rejectedByOpMode.ok, false);
+  assert.equal(rejectedByOpMode.code, "setup_edit_rejected");
 });

@@ -1,11 +1,12 @@
 import type { BuiltinToolContext } from "../llm/tools/core/shared.ts";
 import { setupInputErrors, setupInputFailure } from "../llm/tools/setup/inputValidation.ts";
+import { editCharacterSectionWithAssets } from "./writes.ts";
 import { characterRepository } from "./repository.ts";
-import { emptyValue, type JsonObject } from "./schemaCatalog.ts";
-import { stageSetupBindings, mergeSetupValue, hasGeneratedCollectionKey } from "./setupEditing.ts";
+import type { JsonObject } from "./schemaCatalog.ts";
+import { stageSetupBindings } from "./setupEditing.ts";
 
 /** 稳定工具对应固定分块；生成轮次绑定草稿，旧调用不能转写新草稿。 */
-export function executeCharacterSetupTool(name: string, args: unknown, context: BuiltinToolContext, expectedDraftId: string | null): string {
+export async function executeCharacterSetupTool(name: string, args: unknown, context: BuiltinToolContext, expectedDraftId: string | null): Promise<string> {
   if (context.relationship !== "owner") return JSON.stringify({ error: "角色配置仅 owner 可修改", saved: false });
   const sessionId = context.lastMessage.sessionId;
   const store = characterRepository(context.config.dataDir);
@@ -23,34 +24,43 @@ export function executeCharacterSetupTool(name: string, args: unknown, context: 
     if (errors.length) return setupInputFailure(errors, schema);
     const input = args as JsonObject;
     const action = binding.action;
-    let itemId: string | undefined;
-    if (action === "skip") store.skipDraftSection(sessionId, mode, section.id, binding.draftId);
-    else if (action === "clear") store.edit(sessionId, mode, section.id, "set", null, undefined, binding.draftId);
-    else if (section.collectionKey) {
-      const itemKey = section.collectionKey;
-      const items = section.value as JsonObject[];
-      const existing = items.find(item => item[itemKey] === input.itemId);
-      if (action !== "add" && !existing) throw new Error("itemId 不存在，请先读取已有条目 ID");
-      if (action === "remove") {
-        itemId = input.itemId;
-        store.edit(sessionId, mode, section.id, "remove", undefined, itemId, binding.draftId);
-      } else {
-        const { itemId: _itemId, ...patch } = input;
-        if (!Object.keys(patch).length) throw new Error("请至少填写一个要新增或修改的业务字段；暂不填写可使用跳过工具");
-        const value = mergeSetupValue(existing ?? emptyValue(section.schema.items), patch, section.schema.items) as JsonObject;
-        if (action === "add") {
-          if (hasGeneratedCollectionKey(section)) delete value[itemKey];
-          else if (items.some(item => item[itemKey] === value[itemKey])) throw new Error("此引用已有记录，请使用修改工具，避免覆盖已有内容");
+    const operation = context.sessionManager.getOperationMode?.(sessionId);
+    const writeContext = {
+      dataDir: context.config.dataDir, config: context.config, chatFileStore: context.chatFileStore,
+      sessionId, modeId: mode, id: section.id, draftId: binding.draftId,
+      abortSignal: context.abortSignal,
+      assertCurrent: () => {
+        if (context.sessionManager.getSession(sessionId).modeId !== mode
+          || JSON.stringify(context.sessionManager.getOperationMode?.(sessionId)) !== JSON.stringify(operation)) {
+          throw new Error("会话模式或配置阶段已变化，本轮写入失效");
         }
-        store.edit(sessionId, mode, section.id, "upsert", value, undefined, binding.draftId);
-        const saved = store.section(sessionId, mode, section.id).value as JsonObject[];
-        itemId = action === "add" ? saved.at(-1)![itemKey] : input.itemId;
+      }
+    };
+    let itemId: string | undefined;
+    if (action === "skip") {
+      context.abortSignal?.throwIfAborted();
+      writeContext.assertCurrent();
+      store.skipDraftSection(sessionId, mode, section.id, binding.draftId);
+    }
+    else if (action === "clear") await editCharacterSectionWithAssets({ ...writeContext, action: "set", value: null });
+    else if (section.collectionKey) {
+      const { itemId: requestedItemId, ...patch } = input;
+      if (action === "remove") {
+        itemId = requestedItemId;
+        await editCharacterSectionWithAssets({ ...writeContext, action: "remove", itemId });
+      } else {
+        if (!Object.keys(patch).length) throw new Error("请至少填写一个业务字段；暂不填写可使用跳过工具");
+        const result = await editCharacterSectionWithAssets({
+          ...writeContext, action: action === "add" ? "add" : "update", value: patch,
+          ...(action === "update" ? { itemId: requestedItemId } : {})
+        });
+        itemId = result?.itemId;
       }
     } else {
       if (!Object.keys(input).length) throw new Error("请至少填写一个业务字段；暂不填写可使用跳过工具");
-      const patch = section.schema.properties ? input : input[binding.fieldName];
-      const value = mergeSetupValue(section.value, patch, section.schema);
-      store.edit(sessionId, mode, section.id, "set", value, undefined, binding.draftId);
+      await editCharacterSectionWithAssets({
+        ...writeContext, action: "patch", value: section.schema.properties ? input : input[binding.fieldName]
+      });
     }
     const changedFields = Object.keys(input).filter(field => field !== "itemId");
     return JSON.stringify({ saved: true, scope: "draft", section: section.id, ...(itemId ? { itemId } : {}), changedFields,

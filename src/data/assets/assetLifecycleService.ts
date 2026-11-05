@@ -33,6 +33,7 @@ export class AssetLifecycleService {
     private readonly deps: {
       chatFileStore: {
         listFiles: () => Promise<ChatFileRecord[]>;
+        listRetainedFileIds: () => Iterable<string>;
         deleteFile: (fileId: string) => Promise<boolean>;
         cleanupOrphanDocumentCaches: () => Promise<{ removed: number; kept: number }>;
         cleanupOrphanMediaFiles: (input: { orphanTtlMs: number; now?: number }) => Promise<{ removed: number; kept: number }>;
@@ -45,6 +46,7 @@ export class AssetLifecycleService {
         listRows: (input?: { offset?: number; limit?: number }) => Promise<{ rows: ComfyTaskRecord[]; total: number; offset: number; limit: number }>;
         deleteById: (taskId: string) => Promise<boolean>;
       };
+      getAdditionalReferencedChatFileIds?: () => Iterable<string> | Promise<Iterable<string>>;
     },
     private readonly logger: Logger,
     private readonly config: AssetLifecycleConfig
@@ -88,8 +90,26 @@ export class AssetLifecycleService {
       this.store.listReferencedAssetIds("audio"),
       this.store.listReferencedAssetIds("comfy_task")
     ]);
+    let skipChatFileDeletion = false;
+    try {
+      for (const fileId of this.deps.chatFileStore.listRetainedFileIds()) {
+        const trimmed = fileId.trim();
+        if (trimmed) referencedChatFiles.add(trimmed);
+      }
+      if (this.deps.getAdditionalReferencedChatFileIds) {
+        for (const fileId of await this.deps.getAdditionalReferencedChatFileIds()) {
+          const trimmed = String(fileId ?? "").trim();
+          if (trimmed) referencedChatFiles.add(trimmed);
+        }
+      }
+    } catch (error: unknown) {
+      skipChatFileDeletion = true;
+      this.logger.warn({ error }, "asset_lifecycle_additional_chat_file_refs_load_failed");
+    }
 
-    const deletedChatFileIds = await this.deleteUnreferencedChatFiles(chatFiles, referencedChatFiles, now);
+    const deletedChatFileIds = skipChatFileDeletion
+      ? []
+      : await this.deleteUnreferencedChatFiles(chatFiles, referencedChatFiles, now);
     const deletedAudioIds = await this.deleteUnreferencedAudios(audioFiles, referencedAudios, now);
     const deletedComfyTaskIds = await this.deleteUnreferencedComfyTasks(comfyTasks, referencedComfyTasks, now);
     if (deletedChatFileIds.length || deletedAudioIds.length || deletedComfyTaskIds.length || mediaCleanup.removed > 0) {

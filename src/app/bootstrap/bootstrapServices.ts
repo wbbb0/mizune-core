@@ -39,6 +39,7 @@ import { OneBotClient } from "#services/onebot/onebotClient.ts";
 import { ShellRuntime } from "#services/shell/runtime.ts";
 import { ChatFileStore } from "#services/workspace/chatFileStore.ts";
 import { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
+import { characterReferencedFileIds } from "../../character/repository.ts";
 import { AssetLifecycleService } from "#data/assets/assetLifecycleService.ts";
 import { AssetLifecycleStore } from "#data/assets/assetLifecycleStore.ts";
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
@@ -104,7 +105,8 @@ export function createBootstrapServices(
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
   const temporaryWorkspaceService = new TemporaryWorkspaceService(config, dataDir, (error) => logger.warn({ error }, "temporary_workspace_cleanup_failed"));
-  const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir);
+  const getAdditionalReferencedFileIds = () => characterReferencedFileIds(dataDir);
+  const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir, undefined, getAdditionalReferencedFileIds);
   const downloadRuntime = new DownloadRuntime(config, logger, dataDir, chatFileStore);
   const contentSafetyStore = new ContentSafetyStore(dataDir, logger);
   const contentSafetyService = new ContentSafetyService(config, logger, contentSafetyStore, chatFileStore, audioStore);
@@ -123,7 +125,8 @@ export function createBootstrapServices(
     {
       chatFileStore,
       audioStore,
-      comfyTaskStore
+      comfyTaskStore,
+      getAdditionalReferencedChatFileIds: getAdditionalReferencedFileIds
     },
     logger,
     config.assets.gc

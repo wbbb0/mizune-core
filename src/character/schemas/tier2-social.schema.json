@@ -388,6 +388,53 @@
                   }
                 }
               }
+            },
+            "referenceImages": {
+              "type": "array",
+              "default": [],
+              "maxItems": 8,
+              "description": "角色设定图与详细中文视觉描述资料（辅助参考，最多 8 条；原图保存在统一资产库，通过 import_character_reference 导入分析或按条目维护）。",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "fileId",
+                  "label",
+                  "subject",
+                  "description"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "角色设定图资料条目 ID。"
+                  },
+                  "fileId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "统一资产库的规范静态图片 file_id。"
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "设定图标签（如：正面全身、背面服装、发型细节）。"
+                  },
+                  "subject": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "图中目标角色的说明（如：左侧银发角色；单人图或默认目标为 null）。"
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12000,
+                    "description": "详细中文视觉描述，记录画面可见外观细节与不确定信息，可由用户修正。"
+                  }
+                }
+              }
             }
           }
         }

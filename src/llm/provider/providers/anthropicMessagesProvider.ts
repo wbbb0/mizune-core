@@ -4,6 +4,7 @@ import { readProviderSseData } from "../providerSseReader.ts";
 import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
+import { LlmProviderPolicyError } from "../providerProtocolError.ts";
 import {
   createProviderStreamAccumulator,
   createReportedUsage,
@@ -187,6 +188,12 @@ export class AnthropicMessagesProvider implements LlmProvider {
         const payload = JSON.parse(data) as AnthropicStreamPayload;
         if (payload.type === "message_stop") stopped = true;
         if (payload.type === "message_delta") stopReason = payload.delta?.stop_reason;
+        if (stopReason === "refusal") {
+          throw new LlmProviderPolicyError("refusal", "Anthropic stop_reason: refusal");
+        }
+        if (stopReason === "pause_turn") {
+          throw new Error("Anthropic 响应尚未完成：pause_turn");
+        }
         reportedUsage = { ...reportedUsage, ...(payload.message?.usage ?? payload.usage) };
         if (payload.type === "error") {
           throw new Error(`Anthropic stream error: ${payload.error?.type ?? "unknown"} ${payload.error?.message ?? ""}`.trim());
@@ -244,6 +251,11 @@ export class AnthropicMessagesProvider implements LlmProvider {
         reasoningContent: accumulator.reasoningContent,
         toolCalls,
         usage: accumulator.usage,
+        completionStatus: stopReason === "max_tokens" || stopReason === "model_context_window_exceeded"
+          ? "truncated"
+          : (stopReason === "end_turn" || stopReason === "stop_sequence" || stopReason === "tool_use")
+            ? "completed"
+            : "unknown",
         assistantMetadata: {
           anthropicContentBlocks: finalizedBlocks,
           anthropicUsage: reportedUsage

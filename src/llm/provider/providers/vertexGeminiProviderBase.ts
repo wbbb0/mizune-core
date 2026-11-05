@@ -19,6 +19,7 @@ import {
   createReportedUsage,
 } from "../providerStreamAdapter.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
+import { LlmProviderPolicyError } from "../providerProtocolError.ts";
 
 interface GoogleInlineDataPart {
   videoMetadata?: { fps: number };
@@ -62,6 +63,7 @@ interface GoogleStreamChunk {
     param?: string;
   };
   candidates?: Array<{
+    finishReason?: string;
     content?: {
       role?: string;
       parts?: GooglePart[];
@@ -82,6 +84,16 @@ const GOOGLE_HARM_CATEGORIES = [
   "HARM_CATEGORY_SEXUALLY_EXPLICIT",
   "HARM_CATEGORY_DANGEROUS_CONTENT"
 ] as const;
+
+// Explicit terminal failures must not be treated as missing completion metadata.
+const GOOGLE_POLICY_FINISH_REASONS = new Set([
+  "SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII",
+  "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_RECITATION"
+]);
+const GOOGLE_FAILED_FINISH_REASONS = new Set([
+  "OTHER", "LANGUAGE", "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL",
+  "TOO_MANY_TOOL_CALLS", "NO_IMAGE", "IMAGE_OTHER"
+]);
 
 export abstract class VertexGeminiProviderBase implements LlmProvider {
   abstract readonly type: LlmProvider["type"];
@@ -142,11 +154,25 @@ export abstract class VertexGeminiProviderBase implements LlmProvider {
       });
       const toolCalls = new Map<number, LlmToolCall>();
       const assistantParts: GooglePart[] = [];
+      let finishReason: string | undefined;
       const processChunk = async (chunk: GoogleStreamChunk) => {
         if (chunk.error) {
           throw createGoogleStreamError(this.providerLabel, chunk.error);
         }
 
+        if (chunk.candidates?.[0]?.finishReason) {
+          const nextFinishReason = chunk.candidates[0].finishReason;
+          if (finishReason && finishReason !== nextFinishReason) {
+            throw new Error(`${this.providerLabel} 流终态冲突`);
+          }
+          finishReason = nextFinishReason;
+          if (GOOGLE_POLICY_FINISH_REASONS.has(finishReason)) {
+            throw new LlmProviderPolicyError("content_filter", `${this.providerLabel} finishReason: ${finishReason}`);
+          }
+          if (GOOGLE_FAILED_FINISH_REASONS.has(finishReason)) {
+            throw new Error(`${this.providerLabel} 响应未正常完成：${finishReason}`);
+          }
+        }
         accumulator.replaceUsage(mergeGoogleUsage(context, chunk));
         const chunkParts = chunk.candidates?.[0]?.content?.parts ?? [];
         const newParts = chunkParts;
@@ -187,6 +213,11 @@ export abstract class VertexGeminiProviderBase implements LlmProvider {
         reasoningContent: accumulator.reasoningContent,
         toolCalls: Array.from(toolCalls.values()),
         usage: accumulator.usage,
+        completionStatus: finishReason === "MAX_TOKENS"
+          ? "truncated"
+          : finishReason === "STOP"
+            ? "completed"
+            : "unknown",
         assistantMetadata: {
           googleParts: assistantParts,
           googleReplayScope: googleReplayScope(context)

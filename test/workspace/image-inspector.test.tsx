@@ -436,3 +436,61 @@ test("media inspection service returns unstructured fallback when model output i
   assert.deepEqual(result.results[0]?.schemaIssues, ["json_parse_failed"]);
   assert.ok(result.results[0]?.confidenceNotes.some((item) => item.includes("未通过结构化校验")));
 });
+
+test("media inspection service requires all top-level protocol fields via Object.hasOwn and propagates completionStatus", async () => {
+  const responses: Array<{ text: string; completionStatus?: "completed" | "truncated" | "unknown" }> = [
+    {
+      // Missing nearMatches & confidenceNotes (e.g. truncated before tail fields)
+      text: JSON.stringify({
+        status: "answered",
+        found: true,
+        answer: "半截描述",
+        visibleContentSummary: null
+      }),
+      completionStatus: "completed"
+    },
+    {
+      // All fields present, but upstream reported truncated
+      text: JSON.stringify({
+        status: "answered",
+        found: true,
+        answer: "看起来字段齐全但被截断",
+        visibleContentSummary: "立绘",
+        nearMatches: [],
+        confidenceNotes: []
+      }),
+      completionStatus: "truncated"
+    }
+  ];
+  let callIndex = 0;
+  const llmClient = {
+    isConfigured() {
+      return true;
+    },
+    async generate() {
+      const next = responses[callIndex++]!;
+      return {
+        text: next.text,
+        completionStatus: next.completionStatus,
+        usage: { modelRef: "primary" }
+      };
+    }
+  } as any;
+
+  const service = new MediaInspectionService(createInspectorConfig(), llmClient, createSilentLogger());
+  const missingFieldsResult = await service.inspectPreparedMedia({
+    question: "描述角色",
+    media: [createPreparedMedia("file_missing_top_fields")]
+  });
+  assert.equal(missingFieldsResult.results[0]?.status, "unstructured");
+  assert.ok(missingFieldsResult.results[0]?.schemaIssues.includes("invalid_near_matches"));
+  assert.ok(missingFieldsResult.results[0]?.schemaIssues.includes("invalid_confidence_notes"));
+  assert.equal(missingFieldsResult.results[0]?.completionStatus, "completed");
+
+  const truncatedResult = await service.inspectPreparedMedia({
+    question: "描述角色",
+    media: [createPreparedMedia("file_truncated")]
+  });
+  assert.equal(truncatedResult.results[0]?.status, "answered");
+  assert.equal(truncatedResult.results[0]?.completionStatus, "truncated");
+});

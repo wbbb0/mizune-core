@@ -40,6 +40,7 @@ type DirectCommandDeps = Pick<
   | "recentErrorStore"
   | "stickerService"
 > & {
+  chatFileStore?: import("../../character/writes.ts").CharacterAssetStore;
   sessionManager: SessionDirectCommandAccess & Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
   persistSession: (sessionId: string, reason: string) => void;
   assignOwner: (input: {
@@ -139,6 +140,7 @@ function createDeliveryHandleDirectCommand(
 ): MessageEventHandlerDeps["handleDirectCommand"] {
   const handler = createDirectCommandHandler({
     config: deps.config,
+    ...(deps.chatFileStore ? { chatFileStore: deps.chatFileStore } : {}),
     stickerService: deps.stickerService,
     sessionManager: deps.sessionManager,
     oneBotClient: deps.oneBotClient,

@@ -6,6 +6,7 @@ import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { StatefulRpStateStore } from "./stateStore.ts";
 import type { StatefulRpSessionState } from "./types.ts";
 import { advanceCycle } from "../../character/cycle.ts";
+import { projectCharacterProfileForContext } from "../../character/referenceImages.ts";
 import { getCharacterSection, readPath, setPath, validateJson } from "../../character/schemaCatalog.ts";
 
 export interface StatefulRpPostTurnInput {
@@ -28,7 +29,8 @@ export class StatefulRpPostTurnMaintainer {
     const clock = working.simulation.clock;
     if (!clock?.currentIso) return null;
     const stillCurrent = () => !input.abortSignal?.aborted && (input.isCurrent?.() ?? true) && this.stateStore.characters.profile().revision === profile.revision;
-    const context = () => JSON.stringify({ character: profile, state: { social: working.social, simulation: working.simulation }, events: working.events, dialogue: { user: input.userText, assistant: input.assistantText } });
+    const projectedProfile = projectCharacterProfileForContext(profile);
+    const context = () => JSON.stringify({ character: projectedProfile, state: { social: working.social, simulation: working.simulation }, events: working.events, dialogue: { user: input.userText, assistant: input.assistantText } });
     try {
       let elapsed = 0;
       if (!input.clockBeforeTurnIso || input.clockBeforeTurnIso === clock.currentIso) {

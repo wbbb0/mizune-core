@@ -93,6 +93,7 @@ export class GoogleAiStudioProvider implements LlmProvider {
       completed = true;
       return {
         text: accumulator.text.trim(), reasoningContent: accumulator.reasoningContent, toolCalls, usage: accumulator.usage,
+        completionStatus: "completed" as const,
         assistantMetadata: { googleParts: parts, googleReplayScope: googleReplayScope(context), citations: readNativeSearchCitations({ citations }) }
       };
     } catch (error) {

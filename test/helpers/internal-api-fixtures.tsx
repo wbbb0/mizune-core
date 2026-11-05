@@ -254,6 +254,12 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
       }
     } as unknown as InternalApiDeps["assetLifecycleStore"],
     chatFileStore: {
+      async isFileAvailable(fileId: string) {
+        return fileId === "file_image_1";
+      },
+      async withRetainedFiles<T>(_fileIds: Iterable<string>, operation: () => Promise<T> | T): Promise<T> {
+        return await operation();
+      },
       async importBuffer(input: { kind: "image" | "animated_image" | "video" | "file" | "audio"; sourceName?: string; mimeType?: string; buffer: Buffer }) {
         return {
           fileId: `file_${input.kind}_1`,

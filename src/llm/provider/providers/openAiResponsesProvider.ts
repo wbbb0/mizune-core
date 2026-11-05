@@ -121,6 +121,11 @@ export abstract class OpenAiResponsesProvider implements LlmProvider {
         reasoningContent,
         toolCalls,
         usage: stream.accumulator.usage,
+        completionStatus: response.status === "incomplete"
+          ? "truncated"
+          : response.status === "completed"
+            ? "completed"
+            : "unknown",
         assistantMetadata: {
           openAiResponses: {
             provider: context.providerName,

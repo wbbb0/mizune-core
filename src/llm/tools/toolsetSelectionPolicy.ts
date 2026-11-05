@@ -1,7 +1,8 @@
 import { getBuiltinToolDescriptors } from "./toolRegistry.ts";
 import { resolveToolAvailability, type ToolAvailabilityContext } from "./core/toolAvailability.ts";
 import { resolveModeToolsetDefaults } from "./toolsetBoundary.ts";
-import { expandCharacterSetupToolsets } from "../../character/setupToolsets.ts";
+import { characterSetupToolsetOverrides, expandCharacterSetupToolsets } from "../../character/setupToolsets.ts";
+import type { SessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import type { AppConfig } from "#config/config.ts";
 import { getBuiltinToolNames } from "#llm/builtinTools.ts";
 import type { BuiltinToolContext, Relationship, ToolVisibilityContext } from "./core/shared.ts";
@@ -31,6 +32,7 @@ export interface TurnToolsetSelectionInput {
   setupPhase?: {
     setupToolsetOverrides: SessionModeSetupToolsetOverride[];
   };
+  operationMode?: SessionOperationMode;
   modeId?: string;
   profileToolScope?: ProfileToolScope | null;
   visibilityContext?: ToolVisibilityContext;
@@ -84,16 +86,20 @@ export function listTurnToolsets(input: TurnToolsetSelectionInput): ToolsetView[
       ...(input.profileToolScope !== undefined ? { profileToolScope: input.profileToolScope } : {})
     }
   ));
-  const inSetup = Boolean(input.setupPhase)
+  const effectiveSetupPhase = input.setupPhase
+    ?? (input.operationMode?.kind === "character_config"
+      ? { setupToolsetOverrides: characterSetupToolsetOverrides }
+      : undefined);
+  const inSetup = Boolean(effectiveSetupPhase)
     || Boolean(input.profileToolScope && input.profileToolScope !== "normal");
   const visibleSharedToolsets = listVisibleSharedToolsets(
     visibleToolNames, input.relationship, input.includeDebugTools,
     inSetup, input.toolsetPreferences ?? createDefaultSessionToolsetPreferences()
   );
 
-  if (input.setupPhase) {
+  if (effectiveSetupPhase) {
     return expandCharacterSetupToolsets(applySetupToolsetOverrides(
-      input.setupPhase.setupToolsetOverrides ?? [],
+      effectiveSetupPhase.setupToolsetOverrides ?? [],
       visibleToolNames,
       visibleSharedToolsets
     ), input.config.dataDir, input.visibilityContext?.sessionId);

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { LlmToolDefinition } from "../llm/llmClient.ts";
-import { characterSections, emptyValue, type CharacterSection, type JsonObject } from "./schemaCatalog.ts";
+import { characterSections, type CharacterSection, type JsonObject } from "./schemaCatalog.ts";
 
 export function partialObjectSchema(schema: JsonObject): JsonObject {
   if (!schema.properties) return structuredClone(schema);
@@ -8,15 +8,6 @@ export function partialObjectSchema(schema: JsonObject): JsonObject {
   delete result.required;
   result.properties = Object.fromEntries(Object.entries(result.properties).map(([name, child]) => [name, partialObjectSchema(child as JsonObject)]));
   return result;
-}
-export function mergeSetupValue(current: unknown, patch: unknown, schema: JsonObject): unknown {
-  if (!schema.properties || !patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
-  const base = current && typeof current === "object" && !Array.isArray(current) ? structuredClone(current) as JsonObject : emptyValue({ ...schema, type: "object" });
-  for (const [name, value] of Object.entries(patch)) {
-    if (["__proto__", "constructor", "prototype"].includes(name)) throw new Error("无效字段名称");
-    base[name] = schema.properties[name] ? mergeSetupValue(base[name], value, schema.properties[name]) : value;
-  }
-  return base;
 }
 export type SetupEditAction = "fill" | "add" | "update" | "remove" | "skip" | "clear";
 export interface SetupEditBinding {
@@ -61,6 +52,19 @@ export function setupEditBindings(section: CharacterSection, draftId: string): S
     if (section.collectionKey) {
       if (action !== "add" || generatedKey) delete properties[section.collectionKey];
       else required.push(section.collectionKey);
+    }
+    if (section.immutableItemFields?.length) {
+      if (action === "update") {
+        for (const field of section.immutableItemFields) delete properties[field];
+      } else if (action === "add") {
+        for (const field of section.immutableItemFields) {
+          const fieldSchema = section.schema.items?.properties?.[field];
+          const nullable = Array.isArray(fieldSchema?.type) && fieldSchema.type.includes("null");
+          if (section.schema.items?.required?.includes(field) && !nullable && !required.includes(field)) {
+            required.push(field);
+          }
+        }
+      }
     }
     if (action === "update" || action === "remove") {
       properties.itemId = { type: "string", minLength: 1, description: "读取结果中已有记录的 ID" };

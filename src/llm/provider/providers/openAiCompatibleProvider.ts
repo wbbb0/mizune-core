@@ -265,6 +265,11 @@ export class OpenAiCompatibleProvider implements LlmProvider {
         reasoningContent: accumulator.reasoningContent,
         toolCalls: Array.from(toolCalls.values()),
         usage: accumulator.usage,
+        completionStatus: finishReason === "length"
+          ? "truncated"
+          : (finishReason === "stop" || finishReason === "tool_calls")
+            ? "completed"
+            : "unknown",
         ...(reasoning.details.length ? { assistantMetadata: { openRouterReasoningDetails: reasoning.details } } : {})
       };
     } catch (error) {

@@ -172,3 +172,174 @@ test("Data 验证不发布，固定跨字段校验失败不改变档案和已有
   store.saveProfile(next);
   assert.deepEqual(store.state("s"), state);
 });
+
+test("配置阶段统一允许只读已确认的前置固定设定，拒绝修改或跳过只读分块，未确认或后续阶段仍不可访问", t => {
+  const store = fixture(t);
+  const personaDraft = store.begin("s", "persona", "setup", "stateful_rp");
+  store.edit("s", "stateful_rp", "persona.name", "set", "小满", undefined, personaDraft.id);
+  store.confirm("s", "stateful_rp");
+
+  const socialDraft = store.begin("s", "social", "setup", "stateful_rp");
+  const socialSections = store.sections("s", "stateful_rp");
+  const personaNameInSocial = socialSections.find(s => s.id === "persona.name");
+  assert.ok(personaNameInSocial);
+  assert.equal(personaNameInSocial.writable, false);
+  assert.equal(personaNameInSocial.touched, false);
+  assert.equal(store.section("s", "stateful_rp", "persona.name").value, "小满");
+  assert.equal(store.section("s", "stateful_rp", "persona.name").writable, false);
+  assert.throws(() => store.edit("s", "stateful_rp", "persona.name", "set", "篡改", undefined, socialDraft.id), /只读/);
+  assert.throws(() => store.skipDraftSection("s", "stateful_rp", "persona.name", socialDraft.id), /只读/);
+  assert.throws(() => store.section("s", "stateful_rp", "embodiment.body"));
+
+  store.edit(
+    "s",
+    "stateful_rp",
+    "social.referenceImages",
+    "upsert",
+    { id: "ref-1", fileId: "cf_01", label: "主立绘", subject: "  小满  ", description: "黑发少女，白衬衫与深蓝百褶裙。" },
+    "ref-1",
+    socialDraft.id
+  );
+  store.confirm("s", "stateful_rp");
+
+  const embodimentDraft = store.begin("s", "embodiment", "setup", "stateful_rp");
+  const refSection = store.section("s", "stateful_rp", "social.referenceImages");
+  assert.equal(refSection.writable, false);
+  assert.equal(refSection.value.length, 1);
+  assert.equal(refSection.value[0].subject, "小满");
+  const singleItem = store.section("s", "stateful_rp", "social.referenceImages", "ref-1");
+  assert.equal(singleItem.writable, false);
+  assert.equal(singleItem.value.id, "ref-1");
+  assert.equal(singleItem.value.fileId, "cf_01");
+  assert.throws(() => store.section("s", "stateful_rp", "social.referenceImages", 123), /itemId/);
+  assert.throws(() => store.section("s", "stateful_rp", "social.referenceImages", "missing-id"), /未找到条目/);
+  assert.throws(() => store.section("s", "stateful_rp", "persona.name", "ref-1"), /集合/);
+  assert.throws(() => store.edit("s", "stateful_rp", "social.referenceImages", "remove", undefined, "ref-1", embodimentDraft.id), /只读/);
+});
+
+test("social.referenceImages 缺省归一化、唯一性、不可变来源字段与 referencedFileIds 枚举", t => {
+  const store = fixture(t);
+  store.begin("s", "persona", "setup", "stateful_rp");
+  store.confirm("s", "stateful_rp");
+
+  const socialDraft = store.begin("s", "social", "setup", "stateful_rp");
+  assert.deepEqual(store.section("s", "stateful_rp", "social.referenceImages").value, []);
+  store.edit(
+    "s",
+    "stateful_rp",
+    "social.referenceImages",
+    "upsert",
+    { id: "ref-1", fileId: "cf_main", label: "整图设定", subject: "   ", description: "立绘详细描述" },
+    "ref-1",
+    socialDraft.id
+  );
+  const draftItems = store.section("s", "stateful_rp", "social.referenceImages").value;
+  assert.equal(draftItems[0].subject, null);
+  assert.deepEqual([...store.referencedFileIds()], ["cf_main"]);
+
+  // 同一 (fileId, subject) 重复应被拒绝
+  assert.throws(
+    () =>
+      store.edit(
+        "s",
+        "stateful_rp",
+        "social.referenceImages",
+        "upsert",
+        { id: "ref-2", fileId: "cf_main", label: "重复整图", subject: null, description: "另一段描述" },
+        "ref-2",
+        socialDraft.id
+      ),
+    /不能重复/
+  );
+
+  // 同一 fileId 不同 subject 允许共存
+  store.edit(
+    "s",
+    "stateful_rp",
+    "social.referenceImages",
+    "upsert",
+    { id: "ref-2", fileId: "cf_main", label: "右侧角色", subject: "右侧角色", description: "右侧角色外观描述" },
+    "ref-2",
+    socialDraft.id
+  );
+
+  // 已存在条目不可修改 fileId 或 subject
+  assert.throws(
+    () =>
+      store.edit(
+        "s",
+        "stateful_rp",
+        "social.referenceImages",
+        "upsert",
+        { id: "ref-1", fileId: "cf_other", label: "整图设定", subject: null, description: "立绘详细描述" },
+        "ref-1",
+        socialDraft.id
+      ),
+    /不可修改/
+  );
+  assert.throws(
+    () =>
+      store.edit(
+        "s",
+        "stateful_rp",
+        "social.referenceImages",
+        "upsert",
+        { id: "ref-1", fileId: "cf_main", label: "整图设定", subject: "新主体", description: "立绘详细描述" },
+        "ref-1",
+        socialDraft.id
+      ),
+    /不可修改/
+  );
+
+  // 允许修改 label 与 description
+  store.edit(
+    "s",
+    "stateful_rp",
+    "social.referenceImages",
+    "upsert",
+    { id: "ref-1", fileId: "cf_main", label: "更新后的标题", subject: null, description: "更新后的详细描述" },
+    "ref-1",
+    socialDraft.id
+  );
+  store.confirm("s", "stateful_rp");
+  assert.deepEqual([...store.referencedFileIds()], ["cf_main"]);
+
+  // 另一会话草稿中的参考图也纳入 referencedFileIds
+  const otherDraft = store.begin("other", "social", "config", "stateful_rp");
+  store.edit(
+    "other",
+    "stateful_rp",
+    "social.referenceImages",
+    "upsert",
+    { id: "ref-3", fileId: "cf_draft_only", label: "草稿参考图", subject: null, description: "草稿描述" },
+    "ref-3",
+    otherDraft.id
+  );
+  assert.deepEqual([...store.referencedFileIds()].sort(), ["cf_draft_only", "cf_main"]);
+  store.cancel("other");
+  assert.deepEqual([...store.referencedFileIds()], ["cf_main"]);
+
+  // Data validateProfile 归一化缺失 referenceImages 并拒绝非法非数组值或篡改已有条目的 fileId/subject
+  const legacyCandidate = store.profile();
+  delete (legacyCandidate.social as Record<string, unknown>).referenceImages;
+  const normalized = store.validateProfile(legacyCandidate);
+  assert.deepEqual(normalized.social.referenceImages, []);
+
+  for (const invalidValue of [null, 123, "{}"]) {
+    const bad = store.profile();
+    (bad.social as Record<string, unknown>).referenceImages = invalidValue;
+    assert.throws(() => store.validateProfile(bad), /格式不正确/);
+  }
+
+  // 父节点为 null 时不能被 normalizeProfileDefaults 静默改写为空对象
+  const nullWardrobe = store.profile();
+  (nullWardrobe.embodiment as Record<string, unknown>).wardrobe = null;
+  assert.throws(() => store.validateProfile(nullWardrobe), /格式不正确/);
+
+  // 非字符串 itemId 应被拒绝，不退化为全量读取
+  assert.throws(() => store.section("s", "rp_assistant", "social.referenceImages", 123), /itemId/);
+
+  const mutatedSource = store.profile();
+  mutatedSource.social.referenceImages[0].fileId = "cf_hijack";
+  assert.throws(() => store.validateProfile(mutatedSource), /不可修改/);
+});

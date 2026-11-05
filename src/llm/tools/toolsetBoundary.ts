@@ -5,6 +5,7 @@ import { resolveProfileToolScopeFromOperationMode } from "./profileToolScope.ts"
 import { requireSessionModeDefinition } from "#modes/registry.ts";
 import { TOOLSET_DEFINITIONS } from "./toolsetCatalog.ts";
 import { resolveSessionToolsetEnabled, type SessionToolsetPreferences } from "#conversation/session/sessionToolsetPreferences.ts";
+import { characterSetupToolsetOverrides } from "../../character/setupToolsets.ts";
 
 export function resolveModeToolsetDefaults(modeId: string): Map<string, boolean> {
   const mode = requireSessionModeDefinition(modeId);
@@ -28,8 +29,10 @@ export function resolveSessionBoundaryToolNames(
   operationMode?: SessionOperationMode
 ): Set<string> {
   const mode = requireSessionModeDefinition(modeId);
-  const setup = operationMode && operationMode.kind !== "normal"
-    ? resolveSessionModeSetupOperation(mode.setupPhase, operationMode.kind) : null;
+  const setup = operationMode?.kind === "character_config"
+    ? { setupToolsetOverrides: characterSetupToolsetOverrides }
+    : operationMode && operationMode.kind !== "normal"
+      ? resolveSessionModeSetupOperation(mode.setupPhase, operationMode.kind) : null;
   const profileScope = resolveProfileToolScopeFromOperationMode(operationMode);
   const inProfile = profileScope != null && profileScope !== "normal";
   if (setup || inProfile) {

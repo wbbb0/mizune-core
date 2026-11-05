@@ -7,6 +7,7 @@ import { getProviderFeatureFromContext } from "../providerFeatures.ts";
 import { requestOpenAiCompatibleEmbeddings } from "../openAiCompatEmbedding.ts";
 import { setPropertyByPath } from "../requestShaping.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
+import { LlmProviderPolicyError } from "../providerProtocolError.ts";
 import {
   createProviderStreamAccumulator,
   createReportedUsage,
@@ -130,11 +131,22 @@ export class DashScopeProvider implements LlmProvider {
         model: context.model
       });
       const toolCalls = new Map<number, LlmToolCall>();
+      let finishReason: string | null = null;
 
       for await (const data of readProviderSseData(response)) {
         const payload = JSON.parse(data) as DashScopeStreamChunk;
         throwIfProviderError(payload);
         if (payload.code && payload.message) throw new Error(`DashScope API error: ${payload.code} ${payload.message}`);
+        const choiceFinishReason = payload.output?.choices?.[0]?.finish_reason;
+        if (choiceFinishReason && choiceFinishReason !== "null") {
+          finishReason = choiceFinishReason;
+          if (finishReason === "content_filter") {
+            throw new LlmProviderPolicyError("content_filter", "DashScope finish_reason: content_filter");
+          }
+          if (finishReason === "error") {
+            throw new Error("DashScope finish_reason: error");
+          }
+        }
         if (payload.usage) {
           const cachedTokens = numberOrNull(payload.usage.prompt_tokens_details?.cached_tokens) ?? 0;
           const reasoningTokens = numberOrNull(payload.usage.output_tokens_details?.reasoning_tokens) ?? 0;
@@ -181,7 +193,12 @@ export class DashScopeProvider implements LlmProvider {
         text: accumulator.text.trim(),
         reasoningContent: accumulator.reasoningContent,
         toolCalls: Array.from(toolCalls.values()),
-        usage: accumulator.usage
+        usage: accumulator.usage,
+        completionStatus: finishReason === "length"
+          ? "truncated"
+          : (finishReason === "stop" || finishReason === "tool_calls")
+            ? "completed"
+            : "unknown"
       };
     } catch (error) {
       if (timeoutController.controller.signal.aborted) {

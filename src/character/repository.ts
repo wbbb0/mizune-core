@@ -1,17 +1,27 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { emptyCharacter, emptyCharacterSession, nextCharacterStage, stageRoot, type CharacterDraft, type CharacterProfile, type CharacterSession, type CharacterStage } from "./model.ts";
-import { characterSections, emptyValue, getCharacterSection, readPath, setPath, validateJson, personaJsonSchema, socialJsonSchema, embodimentJsonSchema, socialStateJsonSchema, simulationJsonSchema, tierForMode, type JsonObject } from "./schemaCatalog.ts";
+import { characterSections, emptyValue, getCharacterSection, mergeSectionPatch, normalizeReferenceSubject, readPath, readSectionValue, setPath, validateJson, personaJsonSchema, socialJsonSchema, embodimentJsonSchema, socialStateJsonSchema, simulationJsonSchema, tierForMode, type CharacterSection, type JsonObject } from "./schemaCatalog.ts";
 import { advanceCycle, cycleParameters, gameDate, dateNumber } from "./cycle.ts";
 
+const fixedStages = ["persona", "social", "embodiment"] as const;
 const layerSchemas = { persona: personaJsonSchema, social: socialJsonSchema, embodiment: embodimentJsonSchema };
+export interface CharacterCommitGuard {
+  assertCurrent?: () => void;
+  draft?: CharacterDraft;
+  section?: { id: string; itemId?: string; value: unknown };
+}
+export type CharacterEditAction = "set" | "patch" | "upsert" | "add" | "update" | "remove" | "skip";
+export interface CharacterEditResult { itemId: string; item: JsonObject }
 export class CharacterRepository {
   private readonly db: DatabaseSync;
+  private readonly dataDirKey: string;
   constructor(dataDir: string) {
-    mkdirSync(dataDir, { recursive: true });
-    this.db = new DatabaseSync(join(dataDir, "character.sqlite"));
+    this.dataDirKey = resolve(dataDir);
+    mkdirSync(this.dataDirKey, { recursive: true });
+    this.db = new DatabaseSync(join(this.dataDirKey, "character.sqlite"));
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS character_documents (id TEXT PRIMARY KEY, value TEXT NOT NULL)");
   }
   close(): void { this.db.close(); }
@@ -26,28 +36,66 @@ export class CharacterRepository {
     this.db.exec("BEGIN IMMEDIATE");
     try { const value = fn(); this.db.exec("COMMIT"); return value; } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
+  private assertCommitGuard(sessionId: string, mode: string, guard?: CharacterCommitGuard): void {
+    guard?.assertCurrent?.();
+    if (guard?.draft) {
+      const current = this.draft(sessionId);
+      const snapshot = (draft: CharacterDraft | null) => draft && {
+        id: draft.id, stage: draft.stage, baseRevision: draft.baseRevision,
+        profileRevision: draft.profileRevision, value: draft.value
+      };
+      if (JSON.stringify(snapshot(current)) !== JSON.stringify(snapshot(guard.draft))) {
+        throw new Error("角色草稿在校验期间已变化，请重新读取后再确认");
+      }
+    }
+    if (guard?.section) {
+      const current = this.section(sessionId, mode, guard.section.id, guard.section.itemId).value;
+      if (JSON.stringify(current) !== JSON.stringify(guard.section.value)) {
+        throw new Error("目标分块或条目在校验期间已变化，请重新读取后再修改");
+      }
+    }
+  }
   profile(): CharacterProfile {
     const existing = this.read<CharacterProfile>("profile");
-    if (existing) return existing;
+    if (existing) return normalizeProfileDefaults(existing);
     const value = emptyCharacter();
     this.db.prepare("INSERT OR IGNORE INTO character_documents(id,value) VALUES ('profile',?)").run(JSON.stringify(value));
-    return this.read<CharacterProfile>("profile")!;
+    return normalizeProfileDefaults(this.read<CharacterProfile>("profile")!);
+  }
+  referencedFileIds(): Set<string> {
+    const rows = this.db.prepare("SELECT id, value FROM character_documents WHERE id = 'profile' OR id LIKE 'draft:%'").all() as Array<{ id: string; value: string }>;
+    const fileIds = new Set<string>();
+    for (const row of rows) {
+      const parsed = JSON.parse(row.value) as JsonObject;
+      if (row.id !== "profile" && parsed?.stage !== "social") continue;
+      const root = row.id === "profile" ? parsed : parsed?.value;
+      const items = root?.social?.referenceImages;
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        if (typeof item?.fileId === "string" && item.fileId.trim()) {
+          fileIds.add(item.fileId.trim());
+        }
+      }
+    }
+    return fileIds;
   }
   /** Data 编辑与聊天确认共用固定档案校验；系统元数据只能由仓库维护。 */
   validateProfile(value: unknown): CharacterProfile {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("角色档案必须是对象");
-    const candidate = structuredClone(value) as CharacterProfile;
+    const candidate = normalizeProfileDefaults(structuredClone(value) as CharacterProfile);
     const keys = Object.keys(candidate);
     if (keys.length !== 5 || !["revision", "confirmed", "persona", "social", "embodiment"].every(key => keys.includes(key))) throw new Error("角色档案字段不完整或包含未知字段");
     const current = this.profile();
     if (typeof candidate.revision !== "string" || candidate.revision !== current.revision) throw new Error("角色设定已被其他保存更新，请重新读取后再保存");
     if (JSON.stringify(candidate.confirmed) !== JSON.stringify(current.confirmed)) throw new Error("确认状态由系统维护，不能直接修改");
-    for (const layer of ["persona", "social", "embodiment"] as const) validateJson(layerSchemas[layer], candidate[layer], layer);
-    validateFixed(candidate);
+    normalizeReferenceImagesInSocial(candidate.social);
+    for (const layer of fixedStages) validateJson(layerSchemas[layer], candidate[layer], layer);
+    validateFixed(candidate, current);
     return candidate;
   }
-  saveProfile(value: unknown): CharacterProfile {
+  saveProfile(value: unknown, assertCurrent?: () => void): CharacterProfile {
     return this.transaction(() => {
+      assertCurrent?.();
       const next = this.validateProfile(value);
       const previous = this.profile();
       for (const layer of ["persona", "social", "embodiment"] as const) {
@@ -122,48 +170,118 @@ export class CharacterRepository {
   }
   cancel(sessionId: string): void { this.db.prepare("DELETE FROM character_documents WHERE id = ?").run(`draft:${sessionId}`); }
   reset(sessionId: string): void { this.transaction(() => { this.cancel(sessionId); this.write(`state:${sessionId}`, emptyCharacterSession()); }); }
-  sections(sessionId: string, mode: string) {
+  sections(sessionId: string, mode: string): Array<CharacterSection & { writable: boolean; touched: boolean }> {
     const draft = this.draft(sessionId);
     if (!draft && this.requiredStage(sessionId, mode)) return [];
-    return characterSections.filter(section => section.tier <= tierForMode(mode) && (draft ? draft.stage === "state" ? section.scope === "session" : section.scope === "character" && section.path[0] === draft.stage : true));
+    const tier = tierForMode(mode);
+    if (!draft) {
+      return characterSections
+        .filter(section => section.tier <= tier)
+        .map(section => ({ ...section, writable: section.scope === "session", touched: false }));
+    }
+    const draftStageIndex = draft.stage === "state" ? fixedStages.length : fixedStages.indexOf(draft.stage);
+    const confirmed = this.profile().confirmed;
+    return characterSections.flatMap((section): Array<CharacterSection & { writable: boolean; touched: boolean }> => {
+      if (section.tier > tier) return [];
+      const isCurrentStage = draft.stage === "state"
+        ? section.scope === "session"
+        : section.scope === "character" && section.path[0] === draft.stage;
+      if (isCurrentStage) {
+        return [{ ...section, writable: true, touched: draft.touched.includes(section.id) }];
+      }
+      if (section.scope === "character") {
+        const layer = section.path[0] as typeof fixedStages[number];
+        if (fixedStages.indexOf(layer) < draftStageIndex && confirmed.includes(layer)) {
+          return [{ ...section, writable: false, touched: false }];
+        }
+      }
+      return [];
+    });
   }
-  section(sessionId: string, mode: string, id: string) {
+  section(sessionId: string, mode: string, id: string, itemId?: unknown): CharacterSection & { writable: boolean; touched: boolean; value: any; itemId?: string } {
     const section = this.sections(sessionId, mode).find(item => item.id === id);
     if (!section) throw new Error("当前阶段不可访问此分块");
     const draft = this.draft(sessionId);
-    const root = draft?.value ?? (section.scope === "character" ? this.profile() : this.state(sessionId));
-    return { ...section, value: readPath(root, section.path), touched: draft?.touched.includes(id) ?? false };
+    const root = draft && section.writable
+      ? draft.value
+      : section.scope === "character"
+        ? this.profile()
+        : this.state(sessionId);
+    const fullValue = readSectionValue(root, section);
+    if (itemId !== undefined) {
+      if (!section.collectionKey) throw new Error("此分块不是可按条目 ID 读取的集合");
+      if (typeof itemId !== "string" || !itemId.trim()) throw new Error("需要有效的 itemId");
+      const trimmedItemId = itemId.trim();
+      const items = Array.isArray(fullValue) ? (fullValue as JsonObject[]) : [];
+      const matched = items.find(item => item?.[section.collectionKey!] === trimmedItemId);
+      if (!matched) throw new Error(`未找到条目：${trimmedItemId}`);
+      return { ...section, value: structuredClone(matched), itemId: trimmedItemId };
+    }
+    return { ...section, value: structuredClone(fullValue) };
   }
-  edit(sessionId: string, mode: string, id: string, action: "set" | "upsert" | "remove" | "skip", value?: unknown, itemId?: string, draftId?: string): void {
-    this.transaction(() => {
+  edit(sessionId: string, mode: string, id: string, action: CharacterEditAction, value?: unknown, itemId?: string, draftId?: string, guard?: CharacterCommitGuard): CharacterEditResult | undefined {
+    return this.transaction(() => {
+      this.assertCommitGuard(sessionId, mode, guard);
       const draft = this.draft(sessionId);
       if (draftId !== draft?.id) throw new Error("配置阶段已变化，请重新读取目录");
       const section = this.section(sessionId, mode, id);
       if (!draft && section.scope === "character") throw new Error("固定设定只能进入配置草稿后修改");
+      if (!section.writable) throw new Error("当前阶段此分块为只读，不能修改");
       if (!draft && tierForMode(mode) === 3 && !this.state(sessionId).initialized) throw new Error("请先完成会话初始化");
       if (!draft && action === "skip") throw new Error("跳过仅用于配置草稿");
       const state = this.state(sessionId); const root = draft?.value ?? state;
-      const current = readPath(root, section.path);
+      const current = readSectionValue(root, section);
       let next: unknown;
+      let editedItemId: string | undefined;
+      let editedItem: JsonObject | undefined;
       if (action === "skip") next = emptyValue(section.schema);
-      else if (action === "set") {
+      else if (action === "set" || action === "patch") {
         if (section.collectionKey && Array.isArray(value) && value.length) throw new Error("此集合请按单条 ID 使用 upsert，不能整体覆盖");
-        next = value;
+        if (action === "patch" && section.collectionKey) throw new Error("集合请使用条目修改操作");
+        next = action === "patch" ? mergeSectionPatch(current, value, section.schema) : value;
       } else {
         if (!section.collectionKey) throw new Error("此分块不是可按 ID 编辑的集合");
         const items = structuredClone(current ?? []) as JsonObject[];
         if (action === "remove") next = items.filter(item => item[section.collectionKey!] !== itemId);
         else {
           if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("条目必须是对象");
-          const item = structuredClone(value) as JsonObject;
-          item[section.collectionKey] ??= itemId || randomUUID();
+          const patch = structuredClone(value) as JsonObject;
+          if (action === "update" && (!itemId || !items.some(row => row[section.collectionKey!] === itemId))) {
+            throw new Error("itemId 不存在，请重新读取已有条目");
+          }
+          if (action === "update" && section.immutableItemFields?.some(field => field in patch)) {
+            throw new Error("已存在条目的来源字段不可修改");
+          }
+          const previousItem = items.find(row => row[section.collectionKey!] === itemId);
+          const item = action === "update"
+            ? mergeSectionPatch(previousItem, patch, section.schema.items) as JsonObject
+            : action === "add"
+              ? mergeSectionPatch(emptyValue(section.schema.items), patch, section.schema.items) as JsonObject
+              : patch;
+          if (itemId && item[section.collectionKey] && item[section.collectionKey] !== itemId) {
+            throw new Error("条目 ID 与 itemId 参数不一致");
+          }
+          if (action === "add" && (section.collectionKey === "id" || id === "session.simulation.wardrobe.instances")) {
+            item[section.collectionKey] = randomUUID();
+          } else item[section.collectionKey] ??= itemId || randomUUID();
+          if (id === "social.referenceImages") {
+            if (typeof item.fileId === "string") item.fileId = item.fileId.trim();
+            if ("subject" in item) item.subject = normalizeReferenceSubject(item.subject);
+          }
           validateJson(section.schema.items, item, `${id}.item`);
           const index = items.findIndex(row => row[section.collectionKey!] === item[section.collectionKey!]);
+          if (action === "add" && index >= 0) throw new Error("此引用已有记录，请使用修改工具");
           if (index < 0) items.push(item); else items[index] = item;
+          editedItemId = item[section.collectionKey];
+          editedItem = item;
           next = items;
         }
       }
       validateJson(section.schema, next, id);
+      if (id === "social.referenceImages") {
+        const baseline = [...(Array.isArray(current) ? current : []), ...(this.profile().social.referenceImages ?? [])] as JsonObject[];
+        validateReferenceImages(next as JsonObject[], baseline);
+      }
       protectDerivedState(id, current, next, draft?.stage === "state");
       if (draft?.stage === "state" && id === "session.simulation.body.activePhysiology.menstrualCycle" && next && (next as JsonObject).lastStartDate !== current?.lastStartDate) {
         next = { ...(next as JsonObject), nextStartDate: null, currentEndDate: null, active: false };
@@ -175,21 +293,24 @@ export class CharacterRepository {
         advanceCycle(this.profile(), state);
         state.revision = randomUUID(); this.write(`state:${sessionId}`, state);
       }
+      return editedItemId !== undefined && editedItem ? { itemId: editedItemId, item: structuredClone(editedItem) } : undefined;
     });
   }
   skipDraftSection(sessionId: string, mode: string, id: string, draftId: string): void {
     this.transaction(() => {
       const draft = this.draft(sessionId);
       if (!draft || draft.id !== draftId) throw new Error("配置阶段已变化，请重新读取目录");
-      this.section(sessionId, mode, id);
+      const section = this.section(sessionId, mode, id);
+      if (!section.writable) throw new Error("当前阶段此分块为只读，不能跳过");
       if (!draft.touched.includes(id)) draft.touched.push(id);
       this.write(`draft:${sessionId}`, draft);
     });
   }
-  confirm(sessionId: string, mode: string): CharacterStage {
+  confirm(sessionId: string, mode: string, guard?: CharacterCommitGuard): CharacterStage {
     return this.transaction(() => {
+      this.assertCommitGuard(sessionId, mode, guard);
       const draft = this.draft(sessionId); if (!draft) throw new Error("没有待确认的角色草稿");
-      if ((draft.stage === "state" && tierForMode(mode) !== 3) || (draft.stage !== "state" && ["persona", "social", "embodiment"].indexOf(draft.stage) >= tierForMode(mode))) throw new Error("模式已改变，请取消此草稿");
+      if ((draft.stage === "state" && tierForMode(mode) !== 3) || (draft.stage !== "state" && fixedStages.indexOf(draft.stage) >= tierForMode(mode))) throw new Error("模式已改变，请取消此草稿");
       const profile = this.profile(); const state = this.state(sessionId);
       if (draft.baseRevision !== (draft.stage === "state" ? state.revision : profile.revision)) throw new Error("配置已在其他会话修改，请取消后重新进入配置");
       if (draft.stage === "state") {
@@ -201,9 +322,11 @@ export class CharacterRepository {
         state.revision = randomUUID(); this.write(`state:${sessionId}`, state);
       } else {
         const layer = draft.stage;
+        const previousProfile = structuredClone(profile);
+        if (layer === "social") normalizeReferenceImagesInSocial(draft.value.social);
         validateJson(layerSchemas[layer], draft.value[layer], layer);
         profile[layer] = draft.value[layer];
-        validateFixed(profile);
+        validateFixed(profile, previousProfile);
         if (!profile.confirmed.includes(layer)) profile.confirmed.push(layer);
         profile.revision = randomUUID(); this.write("profile", profile);
       }
@@ -236,7 +359,69 @@ function unique(items: JsonObject[], key: string): void {
     ids.add(item[key]);
   }
 }
-function validateFixed(profile: CharacterProfile): void {
+function normalizeProfileDefaults(profile: CharacterProfile): CharacterProfile {
+  for (const section of characterSections) {
+    if (section.scope !== "character" || section.schema.type !== "array" || section.schema.default === undefined) continue;
+    const parent = readPath(profile, section.path.slice(0, -1));
+    const leafKey = section.path.at(-1)!;
+    if (parent && typeof parent === "object" && !Array.isArray(parent) && parent[leafKey] === undefined) {
+      parent[leafKey] = emptyValue(section.schema);
+    }
+  }
+  return profile;
+}
+function normalizeReferenceImagesInSocial(social: JsonObject | undefined): void {
+  if (!social || typeof social !== "object" || Array.isArray(social)) return;
+  if (social.referenceImages === undefined) {
+    social.referenceImages = [];
+    return;
+  }
+  if (!Array.isArray(social.referenceImages)) return;
+  for (const item of social.referenceImages) {
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      if (typeof item.fileId === "string") item.fileId = item.fileId.trim();
+      if ("subject" in item) item.subject = normalizeReferenceSubject(item.subject);
+    }
+  }
+}
+export function validateReferenceImages(items: JsonObject[], previousItems: JsonObject[] = []): void {
+  if (!Array.isArray(items)) throw new Error("referenceImages 必须是数组");
+  if (items.length > 8) throw new Error("参考图最多保存 8 条");
+  unique(items, "id");
+  const pairKeys = new Set<string>();
+  const previousById = new Map<string, JsonObject>();
+  for (const prev of previousItems) {
+    if (prev && typeof prev.id === "string" && prev.id.trim() && !previousById.has(prev.id)) {
+      previousById.set(prev.id, prev);
+    }
+  }
+  for (const item of items) {
+    if (typeof item.fileId !== "string" || !item.fileId.trim()) throw new Error("fileId 必须非空");
+    item.fileId = item.fileId.trim();
+    if (typeof item.label !== "string" || !item.label.trim()) throw new Error("label 必须非空");
+    if (typeof item.description !== "string" || !item.description.trim()) throw new Error("description 必须非空");
+    if (item.description.length > 12000) throw new Error("description 长度不能超过 12000");
+    const subject = normalizeReferenceSubject(item.subject);
+    if (subject !== null && typeof subject !== "string") throw new Error("subject 必须是字符串或 null");
+    item.subject = subject;
+    const pairKey = `${item.fileId}\u0000${subject ?? ""}`;
+    if (pairKeys.has(pairKey)) throw new Error("同一图片与主体（fileId + subject）不能重复添加参考图");
+    pairKeys.add(pairKey);
+    const prev = previousById.get(item.id);
+    if (prev) {
+      const prevFileId = typeof prev.fileId === "string" ? prev.fileId.trim() : prev.fileId;
+      const prevSubject = normalizeReferenceSubject(prev.subject);
+      if (item.fileId !== prevFileId || subject !== prevSubject) {
+        throw new Error("已存在参考图的来源字段（fileId、subject）不可修改");
+      }
+    }
+  }
+}
+function validateFixed(profile: CharacterProfile, previousProfile?: CharacterProfile): void {
+  validateReferenceImages(
+    (profile.social.referenceImages ?? []) as JsonObject[],
+    (previousProfile?.social?.referenceImages ?? []) as JsonObject[]
+  );
   const wardrobe = profile.embodiment.wardrobe;
   unique(wardrobe.items, "id"); unique(wardrobe.outfits, "id");
   for (const item of wardrobe.items) if (item.quantity != null && (!Number.isInteger(item.quantity) || item.quantity < 0 || item.quantity > 1000)) throw new Error("物品数量必须是 0 至 1000 的整数或留空");
@@ -268,4 +453,9 @@ export function characterRepository(dataDir: string): CharacterRepository {
   const key = resolve(dataDir); let store = repositories.get(key);
   if (!store) { store = new CharacterRepository(key); repositories.set(key, store); }
   return store;
+}
+export function characterReferencedFileIds(dataDir: string): Set<string> {
+  const key = resolve(dataDir);
+  if (!repositories.has(key) && !existsSync(join(key, "character.sqlite"))) return new Set();
+  return characterRepository(key).referencedFileIds();
 }

@@ -162,6 +162,7 @@ export class LmStudioProvider implements LlmProvider {
         reasoningContent: result.reasoningContent,
         toolCalls: [],
         usage: result.usage,
+        completionStatus: "unknown",
         ...(result.responseId ? { assistantMetadata: { lmStudio: { responseId: result.responseId } } } : {})
       };
     } catch (error) {

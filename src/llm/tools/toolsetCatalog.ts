@@ -1,3 +1,5 @@
+import { characterToolNames } from "../../character/tools.ts";
+
 export interface ToolsetDefinition {
   id: string;
   title: string;
@@ -93,7 +95,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "长期偏好、边界、默认做法"
     ],
     toolNames: [
-      "list_character_sections", "read_character_section", "edit_character_section",
+      ...characterToolNames,
       "get_persona",
       "list_global_rules",
       "upsert_global_rule",
@@ -385,7 +387,7 @@ export const TOOLSET_DEFINITIONS: ToolsetDefinition[] = [
       "更新表里情绪、情欲羞耻、短期微意图、关系进展或约定",
       "切换场景地点、分开或重逢、跳过时间、处理 # 场外导演指令"
     ],
-    toolNames: ["list_character_sections", "read_character_section", "edit_character_section"]
+    toolNames: [...characterToolNames]
   },
   {
     modeUniversal: { defaultEnabled: true },

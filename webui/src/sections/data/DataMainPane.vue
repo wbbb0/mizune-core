@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { RefreshCw, ChevronRight, ChevronDown, Save, Trash2, Pin, Pencil, SlidersHorizontal, Plus } from "lucide-vue-next";
-import { SchemaNode } from "@workbench-kit/vue";
+import { SchemaNode, type UiNode } from "@workbench-kit/vue";
 import { useDataSection } from "@/composables/sections/useDataSection";
 import { useElementWidth } from "@/composables/useElementWidth";
+import CharacterReferenceImagesSection from "./CharacterReferenceImagesSection.vue";
 import DataModelExplorerPane from "./DataModelExplorerPane.vue";
 import { WorkbenchAreaHeader, WorkbenchEmptyState, WorkbenchListItem, WorkbenchButton } from "@workbench-kit/vue";
 
@@ -73,6 +74,30 @@ const paneWidth = useElementWidth(paneRef);
 const compactPane = computed(() => paneWidth.value > 0 && paneWidth.value < 720);
 const registryRowsPage = computed(() => resourceRows.value ? Math.floor(resourceRows.value.offset / resourceRows.value.limit) + 1 : 1);
 const registryRowsPageSize = computed(() => resourceRows.value?.limit ?? 50);
+const singletonUiTree = computed<UiNode | undefined>(() => {
+  const tree = resource.value?.uiTree;
+  if (!tree || resource.value?.key !== "character_profile" || tree.kind !== "group") {
+    return tree;
+  }
+  const socialChild = tree.children.social;
+  if (!socialChild || socialChild.node.kind !== "group") {
+    return tree;
+  }
+  const { referenceImages: _referenceImages, ...restSocialChildren } = socialChild.node.children;
+  return {
+    ...tree,
+    children: {
+      ...tree.children,
+      social: {
+        ...socialChild,
+        node: {
+          ...socialChild.node,
+          children: restSocialChildren
+        }
+      }
+    }
+  };
+});
 
 async function selectModelRow(row: unknown) {
   await selectRegistryRow(row, { showDetailPane: false });
@@ -270,16 +295,23 @@ function dataModelStorageKey(resourceKey: string, name: string): string {
         </template>
       </WorkbenchAreaHeader>
 
-      <div v-if="resource.shape === 'singleton' && resource.accessMode === 'editable' && resource.uiTree" class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
+      <div v-if="resource.shape === 'singleton' && resource.accessMode === 'editable' && singletonUiTree" class="scrollbar-thin flex-1 overflow-y-auto px-4 py-3">
         <p v-if="resource.description" class="mb-3 text-small text-text-muted">{{ resource.description }}</p>
         <SchemaNode
           :read-only="saving || validating"
           :editor-features="resource.editorFeatures"
-          :node="resource.uiTree"
+          :node="singletonUiTree"
           :model-value="registryDraftValue"
           :stored-value="registryStoredValue"
           :effective-value="registryDraftValue"
           :depth="0"
+          @update:model-value="updateRegistryDraft"
+        />
+        <CharacterReferenceImagesSection
+          v-if="resource.key === 'character_profile'"
+          :model-value="registryDraftValue"
+          :stored-value="registryStoredValue"
+          :read-only="saving || validating"
           @update:model-value="updateRegistryDraft"
         />
       </div>

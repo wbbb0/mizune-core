@@ -216,6 +216,7 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     },
     directCommandDeps: {
       config,
+      chatFileStore,
       stickerService: services.stickerService,
       sessionManager,
       oneBotClient,

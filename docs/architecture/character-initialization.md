@@ -22,11 +22,22 @@ Data 的「三层角色档案」使用 workbench-kit 的 Schema 树形编辑器�
 
 ## 分块接口
 
-- `list_character_sections` 只返回目录、当前阶段、草稿 ID 和进度。
-- `read_character_section` 返回指定块的值、中文说明和完整局部 Schema。
+- `list_character_sections` 只返回目录、当前阶段、草稿 ID 和进度（包含当前阶段可写分块与已确认前置固定层的只读分块）。
+- `read_character_section` 返回指定块的值、中文说明和完整局部 Schema；带 `collectionKey` 的集合分块支持传可选 `itemId` 单条读取。配置阶段允许只读访问已确认的前置固定设定层（如在 `embodiment` 或 `state` 阶段只读已确认的 `persona`、`social`），但只读分块不展开编辑/跳过工具且拒绝写入或跳过。
 - 配置阶段按当前分块展开专用填写工具，草稿与分块由工具名称绑定；普通游玩仍使用 `edit_character_section` 修改动态状态。
 
-分块采用 `persona.name`、`social.identity`、`embodiment.physiology.menstrualCycle`、`embodiment.wardrobe.items` 等自然路径。会话状态使用 `session.social.*`、`session.simulation.*`。集合按单条 ID 编辑，禁止整体提交非空集合。未知路径、额外字段、非法数值或不存在的引用会被拒绝。
+分块采用 `persona.name`、`social.identity`、`social.referenceImages`、`embodiment.physiology.menstrualCycle`、`embodiment.wardrobe.items` 等自然路径。会话状态使用 `session.social.*`、`session.simulation.*`。集合按单条 ID 编辑，禁止整体提交非空集合。未知路径、额外字段、非法数值或不存在的引用会被拒绝。
+
+## 角色设定图与外貌辅助（`social.referenceImages`）
+
+`social.referenceImages` 保存角色视觉参考资料（最多 8 条），每条记录包含 `id`（`ref_1` 等）、`fileId`（静态图片资产 ID）、`label`、`subject`（多人图中的目标主体说明，单人图为 `null`）与 `description`（完整中文视觉特征描述）：
+
+- **导入与精读**：在 `social` 配置阶段且资产库与图片精读启用时，向 owner 暴露 `import_character_reference`。工具解析 `asset_ref` 或 `file_id`，复用 `mediaVisionService` 与 `mediaInspectionService` 提取详细视觉描述并写入当前 `social` 草稿。仅当上游完成状态非截断（`completionStatus !== "truncated"`）、JSON 未经 `jsonrepair` 修补（`parseStatus === "parsed"`）、顶层协议字段齐全且 `status === "answered"`、`found === true` 时才写入草稿；已知的政策或协议异常由 Provider 明确返回失败，不降为 `unknown`。缺少可靠结束信息时保留 `unknown` 并在回执注明限制；多人图目标不明确时返回 `uncertain` 由用户澄清。
+- **来源不可变与统一校验**：已存条目的来源字段 `fileId`、`subject` 属于不可变身份字段，专用修改工具不暴露这两个参数，所有写入入口（导入工具、集合工具、`edit_character_section`、HTTP 分块接口、Data 保存与 `.confirm`）均通过统一的资产校验、临时保留（retain lease）与提交流程校验静态图片资产存在性及来源字段不可变。
+- **异步写入与确认**：`src/character/writes.ts` 统一处理资产准备、取消及操作有效性检查；仓库在短事务内检查预期草稿或条目快照后提交。确认期间取消重建或修改草稿都会拒绝发布，读取引导状态和标记进度不改变确认内容。集合的新增、局部修改、删除分别执行，局部字段在事务内合并；校验期间条目被修改或删除时报告冲突，不覆盖新值或恢复已删除条目。生成取消或会话模式变化后不提交待完成写入。
+- **轻量上下文投影**：`characterPrompt`（含配置阶段已确认社交设定与普通游玩）及 `StatefulRpPostTurnMaintainer` 在构造模型上下文时仅投影 `{ id, fileId, label, subject }`，不将长 `description` 拼入每轮常驻上下文；需要完整文字描述时按需调用 `read_character_section`（可传 `itemId`），需要生图、看图或发图时将 `fileId` 传给 `generate_image`（`reference_images`）、`asset_media_view` / `asset_media_inspect` 或 `asset_send_to_chat`。
+- **资产保留与回收边界**：`characterReferencedFileIds` 只枚举已发布 `profile` 和所有会话 `social` 草稿中的持久引用，由装配层注入 `ChatFileStore` 与 `AssetLifecycleService`。临时保留计数只归资产库，所有实际删除经过同一边界检查，引用读取失败时拒绝删除。被引用图片在会话清理、TTL/容量回收、文件删除与 Data `workspace_files` 删除时均受保护；取消草稿或移除条目后恢复正常回收。角色写入需要明确装配资产依赖，不直接读取资产数据库或猜测文件路径。
+- **Data 页面展示**：Data 的 `character_profile` 资源下展示 `social.referenceImages` 列表，已存条目的 `fileId`、`subject` 只读展示并提供受鉴权的 `/api/chat-files/:fileId/content` 原图预览与打开链接，支持编辑 `label`、`description` 与删除条目。
 
 固定配置确认后，下一轮读取新设定，不重写既有剧情。衣柜模板只决定新开局的实例；实例保存定义副本，后来修改或删除全局模板不影响已有衣物。关闭周期机制会清除相应活动状态，其余动态信息保留。
 

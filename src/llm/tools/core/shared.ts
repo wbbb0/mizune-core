@@ -95,6 +95,7 @@ export interface BuiltinToolActorContext {
   config: AppConfig;
   relationship: Relationship;
   replyDelivery: SessionDelivery;
+  expectedCharacterDraftId?: string | null | undefined;
   lastMessage: {
     sessionId: string;
     userId: string;

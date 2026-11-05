@@ -13,6 +13,7 @@ export interface CharacterSection {
   description: string;
   schema: JsonObject;
   collectionKey?: string;
+  immutableItemFields?: readonly string[];
 }
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 const validators = new WeakMap<JsonObject, ReturnType<typeof ajv.compile>>();
@@ -49,10 +50,13 @@ function sectionsFor(tier: CharacterTier, scope: "character" | "session", root: 
     const collectionKey = part.type === "array" && part.items?.properties
       ? ["id", "instanceId", "participantId"].find(key => key in part.items.properties)
       : undefined;
+    const id = `${scope === "session" ? "session." : ""}${path.join(".")}`;
+    const immutableItemFields = id === "social.referenceImages" ? (["fileId", "subject"] as const) : undefined;
     result.push({
-      id: `${scope === "session" ? "session." : ""}${path.join(".")}`,
+      id,
       tier, scope, path, schema: part, description: part.description ?? path.join("."),
-      ...(collectionKey ? { collectionKey } : {})
+      ...(collectionKey ? { collectionKey } : {}),
+      ...(immutableItemFields ? { immutableItemFields } : {})
     });
   };
   for (const [key, part] of Object.entries(schema.properties ?? {})) add([root, key], part as JsonObject);
@@ -91,9 +95,40 @@ export function emptyValue(schema: JsonObject): any {
   if (schema.type === "number" || schema.type === "integer") return schema.minimum ?? 0;
   return schema.enum?.[0] ?? "";
 }
+export function mergeSectionPatch(current: unknown, patch: unknown, schema: JsonObject): unknown {
+  if (!schema.properties || !patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
+  const base = current && typeof current === "object" && !Array.isArray(current)
+    ? structuredClone(current) as JsonObject : emptyValue({ ...schema, type: "object" });
+  for (const [name, value] of Object.entries(patch)) {
+    if (["__proto__", "constructor", "prototype"].includes(name)) throw new Error("无效字段名称");
+    base[name] = schema.properties[name] ? mergeSectionPatch(base[name], value, schema.properties[name]) : value;
+  }
+  return base;
+}
 
 export function readPath(root: JsonObject, path: string[]): any {
   return path.reduce((value, key) => value?.[key], root);
+}
+export function readSectionValue(root: JsonObject, section: CharacterSection): any {
+  const parent = readPath(root, section.path.slice(0, -1));
+  const value = readPath(root, section.path);
+  if (
+    value === undefined &&
+    parent &&
+    typeof parent === "object" &&
+    !Array.isArray(parent) &&
+    section.schema.type === "array" &&
+    section.schema.default !== undefined
+  ) {
+    return emptyValue(section.schema);
+  }
+  return value;
+}
+export function normalizeReferenceSubject(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") return value as never;
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 export function setPath(root: JsonObject, path: string[], value: unknown): void {
   if (!path.length || path.some(key => ["__proto__", "constructor", "prototype"].includes(key))) throw new Error("无效字段路径");

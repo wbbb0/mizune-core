@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
+import { characterReferencedFileIds, characterRepository } from "../../src/character/repository.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
@@ -388,5 +389,139 @@ test("chat file store keeps assets sqlite under dataDir even when localFiles.roo
   } finally {
     await rm(dataDir, { recursive: true, force: true });
     await rm(localFilesRoot, { recursive: true, force: true });
+  }
+});
+
+test("chat file store refuses to delete files retained by lease or injected persistent references", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-retention-"));
+  try {
+    let failReferenceRead = false;
+    const config = createTestAppConfig({
+      dataDir: rootDir,
+      chatFiles: {
+        enabled: true,
+        root: "chat-files",
+        maxUploadBytes: 1024 * 1024
+      }
+    });
+    const store = new ChatFileStore(
+      config,
+      createSilentLogger(),
+      {
+        rootDir,
+        resolvePath(path: string) {
+          return {
+            sourcePath: path,
+            absolutePath: join(rootDir, path)
+          };
+        }
+      } as any,
+      rootDir,
+      undefined,
+      () => {
+        if (failReferenceRead) throw new Error("引用读取失败");
+        return characterReferencedFileIds(rootDir);
+      }
+    );
+    await store.init();
+    const leasedFile = await store.importBuffer({
+      buffer: Buffer.from("leased"),
+      sourceName: "leased.txt",
+      mimeType: "text/plain",
+      kind: "file",
+      origin: "user_upload"
+    });
+    const refFile = await store.importBuffer({
+      buffer: Buffer.from("ref"),
+      sourceName: "ref.txt",
+      mimeType: "text/plain",
+      kind: "file",
+      origin: "user_upload"
+    });
+
+    await store.withRetainedFiles([leasedFile.fileId], async () => {
+      assert.deepEqual([...store.listRetainedFileIds()], [leasedFile.fileId]);
+      await assert.rejects(store.deleteFile(leasedFile.fileId), /正在使用/);
+    });
+    assert.equal(store.listRetainedFileIds().size, 0);
+    assert.equal(await store.deleteFile(leasedFile.fileId), true);
+
+    const charStore = characterRepository(rootDir);
+    charStore.begin("s", "persona", "setup", "stateful_rp");
+    charStore.confirm("s", "stateful_rp");
+    const socialDraft = charStore.begin("s", "social", "setup", "stateful_rp");
+    charStore.edit(
+      "s",
+      "stateful_rp",
+      "social.referenceImages",
+      "upsert",
+      { id: "ref-1", fileId: refFile.fileId, label: "参考图", subject: null, description: "描述" },
+      "ref-1",
+      socialDraft.id
+    );
+    await assert.rejects(store.deleteFile(refFile.fileId), /长期资料引用/);
+    charStore.confirm("s", "stateful_rp");
+    await assert.rejects(store.deleteFile(refFile.fileId), /长期资料引用/);
+
+    // 移除角色引用后允许正常删除
+    const nextDraft = charStore.begin("s", "social", "config", "stateful_rp");
+    charStore.edit("s", "stateful_rp", "social.referenceImages", "remove", undefined, "ref-1", nextDraft.id);
+    charStore.confirm("s", "stateful_rp");
+    failReferenceRead = true;
+    await assert.rejects(store.deleteFile(refFile.fileId), /引用读取失败/);
+    assert.ok(await store.getFile(refFile.fileId));
+    assert.equal(await store.isFileAvailable(refFile.fileId), true);
+    failReferenceRead = false;
+    assert.equal(await store.deleteFile(refFile.fileId), true);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("asset retention waits for an in-flight deletion check and prevents deletion before validation starts", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-retention-race-"));
+  try {
+    let entered!: () => void;
+    let release!: () => void;
+    const deletionStarted = new Promise<void>(resolve => { entered = resolve; });
+    const allowReferenceRead = new Promise<void>(resolve => { release = resolve; });
+    const store = new ChatFileStore(
+      createTestAppConfig({ dataDir: rootDir }),
+      createSilentLogger(),
+      { rootDir, resolvePath: (path: string) => ({ absolutePath: join(rootDir, path) }) } as any,
+      rootDir,
+      undefined,
+      async () => {
+        entered();
+        await allowReferenceRead;
+        return [];
+      }
+    );
+    await store.init();
+    const file = await store.importBuffer({ buffer: Buffer.from("race"), sourceName: "race.txt", kind: "file", origin: "user_upload" });
+    const deletion = assert.rejects(store.deleteFile(file.fileId), /正在使用/);
+    await deletionStarted;
+    let validationStarted = false;
+    const retained = store.withRetainedFiles([file.fileId], async () => {
+      validationStarted = true;
+      assert.ok(await store.getFile(file.fileId));
+      assert.equal(await store.isFileAvailable(file.fileId), true);
+      await store.withRetainedFiles([file.fileId], () => {
+        assert.deepEqual([...store.listRetainedFileIds()], [file.fileId]);
+      });
+      assert.deepEqual([...store.listRetainedFileIds()], [file.fileId]);
+    });
+    await Promise.resolve();
+    assert.equal(validationStarted, false);
+    release();
+    await deletion;
+    await retained;
+    assert.equal(validationStarted, true);
+    assert.equal(store.listRetainedFileIds().size, 0);
+    await assert.rejects(store.withRetainedFiles([file.fileId], () => { throw new Error("validation failed"); }), /validation failed/);
+    assert.equal(store.listRetainedFileIds().size, 0);
+    assert.equal(await store.deleteFile(file.fileId), true);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
   }
 });
