@@ -25,9 +25,9 @@ interface Exchange {
 }
 const activeExchanges = new AsyncLocalStorage<Exchange[]>();
 
-function describeError(error: unknown): { name: string; message: string } {
+function describeError(error: unknown): { name: string; message: string; statusCode?: number } {
   return error instanceof Error
-    ? { name: error.name, message: error.message }
+    ? { name: error.name, message: error.message, ...("statusCode" in error && typeof error.statusCode === "number" ? { statusCode: error.statusCode } : {}) }
     : { name: "Error", message: String(error) };
 }
 
@@ -143,7 +143,7 @@ async function runProviderExchangeDump<T>(
   const id = randomUUID();
   const startedAt = new Date().toISOString();
   let result: T | undefined;
-  let failure: { name: string; message: string } | undefined;
+  let failure: ReturnType<typeof describeError> | undefined;
   return activeExchanges.run(exchanges, async () => {
     try {
       result = await run();

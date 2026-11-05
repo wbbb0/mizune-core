@@ -1246,3 +1246,49 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
       ["user", "assistant"]
     );
   });
+
+test("Google 跨轮投影保留首个调用签名的并行组与普通回复尾部签名", () => {
+  const toolCalls = ["first", "second"].map(id => ({ id, type: "function" as const, function: { name: "lookup", arguments: "{}" } }));
+  const parts = [{ thoughtSignature: "sig_first", functionCall: { id: "first", name: "lookup", args: {} } }, { functionCall: { id: "second", name: "lookup", args: {} } }];
+  const finalParts = [{ text: "答案" }, { text: "", thoughtSignature: "tail" }];
+  const projection = getProviderTranscriptProjector("google").project({ transcript: [
+    { kind: "user_message", role: "user", llmVisible: true, timestampMs: 1, chatType: "private", userId: "1", senderName: "用户", text: "查询", imageIds: [], emojiIds: [], attachments: [], messageFiles: [], audioCount: 0, forwardIds: [], replyMessageId: null, mentionUserIds: [], mentionedAll: false, mentionedSelf: false },
+    { kind: "assistant_tool_call", llmVisible: true, timestampMs: 2, content: "", toolCalls, providerMetadata: { googleParts: parts } },
+    ...toolCalls.map((call, index) => ({ kind: "tool_result" as const, llmVisible: true as const, timestampMs: 3 + index, toolCallId: call.id, toolName: "lookup", content: "{}" })),
+    { kind: "assistant_message", role: "assistant", llmVisible: true, timestampMs: 5, chatType: "private", userId: "1", senderName: "助手", text: "答案", providerMetadata: { googleParts: finalParts } }
+  ] });
+  assert.equal(projection.replayMessages.length, 5);
+  assert.deepEqual(projection.replayMessages[1]?.tool_calls?.map(call => call.id), ["first", "second"]);
+  assert.deepEqual(projection.replayMessages[1]?.providerMetadata?.googleParts, parts);
+  assert.deepEqual(projection.replayMessages[4]?.providerMetadata?.googleParts, finalParts);
+});
+
+test("Google 完整响应绑定的任一片段被删除或压缩后不回灌原文", async () => {
+  const { bindGoogleReplayToTranscript } = await import("../../src/conversation/session/googleReplayBinding.ts");
+  const { buildGoogleContents, googleReplayScope } = await import("../../src/llm/provider/providers/googleContent.ts");
+  const { createLlmTestConfig } = await import("../helpers/llm-test-support.tsx");
+  const pino = (await import("pino")).default;
+  const config = createLlmTestConfig(); config.llm.providers.test!.type = "google";
+  const context = { config, logger: pino({ level: "silent" }), modelRef: "main", model: "fake-model", modelProfile: config.llm.models.main!, providerName: "test", providerConfig: config.llm.providers.test!, baseUrl: "https://google.example/v1beta", candidateIndex: 0 };
+  const transcript: InternalTranscriptItem[] = [
+    { id: "first", groupId: "group", kind: "assistant_message", role: "assistant", llmVisible: true, timestampMs: 1, chatType: "private", userId: "1", senderName: "助手", text: "删除段" },
+    { id: "last", groupId: "group", kind: "assistant_message", role: "assistant", llmVisible: true, timestampMs: 2, chatType: "private", userId: "1", senderName: "助手", text: "保留段" }
+  ];
+  const metadata = bindGoogleReplayToTranscript({ googleParts: [{ text: "删除段保留段" }, { text: "", thoughtSignature: "tail" }], googleReplayScope: googleReplayScope(context) }, transcript, "group");
+  const last = transcript[1]!;
+  if (last.kind !== "assistant_message") return;
+  last.providerMetadata = metadata;
+  let projection = getProviderTranscriptProjector("google").project({ transcript });
+  assert.equal(projection.replayMessages.length, 1);
+  assert.ok(projection.replayMessages[0]?.providerMetadata?.googleParts);
+  const downgraded = buildGoogleContents({ ...context, model: "other-model" }, projection.replayMessages);
+  assert.match(JSON.stringify(downgraded), /删除段/);
+  assert.match(JSON.stringify(downgraded), /保留段/);
+  assert.equal(JSON.stringify(downgraded).includes("thoughtSignature"), false);
+  transcript[0] = { ...transcript[0]!, runtimeExcluded: true, runtimeExclusionReason: "manual_single" };
+  projection = getProviderTranscriptProjector("google").project({ transcript });
+  assert.equal(projection.replayMessages[0]?.providerMetadata?.googleParts, undefined);
+  assert.equal(JSON.stringify(buildGoogleContents(context, projection.replayMessages)).includes("删除段"), false);
+  transcript[0] = { ...transcript[0]!, runtimeExclusionReason: "history_compressed" };
+  assert.equal(getProviderTranscriptProjector("google").project({ transcript }).replayMessages[0]?.providerMetadata?.googleParts, undefined);
+});

@@ -21,9 +21,15 @@ const choices = (label: string) => s.array(s.string().nonempty()).title(label).o
 
 export function createModelOperationShape(type?: LlmProviderType) {
   const generation = type ? createModelApiParametersSchema(type) : modelApiParametersSchema;
+  const googleThinkingSchema = s.discriminatedUnion("mode", [
+    s.object({ mode: s.literal("budget"), budget: s.number().int().min(-1).title("思考预算（-1 使用动态预算）") }),
+    s.object({ mode: s.literal("level"), level: s.enum(["MINIMAL", "LOW", "MEDIUM", "HIGH"] as const).title("思考强度") })
+  ]).title("Google 思考控制").describe("仅填写模型明确支持的控制方式与取值。隐藏思考摘要不等于关闭推理；可关闭思考的 budget 模型在关闭时发送预算 0。").optional();
+  const googleThinkingFields: { googleThinking?: typeof googleThinkingSchema } = !type || type === "google" ? { googleThinking: googleThinkingSchema } : {};
   const chat = () => s.object({
     capabilities: capabilities(type), limits: limits(),
     defaults: generation,
+    ...googleThinkingFields,
     preserveThinking: s.boolean().title("保留历史思考").default(false),
     searchEnabled: s.boolean().title("启用原生搜索").default(false)
   });
@@ -57,7 +63,7 @@ export function createModelOperationShape(type?: LlmProviderType) {
       }).title("默认参数").default(empty)
     }).title("图像生成").optional(),
     transcription: s.object({
-      ...(type === "openai" ? {} : { capabilities: capabilities(type), limits: limits(), defaults: generation,
+      ...(type === "openai" ? {} : { capabilities: capabilities(type), limits: limits(), defaults: generation, ...googleThinkingFields,
         preserveThinking: s.boolean().title("保留历史思考").default(false), searchEnabled: s.boolean().title("启用原生搜索").default(false) }),
       language: s.string().trim().nonempty().title("音频语言代码").optional(),
       prompt: s.string().trim().nonempty().title("转写提示").optional()

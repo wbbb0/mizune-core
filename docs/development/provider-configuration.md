@@ -25,7 +25,7 @@ LLM 目录以供应商为一级目录。创建供应商后先选择类型，表�
 - **从供应商清单选择**：打开窗口后自动调用后端 `POST /api/editors/llm_catalog/list-models`，携带当前 provider 草稿连接信息，
   从模型清单接口拉取模型 id；窗口支持按模型名或别名搜索、区分可添加与已配置模型，并可手动刷新。支持 OpenAI 兼容协议
   （`openai` / `openai_compatible` / `openai_responses_compatible` / `deepseek` / `dashscope` / `lmstudio` 走 `{baseUrl}/models`，
-  DashScope 默认重写到 `compatible-mode/v1`）与 Anthropic（`{baseUrl}/v1/models`）；Google / Vertex 暂不自动拉取，会给出提示。
+  DashScope 默认重写到 `compatible-mode/v1`）与 Anthropic（`{baseUrl}/v1/models`）；Google AI Studio 使用 SDK 模型清单与有界分页；Vertex 暂不自动拉取，会给出提示。
 - **手动填写**：直接输入上游模型名。
 - 两种方式都会自动生成 `[a-z0-9_]` 格式的局部模型别名（新模型可改，重复时追加 `_2`、`_3`），并给出默认能力选择
   （思考 / 视觉 / 音频 / 工具 / 联网搜索（适用供应商）/ 保留思考），提交后写入该 provider 的 `models`。
@@ -124,3 +124,5 @@ vertex:
 `POST /api/editors/llm_catalog/test-model` 受现有管理接口认证保护；每实例只允许一个正在执行的测试。窗口按顺序调用单项测试，停止或关闭窗口会取消剩余任务并通知后端取消当前请求。服务端使用内存中的隔离配置和固定公开测试内容，不读取聊天数据，不创建会话、资产或诊断 dump；返回值不包含凭据或上游完整错误正文。
 
 编辑器按钮通过 workbench-kit 的通用 `nodeActions` 注入，组件库只处理节点路径、动作和展示，不包含供应商或模型业务逻辑。
+
+Google AI Studio 的思考控制、JSON 输出、原始历史与调用边界见 [Google AI Studio 接入](google-ai-studio-provider.md)。

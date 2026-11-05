@@ -125,17 +125,17 @@ import { createLlmTestConfig, createSseResponse, createToolDefinition } from "..
         error: {
           message: "Resource has been exhausted",
           type: "new_api_error",
-          code: "invalid_request"
+          code: 429
         }
       }
-    ]));
+    ], "google"));
 
     try {
       await assert.rejects(
         client.generate({
           messages: [{ role: "user", content: "ping" }]
         }),
-        /Google AI Studio API stream error: Resource has been exhausted/
+        /Google AI Studio API error: 429/
       );
 
       const dump = JSON.parse(await readFile(join(config.dataDir, "dump", "last-failed-exchange.json"), "utf8"));
@@ -148,7 +148,8 @@ import { createLlmTestConfig, createSseResponse, createToolDefinition } from "..
 
 
       assert.match(dump.error.message, /Resource has been exhausted/);
-      assert.match(responseDump.rawBody, /invalid_request/);
+      assert.match(responseDump.rawBody, /429/);
+      assert.equal(dump.error.statusCode, 429);
     } finally {
       setFetchImplementationForTests(null);
       await rm(dumpDir, { recursive: true, force: true });

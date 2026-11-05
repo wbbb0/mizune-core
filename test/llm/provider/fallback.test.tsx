@@ -31,13 +31,13 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
     await withMockFetch([
       {
         assertRequest(body: any) {
-          // thinking OFF: tool history is rebuilt from tool_calls without thoughtSignature
+          // Unsigned history retains observations without inventing signed calls.
           assert.equal(body.contents.length, 3);
           assert.equal(body.contents[0]?.role, "user");
           assert.equal(body.contents[1]?.role, "model");
-          assert.ok(body.contents[1]?.parts?.[0]?.functionCall?.name === "lookup");
+          assert.match(body.contents[1]?.parts?.[0]?.text, /lookup/);
           assert.equal(body.contents[2]?.role, "user");
-          assert.ok(body.contents[2]?.parts?.[0]?.functionResponse?.name === "lookup");
+          assert.match(body.contents[2]?.parts?.[0]?.text, /lookup/);
         },
         payloads: [{
           candidates: [{
@@ -61,7 +61,7 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
     });
   });
 
-  test("google ai studio skips tool history without thoughtSignature when thinking is on", async () => {
+  test("google ai studio preserves unsigned tool history as observations when thinking is on", async () => {
     const config = createTestAppConfig({
       llm: {
         enabled: true,
@@ -87,9 +87,9 @@ import { createAssistantToolRoundtripMessages, createLlmTestConfig, createToolCa
     await withMockFetch([
       {
         assertRequest(body: any) {
-          // thinking ON + no thoughtSignature: tool call chain is silently skipped
-          assert.equal(body.contents.length, 1);
-          assert.equal(body.contents[0]?.role, "user");
+          assert.equal(body.contents.length, 3);
+          assert.match(body.contents[1]?.parts?.[0]?.text, /lookup/);
+          assert.match(body.contents[2]?.parts?.[0]?.text, /lookup/);
         },
         payloads: [{
           candidates: [{

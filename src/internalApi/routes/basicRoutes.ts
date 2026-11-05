@@ -463,10 +463,17 @@ export function registerBasicRoutes(app: FastifyInstance, services: InternalApiS
       return reply;
     }
 
+    const controller = new AbortController();
+    const cancel = () => { if (!reply.raw.writableEnded) controller.abort(); };
+    request.raw.once("aborted", cancel);
+    reply.raw.once("close", cancel);
     try {
-      return await services.editor.listProviderModels(body.provider);
+      return await services.editor.listProviderModels(body.provider, controller.signal);
     } catch (error: unknown) {
       return respondBadRequest(reply, error instanceof Error ? error.message : String(error));
+    } finally {
+      request.raw.off("aborted", cancel);
+      reply.raw.off("close", cancel);
     }
   });
 

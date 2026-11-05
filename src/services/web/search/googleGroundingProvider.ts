@@ -64,13 +64,15 @@ export class GoogleGroundingProvider implements SearchProvider {
     const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.config.model)}:generateContent?key=${encodeURIComponent(this.config.apiKey)}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.config.model)}:generateContent`;
       const response = await this.httpClient.fetch(endpoint, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "x-goog-api-key": this.config.apiKey
         },
         body: JSON.stringify({
+          store: false,
           contents: [{
             parts: [{
               text: query

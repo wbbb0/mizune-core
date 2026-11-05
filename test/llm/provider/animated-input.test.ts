@@ -120,7 +120,7 @@ for (const type of ["google", "vertex", "vertex_express", "dashscope", "openrout
       else assert.deepEqual(content, [{ type: "video_url", video_url: { url: "data:video/mp4;base64,AQID" } }]);
       return createSseResponse(type === "dashscope" ? [{ output: { choices: [{ message: { content: [{ text: "完成" }] } }] } }]
         : ["google", "vertex", "vertex_express"].includes(type) ? [{ candidates: [{ content: { parts: [{ text: "完成" }] } }] }]
-        : [{ choices: [{ delta: { content: "完成" } }] }]);
+        : [{ choices: [{ delta: { content: "完成" } }] }], type === "google" ? "google" : "openai");
     });
     const result = await getLlmProvider(ctx).generate(ctx, { messages: [{ role: "user", content: [{ type: "video_url", video_url: { url: "data:video/mp4;base64,AQID" }, durationMs: 400, fps: 10 }] }], enableThinkingOverride: false });
     assert.equal(result.text, "完成");

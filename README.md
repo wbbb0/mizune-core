@@ -52,6 +52,8 @@ cp config/instances/acc1.example.yml config/instances/default.yml
 
 OpenAI 接入区分官方供应商与兼容协议：`type: openai` 使用官方 Responses 生成，并提供原生搜索、向量、转写、语音、图像生成/编辑与 Decisions；`type: openai_compatible` 使用 Chat Completions 兼容协议，`type: openai_responses_compatible` 使用 Responses 兼容协议。历史由本地会话统一管理，Responses 固定 `store: false` 并保留必要原生输出项。各模型按用途声明能力，详见 [OpenAI 官方供应商](docs/development/openai-provider.md)。
 
+Google AI Studio 使用官方 `@google/genai` SDK，保留实例级代理、统一超时与本地工具编排，支持原生结构化输出和带签名的跨轮历史。Vertex 保留独立 REST 接入；详见 [Google AI Studio 供应商](docs/development/google-ai-studio-provider.md)。
+
 `type: deepseek` 使用 Anthropic Messages 协议，默认地址为
 `https://api.deepseek.com/anthropic`，支持服务端原生搜索与普通工具混合调用。
 搜索配置、内容块回传和真实 smoke 见 [DeepSeek provider 说明](docs/development/deepseek-provider.md)。

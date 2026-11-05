@@ -117,7 +117,7 @@ export interface EditorService {
   }>;
   getLlmProviderImpact(provider: string): Promise<LlmProviderMutationImpact>;
   /** 按供应商草稿的连接信息拉取其模型清单，并生成为可导入的模型槽位。 */
-  listProviderModels(providerDraft: unknown): Promise<ProviderModelListResult>;
+  listProviderModels(providerDraft: unknown, abortSignal?: AbortSignal): Promise<ProviderModelListResult>;
   testModelCapability(input: ModelCapabilityProbeInput): Promise<ModelCapabilityProbeResult>;
   normalizeDraft(resourceKey: string, value: unknown): Promise<{
     ok: true;
@@ -374,9 +374,9 @@ export function createEditorService(input: {
       return impact;
     },
 
-    async listProviderModels(providerDraft) {
+    async listProviderModels(providerDraft, abortSignal) {
       const provider = parseConfig(llmCatalogProviderFileSchema, providerDraft, { cloneInput: true });
-      return listProviderModelSlots({ provider, config: input.config, existingModels: (providerDraft as { models?: Record<string, Record<string, unknown>> }).models ?? {} });
+      return listProviderModelSlots({ provider, config: input.config, ...(abortSignal ? { abortSignal } : {}), existingModels: (providerDraft as { models?: Record<string, Record<string, unknown>> }).models ?? {} });
     },
 
     async normalizeDraft(resourceKey, value) {

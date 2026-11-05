@@ -69,11 +69,14 @@ export function createToolDefinition(name: string): LlmToolDefinition {
   };
 }
 
-export function createSseResponse(payloads: any[]) {
+export function createSseResponse(payloads: any[], protocol: "openai" | "google" = "openai") {
   const encoder = new TextEncoder();
+  if (protocol === "google" && !payloads.some(payload => payload.error || payload.candidates?.some((candidate: any) => candidate.finishReason))) {
+    payloads = [...payloads, { candidates: [{ finishReason: "STOP" }] }];
+  }
   const raw = [
     ...payloads.map((payload: any) => `data: ${JSON.stringify(payload)}\n\n`),
-    "data: [DONE]\n\n"
+    ...(protocol === "openai" ? ["data: [DONE]\n\n"] : [])
   ].join("");
 
   return new Response(
@@ -107,7 +110,7 @@ export async function withMockFetch(scenarios: any[], fn: () => Promise<void>) {
     if (scenario.response) {
       return scenario.response;
     }
-    return createSseResponse(scenario.payloads);
+    return createSseResponse(scenario.payloads, scenario.protocol ?? (String(url).includes(":streamGenerateContent") ? "google" : "openai"));
   });
 
   try {

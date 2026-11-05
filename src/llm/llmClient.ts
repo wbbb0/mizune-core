@@ -1194,9 +1194,6 @@ function normalizeAssistantReplayMetadata(
       content
     );
   }
-  if (Array.isArray(normalized.googleParts)) {
-    normalized.googleParts = replaceGoogleReplayTextParts(normalized.googleParts, content);
-  }
   const openAiResponses = normalized.openAiResponses;
   if (isRecord(openAiResponses) && Array.isArray(openAiResponses.outputItems)) {
     normalized.openAiResponses = {
@@ -1231,38 +1228,6 @@ function replaceAnthropicReplayTextBlocks(blocks: unknown[], content: string): u
     replaced.push({ type: "text", text: content });
   }
   return replaced;
-}
-
-function replaceGoogleReplayTextParts(parts: unknown[], content: string): unknown[] {
-  const replaced: unknown[] = [];
-  let insertedVisibleText = false;
-
-  for (const part of parts) {
-    if (isVisibleGoogleTextPart(part)) {
-      if (!insertedVisibleText && content.length > 0) {
-        replaced.push({ ...part, text: content });
-      }
-      insertedVisibleText = true;
-      continue;
-    }
-
-    if (!insertedVisibleText && content.length > 0 && isRecord(part) && "functionCall" in part) {
-      replaced.push({ text: content });
-      insertedVisibleText = true;
-    }
-    replaced.push(part);
-  }
-
-  if (!insertedVisibleText && content.length > 0) {
-    replaced.push({ text: content });
-  }
-  return replaced;
-}
-
-function isVisibleGoogleTextPart(value: unknown): value is Record<string, unknown> {
-  return isRecord(value)
-    && typeof value.text === "string"
-    && value.thought !== true;
 }
 
 function replaceOpenAiResponsesReplayTextItems(items: unknown[], content: string): unknown[] {

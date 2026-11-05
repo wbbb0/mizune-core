@@ -1,3 +1,4 @@
+import { bindGoogleReplayToTranscript } from "#conversation/session/googleReplayBinding.ts";
 import { createGenerationFailureLifecycle } from "./generationFailureLifecycle.ts";
 import { QqDeliveryError, type QqReplyPermit } from "#services/qqOfficial/types.ts";
 import { prepareGenerationRequestBudget } from "./generationRequestBudget.ts";
@@ -268,6 +269,7 @@ export function createGenerationExecutor(
     let generationFailed = false;
     let lastResultReasoningContent = "";
     let lastResultAssistantMetadata: Record<string, unknown> | undefined;
+    let providerResponseTranscriptStartIndex = 0;
     let finalProviderCallUsage: LlmProviderCallUsage | null = null;
     let lastProviderRequestUsage: LlmUsage | null = null;
     const consumedSteerTexts: string[] = [];
@@ -888,6 +890,7 @@ export function createGenerationExecutor(
                 }
               });
               assertGenerationCurrent();
+              providerResponseTranscriptStartIndex = sessionManager.getSession(sessionId).internalTranscript.length;
               return messages;
             },
             onProviderCallUsage: async (event) => {
@@ -1218,7 +1221,9 @@ export function createGenerationExecutor(
           sessionManager.setLastAssistantProviderMetadataIfResponseEpochMatches(
             sessionId,
             responseEpoch,
-            lastResultAssistantMetadata
+            bindGoogleReplayToTranscript(lastResultAssistantMetadata,
+              sessionManager.getSession(sessionId).internalTranscript.slice(providerResponseTranscriptStartIndex),
+              sessionManager.getSession(sessionId).activeTranscriptGroupId ?? undefined)
           );
         }
 

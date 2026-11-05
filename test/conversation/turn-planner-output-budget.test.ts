@@ -76,7 +76,7 @@ test("OpenRouter planner sends a short budget with reasoning disabled, but prese
 for (const type of ["google", "openai_responses_compatible"] as const) {
   test(`${type} planner preserves the configured output budget when reasoning may remain hidden`, async () => {
     const config = createLlmTestConfig({
-      chat: { capabilities: { supportsThinking: true, thinkingControllable: type === "google" }, defaults: { extra: type === "google" ? { maxOutputTokens: 8192 } : { max_output_tokens: 8192 } } }
+      chat: { capabilities: { supportsThinking: true, thinkingControllable: type === "google" }, defaults: type === "google" ? { maxOutputTokens: 8192 } : { extra: { max_output_tokens: 8192 } } }
     });
     config.llm.providers.test!.type = type;
     config.llm.turnPlanner.enabled = true;

@@ -1184,7 +1184,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
     });
   });
 
-  test("google ai studio consumes text from unterminated trailing SSE events", async () => {
+  test("google ai studio rejects unterminated trailing SSE events", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "google";
     const client = new LlmClient(config, pino({ level: "silent" }));
@@ -1207,11 +1207,9 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
         })
       }
     ], async () => {
-      const result = await client.generate({
+      await assert.rejects(client.generate({
         messages: [{ role: "user", content: "hello" }]
-      });
-
-      assert.equal(result.text, "trailing reply");
+      }), /Incomplete JSON segment at the end/);
     });
   });
 
@@ -1228,7 +1226,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
             error: {
               message: "Resource has been exhausted",
               type: "new_api_error",
-              code: "invalid_request"
+              code: 429
             }
           }]
         }
@@ -1237,7 +1235,7 @@ test("lmstudio uses native chat endpoint when tools are absent and thinking is d
           messages: [{ role: "user", content: "hello" }]
         });
       }),
-      /Google AI Studio API stream error: Resource has been exhausted/
+      /Google AI Studio API error: 429/
     );
   });
 
@@ -1252,7 +1250,6 @@ test("google ai studio maps configured model api parameters to generation config
         presence_penalty: 0.25,
         repetition_penalty: 1.2,
         extra: {
-          maxOutputTokens: 64,
           frequencyPenalty: 0.3
         }
         }
@@ -1296,7 +1293,7 @@ test("google ai studio maps configured model api parameters to generation config
     });
   });
 
-  test("google ai studio normalizes composition branches in function schemas", async () => {
+  test("google ai studio preserves JSON Schema constraints without OpenAPI conversion", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "google";
     const client = new LlmClient(config, pino({ level: "silent" }));
@@ -1323,14 +1320,8 @@ test("google ai studio maps configured model api parameters to generation config
     await withMockFetch([
       {
         assertRequest(body: any) {
-          const parameters = body.tools[0].functionDeclarations[0].parameters;
-          assert.equal(parameters.additionalProperties, undefined);
-          assert.deepEqual(parameters.required, ["resource_id"]);
-          assert.equal(parameters.anyOf[0].type, "object");
-          assert.equal(parameters.anyOf[1].type, "object");
-          assert.deepEqual(Object.keys(parameters.anyOf[0].properties).sort(), ["key", "keys", "resource_id"]);
-          assert.deepEqual(parameters.anyOf[0].required, ["resource_id", "key"]);
-          assert.deepEqual(parameters.anyOf[1].required, ["resource_id", "keys"]);
+          assert.equal(body.tools[0].functionDeclarations[0].parameters, undefined);
+          assert.deepEqual(body.tools[0].functionDeclarations[0].parametersJsonSchema, tool.function.parameters);
         },
         payloads: [{
           candidates: [{
@@ -1381,7 +1372,7 @@ test("google ai studio maps configured model api parameters to generation config
       {
         assertRequest(body: any) {
           const assistantParts = body.contents[1].parts;
-          assert.equal(assistantParts[0].text, "看看便知。");
+          assert.equal(assistantParts[0].text, "看看便知。\n\n看看便知。");
           assert.equal(assistantParts[1].thoughtSignature, "sig-1");
           assert.equal(assistantParts[1].functionCall.id, "tool-call-1");
           assert.equal(assistantParts[1].functionCall.name, "lookup");
@@ -1541,7 +1532,7 @@ test("google ai studio maps configured model api parameters to generation config
     });
   });
 
-  test("vertex express omits function part ids in replayed tool history", async () => {
+  test("vertex express retains unscoped signed tool history as observations", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex_express";
     delete config.llm.providers.test!.baseUrl;
@@ -1553,10 +1544,8 @@ test("google ai studio maps configured model api parameters to generation config
         assertRequest(body: any) {
           const assistantParts = body.contents[1].parts;
           const toolParts = body.contents[2].parts;
-          assert.equal(assistantParts[0].functionCall.id, undefined);
-          assert.equal(toolParts[0].functionResponse.id, undefined);
-          assert.equal(assistantParts[0].functionCall.name, "lookup");
-          assert.equal(toolParts[0].functionResponse.name, "lookup");
+          assert.match(assistantParts[0].text, /历史工具调用/);
+          assert.match(toolParts[0].text, /历史工具结果/);
         },
         payloads: [{
           candidates: [{
@@ -1614,6 +1603,7 @@ test("google ai studio maps configured model api parameters to generation config
     const assistantMessage = messages[1]!;
     assert.equal(assistantMessage.role, "assistant");
     assistantMessage.providerMetadata = {
+      googleReplayScope: { model: "fake-model", providerName: "test", providerType: "vertex_express", baseUrl: "https://aiplatform.googleapis.com/v1", apiVersion: "" },
       googleParts: [{
         thoughtSignature: "sig-1",
         functionCall: {
@@ -1659,7 +1649,7 @@ test("google ai studio maps configured model api parameters to generation config
     });
   });
 
-  test("vertex express passes tool history through without thoughtSignature when thinking is off", async () => {
+  test("vertex express retains unscoped history as observations regardless of thought visibility", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "vertex_express";
     delete config.llm.providers.test!.baseUrl;
@@ -1673,10 +1663,10 @@ test("google ai studio maps configured model api parameters to generation config
           assert.equal(body.contents.length, 3);
           assert.equal(body.contents[0]?.role, "user");
           assert.equal(body.contents[1]?.role, "model");
-          assert.ok(body.contents[1]?.parts?.[0]?.functionCall?.name === "lookup");
+          assert.match(body.contents[1]?.parts?.[0]?.text, /历史工具调用/);
           assert.equal(body.contents[1]?.parts?.[0]?.functionCall?.id, undefined); // vertex_express strips ids
           assert.equal(body.contents[2]?.role, "user");
-          assert.ok(body.contents[2]?.parts?.[0]?.functionResponse?.name === "lookup");
+          assert.match(body.contents[2]?.parts?.[0]?.text, /历史工具结果/);
           assert.equal(body.contents[2]?.parts?.[0]?.functionResponse?.id, undefined); // vertex_express strips ids
         },
         payloads: [{
@@ -1700,7 +1690,7 @@ test("google ai studio maps configured model api parameters to generation config
     });
   });
 
-  test("google ai studio drops invalid replayed tool chains that are not preceded by a user or tool turn", async () => {
+  test("google ai studio preserves unscoped tool history as observations", async () => {
     const config = createLlmTestConfig();
     config.llm.providers.test!.type = "google";
     const client = new LlmClient(config, pino({ level: "silent" }));
@@ -1708,11 +1698,12 @@ test("google ai studio maps configured model api parameters to generation config
     await withMockFetch([
       {
         assertRequest(body: any) {
-          assert.equal(body.contents.length, 2);
+          assert.equal(body.contents.length, 4);
           assert.equal(body.contents[0]?.role, "model");
           assert.deepEqual(body.contents[0]?.parts, [{ text: "上轮已经总结过了" }]);
-          assert.equal(body.contents[1]?.role, "user");
-          assert.deepEqual(body.contents[1]?.parts, [{ text: "继续" }]);
+          assert.match(body.contents[1]?.parts[0]?.text, /历史工具调用记录/);
+          assert.match(body.contents[2]?.parts[0]?.text, /历史工具结果/);
+          assert.deepEqual(body.contents[3]?.parts, [{ text: "继续" }]);
         },
         payloads: [{
           candidates: [{

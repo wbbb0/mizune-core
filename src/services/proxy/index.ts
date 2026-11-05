@@ -115,10 +115,6 @@ export async function fetchWithProxy(
 	options: ProxyResolveOptions = {}
 ): Promise<Awaited<ReturnType<typeof undiciFetch>>> {
 	const fetchImpl = fetchImplementationForTests ?? undiciFetch;
-	if (!isProxyEnabled(config, consumer, options)) {
-		return fetchImpl(requestUrl, init) as Promise<Awaited<ReturnType<typeof undiciFetch>>>;
-	}
-
 	const dispatcher = getDispatcherForUrl(config, consumer, requestUrl, options);
 	const requestInit: UndiciRequestInit = {
 		...init,

@@ -1,3 +1,4 @@
+import { buildGoogleContents, googleReplayScope } from "./googleContent.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 import { readProviderSseData } from "../providerSseReader.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
@@ -52,11 +53,6 @@ interface GoogleFunctionResponsePart {
 
 type GooglePart = GoogleInlineDataPart | GoogleTextPart | GoogleFunctionCallPart | GoogleFunctionResponsePart;
 
-interface GoogleContent {
-  role: "user" | "model";
-  parts: GooglePart[];
-}
-
 interface GoogleStreamChunk {
   error?: {
     code?: number | string;
@@ -87,7 +83,7 @@ const GOOGLE_HARM_CATEGORIES = [
   "HARM_CATEGORY_DANGEROUS_CONTENT"
 ] as const;
 
-export abstract class GoogleGeminiProviderBase implements LlmProvider {
+export abstract class VertexGeminiProviderBase implements LlmProvider {
   abstract readonly type: LlmProvider["type"];
 
   protected abstract readonly providerLabel: string;
@@ -146,7 +142,6 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
       });
       const toolCalls = new Map<number, LlmToolCall>();
       const assistantParts: GooglePart[] = [];
-      const assistantPartCount = new Map<string, number>();
       const processChunk = async (chunk: GoogleStreamChunk) => {
         if (chunk.error) {
           throw createGoogleStreamError(this.providerLabel, chunk.error);
@@ -154,7 +149,7 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
 
         accumulator.replaceUsage(mergeGoogleUsage(context, chunk));
         const chunkParts = chunk.candidates?.[0]?.content?.parts ?? [];
-        const newParts = collectNewParts(chunkParts, assistantPartCount);
+        const newParts = chunkParts;
         for (const part of newParts) {
           assistantParts.push(part);
 
@@ -193,7 +188,8 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
         toolCalls: Array.from(toolCalls.values()),
         usage: accumulator.usage,
         assistantMetadata: {
-          googleParts: assistantParts
+          googleParts: assistantParts,
+          googleReplayScope: googleReplayScope(context)
         }
       };
     } catch (error) {
@@ -206,10 +202,6 @@ export abstract class GoogleGeminiProviderBase implements LlmProvider {
       params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
-
-  protected createInlineDataError(): Error {
-    return new Error(`${this.providerLabel} only supports inline image data URLs`);
-  }
 }
 
 function buildRequestBody(
@@ -218,16 +210,12 @@ function buildRequestBody(
 ): Record<string, unknown> {
   const systemInstruction = buildSystemInstruction(params.messages);
   const tools = buildTools(context, params);
-  const toolConfig = buildToolConfig(context, params, tools);
   const generationConfig = buildGenerationConfig(context, params);
-  const compatibility = new ProviderCompatibilityGuards(context);
-  const includeThoughts = params.enableThinkingOverride ?? false;
 
   return {
-    contents: buildContents(params.messages, compatibility, includeThoughts),
+    contents: buildGoogleContents(context, params.messages),
     ...(systemInstruction ? { systemInstruction } : {}),
     ...(tools.length > 0 ? { tools } : {}),
-    ...(toolConfig ? { toolConfig } : {}),
     safetySettings: buildSafetySettings(context),
     ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {})
   };
@@ -267,22 +255,6 @@ function buildTools(
   return tools;
 }
 
-function buildToolConfig(
-  context: LlmProviderRequestContext,
-  params: LlmProviderGenerateParams,
-  tools: Array<Record<string, unknown>>
-): Record<string, unknown> | null {
-  const hasFunctionDeclarations = Boolean(params.tools && params.tools.length > 0);
-  const hasBuiltInSearchTool = getProviderFeatureFromContext(context, "search")?.type === "builtin_tool";
-  if (!hasFunctionDeclarations || !hasBuiltInSearchTool) {
-    return null;
-  }
-
-  return {
-    includeServerSideToolInvocations: true
-  };
-}
-
 function buildGenerationConfig(
   context: LlmProviderRequestContext,
   params: LlmProviderGenerateParams
@@ -311,288 +283,6 @@ function buildSystemInstruction(messages: LlmMessage[]): { parts: GooglePart[] }
   return systemText.length > 0
     ? { parts: [{ text: systemText }] }
     : null;
-}
-
-function buildContents(messages: LlmMessage[], compatibility: ProviderCompatibilityGuards, includeThoughts: boolean): GoogleContent[] {
-  const sanitizedMessages = sanitizeMessagesForGoogleReplay(messages);
-  const contents: GoogleContent[] = [];
-  const toolNameById = new Map<string, string>();
-  let pendingToolResponseParts: GooglePart[] = [];
-  const skippedToolCallIds = new Set<string>();
-
-  const flushPendingToolResponses = (): void => {
-    if (pendingToolResponseParts.length === 0) {
-      return;
-    }
-    contents.push({
-      role: "user",
-      parts: pendingToolResponseParts
-    });
-    pendingToolResponseParts = [];
-  };
-
-  for (const message of sanitizedMessages) {
-    if (message.role === "system") {
-      continue;
-    }
-
-    if (message.role === "tool") {
-      const toolCallId = message.tool_call_id ?? "";
-      if (skippedToolCallIds.has(toolCallId)) {
-        continue;
-      }
-      const toolName = toolNameById.get(toolCallId);
-      if (!toolName) {
-        throw new Error(`Missing Gemini tool call mapping for tool_call_id: ${toolCallId || "<empty>"}`);
-      }
-      pendingToolResponseParts.push({
-        functionResponse: {
-          ...(compatibility.supportsFunctionPartIds()
-            ? { id: toolCallId }
-            : {}),
-          name: toolName,
-          response: normalizeFunctionResponsePayload(message.content)
-        }
-      });
-      continue;
-    }
-
-    flushPendingToolResponses();
-
-    if (message.role === "assistant") {
-      for (const toolCall of message.tool_calls ?? []) {
-        toolNameById.set(toolCall.id, toolCall.function.name);
-      }
-
-      const rawParts = Array.isArray(message.providerMetadata?.googleParts)
-        ? message.providerMetadata.googleParts as GooglePart[]
-        : null;
-      if (rawParts && canReplayGoogleParts(rawParts)) {
-        contents.push({
-          role: "model",
-          parts: sanitizeGooglePartsForCompatibility(rawParts, compatibility)
-        });
-        continue;
-      }
-
-      const toolCalls = message.tool_calls ?? [];
-      if (includeThoughts && toolCalls.length > 0) {
-        // thinking 开启但缺失 thoughtSignature，无法安全 replay，静默省略该工具调用链。
-        // NOTE: 如果模型在跨轮场景中频繁丢失工具调用上下文，可在 assistant visible response
-        // 的 prompt 中要求模型显式复述重要工具结果，使其通过 visible history 保留关键信息。
-        for (const toolCall of toolCalls) {
-          skippedToolCallIds.add(toolCall.id);
-        }
-        continue;
-      }
-
-      // thinking 关闭，或无工具调用：直接从 tool_calls 重建，无需 thoughtSignature
-      contents.push({
-        role: "model",
-        parts: buildAssistantParts(message, compatibility)
-      });
-      continue;
-    }
-
-    contents.push({
-      role: "user",
-      parts: convertContentToGoogleParts(message.content, compatibility)
-    });
-  }
-
-  flushPendingToolResponses();
-  return contents;
-}
-
-function sanitizeMessagesForGoogleReplay(messages: LlmMessage[]): LlmMessage[] {
-  const sanitized: LlmMessage[] = [];
-  const activeToolCallIds = new Set<string>();
-  let lastReplayRole: LlmMessage["role"] | null = null;
-
-  const clearActiveToolCalls = (): void => {
-    activeToolCallIds.clear();
-  };
-
-  for (const message of messages) {
-    if (message.role === "system") {
-      sanitized.push(message);
-      continue;
-    }
-
-    if (message.role === "user") {
-      clearActiveToolCalls();
-      sanitized.push(message);
-      lastReplayRole = "user";
-      continue;
-    }
-
-    if (message.role === "assistant") {
-      const toolCalls = message.tool_calls ?? [];
-      if (toolCalls.length === 0) {
-        clearActiveToolCalls();
-        sanitized.push(message);
-        lastReplayRole = "assistant";
-        continue;
-      }
-
-      clearActiveToolCalls();
-      if (lastReplayRole !== "user" && lastReplayRole !== "tool") {
-        continue;
-      }
-
-      for (const toolCall of toolCalls) {
-        activeToolCallIds.add(toolCall.id);
-      }
-      sanitized.push(message);
-      lastReplayRole = "assistant";
-      continue;
-    }
-
-    const toolCallId = message.tool_call_id ?? "";
-    if (
-      toolCallId.length === 0
-      || !activeToolCallIds.has(toolCallId)
-      || (lastReplayRole !== "assistant" && lastReplayRole !== "tool")
-    ) {
-      continue;
-    }
-
-    sanitized.push(message);
-    lastReplayRole = "tool";
-  }
-
-  return sanitized;
-}
-
-function buildAssistantParts(message: LlmMessage, compatibility: ProviderCompatibilityGuards): GooglePart[] {
-  const parts = convertContentToGoogleParts(
-    message.content,
-    ProviderCompatibilityGuards.passThrough()
-  );
-
-  if (typeof message.reasoning_content === "string" && message.reasoning_content.length > 0) {
-    parts.unshift({
-      text: message.reasoning_content,
-      thought: true
-    });
-  }
-
-  for (const toolCall of message.tool_calls ?? []) {
-    const thoughtSignature = toolCall.providerMetadata?.google?.thoughtSignature;
-    parts.push({
-      ...(typeof thoughtSignature === "string" && thoughtSignature.length > 0
-        ? { thoughtSignature }
-        : {}),
-      functionCall: {
-        ...(compatibility.supportsFunctionPartIds()
-          ? { id: toolCall.id }
-          : {}),
-        name: toolCall.function.name,
-        args: parseJsonObject(toolCall.function.arguments)
-      }
-    });
-  }
-
-  return parts;
-}
-
-function convertContentToGoogleParts(
-  content: string | LlmContentPart[],
-  compatibility: Pick<ProviderCompatibilityGuards, "createInlineDataError">
-): GooglePart[] {
-  if (typeof content === "string") {
-    return content.length > 0 ? [{ text: content }] : [];
-  }
-
-  const parts: GooglePart[] = [];
-  for (const part of content) {
-    if (part.type === "text") {
-      if (part.text.length > 0) {
-        parts.push({ text: part.text });
-      }
-      continue;
-    }
-
-    if (part.type === "image_url" || part.type === "video_url") {
-      const inlineData = dataUrlToBase64(part.type === "video_url" ? part.video_url.url : part.image_url.url);
-      if (!inlineData) {
-        throw compatibility.createInlineDataError();
-      }
-      parts.push({
-        inlineData,
-        ...(part.type === "video_url" && part.fps !== undefined ? { videoMetadata: { fps: part.fps } } : {})
-      });
-      continue;
-    }
-
-    parts.push({
-      inlineData: {
-        mimeType: part.input_audio.mimeType ?? inferAudioMimeType(part.input_audio.format),
-        data: part.input_audio.data
-      }
-    });
-  }
-
-  return parts;
-}
-
-function collectNewParts(parts: GooglePart[], counters: Map<string, number>): GooglePart[] {
-  const emitted: GooglePart[] = [];
-  const currentCounts = new Map<string, number>();
-
-  for (const part of parts) {
-    const key = JSON.stringify(part);
-    const currentCount = (currentCounts.get(key) ?? 0) + 1;
-    currentCounts.set(key, currentCount);
-
-    const seenCount = counters.get(key) ?? 0;
-    if (currentCount <= seenCount) {
-      continue;
-    }
-
-    counters.set(key, currentCount);
-    emitted.push(part);
-  }
-
-  return emitted;
-}
-
-function sanitizeGooglePartsForCompatibility(
-  parts: GooglePart[],
-  compatibility: Pick<ProviderCompatibilityGuards, "supportsFunctionPartIds">
-): GooglePart[] {
-  if (compatibility.supportsFunctionPartIds()) {
-    return parts;
-  }
-
-  return parts.map((part) => {
-    if ("functionCall" in part && part.functionCall) {
-      const { id: _id, ...functionCall } = part.functionCall;
-      return {
-        ...("thoughtSignature" in part && typeof part.thoughtSignature === "string"
-          ? { thoughtSignature: part.thoughtSignature }
-          : {}),
-        functionCall
-      };
-    }
-    if ("functionResponse" in part && part.functionResponse) {
-      const { id: _id, ...functionResponse } = part.functionResponse;
-      return { functionResponse };
-    }
-    return part;
-  });
-}
-
-function canReplayGoogleParts(parts: GooglePart[]): boolean {
-  for (const part of parts) {
-    if (!("functionCall" in part) || !part.functionCall) {
-      continue;
-    }
-    if (typeof part.thoughtSignature !== "string" || part.thoughtSignature.length === 0) {
-      return false;
-    }
-  }
-  return true;
 }
 
 function normalizeFunctionCallPart(part: GoogleFunctionCallPart, ordinal: number): LlmToolCall {
@@ -746,101 +436,8 @@ function parseJsonObject(raw: string): Record<string, unknown> {
   }
 }
 
-function dataUrlToBase64(dataUrl: string): { mimeType: string; data: string } | null {
-  const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/i);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    mimeType: String(match[1] ?? "application/octet-stream"),
-    data: String(match[2] ?? "")
-  };
-}
-
-function inferAudioMimeType(format: string): string {
-  const normalized = String(format).trim().toLowerCase();
-  switch (normalized) {
-    case "mp3":
-    case "mpeg":
-    case "mpga":
-      return "audio/mpeg";
-    case "m4a":
-    case "mp4":
-      return "audio/mp4";
-    case "wav":
-      return "audio/wav";
-    case "webm":
-      return "audio/webm";
-    case "ogg":
-      return "audio/ogg";
-    case "flac":
-      return "audio/flac";
-    case "aac":
-      return "audio/aac";
-    case "amr":
-      return "audio/amr";
-    default:
-      return "audio/mpeg";
-  }
-}
-
 function hashFunctionCall(name: string, args: Record<string, unknown>): string {
   return Buffer.from(`${name}:${JSON.stringify(args)}`).toString("base64url").slice(0, 16);
-}
-
-class ProviderCompatibilityGuards {
-  constructor(private readonly context: LlmProviderRequestContext | null) {}
-
-  static passThrough(): ProviderCompatibilityGuards {
-    return new ProviderCompatibilityGuards(null);
-  }
-
-  createInlineDataError(): Error {
-    return new Error(`${this.context ? resolveProviderLabel(this.context) : "Gemini provider"} only supports inline image data URLs`);
-  }
-
-  supportsFunctionPartIds(): boolean {
-    if (!this.context) {
-      return true;
-    }
-
-    return this.context.providerConfig.type !== "vertex_express";
-  }
-}
-
-function resolveProviderLabel(context: LlmProviderRequestContext): string {
-  return context.providerConfig.type === "vertex"
-    ? "Vertex AI"
-    : "Google AI Studio";
-}
-
-export function buildGoogleAiStudioStreamEndpoint(rawBaseUrl: string, model: string): string {
-  const { baseUrl, apiVersion } = parseGoogleAiStudioEndpoint(rawBaseUrl);
-  const versionSegment = apiVersion ? `/${apiVersion}` : "";
-  return `${baseUrl}${versionSegment}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
-}
-
-function parseGoogleAiStudioEndpoint(rawBaseUrl: string): { baseUrl: string; apiVersion: string | undefined } {
-  const sanitized = rawBaseUrl
-    .replace(/\/models\/[^/]+:(?:streamGenerateContent|generateContent).*$/i, "")
-    .replace(/\/$/, "");
-  const url = new URL(sanitized);
-  const segments = url.pathname.split("/").filter(Boolean);
-  const versionIndex = segments.findIndex((segment) => /^v\d+(?:alpha|beta)?$/i.test(segment));
-
-  if (versionIndex === -1) {
-    return {
-      baseUrl: `${url.origin}${segments.length > 0 ? `/${segments.join("/")}` : ""}`,
-      apiVersion: undefined
-    };
-  }
-
-  const baseSegments = segments.slice(0, versionIndex);
-  return {
-    baseUrl: `${url.origin}${baseSegments.length > 0 ? `/${baseSegments.join("/")}` : ""}`,
-    apiVersion: segments[versionIndex]
-  };
 }
 
 export function buildVertexAiStreamEndpoint(rawBaseUrl: string, model: string): string {

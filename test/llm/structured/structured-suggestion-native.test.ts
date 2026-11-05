@@ -50,18 +50,18 @@ test("structured suggestions without a schema request native JSON mode", async (
   });
 });
 
-test("mixed suggestion routes retain text parsing and can fall back to a non-native provider", async () => {
+test("mixed native suggestion routes retain JSON Schema through Google fallback", async () => {
   const config = officialConfig();
   config.llm.providers.google_fallback = { ...config.llm.providers.test!, type: "google" };
   config.llm.models.fallback = { ...config.llm.models.main!, provider: "google_fallback" };
   config.llm.routingPresets.test!.mainSmall = ["main", "fallback"];
   const service = new StructuredSuggestionService(config, new LlmClient(config, logger), logger);
   await withMockFetch([{
-    assertRequest(body: any) { assert.equal(body.text?.format, undefined); },
+    assertRequest(body: any) { assert.deepEqual(body.text?.format?.schema, schema); },
     response: new Response("upstream busy", { status: 503 })
   }, {
-    assertRequest(body: any) { assert.equal(body.generationConfig.responseSchema, undefined); },
-    payloads: [{ candidates: [{ content: { parts: [{ text: '```json\n{"label":"备用标签"}\n```' }] } }] }]
+    assertRequest(body: any) { assert.deepEqual(body.generationConfig.responseJsonSchema, schema); },
+    payloads: [{ candidates: [{ content: { parts: [{ text: '{"label":"备用标签"}' }] } }] }]
   }], async () => {
     const result = await service.suggestObject(request);
     assert.equal(result.ok, true);
@@ -143,6 +143,6 @@ test("automatic structured output requires both model and protocol support for e
   config.llm.models.unknown!.chat!.capabilities.supportsStructuredOutput = true;
   config.llm.providers.google_fallback = { ...config.llm.providers.test!, type: "google" };
   config.llm.models.unknown!.provider = "google_fallback";
-  assert.equal(client.supportsStructuredOutput(["main", "unknown"]), false);
+  assert.equal(client.supportsStructuredOutput(["main", "unknown"]), true);
   assert.equal(client.supportsStructuredOutput([]), false);
 });

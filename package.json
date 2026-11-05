@@ -55,7 +55,8 @@
     "smoke:llm:memory": "tsx smoke/llm/context-memory-smoke.ts --preset local_qwen --instance web --timeout-ms 180000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
-    "typecheck:all": "npm run typecheck && npm run typecheck:test"
+    "typecheck:all": "npm run typecheck && npm run typecheck:test",
+    "smoke:llm:google": "tsx smoke/llm/google-ai-studio-smoke.ts"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -64,6 +65,7 @@
     "@alicloud/green20220302": "^3.0.1",
     "@fastify/cookie": "^11.0.2",
     "@fastify/static": "^9.1.1",
+    "@google/genai": "2.32.0",
     "@orama/orama": "^3.1.18",
     "@simplewebauthn/server": "^13.3.0",
     "@xterm/addon-serialize": "^0.14.0",

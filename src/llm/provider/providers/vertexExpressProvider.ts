@@ -1,10 +1,10 @@
 import type { LlmProviderRequestContext } from "../providerTypes.ts";
 import {
   buildVertexExpressStreamEndpoint,
-  GoogleGeminiProviderBase
-} from "./googleGeminiProviderBase.ts";
+  VertexGeminiProviderBase
+} from "./vertexGeminiProviderBase.ts";
 
-export class VertexExpressProvider extends GoogleGeminiProviderBase {
+export class VertexExpressProvider extends VertexGeminiProviderBase {
   readonly type = "vertex_express" as const;
   protected readonly providerLabel = "Vertex AI Express";
 

@@ -62,23 +62,22 @@ test("native planner sends a strict schema and parses the actual Responses JSON 
   });
 });
 
-test("mixed planner routing retains the shared text contract through an OpenAI to Google fallback", async () => {
+test("mixed native planner routing retains JSON Schema through an OpenAI to Google fallback", async () => {
   const config = plannerConfig();
   config.llm.providers.google_fallback = { ...config.llm.providers.test!, type: "google" };
   config.llm.models.fallback = { ...config.llm.models.main!, provider: "google_fallback", model: "fallback-model" };
   config.llm.routingPresets.test!.turnPlanner = ["main", "fallback"];
-  const text = Object.entries(planFields).map(([key, value]) => `${key}: ${value}`).join("\n");
+  const text = JSON.stringify(planFields);
   await withMockFetch([{
     assertRequest(body: any) {
-      assert.equal(body.text?.format, undefined);
-      assert.match(body.input[0].content[0].text, /严格输出以下 \d+ 行/);
+      assert.equal(body.text?.format.type, "json_schema");
     },
     response: new Response("upstream busy", { status: 503 })
   }, {
     assertRequest(body: any, _index: number, _init: unknown, url: string) {
       assert.match(url, /streamGenerateContent/);
-      assert.equal(body.generationConfig.responseSchema, undefined);
-      assert.equal(body.generationConfig.responseMimeType, undefined);
+      assert.ok(body.generationConfig.responseJsonSchema);
+      assert.equal(body.generationConfig.responseMimeType, "application/json");
     },
     payloads: [{ candidates: [{ content: { parts: [{ text }] } }] }]
   }], async () => {

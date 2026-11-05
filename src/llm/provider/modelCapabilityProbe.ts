@@ -53,10 +53,12 @@ export class ModelCapabilityProbe {
       const timeoutMs = input.operation === "image" ? 90000 : 30000;
       const signal = AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(input.abortSignal ? [input.abortSignal] : [])]);
       const params = { abortSignal: signal, timeoutMsOverride: timeoutMs, skipDebugDump: true };
+      // Hidden reasoning still consumes output tokens. A 32-token probe cannot test that route.
+      const outputBudget = context.providerConfig.type === "google" ? Math.min(1024, Number(object(object(input.model[input.operation]).limits).maxOutputTokens) || 1024) : 32;
       let usage: LlmUsage | undefined;
       switch (input.operation) {
         case "chat": {
-          const reply = await provider.generate(context, { ...params, messages: [{ role: "user", content: "请只回复：好" }], tools: [], maxOutputTokensOverride: 32, enableThinkingOverride: false });
+          const reply = await provider.generate(context, { ...params, messages: [{ role: "user", content: "请只回复：好" }], tools: [], maxOutputTokensOverride: outputBudget, enableThinkingOverride: false });
           if (!reply.text.trim() || reply.toolCalls.length) throw new Error("invalid_probe_output");
           usage = reply.usage;
           break;
@@ -77,7 +79,7 @@ export class ModelCapabilityProbe {
             const reply = await provider.generate(context, { ...params, messages: [
               { role: "system", content: "请转写音频；如果只有静音，请回复[静音]。不要补充内容。" },
               { role: "user", content: [{ type: "input_audio", input_audio: audio }] }
-            ], tools: [], maxOutputTokensOverride: 32, enableThinkingOverride: false });
+            ], tools: [], maxOutputTokensOverride: outputBudget, enableThinkingOverride: false });
             if (!reply.text.trim() || reply.toolCalls.length) throw new Error("invalid_probe_output");
             usage = reply.usage;
           }
@@ -117,7 +119,7 @@ function createProbeContext(base: AppConfig, input: ModelCapabilityProbeInput): 
   const cleanModel: Record<string, unknown> = { upstreamModel: input.model.upstreamModel };
   const declared = object(input.model[input.operation]);
   if (input.operation === "chat" || input.operation === "transcription") {
-    cleanModel[input.operation] = { capabilities: object(declared.capabilities), ...(input.operation === "transcription" ? { language: declared.language } : {}) };
+    cleanModel[input.operation] = { capabilities: object(declared.capabilities), ...(input.provider.type === "google" && declared.googleThinking ? { googleThinking: declared.googleThinking } : {}), ...(input.operation === "transcription" ? { language: declared.language } : {}) };
   } else if (input.operation === "embedding") {
     cleanModel.embedding = { inputMode: declared.inputMode ?? "plain" };
   } else if (input.operation === "image") {

@@ -1,3 +1,4 @@
+import { invalidateGoogleReplay } from "#llm/shared/googleReplay.ts";
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -369,6 +370,12 @@ export class ContentSafetyService {
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
 
+    for (const [index, message] of messages.entries()) {
+      if (JSON.stringify(message.content) !== JSON.stringify(input.messages[index]?.content)) {
+        const metadata = invalidateGoogleReplay(message.providerMetadata);
+        if (metadata) message.providerMetadata = metadata;
+      }
+    }
     return {
       messages,
       events

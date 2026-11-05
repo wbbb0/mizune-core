@@ -1,3 +1,5 @@
+import { projectGoogleReplayMetadata } from "#conversation/session/googleReplayBinding.ts";
+import { canReplayGoogleParts } from "#llm/shared/googleReplay.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
 import type { AppConfig } from "#config/config.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
@@ -302,15 +304,9 @@ function canReplayGoogleToolCallItem(item: InternalAssistantToolCallItem, requir
     ? item.providerMetadata.googleParts as unknown[]
     : null;
   if (rawParts && rawParts.length > 0) {
-    return rawParts.every((part) => {
-      if (!part || typeof part !== "object" || !("functionCall" in part)) {
-        return true;
-      }
-      const googlePart = part as { thoughtSignature?: unknown };
-      return typeof googlePart.thoughtSignature === "string" && googlePart.thoughtSignature.length > 0;
-    });
+    return canReplayGoogleParts(rawParts);
   }
-  return item.toolCalls.every((toolCall) => {
+  return item.toolCalls.slice(0, 1).every((toolCall) => {
     const google = toolCall.providerMetadata?.google as { thoughtSignature?: string } | undefined;
     return typeof google?.thoughtSignature === "string" && google.thoughtSignature.length > 0;
   });
@@ -337,17 +333,33 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
         activeReplayableToolCallIds.clear();
       };
 
+      const coveredSourceIds = new Set<string>();
+      const replayCarrierIds = new Set<string>();
+      const coveredDisplayContent = new Map<string, string>();
+      for (const item of input.transcript) {
+        if (item.kind !== "assistant_message" || !item.id || !isTranscriptRuntimeIncluded(item) || !isTranscriptLlmVisible(item)) continue;
+        const metadata = projectGoogleReplayMetadata(item.providerMetadata, input.transcript);
+        if (!Array.isArray(metadata?.googleParts) || !Array.isArray(metadata.googleReplayTranscript)) continue;
+        replayCarrierIds.add(item.id);
+        const sourceIds = new Set<string>();
+        for (const source of metadata.googleReplayTranscript) if (typeof source?.id === "string") { coveredSourceIds.add(source.id); sourceIds.add(source.id); }
+        coveredDisplayContent.set(item.id, input.transcript.filter(source => source.id && sourceIds.has(source.id) && source.kind === "assistant_message")
+          .map(source => projectTranscriptMessageItemToHistoryMessage(source as Extract<InternalTranscriptItem, { kind: "assistant_message" }>).content).join("\n\n"));
+      }
+
       for (const item of input.transcript) {
         if (!isTranscriptRuntimeIncluded(item)) {
           continue;
         }
+        if (item.id && coveredSourceIds.has(item.id) && !replayCarrierIds.has(item.id)) continue;
         if ((item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message") && isTranscriptLlmVisible(item)) {
           clearActiveReplayableToolCalls();
           const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
           replayMessages.push({
             role: historyMessage.role,
             contextHistoryTimestampMs: item.timestampMs,
-            content: historyMessage.content
+            content: (item.id ? coveredDisplayContent.get(item.id) : undefined) ?? historyMessage.content,
+            ...(item.kind === "assistant_message" && item.providerMetadata ? { providerMetadata: projectGoogleReplayMetadata(item.providerMetadata, input.transcript)! } : {})
           });
           replayCoversVisibleHistory = true;
           lastReplayRole = historyMessage.role;

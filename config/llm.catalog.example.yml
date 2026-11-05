@@ -180,3 +180,25 @@ openrouter:
       embedding:
         inputMode: qwen3
         queryInstruction: 根据查询检索相关的资料和记忆。
+
+google:
+  type: google
+  apiKey: replace-with-google-api-key
+  proxy: true
+  models:
+    flash:
+      upstreamModel: gemini-2.5-flash
+      chat:
+        capabilities:
+          supportsThinking: true
+          thinkingControllable: true
+          supportsVision: true
+          supportsVideoInput: true
+          supportsTools: true
+          supportsStructuredOutput: true
+          supportsSearch: true
+        googleThinking:
+          mode: budget
+          budget: 2048
+        defaults:
+          maxOutputTokens: 8192
