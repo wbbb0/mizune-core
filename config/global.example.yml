@@ -69,7 +69,7 @@ llm:
     enabled: false
     timeoutMs: 120000
   decision:
-    enabled: false
+    enabled: false # 仅控制 make_decision 工具；有效 decision 路由会自动用于已启用的轮次规划。
     timeoutMs: 15000
   imageGeneration:
     enabled: false

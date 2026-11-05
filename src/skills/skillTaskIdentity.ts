@@ -1,4 +1,4 @@
-import type { TurnPlannerResult } from "../conversation/turnPlanner.ts";
+import type { TurnPlannerResult } from "../conversation/turnPlanner/types.ts";
 import type { SessionTaskState } from "../conversation/taskTracker/taskTrackerTypes.ts";
 export function resolveSkillTaskId(input: {
   sessionId: string;

@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
-import { TurnPlanner, type TurnPlannerInput } from "../../src/conversation/turnPlanner.ts";
+import { TurnPlanner } from "../../src/conversation/turnPlanner.ts";
+import type { TurnPlannerInput } from "../../src/conversation/turnPlanner/types.ts";
 import { LlmClient } from "../../src/llm/llmClient.ts";
 import { buildTurnPlannerResponseFormat } from "../../src/llm/prompts/turn-planner.prompt.ts";
 import { createLlmTestConfig, withMockFetch } from "../helpers/llm-test-support.tsx";
@@ -27,7 +28,7 @@ const input: TurnPlannerInput = {
   batchMessages: [createReplyGateBatchMessage({ text: "暂停当前任务，先帮我检查构建失败" })]
 };
 const planFields = {
-  reason: "先检查构建故障", reply_decision: "reply_large", topic_decision: "continue_topic",
+  reason: "先检查构建故障", wait_reason: "none", reply_decision: "reply_large", topic_decision: "continue_topic",
   task_intent: "pause_current|task-1|high", skill_ids: "repair", required_capabilities: "shell_execution",
   context_dependencies: "prior_shell_context", recent_domain_reuse: "shell", followup_mode: "explicit_reference", toolset_ids: "shell"
 };

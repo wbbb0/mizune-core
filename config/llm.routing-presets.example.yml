@@ -53,4 +53,4 @@ openai_native:
   imageGenerator: { provider: openai_official, model: image }
   audioTranscription: { provider: openai_official, model: transcription }
   speechGenerator: { provider: openai_official, model: speech }
-  decision: { provider: openai_official, model: decision }
+  decision: { provider: openai_official, model: decision } # 内部规划优先使用；留空列表则仅用 turnPlanner 聊天路由。

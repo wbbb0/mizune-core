@@ -100,7 +100,7 @@ function createExecutorHarness(options?: {
   unrestrictedTools?: boolean;
   prepareConfig?: (config: ReturnType<typeof createTestAppConfig>) => void;
   prepareSession?: (manager: SessionManager, sessionId: string) => void;
-  skillPlannerDecision?: import("../../src/conversation/turnPlanner.ts").TurnPlannerResult;
+  skillPlannerDecision?: import("../../src/conversation/turnPlanner/types.ts").TurnPlannerResult;
   failAfterReasoning?: boolean;
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
   configOverrides?: Parameters<typeof createTestAppConfig>[0];

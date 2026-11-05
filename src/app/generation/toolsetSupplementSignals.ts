@@ -1,4 +1,4 @@
-import type { TurnPlannerContextDependency, TurnPlannerFollowupMode, TurnPlannerRequiredCapability, TurnPlannerResult } from "#conversation/turnPlanner.ts";
+import type { TurnPlannerContextDependency, TurnPlannerFollowupMode, TurnPlannerRequiredCapability, TurnPlannerResult } from "#conversation/turnPlanner/types.ts";
 import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
 

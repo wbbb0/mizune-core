@@ -10,7 +10,7 @@ import { readSkillDraft } from '../../skills/skillDrafts.ts';
 import { projectSkillForModel } from '../../llm/tools/runtime/skillTools.ts';
 import { isSkillRuntimeAllowedForSession, SKILL_TOOL_NAMES } from '../../skills/skillPolicy.ts';
 import { sessionOperationKey } from '#conversation/session/sessionOperationMode.ts';
-import type { TurnPlannerResult } from '../../conversation/turnPlanner.ts';
+import type { TurnPlannerResult } from '../../conversation/turnPlanner/types.ts';
 import { publishConversation } from "#conversation/crossConversationContext.ts";
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";

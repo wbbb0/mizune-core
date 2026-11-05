@@ -564,7 +564,7 @@ function createConfig() {
 
   test("reply gate keeps wait only for clearly unfinished text", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "reason: 半句话未完\nreply_decision: wait"
+      resultText: "reason: 半句话未完\nreply_decision: wait\nwait_reason: unfinished_message"
     });
 
     const result = await gate.decide({

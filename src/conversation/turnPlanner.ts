@@ -1,712 +1,156 @@
-import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
+import type { LlmClient, LlmUsage } from "#llm/llmClient.ts";
+import { foldMessageForModel } from "#messages/modelMessageProjection.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
-import { analyzeTurnPlannerBatch } from "./turnPlannerBatchAnalysis.ts";
-import type { LlmClient, LlmUsage } from "#llm/llmClient.ts";
-import { getTurnPlannerReasons, resolveTurnPlannerOutputTokenLimit, type TurnPlannerRequirements } from "./turnPlannerPolicy.ts";
-import type { Relationship } from "#identity/relationship.ts";
-import type { SpecialRole } from "#identity/specialRole.ts";
-import { buildTurnPlannerPrompt, buildTurnPlannerResponseFormat } from "#llm/prompts/turn-planner.prompt.ts";
-import type { ChatAttachment } from "#services/workspace/types.ts";
-import type { ChatFileStore } from "#services/workspace/chatFileStore.ts";
-import type { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
-import type { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
-import type { ToolsetView } from "#llm/tools/toolsets.ts";
-import { annotateHistoryMessagesWithCaptions, collectReferencedImageIds } from "#images/imagePromptContext.ts";
-import { collectVisualAttachmentFileIds, isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
-import type { OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
-import type { MessageContentPart } from "#messages/contentParts.ts";
-import {
-  parseTaskPlannerIntent,
-  type TaskPlannerIntent,
-  type TurnPlannerTaskContext
-} from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
+import { getTurnPlannerReasons } from "./turnPlannerPolicy.ts";
+import { prepareTurnPlannerContext, type TurnPlannerMediaServices } from "./turnPlanner/context.ts";
+import { evaluateWithChat } from "./turnPlanner/chat.ts";
+import { canEvaluateWithDecision, evaluateWithDecision } from "./turnPlanner/decision.ts";
+import { createDefaultTurnPlan, normalizeTurnPlan } from "./turnPlanner/result.ts";
+import type { PreparedTurnPlannerInput, TurnPlannerBackend, TurnPlannerInput, TurnPlannerMetrics, TurnPlannerResult } from "./turnPlanner/types.ts";
 
-export type TurnPlannerRequiredCapability =
-  | "external_info_lookup"
-  | "web_navigation"
-  | "filesystem_access"
-  | "shell_execution"
-  | "memory_write"
-  | "scheduler_management"
-  | "time_lookup"
-  | "social_admin"
-  | "conversation_navigation"
-  | "chat_delegation"
-  | "image_generation";
-
-export type TurnPlannerContextDependency =
-  | "structured_message_context"
-  | "prior_web_context"
-  | "prior_shell_context"
-  | "prior_file_context"
-  | "prior_chat_context";
-
-export type TurnPlannerFollowupMode = "none" | "elliptical" | "explicit_reference";
-
-export interface TurnPlannerInput {
-  requirements: TurnPlannerRequirements;
-  availableSkills?: Array<{ id: string; name: string; description: string }>;
-  sessionId: string;
-  chatType: "private" | "group";
-  relationship: Relationship;
-  currentUserSpecialRole?: SpecialRole | null;
-  modeId?: string | null;
-  modeSignalLine?: string | null;
-  recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
-  abortSignal?: AbortSignal;
-  availableToolsets?: ToolsetView[];
-  taskContext?: TurnPlannerTaskContext | null | undefined;
-  batchMessages: Array<{
-    senderName: string;
-    text: string;
-    contentParts?: MessageContentPart[];
-    images: string[];
-    audioSources: string[];
-    imageIds: string[];
-    emojiIds: string[];
-    attachments?: ChatAttachment[];
-    messageFiles?: OneBotMessageFileSummary[];
-    specialSegments?: OneBotSpecialSegmentSummary[];
-    forwardIds: string[];
-    replyMessageId: string | null;
-    mentionUserIds: string[];
-    mentionedAll: boolean;
-    mentionedSelf: boolean;
-    timestampMs?: number | null;
-  }>;
-}
-
-export interface TurnPlannerResult {
-  replyDecision: "reply_small" | "reply_large" | "wait" | "no_reply";
-  topicDecision: "continue_topic" | "new_topic";
-  reason: string;
-  requiredCapabilities: TurnPlannerRequiredCapability[];
-  contextDependencies: TurnPlannerContextDependency[];
-  recentDomainReuse: string[];
-  followupMode: TurnPlannerFollowupMode;
-  toolsetIds: string[];
-  skillIds?: string[];
-  topicDecisionEvaluated?: boolean;
-  taskIntent?: TaskPlannerIntent | undefined;
-  reasoningContent?: string;
-  metrics?: TurnPlannerMetrics;
-}
-
-export interface TurnPlannerMetrics {
-  durationMs: number;
-  mediaPreparationMs: number;
-  generationMs: number;
-  inputTokens: number | null;
-  outputTokens: number | null;
-  cachedTokens: number | null;
-  mediaCaptionCount: number;
-  emojiInputCount: number;
-}
-
-type TurnPlannerMediaCaptionKind = "image" | "emoji";
-
-interface TurnPlannerMediaCaption {
-  imageId: string;
-  kind: TurnPlannerMediaCaptionKind;
-  caption: string;
-}
-
-const MAX_LOG_REASON_LENGTH = 96;
-const NO_REPLY_WAIT_REASON_PATTERNS = [
-  /(?:无需回复|不需要回复|不用回复|无需回应|不用回应|不必回复|不必回应)/u,
-  /(?:只是反馈|只是确认|只是告知|只是陈述|只是附和|只是回应)/u,
-  /(?:收尾|结束话题|结束对话|结束聊天|礼貌收尾|简单收尾)/u,
-  /(?:确认收到|表示收到|表示感谢|单纯感谢|致谢|客套)/u
-] as const;
-const LIKELY_UNFINISHED_TEXT_PATTERNS = [
-  /^(比如|比如说|例如|譬如|然后|还有|另外|就是|先说|我想说)$/u,
-  /(?:还没说完|还没发完|后面还有|继续发|先别回|稍等|等下|等等|我接着说)$/u,
-  /[，、,:：([{（【\-]$/u,
-  /(?:\.{3,}|…+)$/u
-] as const;
-
+/** Coordinates one planning budget; protocol adapters never execute conversation actions. */
 export class TurnPlanner {
+  private readonly media: TurnPlannerMediaServices;
+
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly chatFileStore: Pick<ChatFileStore, "getMany">,
-    private readonly mediaVisionService: Pick<MediaVisionService, "prepareFilesForModel">,
+    chatFileStore: TurnPlannerMediaServices["chatFileStore"],
+    mediaVisionService: TurnPlannerMediaServices["mediaVisionService"],
     private readonly logger: Logger,
-    private readonly mediaCaptionService?: Pick<MediaCaptionService, "ensureReady">
-  ) {}
+    mediaCaptionService?: TurnPlannerMediaServices["mediaCaptionService"]
+  ) {
+    this.media = { chatFileStore, mediaVisionService, ...(mediaCaptionService ? { mediaCaptionService } : {}) };
+  }
+
+  private decisionModelRefs(): string[] {
+    const refs = getModelRefsForRole(this.config, "decision");
+    return refs.length > 0 && this.llmClient.isCapabilityConfigured("decision", refs) ? refs : [];
+  }
 
   isEnabled(): boolean {
-    return this.config.llm.enabled
-      && this.config.llm.turnPlanner.enabled
-      && this.resolveModelRefs().length > 0;
+    return this.config.llm.enabled && this.config.llm.turnPlanner.enabled
+      && (this.decisionModelRefs().length > 0 || getModelRefsForRole(this.config, "turn_planner").length > 0);
   }
 
-  async decide(input: TurnPlannerInput): Promise<TurnPlannerResult> {
-    input = { ...input, batchMessages: input.batchMessages.map(foldMessageForModel) };
-    if (!this.isEnabled() || getTurnPlannerReasons(input.requirements).length === 0) {
-      return {
-        replyDecision: "reply_small",
-        topicDecision: "continue_topic",
-        reason: "未启用规划或无需判断",
-        requiredCapabilities: [],
-        contextDependencies: [],
-        recentDomainReuse: [],
-        followupMode: "none",
-        toolsetIds: []
-      };
+  async decide(originalInput: TurnPlannerInput): Promise<TurnPlannerResult> {
+    originalInput.abortSignal?.throwIfAborted();
+    if (!this.isEnabled() || getTurnPlannerReasons(originalInput.requirements).length === 0) {
+      return createDefaultTurnPlan("未启用规划或无需判断");
     }
-
     const startedAt = Date.now();
-    const plannerModelRefs = this.resolveModelRefs();
-    const maxOutputTokens = resolveTurnPlannerOutputTokenLimit(this.config, plannerModelRefs);
-    const recentMessages = input.recentMessages.slice(-this.config.llm.turnPlanner.recentMessageCount);
-    const batchAnalysis = analyzeTurnPlannerBatch(input.batchMessages);
-    const plannerProfile = getPrimaryModelProfile(this.config, plannerModelRefs);
-    const captionContext = await this.prepareCaptionContext(input, recentMessages, plannerProfile?.chat?.capabilities.supportsVision === true);
-    const emojiImageIds = plannerProfile?.chat?.capabilities.supportsVision
-      ? Array.from(new Set(input.batchMessages.flatMap((message) => (
-        message.attachments
-          ?.filter((item) => item.semanticKind === "emoji" && (item.kind === "image" || item.kind === "animated_image"))
-          .map((item) => item.fileId)
-          ?? []
-      )))).slice(0, 5)
-      : [];
-    let emojiInputs: Array<{
-      imageId: string;
-      inputUrl: string;
-      animated: boolean;
-      durationMs: number | null;
-      sampledFrameCount: number | null;
-    }> = [];
-    if (emojiImageIds.length > 0) {
+    const deadline = startedAt + this.config.llm.turnPlanner.timeoutMs;
+    const timeoutController = new AbortController();
+    const timer = setTimeout(() => timeoutController.abort(new Error("轮次规划超时")), this.config.llm.turnPlanner.timeoutMs);
+    const signal = AbortSignal.any([timeoutController.signal, ...(originalInput.abortSignal ? [originalInput.abortSignal] : [])]);
+    const input: TurnPlannerInput = {
+      ...originalInput,
+      abortSignal: signal,
+      recentMessages: originalInput.recentMessages.slice(-this.config.llm.turnPlanner.recentMessageCount),
+      batchMessages: originalInput.batchMessages.map(foldMessageForModel)
+    };
+    const chatRefs = getModelRefsForRole(this.config, "turn_planner");
+    const decisionRefs = this.decisionModelRefs();
+    let backend: TurnPlannerBackend = decisionRefs.length > 0 && canEvaluateWithDecision(input) ? "decision" : "chat";
+    let modelRef = (backend === "decision" ? decisionRefs : chatRefs)[0];
+    let fallbackReason: TurnPlannerMetrics["fallbackReason"] = decisionRefs.length > 0 && backend === "chat" ? "question_limit" : undefined;
+    let prepared: PreparedTurnPlannerInput | undefined;
+    const contexts = new Map<boolean, PreparedTurnPlannerInput>();
+    let mediaPreparationMs = 0;
+    let generationMs = 0;
+    let unknownUsage = false;
+    const usages: LlmUsage[] = [];
+    const remainingMs = () => {
+      signal.throwIfAborted();
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error("轮次规划超时");
+      return remaining;
+    };
+    const metrics = (): TurnPlannerMetrics => {
+      const sum = (key: "inputTokens" | "outputTokens" | "cachedTokens") =>
+        unknownUsage || !usages.length || usages.some(usage => usage[key] == null) ? null : usages.reduce((total, usage) => total + usage[key]!, 0);
+      return {
+        backend, ...(modelRef ? { modelRef } : {}), ...(fallbackReason ? { fallbackReason } : {}),
+        durationMs: Date.now() - startedAt, mediaPreparationMs, generationMs,
+        inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens"), cachedTokens: sum("cachedTokens"),
+        mediaCaptionCount: prepared?.mediaCaptions.length ?? 0,
+        emojiInputCount: prepared?.visualInputs.filter(item => item.kind === "emoji").length ?? 0,
+        imageInputCount: prepared?.visualInputs.filter(item => item.kind === "image").length ?? 0
+      };
+    };
+    const evaluate = async (selected: TurnPlannerBackend) => {
+      backend = selected;
+      const refs = selected === "decision" ? decisionRefs : chatRefs;
+      modelRef = refs[0];
+      if (!refs.length) throw new Error("未配置轮次规划模型");
+      const supportsVision = selected === "decision" || refs.every(ref => getPrimaryModelProfile(this.config, ref)?.chat?.capabilities.supportsVision === true);
+      prepared = contexts.get(supportsVision);
+      if (!prepared) {
+        const preparingAt = Date.now();
+        try {
+          prepared = await awaitPlannerTask(prepareTurnPlannerContext(input, supportsVision, this.media, this.logger), signal);
+          contexts.set(supportsVision, prepared);
+        } finally { mediaPreparationMs += Date.now() - preparingAt; }
+      }
+      const generatingAt = Date.now();
       try {
-        const files = await this.chatFileStore.getMany(emojiImageIds);
-        const existingIds = new Set(files.map((item) => item.fileId));
-        emojiInputs = (await this.mediaVisionService.prepareFilesForModel(emojiImageIds))
-          .filter((item) => existingIds.has(item.fileId))
-          .map((item) => ({
-            imageId: item.fileId,
-            inputUrl: item.inputUrl,
-            animated: item.animated,
-            durationMs: item.durationMs,
-            sampledFrameCount: item.sampledFrameCount
-          }));
-      } catch (error: unknown) {
-        this.logger.warn(
-          {
-            sessionId: input.sessionId,
-            emojiImageIds,
-            error: error instanceof Error ? error.message : String(error)
-          },
-          "turn_planner_emoji_prepare_failed"
-        );
-      }
-    }
-    this.logger.debug(
-      {
-        sessionId: input.sessionId,
-        chatType: input.chatType,
-        relationship: input.relationship,
-        recentMessageCount: recentMessages.length,
-        batchMessageCount: input.batchMessages.length,
-        batchFeatures: batchAnalysis.summaryTags,
-        emojiInputCount: emojiInputs.length,
-        mediaCaptionCount: captionContext.mediaCaptions.length,
-        availableToolsetCount: (input.availableToolsets ?? []).length
-      },
-      "turn_planner_started"
-    );
-
-    let raw: string;
-    let plannerReasoningContent = "";
-    const mediaPreparationMs = Date.now() - startedAt;
-    const generationStartedAt = Date.now();
-    let usage: LlmUsage | undefined;
-    const metrics = (): TurnPlannerMetrics => ({
-      durationMs: Date.now() - startedAt,
-      mediaPreparationMs,
-      generationMs: Date.now() - generationStartedAt,
-      inputTokens: usage?.inputTokens ?? null,
-      outputTokens: usage?.outputTokens ?? null,
-      cachedTokens: usage?.cachedTokens ?? null,
-      mediaCaptionCount: captionContext.mediaCaptions.length,
-      emojiInputCount: emojiInputs.length
-    });
-    try {
-      const responseFormat = this.llmClient.supportsStructuredOutput?.(plannerModelRefs)
-        ? buildTurnPlannerResponseFormat(input.requirements, input.requirements.taskIntent && input.taskContext != null)
-        : undefined;
-      const result = await this.llmClient.generate({
-        ...(responseFormat ? { responseFormat } : {}),
-        modelRefOverride: plannerModelRefs,
-        timeoutMsOverride: this.config.llm.turnPlanner.timeoutMs,
-        ...(maxOutputTokens != null ? { maxOutputTokensOverride: maxOutputTokens } : {}),
-        enableThinkingOverride: this.config.llm.turnPlanner.enableThinking,
-        preferNativeNoThinkingChatEndpoint: true,
-        skipDebugDump: true,
-        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-        messages: buildTurnPlannerPrompt({
-          structuredOutput: responseFormat !== undefined,
-          ...input,
-          availableToolsets: input.availableToolsets ?? [],
-          recentMessages: captionContext.recentMessages,
-          batchAnalysis,
-          emojiInputs,
-          mediaCaptions: captionContext.mediaCaptions
-        })
-      });
-      raw = result.text;
-      usage = result.usage;
-      plannerReasoningContent = result.reasoningContent ?? "";
-    } catch (error: unknown) {
-      const durationMs = Date.now() - startedAt;
-      if (input.abortSignal?.aborted || isAbortError(error)) {
-        this.logger.info({ sessionId: input.sessionId, durationMs }, "turn_planner_aborted");
-      } else {
-        this.logger.warn({ sessionId: input.sessionId, ...metrics(), callReasons: getTurnPlannerReasons(input.requirements), err: error }, "turn_planner_llm_failed");
-      }
-      return {
-        replyDecision: "reply_small",
-        topicDecision: "continue_topic",
-        reason: "规划失败，继续回复",
-        metrics: metrics(),
-        requiredCapabilities: [],
-        contextDependencies: [],
-        recentDomainReuse: [],
-        followupMode: "none",
-        toolsetIds: []
-      };
-    }
-
-    const parsedRaw = { ...this.normalizeDecision(this.parseDecision(raw), input, batchAnalysis), metrics: metrics() };
-    const parsed: TurnPlannerResult = plannerReasoningContent
-      ? { ...parsedRaw, reasoningContent: plannerReasoningContent }
-      : parsedRaw;
-    const logReason = summarizeReasonForLog(parsed.reason);
-    const durationMs = Date.now() - startedAt;
-    this.logger.info(
-      {
-        sessionId: input.sessionId,
-        callReasons: getTurnPlannerReasons(input.requirements),
-        ...parsed.metrics,
-        modelRef: usage?.modelRef ?? plannerModelRefs[0] ?? null,
-        model: usage?.model ?? plannerProfile?.model ?? null,
-        requestCount: usage?.requestCount ?? null,
-        replyDecision: parsed.replyDecision,
-        topicDecision: parsed.topicDecision,
-        ...(parsed.taskIntent ? { taskIntent: parsed.taskIntent.kind, taskIntentConfidence: parsed.taskIntent.confidence } : {}),
-        toolsetIds: parsed.toolsetIds,
-        ...(logReason ? { reason: logReason } : {}),
-        durationMs
-      },
-      "turn_planner_decided"
-    );
-    if (durationMs >= 3000) {
-      this.logger.warn(
-        {
-          sessionId: input.sessionId,
-          durationMs,
-          model: getPrimaryModelProfile(this.config, plannerModelRefs)?.model ?? null,
-          modelRef: plannerModelRefs
-        },
-        "turn_planner_slow"
-      );
-    }
-    return parsed;
-  }
-
-  private parseDecision(raw: string): TurnPlannerResult {
-    return parseStructuredPlannerResult(raw.trim()) ?? {
-      replyDecision: "reply_small",
-      topicDecision: "continue_topic",
-      reason: "规划格式无效，继续回复",
-      requiredCapabilities: [],
-      contextDependencies: [],
-      recentDomainReuse: [],
-      followupMode: "none",
-      toolsetIds: []
+        const timeoutMs = remainingMs();
+        const result = await awaitPlannerTask(selected === "decision"
+          ? evaluateWithDecision(this.config, this.llmClient, prepared, refs, timeoutMs)
+          : evaluateWithChat(this.config, this.llmClient, prepared, refs, timeoutMs), signal);
+        signal.throwIfAborted();
+        if (result.usage) {
+          usages.push(result.usage);
+          modelRef = result.usage.modelRef ?? modelRef;
+        } else unknownUsage = true;
+        return result.plan;
+      } catch (error) {
+        unknownUsage = true;
+        throw error;
+      } finally { generationMs += Date.now() - generatingAt; }
     };
-  }
-
-  private resolveModelRefs(): string[] {
-    return getModelRefsForRole(this.config, "turn_planner");
-  }
-
-  private async prepareCaptionContext(
-    input: TurnPlannerInput,
-    recentMessages: TurnPlannerInput["recentMessages"],
-    supportsVision: boolean
-  ): Promise<{
-    recentMessages: TurnPlannerInput["recentMessages"];
-    mediaCaptions: TurnPlannerMediaCaption[];
-  }> {
-    if (supportsVision || !this.mediaCaptionService) {
-      return { recentMessages, mediaCaptions: [] };
-    }
-
-    const historyImageIds = collectReferencedImageIds(recentMessages);
-    const batchRefs = collectBatchMediaRefs(input.batchMessages);
-    const imageIds = uniqueIds([...historyImageIds, ...batchRefs.map((item) => item.imageId)]);
-    if (imageIds.length === 0) {
-      return { recentMessages, mediaCaptions: [] };
-    }
 
     try {
-      const captions = await this.mediaCaptionService.ensureReady(imageIds, {
-        reason: "turn_planner_caption_context",
-        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-      });
-      return {
-        recentMessages: annotateHistoryMessagesWithCaptions(recentMessages, captions, { includeIds: true }),
-        mediaCaptions: batchRefs
-          .map((item) => {
-            const caption = captions.get(item.imageId);
-            return caption ? { ...item, caption } : null;
-          })
-          .filter((item): item is TurnPlannerMediaCaption => item != null)
-      };
-    } catch (error: unknown) {
-      this.logger.warn(
-        {
-          sessionId: input.sessionId,
-          imageIds,
-          error: error instanceof Error ? error.message : String(error)
-        },
-        "turn_planner_image_caption_context_failed"
-      );
-      return { recentMessages, mediaCaptions: [] };
-    }
-  }
-
-  private normalizeDecision(
-    parsed: TurnPlannerResult,
-    input: TurnPlannerInput,
-    batchAnalysis: ReturnType<typeof analyzeTurnPlannerBatch>
-  ): TurnPlannerResult {
-    const needs = input.requirements;
-    parsed = {
-      ...parsed,
-      replyDecision: (parsed.replyDecision === "wait" && !needs.semanticWait)
-        || (parsed.replyDecision === "no_reply" && !needs.replyGate)
-        || (parsed.replyDecision === "reply_large" && !needs.modelSelection)
-        ? "reply_small" : parsed.replyDecision,
-      topicDecision: needs.topicSwitch ? parsed.topicDecision : "continue_topic",
-      topicDecisionEvaluated: needs.topicSwitch,
-      requiredCapabilities: needs.toolSelection ? parsed.requiredCapabilities : [],
-      contextDependencies: needs.toolSelection ? parsed.contextDependencies : [],
-      recentDomainReuse: needs.toolSelection ? parsed.recentDomainReuse : [],
-      followupMode: needs.toolSelection ? parsed.followupMode : "none",
-      skillIds: needs.skillSelection && this.config.skills.plannerSelectionEnabled ? (parsed.skillIds ?? []).filter(id => input.availableSkills?.some(skill => skill.id === id)) : [],
-      toolsetIds: needs.toolSelection ? parsed.toolsetIds : []
-    };
-    const allowedToolsetIds = new Set((input.availableToolsets ?? []).map((item) => item.id));
-    const filteredToolsetIds = parsed.replyDecision === "wait" || parsed.replyDecision === "no_reply"
-      ? []
-      : Array.from(new Set(parsed.toolsetIds.filter((id) => allowedToolsetIds.has(id))));
-    const normalized = { ...parsed, toolsetIds: filteredToolsetIds };
-    if (!needs.taskIntent || !input.taskContext) {
-      delete normalized.taskIntent;
-    }
-
-    if (normalized.replyDecision === "no_reply") {
-      if (input.chatType === "private") {
-        this.logger.info(
-          {
-            sessionId: input.sessionId,
-            reason: normalized.reason || "private no_reply not allowed"
-          },
-          "turn_planner_no_reply_coerced_to_reply"
-        );
-        return {
-          ...normalized,
-          replyDecision: "reply_small",
-          topicDecision: "continue_topic",
-          toolsetIds: []
-        };
+      let plan: TurnPlannerResult;
+      try {
+        plan = await evaluate(backend);
+      } catch (error) {
+        signal.throwIfAborted();
+        if (backend !== "decision" || !chatRefs.length) throw error;
+        fallbackReason = "decision_failed";
+        this.logger.warn({ sessionId: input.sessionId, err: error }, "turn_planner_decision_failed");
+        plan = await evaluate("chat");
       }
-      return {
-        ...normalized,
-        topicDecision: "continue_topic",
-        toolsetIds: []
-      };
-    }
-
-    if (normalized.replyDecision !== "wait") {
-      return normalized;
-    }
-
-    if (!shouldHonorWaitDecision(input, batchAnalysis, normalized.reason)) {
-      this.logger.info(
-        {
-          sessionId: input.sessionId,
-          reason: normalized.reason || "wait decision not justified by local heuristics"
-        },
-        "turn_planner_wait_coerced_to_reply"
-      );
-      return {
-        replyDecision: "reply_small",
-        topicDecision: "continue_topic",
-        reason: normalized.reason || "wait coerced to reply",
-        requiredCapabilities: normalized.requiredCapabilities,
-        contextDependencies: normalized.contextDependencies,
-        recentDomainReuse: normalized.recentDomainReuse,
-        followupMode: normalized.followupMode,
-        toolsetIds: [],
-        ...(normalized.taskIntent ? { taskIntent: normalized.taskIntent } : {})
-      };
-    }
-
-    return {
-      ...normalized,
-      topicDecision: "continue_topic",
-      toolsetIds: []
-    };
-  }
-}
-
-function collectBatchMediaRefs(messages: TurnPlannerInput["batchMessages"]): Array<{
-  imageId: string;
-  kind: TurnPlannerMediaCaptionKind;
-}> {
-  const refs: Array<{ imageId: string; kind: TurnPlannerMediaCaptionKind }> = [];
-  const seen = new Set<string>();
-  const add = (imageId: string, kind: TurnPlannerMediaCaptionKind): void => {
-    const normalized = String(imageId ?? "").trim();
-    if (!normalized || isPendingChatAttachmentId(normalized) || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    refs.push({ imageId: normalized, kind });
-  };
-
-  for (const message of messages) {
-    for (const imageId of message.imageIds ?? []) {
-      add(imageId, "image");
-    }
-    for (const emojiId of message.emojiIds ?? []) {
-      add(emojiId, "emoji");
-    }
-    for (const imageId of collectVisualAttachmentFileIds(message.attachments, "image")) {
-      add(imageId, "image");
-    }
-    for (const emojiId of collectVisualAttachmentFileIds(message.attachments, "emoji")) {
-      add(emojiId, "emoji");
-    }
-    for (const part of message.contentParts ?? []) {
-      if ((part.kind === "image" || part.kind === "emoji") && part.fileId) {
-        add(part.fileId, part.kind);
+      const result = { ...normalizeTurnPlan(plan, input, prepared!.batchAnalysis, this.config, this.logger), metrics: metrics() };
+      this.logger.info({ sessionId: input.sessionId, callReasons: getTurnPlannerReasons(input.requirements), ...result.metrics,
+        replyDecision: result.replyDecision, topicDecision: result.topicDecision, toolsetIds: result.toolsetIds,
+        ...(result.taskIntent ? { taskIntent: result.taskIntent.kind, taskIntentConfidence: result.taskIntent.confidence } : {}), reason: result.reason
+      }, "turn_planner_decided");
+      if (result.metrics.durationMs >= 3000) {
+        this.logger.warn({ sessionId: input.sessionId, backend, modelRef, durationMs: result.metrics.durationMs }, "turn_planner_slow");
       }
+      return result;
+    } catch (error) {
+      originalInput.abortSignal?.throwIfAborted();
+      this.logger.warn({ sessionId: input.sessionId, ...metrics(), callReasons: getTurnPlannerReasons(input.requirements), err: error }, "turn_planner_llm_failed");
+      return { ...createDefaultTurnPlan("规划失败，继续回复"), metrics: metrics() };
+    } finally {
+      clearTimeout(timer);
     }
   }
-
-  return refs;
 }
 
-function uniqueIds(ids: string[]): string[] {
-  return Array.from(new Set(ids.map((item) => String(item ?? "").trim()).filter(Boolean)));
-}
-
-function parseToolsetIds(value: string): string[] {
-  const normalized = sanitizeReason(value);
-  if (!normalized || normalized === "-" || normalized === "none") {
-    return [];
-  }
-  return normalized.split(/[\s,，|]+/g).map((item) => item.trim()).filter(Boolean);
-}
-
-function parseStructuredPlannerResult(raw: string): TurnPlannerResult | null {
-  const fieldMap = new Map<string, string>();
-  if (raw.trimStart().startsWith("{")) {
-    try {
-      const value: unknown = JSON.parse(raw);
-      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-      for (const [key, field] of Object.entries(value)) {
-        if (typeof field !== "string") return null;
-        fieldMap.set(key, field.trim());
-      }
-    } catch { return null; }
-  } else for (const line of raw.split(/\r?\n/g)) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const match = trimmed.match(/^([a-z_]+)\s*:\s*(.*)$/);
-    if (!match) {
-      return null;
-    }
-    fieldMap.set(match[1] ?? "", (match[2] ?? "").trim());
-  }
-  if (!fieldMap.has("reason")) {
-    return null;
-  }
-  const taskIntent = parseTaskPlannerIntent(fieldMap.get("task_intent"));
-  return {
-    ...normalizeParsedDecisions(fieldMap.get("reply_decision"), fieldMap.get("topic_decision")),
-    reason: summarizeReasonForLog(fieldMap.get("reason") ?? "", 160),
-    requiredCapabilities: parseRequiredCapabilities(fieldMap.get("required_capabilities")),
-    contextDependencies: parseContextDependencies(fieldMap.get("context_dependencies")),
-    recentDomainReuse: parseStringList(fieldMap.get("recent_domain_reuse")),
-    followupMode: normalizeFollowupMode(fieldMap.get("followup_mode")),
-    toolsetIds: parseToolsetIds(fieldMap.get("toolset_ids") ?? ""),
-    skillIds: parseToolsetIds(fieldMap.get("skill_ids") ?? ""),
-    ...(taskIntent ? { taskIntent } : {})
-  };
-}
-
-function parseStringList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-  if (typeof value === "string") {
-    const normalized = sanitizeReason(value);
-    if (!normalized || normalized.toLowerCase() === "none" || normalized === "-") {
-      return [];
-    }
-    return normalized.split(/[\s,，|]+/g).map((item) => item.trim()).filter(Boolean);
-  }
-  return [];
-}
-
-function parseRequiredCapabilities(value: unknown): TurnPlannerRequiredCapability[] {
-  return parseStringList(value)
-    .filter((item): item is TurnPlannerRequiredCapability => isRequiredCapability(item));
-}
-
-function parseContextDependencies(value: unknown): TurnPlannerContextDependency[] {
-  return parseStringList(value)
-    .filter((item): item is TurnPlannerContextDependency => isContextDependency(item));
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && (error.name === "AbortError" || error.message.includes("aborted"));
-}
-
-function sanitizeReason(reason: string): string {
-  return reason
-    .replace(/\s+/g, " ")
-    .replace(/^[\s"'“”‘’|]+/g, "")
-    .replace(/[\s"'“”‘’|]+$/g, "")
-    .trim();
-}
-
-function summarizeReasonForLog(reason: string, maxLength = MAX_LOG_REASON_LENGTH): string {
-  const normalized = sanitizeReason(reason);
-  if (!normalized) {
-    return "";
-  }
-  return normalized.length <= maxLength
-    ? normalized
-    : `${normalized.slice(0, maxLength)}...`;
-}
-
-function normalizeReplyDecision(input: unknown): TurnPlannerResult["replyDecision"] {
-  const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
-  if (normalized === "reply_large") {
-    return normalized;
-  }
-  if (normalized === "wait") {
-    return normalized;
-  }
-  if (normalized === "no_reply") {
-    return "no_reply";
-  }
-  return "reply_small";
-}
-
-function normalizeTopicDecision(input: unknown): TurnPlannerResult["topicDecision"] {
-  const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
-  if (normalized === "new_topic") {
-    return "new_topic";
-  }
-  return "continue_topic";
-}
-
-function normalizeFollowupMode(input: unknown): TurnPlannerFollowupMode {
-  const normalized = typeof input === "string" ? input.trim().toLowerCase() : "";
-  if (normalized === "elliptical" || normalized === "explicit_reference") {
-    return normalized;
-  }
-  return "none";
-}
-
-function isRequiredCapability(value: string): value is TurnPlannerRequiredCapability {
-  return [
-    "external_info_lookup",
-    "web_navigation",
-    "filesystem_access",
-    "shell_execution",
-    "memory_write",
-    "scheduler_management",
-    "time_lookup",
-    "social_admin",
-    "conversation_navigation",
-    "chat_delegation",
-    "image_generation"
-  ].includes(value);
-}
-
-function isContextDependency(value: string): value is TurnPlannerContextDependency {
-  return [
-    "structured_message_context",
-    "prior_web_context",
-    "prior_shell_context",
-    "prior_file_context",
-    "prior_chat_context"
-  ].includes(value);
-}
-
-function normalizeParsedDecisions(
-  replyInput: unknown,
-  topicInput: unknown
-): Pick<TurnPlannerResult, "replyDecision" | "topicDecision"> {
-  const replyDecision = normalizeReplyDecision(replyInput);
-  if (replyDecision === "wait") {
-    return {
-      replyDecision,
-      topicDecision: "continue_topic"
-    };
-  }
-  if (replyDecision === "no_reply") {
-    return {
-      replyDecision,
-      topicDecision: "continue_topic"
-    };
-  }
-  return {
-    replyDecision,
-    topicDecision: normalizeTopicDecision(topicInput)
-  };
-}
-
-function shouldHonorWaitDecision(
-  input: TurnPlannerInput,
-  batchAnalysis: ReturnType<typeof analyzeTurnPlannerBatch>,
-  reason: string
-): boolean {
-  if (looksLikeNoReplyRationale(reason)) {
-    return false;
-  }
-
-  if (batchAnalysis.messageCount !== 1 || batchAnalysis.hasStructuredResolvableContent) {
-    return false;
-  }
-
-  const message = input.batchMessages[0];
-  const text = message?.text?.trim() ?? "";
-  if (!text) {
-    return false;
-  }
-
-  return LIKELY_UNFINISHED_TEXT_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-function looksLikeNoReplyRationale(reason: string): boolean {
-  const normalized = sanitizeReason(reason);
-  if (!normalized) {
-    return false;
-  }
-  return NO_REPLY_WAIT_REASON_PATTERNS.some((pattern) => pattern.test(normalized));
+/** Release callers promptly even when a media implementation cannot cancel its work. */
+async function awaitPlannerTask<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
+  let abort: () => void = () => {};
+  const aborted = new Promise<never>((_resolve, reject) => {
+    abort = () => reject(signal.reason);
+    if (signal.aborted) abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  });
+  try { return await Promise.race([task, aborted]); }
+  finally { signal.removeEventListener("abort", abort); }
 }

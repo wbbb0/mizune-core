@@ -75,3 +75,11 @@ export function resolveTurnPlannerOutputTokenLimit(config: AppConfig, modelRefs:
   });
   return canUseShortBudget ? 512 : undefined;
 }
+
+export function getTurnPlannerReplyOptions(needs: TurnPlannerRequirements): string[] {
+  return [
+    ...(needs.modelSelection ? ["reply_small", "reply_large"] : ["reply"]),
+    ...(needs.semanticWait ? ["wait"] : []),
+    ...(needs.replyGate ? ["no_reply"] : [])
+  ];
+}

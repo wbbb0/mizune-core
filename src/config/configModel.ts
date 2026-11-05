@@ -531,9 +531,9 @@ const llmRuntimeConfigSchema = s.object({
     timeoutMs: s.number().int().positive().title("超时毫秒").default(120000)
   }).title("语音生成").describe("通过 speechGenerator 路由生成可发送的语音资产。").default(emptyObject),
   decision: s.object({
-    enabled: s.boolean().title("启用").default(false),
+    enabled: s.boolean().title("启用决策工具").describe("控制 make_decision 工具可见性；内部轮次规划独立按有效 decision 路由自动选用。").default(false),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(15000)
-  }).title("原生决策").describe("通过 decision 路由调用分类、条件概率及评分能力。").default(emptyObject),
+  }).title("原生决策").describe("通过 decision 路由调用分类、条件概率及评分能力；内部规划复用该路由和单次请求超时。").default(emptyObject),
   imageGeneration: s.object({
     enabled: s.boolean().title("启用").default(false),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(300000)

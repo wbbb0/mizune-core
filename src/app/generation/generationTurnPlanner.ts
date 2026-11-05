@@ -1,17 +1,16 @@
+import { mustReplyToPlannerBatch } from "#conversation/turnPlanner/result.ts";
 import { isSkillRuntimeAllowedForSession, type SkillSessionContext } from "../../skills/skillPolicy.ts";
 import { getSkillStore } from '../../skills/skillStore.ts';
-import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import { getModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { GenerationPromptHistoryMessage } from "./generationPromptBuilder.ts";
 import type { GenerationCurrentUser, GenerationTurnPlannerDeps } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./generationExecutor.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
-import type { TurnPlannerResult } from "#conversation/turnPlanner.ts";
+import type { TurnPlannerResult } from "#conversation/turnPlanner/types.ts";
 import type { TurnPlannerTaskContext } from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
 import { getTurnPlannerReasons, resolveTurnPlannerRequirements, type TopicCompressionCandidate } from "#conversation/turnPlannerPolicy.ts";
 import {
-  collectVisualAttachmentFileIds,
   dedupeResolvedChatAttachments,
   isPendingChatAttachmentId
 } from "#services/workspace/chatAttachments.ts";
@@ -92,30 +91,6 @@ export async function handleGenerationTurnPlanner(
   )
     ? getSkillStore(config).list().filter(skill => skill.effectiveAvailable)
     : [];
-  const requirements = resolveTurnPlannerRequirements(config, {
-    canSkipReply: !shouldCoerceNoReplyToReply(input),
-    pendingWaitPasses: input.pendingReplyGateWaitPasses,
-    availableToolsetCount: input.availableToolsets.length,
-    availableSkillCount: selectableSkills.length,
-    taskContext: input.taskContext,
-    topicCompressionCandidate: input.topicCompressionCandidate
-  });
-  const callReasons = getTurnPlannerReasons(requirements);
-  if (callReasons.length === 0) return continueWithoutPlanner("no_required_decisions");
-  logger.info({ sessionId: input.sessionId, callReasons, topicCompressionCandidate: input.topicCompressionCandidate }, "turn_planner_required");
-
-  const plannerProfile = getPrimaryModelProfile(config, getModelRefsForRole(config, "turn_planner"));
-  const hasEmojiWithoutGateVision = (
-    input.batchMessages.some((message) => message.emojiIds.some((fileId) => !isPendingChatAttachmentId(fileId)))
-    || input.batchMessages.some((message) => collectVisualAttachmentFileIds(message.attachments, "emoji").length > 0)
-  ) && !plannerProfile?.chat?.capabilities.supportsVision;
-  if (hasEmojiWithoutGateVision) {
-    logger.info(
-      { sessionId: input.sessionId },
-      "turn_planner_emoji_without_vision_continues_without_emoji_inputs"
-    );
-  }
-
   const plannerBatchMessages = input.batchMessages.map((message) => {
     const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
     return {
@@ -124,6 +99,7 @@ export async function handleGenerationTurnPlanner(
       ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
       images: message.images,
       audioSources: message.audioSources,
+      audioIds: message.audioIds,
       imageIds: message.imageIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
       emojiIds: message.emojiIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
       ...(attachments.length > 0 ? { attachments } : {}),
@@ -138,6 +114,19 @@ export async function handleGenerationTurnPlanner(
     };
   });
 
+  const mustReply = mustReplyToPlannerBatch(input.sendTarget.chatType,
+    input.batchMessages.map(message => ({ ...message, mentionedSelf: message.isAtMentioned })));
+  const requirements = resolveTurnPlannerRequirements(config, {
+    canSkipReply: !mustReply,
+    pendingWaitPasses: input.pendingReplyGateWaitPasses,
+    availableToolsetCount: input.availableToolsets.length,
+    availableSkillCount: selectableSkills.length,
+    taskContext: input.taskContext,
+    topicCompressionCandidate: input.topicCompressionCandidate
+  });
+  const callReasons = getTurnPlannerReasons(requirements);
+  if (callReasons.length === 0) return continueWithoutPlanner("no_required_decisions");
+  logger.info({ sessionId: input.sessionId, callReasons, topicCompressionCandidate: input.topicCompressionCandidate }, "turn_planner_required");
   let planner = await turnPlanner.decide({
     requirements,
     availableSkills: requirements.skillSelection ? selectableSkills.map(({ id, name, description }) => ({ id, name, description })) : [],
@@ -162,7 +151,7 @@ export async function handleGenerationTurnPlanner(
   let finalWaitPassCount: number | undefined;
   let topicSwitchCompression: { preservedMessageCount: number } | undefined;
 
-  if (planner.replyDecision === "no_reply" && shouldCoerceNoReplyToReply(input)) {
+  if (planner.replyDecision === "no_reply" && mustReply) {
     logger.info(
       {
         sessionId: input.sessionId,
@@ -274,25 +263,4 @@ export async function handleGenerationTurnPlanner(
     plannerDecision: planner,
     ...(topicSwitchCompression ? { topicSwitchCompression } : {})
   };
-}
-
-function shouldCoerceNoReplyToReply(input: GenerationTurnPlannerInput): boolean {
-  if (input.sendTarget.chatType === "private") {
-    return true;
-  }
-  return input.batchMessages.some((message) => (
-    message.isAtMentioned
-    || message.replyMessageId != null
-    || message.images.length > 0
-    || (message.contentParts?.some((part) => part.kind !== "text" || part.text.trim().length > 0) ?? false)
-    || message.imageIds.length > 0
-    || message.audioSources.length > 0
-    || message.audioIds.length > 0
-    || message.emojiIds.length > 0
-    || (message.attachments?.length ?? 0) > 0
-    || (message.messageFiles?.length ?? 0) > 0
-    || (message.specialSegments?.length ?? 0) > 0
-    || message.forwardIds.length > 0
-    || message.mentionedAll
-  ));
 }

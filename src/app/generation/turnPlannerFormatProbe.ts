@@ -642,7 +642,7 @@ export function buildTurnPlannerFormatProbePrompt(
     batchMessages: probeCase.batchMessages,
     availableToolsets,
     batchAnalysis: analyzeTurnPlannerBatch(probeCase.batchMessages),
-    emojiInputs: []
+    visualInputs: []
   });
 
   return basePrompt;

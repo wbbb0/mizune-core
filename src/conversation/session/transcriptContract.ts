@@ -406,6 +406,9 @@ export const transcriptGateDecisionItemSchema = z.object({
   toolsetIds: z.array(z.string()).optional(),
   plannerReasons: z.array(z.string()).optional(),
   plannerMetrics: z.object({
+    backend: z.enum(["chat", "decision"]).optional(),
+    modelRef: z.string().optional(),
+    fallbackReason: z.enum(["decision_failed", "question_limit"]).optional(),
     durationMs: z.number().nonnegative(),
     mediaPreparationMs: z.number().nonnegative(),
     generationMs: z.number().nonnegative(),
@@ -413,7 +416,8 @@ export const transcriptGateDecisionItemSchema = z.object({
     outputTokens: z.number().nullable(),
     cachedTokens: z.number().nullable(),
     mediaCaptionCount: z.number().nonnegative(),
-    emojiInputCount: z.number().nonnegative()
+    emojiInputCount: z.number().nonnegative(),
+    imageInputCount: z.number().nonnegative().optional()
   }).optional(),
   timestampMs: z.number().int().nonnegative()
 });

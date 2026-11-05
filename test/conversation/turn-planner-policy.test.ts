@@ -125,6 +125,29 @@ test("task-only planning omits inactive fields and rejects unsolicited routing, 
   assert.ok(result.metrics);
 });
 
+for (const media of [{ imageIds: ["pending:image"] }, { audioIds: ["audio-asset"] }]) {
+  test(`强制回复依据原始触发信息，媒体证据过滤不能打开 no_reply：${Object.keys(media)[0]}`, async () => {
+    const value = config();
+    value.skills.plannerSelectionEnabled = false;
+    value.llm.turnPlanner.toolSelection = "planned";
+    let system = "";
+    const planner = createReplyGate(value, { onGenerate(params) { system = String(params.messages[0]?.content); } });
+    const initial = createGenerationReplyGateInput();
+    const result = await handleGenerationTurnPlanner(
+      createGenerationReplyGateDeps({ config: value, turnPlanner: planner }),
+      createGenerationReplyGateHandlers(),
+      createGenerationReplyGateInput({
+        sendTarget: { ...initial.sendTarget, chatType: "group", groupId: "test-group" },
+        availableToolsets: [{ id: "time_utils", title: "时间", description: "查询时间", toolNames: ["get_current_time"] }],
+        batchMessages: [{ ...initial.batchMessages[0]!, chatType: "group", audioSources: [], text: "看看这个", ...media }]
+      })
+    );
+    assert.equal(result.action, "continue");
+    assert.ok(system);
+    assert.doesNotMatch(system, /reply_decision/);
+  });
+}
+
 test("all mode retains explicit toolset skill requests when skills are enabled", () => {
   const value = config();
   const names = ["list_available_toolsets", "request_toolset"];

@@ -18,7 +18,7 @@
 | 图片生成与编辑 | `/images/generations`、`/images/edits` | `image`、`imageGenerator` 路由 |
 | 条件概率、分类、评分 | `/decisions` | `decision`、同名路由 |
 
-语音生成和决策工具分别由 `llm.speechGeneration.enabled`、`llm.decision.enabled` 开启，默认关闭。图片沿用 `llm.imageGeneration.enabled`。这些开关控制工具可见性，模型用途及路由控制实际目标；新增供应商不会自动切换现有路由。
+语音生成和决策工具分别由 `llm.speechGeneration.enabled`、`llm.decision.enabled` 开启，默认关闭。图片沿用 `llm.imageGeneration.enabled`。这些开关控制工具可见性，模型用途及路由控制实际目标。内部轮次规划在存在有效 `decision` 路由时优先使用它，不依赖 `make_decision` 工具是否可见；仍受 `llm.turnPlanner.enabled` 及本轮实际职责控制。
 
 ## Responses 与本地历史
 
@@ -32,7 +32,7 @@
 
 原生搜索返回的引用和来源进入 metadata。普通文本对所有消息出口附上可读链接；Sessions 页另展示去重来源列表。结构化输出保留原始 JSON，来源只留在 metadata，避免污染解析结果。
 
-`LlmClient.generate()` 的 `responseFormat` 支持 `json_object` 和 `json_schema`。轮次规划器及结构化建议器在整条候选路由均声明 `chat.capabilities.supportsStructuredOutput: true` 且协议支持原生格式时使用该能力；混合路由使用现有文本契约，避免切换模型后无法满足协议。原生严格 JSON schema 中对象必须声明 `additionalProperties: false`，并完整列出必填属性。
+`LlmClient.generate()` 的 `responseFormat` 支持 `json_object` 和 `json_schema`。聊天轮次规划器及结构化建议器在整条候选路由均声明 `chat.capabilities.supportsStructuredOutput: true` 且协议支持原生格式时使用该能力；混合路由使用现有文本契约，避免切换模型后无法满足协议。原生严格 JSON schema 中对象必须声明 `additionalProperties: false`，并完整列出必填属性。
 
 ## 转写、语音与资产
 
@@ -46,7 +46,7 @@
 
 ## Decisions 边界
 
-`LlmClient.decide()` 支持 `predicate`、`choice`、`score`，返回有类型的结果或明确的拒绝项。`make_decision` 接受 `input` 文本、可选 `data` JSON 对象/对象数组，以及 `reference_images` 图片资产引用。JSON 限制为 256 KiB，图片只读取已登记静态资产，并复用媒体访问检查；不把参数中的本地路径或网络 URL 当作文件读取入口。它不生成任意对象、不执行动作，也不会自动替换已有轮次规划器或权限策略。
+`LlmClient.decide()` 支持 `predicate`、`choice`、`score`，返回有类型的结果或明确的拒绝项。`make_decision` 接受 `input` 文本、可选 `data` JSON 对象/对象数组，以及 `reference_images` 图片资产引用。JSON 限制为 256 KiB，图片只读取已登记静态资产，并复用媒体访问检查；不把参数中的本地路径或网络 URL 当作文件读取入口。它不生成任意对象或执行动作。内部轮次规划通过独立适配器将固定选项和候选判断映射为统一规划结果，再复用业务规则校验；不替代权限策略、摘要或状态写入。选路、超时和拒绝策略见 [轮次规划](../architecture/turn-planner.md)。
 
 使用时按实际账号权限配置决策模型。问题名称、选项、等级和返回分布会在本地校验，缺失答案不能当作否定结果。协议见 [官方 Decisions 文档](https://developers.openai.com/api/docs/guides/decisions)。
 

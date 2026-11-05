@@ -493,6 +493,6 @@ import {
     );
     assert.match(
       String(systemMessage?.content),
-      /严格输出以下 8 行/
+      /严格输出以下 9 行/
     );
   });

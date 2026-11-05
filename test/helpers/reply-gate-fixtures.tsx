@@ -1,5 +1,6 @@
 import pino from "pino";
-import { TurnPlanner, type TurnPlannerInput } from "../../src/conversation/turnPlanner.ts";
+import { TurnPlanner } from "../../src/conversation/turnPlanner.ts";
+import type { TurnPlannerInput } from "../../src/conversation/turnPlanner/types.ts";
 import type { AppConfig } from "../../src/config/config.ts";
 import type { LlmClient, LlmGenerateParams } from "../../src/llm/llmClient.ts";
 import type { GenerationTurnPlannerHandlers, GenerationTurnPlannerInput } from "../../src/app/generation/generationTurnPlanner.ts";
