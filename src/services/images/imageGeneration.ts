@@ -42,6 +42,7 @@ export async function generateConfiguredImage(config: AppConfig, input: {
   logger?: Logger;
   skipDebugDump?: boolean;
   size?: string;
+  quality?: string;
   outputFormat?: string;
   frameCount?: number;
   frameDurationMs?: number;
@@ -58,6 +59,7 @@ export async function generateConfiguredImage(config: AppConfig, input: {
     const prompt = input.prompt.trim();
     if (!prompt) throw new Error("图片描述不能为空");
     const settings = buildImageRequestParameters(target.profile, target.provider, input.size?.trim(), editing, {
+      ...(input.quality?.trim() ? { quality: input.quality.trim() } : {}),
       ...(input.outputFormat !== undefined ? { output_format: input.outputFormat } : {}),
       ...(input.frameCount !== undefined ? { frame_count: input.frameCount } : {}),
       ...(input.frameDurationMs !== undefined ? { frame_duration_ms: input.frameDurationMs } : {})

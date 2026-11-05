@@ -14,6 +14,7 @@ const { values } = parseArgs({ options: {
   "config-dir": { type: "string", default: "config" },
   "model-ref": { type: "string" },
   size: { type: "string" },
+  quality: { type: "string" },
   "output-format": { type: "string" },
   "frame-count": { type: "string" },
   "frame-duration-ms": { type: "string" },
@@ -39,6 +40,7 @@ try {
   }, {
     prompt: values["output-format"] === "gif" ? "一只橘色小猫挥手，无缝循环动画，白色背景，简洁插画，无文字。" : "一只橘色小猫坐在蓝色茶杯旁，白色背景，简洁插画，无文字。",
     ...(values.size ? { size: values.size } : {}),
+    ...(values.quality ? { quality: values.quality } : {}),
     ...(values["output-format"] ? { output_format: values["output-format"] } : {}),
     ...(values["frame-count"] ? { frame_count: Number(values["frame-count"]) } : {}),
     ...(values["frame-duration-ms"] ? { frame_duration_ms: Number(values["frame-duration-ms"]) } : {})

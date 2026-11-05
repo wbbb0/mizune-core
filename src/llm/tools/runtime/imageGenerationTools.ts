@@ -20,6 +20,7 @@ export const imageGenerationToolDescriptors: ToolDescriptor[] = [{
         properties: {
           prompt: { type: "string", description: "完整的图片描述。" },
           size: { type: "string", description: "可选尺寸，例如 1024x1024；省略使用配置默认值，必须是供应商支持的尺寸。" },
+          quality: { type: "string", description: "可选画质，例如 low、medium、high；省略使用配置默认值，必须是模型支持的画质。" },
           output_format: { type: "string", enum: ["png", "jpeg", "webp", "gif"], description: "可选输出格式；需要动图时选择 gif。" },
           frame_count: { type: "integer", minimum: 2, maximum: 64, description: "GIF 帧数，省略使用模型默认值。" },
           frame_duration_ms: { type: "integer", minimum: 20, maximum: 2000, description: "GIF 每帧时长（毫秒），按 10 毫秒取整；仅用于 GIF。" },
@@ -51,6 +52,7 @@ export const imageGenerationToolHandlers: Record<string, ToolHandler> = {
       const mask = maskSelector ? await readImageAsset(context, maskSelector, context.config.chatFiles.maxUploadBytes - inputBytes) : undefined;
       const image = await generateConfiguredImage(context.config, {
         prompt: getStringArg(args, "prompt"),
+        ...(getStringArg(args, "quality") ? { quality: getStringArg(args, "quality") } : {}),
         ...(getStringArg(args, "output_format") ? { outputFormat: getStringArg(args, "output_format") } : {}),
         ...(getNumberArg(args, "frame_count") !== undefined ? { frameCount: getNumberArg(args, "frame_count")! } : {}),
         ...(getNumberArg(args, "frame_duration_ms") !== undefined ? { frameDurationMs: getNumberArg(args, "frame_duration_ms")! } : {}),

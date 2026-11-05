@@ -138,19 +138,27 @@ test("生图路由保留复合模型身份、继承默认且过滤错误模型�
   assert.equal(isImageGenerationAvailable(c), false);
 });
 
-test("工具生成图片后导入资产并返回发送句柄", async () => {
+test("工具生成图片后导入资产并返回发送句柄，支持按次覆盖 quality 并校验范围", async () => {
   await withTempDir("image-generation", async dir => {
     const c = config(); c.localFiles.root = dir;
+    c.llm.models.image!.image!.constraints = { qualities: ["low", "medium", "high"] };
     const logger = pino({ level: "silent" });
     const store = new ChatFileStore(c, logger, new LocalFileService(c, dir));
     await store.init();
-    setFetchImplementationForTests(async () => Response.json({ data: [{ b64_json: png.toString("base64") }] }));
+    setFetchImplementationForTests(async (_url, init) => {
+      assert.equal(JSON.parse(String(init?.body)).quality, "high");
+      return Response.json({ data: [{ b64_json: png.toString("base64") }] });
+    });
     const context = { config: c, chatFileStore: store, replyDelivery: "web", lastMessage: { sessionId: "web:test", userId: "owner", senderName: "Tester" }, projectionToolNames: ["asset_send_to_chat", "asset_media_view"] } as unknown as BuiltinToolContext;
-    const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!({ id: "image", type: "function", function: { name: "generate_image", arguments: "{}" } }, { prompt: "小猫" }, context)));
+    const call = { id: "image", type: "function", function: { name: "generate_image", arguments: "{}" } } as const;
+    const result = JSON.parse(String(await imageGenerationToolHandlers.generate_image!(call, { prompt: "小猫", quality: "high" }, context)));
     assert.equal(result.ok, true);
     assert.ok(result.asset_ref);
     assert.ok(result.asset_handle);
     assert.equal((await store.getFile(result.file_id))?.origin, "image_generated");
+    const invalid = JSON.parse(String(await imageGenerationToolHandlers.generate_image!(call, { prompt: "小猫", quality: "ultra" }, context)));
+    assert.equal(invalid.ok, false);
+    assert.match(invalid.error, /quality.*不在模型声明的选项中/);
   });
 });
 

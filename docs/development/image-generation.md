@@ -40,7 +40,7 @@ images_provider:
           output_format: png
 ```
 
-`image.defaults` 仅用于 Images API，模型的对话 `chat.defaults` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size`、`output_format`、`frame_count`、`frame_duration_ms` 可覆盖模型默认值。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，官方 provider 会在发请求前拒绝该参数。`background`、`output_compression` 可按具体模型支持情况配置；仅编辑所用的 `input_fidelity` 在生成新图时不发送。参数支持情况由模型决定，未知时留空。
+`image.defaults` 仅用于 Images API，模型的对话 `chat.defaults` 不会混入生图请求。所有图像参数均可省略以使用上游默认值；工具的 `size`、`quality`、`output_format`、`frame_count`、`frame_duration_ms` 可覆盖模型默认值。只有明确要求的兼容服务才配置 `response_format: b64_json` 或 `url`，官方 provider 会在发请求前拒绝该参数。`background`、`output_compression` 可按具体模型支持情况配置；仅编辑所用的 `input_fidelity` 在生成新图时不发送。参数支持情况由模型决定，未知时留空。
 
 在 `llm.routing-presets.yml` 为所用预设指定目标（或在 `default` 中设置，由其他预设继承）：
 

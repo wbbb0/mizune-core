@@ -1,6 +1,6 @@
 import type { ModelProfile, LlmProviderConfig } from "#config/configModel.ts";
 
-export function buildImageRequestParameters(profile: ModelProfile, provider: LlmProviderConfig, size?: string, editing = false, overrides: { output_format?: string; frame_count?: number; frame_duration_ms?: number } = {}): Record<string, unknown> {
+export function buildImageRequestParameters(profile: ModelProfile, provider: LlmProviderConfig, size?: string, editing = false, overrides: { quality?: string; output_format?: string; frame_count?: number; frame_duration_ms?: number } = {}): Record<string, unknown> {
   const settings = profile.image;
   if (!settings) throw new Error("模型未配置图像用途");
   const defaults = settings.defaults;
