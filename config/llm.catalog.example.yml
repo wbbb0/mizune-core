@@ -202,3 +202,21 @@ google:
           budget: 2048
         defaults:
           maxOutputTokens: 8192
+
+    embedding:
+      upstreamModel: gemini-embedding-2
+      embedding:
+        limits: { maxInputTokens: 8192 }
+        dimensions: 768
+        inputMode: task_prefix
+        queryPrefix: "task: search result | query: "
+        documentPrefix: "title: none | text: "
+    image:
+      upstreamModel: gemini-nano-banana-2.1
+      image:
+        capabilities: { referenceImages: true }
+        constraints:
+          aspectRatios: ["1:1", "16:9", "9:16"]
+          resolutions: ["1K", "2K", "4K"]
+          maxReferenceImages: 14
+        defaults: { aspect_ratio: "1:1", resolution: "1K" }

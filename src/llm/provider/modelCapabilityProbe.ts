@@ -121,13 +121,17 @@ function createProbeContext(base: AppConfig, input: ModelCapabilityProbeInput): 
   if (input.operation === "chat" || input.operation === "transcription") {
     cleanModel[input.operation] = { capabilities: object(declared.capabilities), ...(input.provider.type === "google" && declared.googleThinking ? { googleThinking: declared.googleThinking } : {}), ...(input.operation === "transcription" ? { language: declared.language } : {}) };
   } else if (input.operation === "embedding") {
-    cleanModel.embedding = { inputMode: declared.inputMode ?? "plain" };
+    cleanModel.embedding = { inputMode: declared.inputMode ?? "plain", ...(declared.queryPrefix ? { queryPrefix: declared.queryPrefix } : {}), ...(declared.documentPrefix ? { documentPrefix: declared.documentPrefix } : {}), ...(declared.dimensions ? { dimensions: declared.dimensions } : {}) };
   } else if (input.operation === "image") {
     const constraints = object(declared.constraints);
     const defaults: Record<string, unknown> = {};
     const sizes = stringArray(constraints.sizes).sort((left, right) => imagePixels(left) - imagePixels(right));
-    if (sizes[0] && input.provider.type !== "openrouter") defaults.size = sizes[0];
-    const qualities = stringArray(constraints.qualities);
+    if (sizes[0] && !["openrouter", "google"].includes(String(input.provider.type))) defaults.size = sizes[0];
+    if (input.provider.type === "google") {
+      const resolutions = stringArray(constraints.resolutions).sort((left, right) => Number.parseFloat(left) - Number.parseFloat(right));
+      if (resolutions[0]) defaults.resolution = resolutions[0];
+    }
+    const qualities = input.provider.type === "google" ? [] : stringArray(constraints.qualities);
     if (qualities.includes("low")) defaults.quality = "low";
     else if (qualities[0]) defaults.quality = qualities[0];
     else if (input.provider.type === "openai") defaults.quality = "low";

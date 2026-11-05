@@ -1,3 +1,5 @@
+import { Response as UndiciResponse } from "undici";
+import { readBoundedProviderBody } from "../providerResponseBody.ts";
 import { ApiError, GoogleGenAI } from "@google/genai";
 import type { AppConfig } from "#config/config.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
@@ -17,7 +19,7 @@ export function normalizeGoogleSdkError(error: unknown): unknown {
 }
 
 export function createAiStudioClient(input: {
-  config: AppConfig; apiKey?: string | undefined; baseUrl?: string | undefined; providerProxy?: boolean | undefined; modelRef?: string | undefined; onResponse?: (response: Response) => void;
+  config: AppConfig; apiKey?: string | undefined; baseUrl?: string | undefined; providerProxy?: boolean | undefined; modelRef?: string | undefined; maxResponseBytes?: number; onResponse?: (response: Response) => void;
 }) {
   const apiKey = input.apiKey?.trim();
   if (!apiKey) throw new Error("Google AI Studio API Key 未配置");
@@ -42,6 +44,10 @@ export function createAiStudioClient(input: {
           ...(input.providerProxy !== undefined ? { providerProxy: input.providerProxy } : {})
         });
         input.onResponse?.(response as unknown as Response);
+        if (input.maxResponseBytes !== undefined && response.body) {
+          const bytes = await readBoundedProviderBody(response, input.maxResponseBytes);
+          return new UndiciResponse(new Uint8Array(bytes), { status: response.status, statusText: response.statusText, headers: response.headers }) as unknown as Response;
+        }
         return response as unknown as Response;
       }
     }

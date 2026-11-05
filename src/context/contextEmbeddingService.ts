@@ -1,3 +1,4 @@
+import { embeddingInputProfile } from "#llm/shared/embeddingInputProfile.ts";
 import { resolveProviderBaseUrl } from "#llm/provider/providerRegistry.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
@@ -112,8 +113,7 @@ export class ContextEmbeddingService {
     const settings = this.config.llm.models[availability.modelRefs[0]!]!.embedding;
     const provider = this.config.llm.providers[this.config.llm.models[availability.modelRefs[0]!]!.provider]!;
     const inputProfile = createHash("sha256").update(JSON.stringify({
-      inputMode: settings?.inputMode,
-      ...(settings?.inputMode === "qwen3" ? { queryInstruction: settings.queryInstruction } : {}),
+      ...embeddingInputProfile(settings!, provider),
       type: provider.type,
       baseUrl: resolveProviderBaseUrl(provider)?.replace(/\/+$/, "")
     })).digest("hex").slice(0, 16);

@@ -37,6 +37,16 @@ function config() {
 const png = await sharp({ create: { width: 8, height: 6, channels: 3, background: "orange" } }).png().toBuffer();
 afterEach(() => setFetchImplementationForTests(null));
 
+test("参考图数量按公共模型约束在请求前校验", async () => {
+  const c = config();
+  c.llm.models.image!.image!.capabilities.referenceImages = true;
+  c.llm.models.image!.image!.constraints.maxReferenceImages = 1;
+  let calls = 0;
+  setFetchImplementationForTests(async () => { calls++; throw new Error("不应调用"); });
+  await assert.rejects(generateConfiguredImage(c, { prompt: "编辑图片", referenceImages: [{ buffer: png }, { buffer: png }] }), /参考图数量超过模型限制 1/);
+  assert.equal(calls, 0);
+});
+
 test("GIF 生图透传帧参数，按单帧尺寸返回并保留动图资产", async () => {
   const gif = await createAnimatedGif();
   await withTempDir("generated-gif", async dir => {
@@ -184,7 +194,7 @@ test("两种生图工具可按实例配置和会话偏好独立启停", () => {
 
 test("生图路由跳过不支持标准协议的首项而不执行失败重试", () => {
   const c = config();
-  c.llm.providers.unsupported = { ...c.llm.providers.images!, type: "google" };
+  c.llm.providers.unsupported = { ...c.llm.providers.images!, type: "vertex" };
   const validRef = resolveModelRefsForRole(c, "image_generator").acceptedModelRefs[0]!;
   c.llm.models.unsupported = { ...c.llm.models[validRef]!, provider: "unsupported" };
   c.llm.routingPresets.test!.imageGenerator = ["unsupported", validRef];

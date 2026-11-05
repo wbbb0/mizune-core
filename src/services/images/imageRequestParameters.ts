@@ -1,12 +1,17 @@
 import type { ModelProfile, LlmProviderConfig } from "#config/configModel.ts";
 
-export function buildImageRequestParameters(profile: ModelProfile, provider: LlmProviderConfig, size?: string, editing = false, overrides: { quality?: string; output_format?: string; frame_count?: number; frame_duration_ms?: number } = {}): Record<string, unknown> {
+export function buildImageRequestParameters(profile: ModelProfile, provider: LlmProviderConfig, size?: string, editing = false, overrides: { aspect_ratio?: string; resolution?: string; quality?: string; output_format?: string; frame_count?: number; frame_duration_ms?: number } = {}): Record<string, unknown> {
   const settings = profile.image;
   if (!settings) throw new Error("模型未配置图像用途");
   const defaults = settings.defaults;
   const result: Record<string, unknown> = { ...defaults, ...overrides };
   if (!editing) delete result.input_fidelity;
   if (size) result.size = size;
+  if (provider.type === "google") {
+    for (const key of Object.keys(result)) if (!["aspect_ratio", "resolution"].includes(key) && result[key] !== undefined) throw new Error(`Google 原生图像不支持参数 ${key}，请使用比例或分辨率配置`);
+    validateImageParameterChoices(settings, result);
+    return result;
+  }
   if (provider.type === "openai" && result.response_format) {
     throw new Error("OpenAI 官方图像接口直接返回 Base64，不使用 response_format，请清除此默认参数");
   }
@@ -33,6 +38,11 @@ export function buildImageRequestParameters(profile: ModelProfile, provider: Llm
   if (result.output_format !== undefined && !["png", "jpeg", "webp", "gif"].includes(String(result.output_format))) {
     throw new Error("输出格式必须为 png、jpeg、webp 或 gif");
   }
+  validateImageParameterChoices(settings, result);
+  return result;
+}
+
+function validateImageParameterChoices(settings: NonNullable<ModelProfile["image"]>, result: Record<string, unknown>): void {
   const mappings = { size: "sizes", aspect_ratio: "aspectRatios", resolution: "resolutions", quality: "qualities" } as const;
   for (const [field, constraint] of Object.entries(mappings)) {
     const choices = settings.constraints[constraint];
@@ -40,5 +50,4 @@ export function buildImageRequestParameters(profile: ModelProfile, provider: Llm
       throw new Error(`图像参数 ${field} 不在模型声明的选项中：${choices.join("、")}`);
     }
   }
-  return result;
 }

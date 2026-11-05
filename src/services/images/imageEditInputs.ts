@@ -17,16 +17,7 @@ export async function buildImageEditBody(input: {
 }): Promise<FormData> {
   if (input.images.length < 1 || input.images.length > 16) throw new Error("参考图数量必须在 1 到 16 张之间");
   const sources = [...input.images, ...(input.mask ? [input.mask] : [])];
-  if (sources.some(source => !source.buffer.length || source.buffer.length > input.maxBytes)
-    || sources.reduce((total, source) => total + source.buffer.length, 0) > input.maxBytes) {
-    throw new Error("参考图及蒙版总大小超过资产上传限制，或图片为空");
-  }
-  const metadata = await Promise.all(sources.map(async source => {
-    const info = await sharp(source.buffer).metadata();
-    if (!info.width || !info.height || !info.format || !["png", "jpeg", "webp"].includes(info.format)
-      || (info.pages ?? 1) > 1) throw new Error("参考图必须是静态 PNG、JPEG 或 WebP 图片");
-    return info;
-  }));
+  const metadata = await validateImageSources(sources, input.maxBytes);
   if (input.mask) {
     const first = metadata[0]!;
     const mask = metadata.at(-1)!;
@@ -49,4 +40,17 @@ export async function buildImageEditBody(input: {
   });
   if (input.mask) body.set("mask", new Blob([new Uint8Array(input.mask.buffer)], { type: "image/png" }), "mask.png");
   return body;
+}
+
+export async function validateImageSources(sources: ImageEditSource[], maxBytes: number) {
+  if (sources.some(source => !source.buffer.length || source.buffer.length > maxBytes)
+    || sources.reduce((total, source) => total + source.buffer.length, 0) > maxBytes) {
+    throw new Error("参考图及蒙版总大小超过资产上传限制，或图片为空");
+  }
+  return Promise.all(sources.map(async source => {
+    const info = await sharp(source.buffer).metadata();
+    if (!info.width || !info.height || !info.format || !["png", "jpeg", "webp"].includes(info.format)
+      || (info.pages ?? 1) > 1) throw new Error("参考图必须是静态 PNG、JPEG 或 WebP 图片");
+    return info;
+  }));
 }

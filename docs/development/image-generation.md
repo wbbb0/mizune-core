@@ -110,3 +110,8 @@ GIF 仅支持生成，不能与参考图或蒙版一起使用；不支持 `outpu
 ## OpenRouter
 
 `type: openrouter` 使用 `/images`，从独立图像清单发现模型和参数范围。默认参数使用 `image.defaults.resolution`、`aspect_ratio`、`quality`、`output_format` 等；不发送标准 Images 的 `size`/`response_format`。已知枚举范围会在请求前校验。当前工具仅生成单张非流式图片，不提供参考图编辑；清单中的参考图/流式能力仅作为元信息保存。
+
+
+## Google AI Studio 原生图像
+
+`type: google` 使用独立的 Gemini 原生图像协议，共用现有资产和 `imageGenerator` 路由。支持文生图及已声明的参考图编辑，配置 `image.defaults.aspect_ratio` / `resolution`，也可由工具按次指定。Google 不接收 Images 专属 size/quality/output_format、GIF 帧参数或独立蒙版。只保存正常完成的最终图片，思考预览图不作为产物。比例、分辨率和参考图数量以各模型显式限制为准，详见 [Google 接入](google-ai-studio-provider.md)。

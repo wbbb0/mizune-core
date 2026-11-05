@@ -56,7 +56,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck:all": "npm run typecheck && npm run typecheck:test",
-    "smoke:llm:google": "tsx smoke/llm/google-ai-studio-smoke.ts"
+    "smoke:llm:google": "tsx smoke/llm/google-ai-studio-smoke.ts",
+    "smoke:llm:google-media": "tsx smoke/llm/google-media-embedding-smoke.ts"
   },
   "engines": {
     "node": ">=24.0.0"

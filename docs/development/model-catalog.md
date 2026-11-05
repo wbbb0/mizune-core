@@ -50,7 +50,7 @@ context:
 
 模型引用是原子值：实例覆盖必须完整指定 provider/model。`model: null` 显式禁用并阻断继承；移除覆盖则重新继承全局设置。供应商改名/删除同时处理路由及各实例向量引用，删除引用写入 null，防止意外切换到全局模型。
 
-输入处理有三种：`plain` 原文，`qwen3` 仅给查询添加 `Instruct: …\nQuery: …`，`input_type` 使用接口的 search_query/search_document 参数。文档向量与查询向量使用相同空间标识，空间覆盖供应商协议/地址、上游模型、实际维度、处理设置与分块版本。模型或处理方式改变后，旧向量不会混入新空间；记忆正文保留，后续检索或维护逐批补齐。
+兼容接口输入处理有三种：`plain` 原文，`qwen3` 仅给查询添加 `Instruct: …\nQuery: …`，`input_type` 使用接口的 search_query/search_document 参数。文档向量与查询向量使用相同空间标识，空间覆盖供应商协议/地址、上游模型、实际维度、处理设置与分块版本。模型或处理方式改变后，旧向量不会混入新空间；记忆正文保留，后续检索或维护逐批补齐。
 
 `dimensions` 是可选请求参数，只有接口支持时才设置。响应必须具有完整且唯一的索引、正确数量、统一非空维度和有限数值；文档检索拒绝不同空间或维度间计算相似度。
 
@@ -63,3 +63,5 @@ context:
 ## 结构更新
 
 不保留旧字段兼容分支。已有目录需要将 `modelType` 改为对应用途子树；扁平 `supports*` 放入聊天/转写的 `capabilities`，`preserveThinking` 放入该用途，`apiParameters` 改为 `defaults`，`imageParameters` 改为 `image.defaults`。原路由中的 `embedding` 移至每个实例的 `context.embedding.model`；如果原来有多个候选，明确选定一个空间目标。能力 `supportsSearch` 与开关 `searchEnabled` 分开设置。参照当前 example 配置更新后再部署。
+
+Google 的 `task_type` / `task_prefix` 文本向量模式与原生图像参数见 [Google AI Studio 接入](google-ai-studio-provider.md)。任务前缀与归一化版本也参与向量空间身份，不根据上游模型名称选择输入模式。

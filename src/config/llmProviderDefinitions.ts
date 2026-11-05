@@ -17,7 +17,7 @@ export const llmProviderDefinitions = {
 
 /** 图像端点独立于聊天协议，能力由供应商类型明确声明。 */
 export function supportsStandardImageGeneration(type: LlmProviderType): boolean {
-  return type === "openai" || type === "openrouter" || type === "openai_compatible" || type === "openai_responses_compatible";
+  return type === "google" || type === "openai" || type === "openrouter" || type === "openai_compatible" || type === "openai_responses_compatible";
 }
 
 /** 仅这些协议已实现视频内容块；模型本身还必须明确声明 supportsVideoInput。 */

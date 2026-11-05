@@ -19,13 +19,15 @@ export const imageGenerationToolDescriptors: ToolDescriptor[] = [{
         type: "object",
         properties: {
           prompt: { type: "string", description: "完整的图片描述。" },
-          size: { type: "string", description: "可选尺寸，例如 1024x1024；省略使用配置默认值，必须是供应商支持的尺寸。" },
-          quality: { type: "string", description: "可选画质，例如 low、medium、high；省略使用配置默认值，必须是模型支持的画质。" },
-          output_format: { type: "string", enum: ["png", "jpeg", "webp", "gif"], description: "可选输出格式；需要动图时选择 gif。" },
+          size: { type: "string", description: "可选像素尺寸，例如 1024x1024；用于支持 size 的 Images 接口。Google 使用 aspect_ratio/resolution，不传 size。" },
+          aspect_ratio: { type: "string", description: "可选图片比例，如 1:1、16:9；仅 Google 原生图像或 OpenRouter 使用，必须属于模型支持的比例。" },
+          resolution: { type: "string", description: "可选图片分辨率，如 1K、2K、4K；仅 Google 原生图像或 OpenRouter 使用。" },
+          quality: { type: "string", description: "可选画质，例如 low、medium、high；仅限支持 quality 的接口。Google 不接收此字段，使用 resolution。" },
+          output_format: { type: "string", enum: ["png", "jpeg", "webp", "gif"], description: "可选输出格式；仅支持该参数的接口可用。Google 使用上游实际图片格式，不传此字段。需要动图时选择 gif。" },
           frame_count: { type: "integer", minimum: 2, maximum: 64, description: "GIF 帧数，省略使用模型默认值。" },
           frame_duration_ms: { type: "integer", minimum: 20, maximum: 2000, description: "GIF 每帧时长（毫秒），按 10 毫秒取整；仅用于 GIF。" },
           reference_images: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 16, description: "编辑所用参考图片的 asset_ref 或 file_id；必须是已导入的静态图片资产。省略时生成新图。" },
-          mask_image: { type: "string", description: "可选局部重绘蒙版资产，必须为有透明区域的 PNG，与第一张参考图尺寸一致。透明区域表示编辑位置。" }
+          mask_image: { type: "string", description: "可选局部重绘蒙版资产，必须为有透明区域的 PNG，与第一张参考图尺寸一致。透明区域表示编辑位置；Google 原生图像暂不支持独立蒙版参数。" }
         },
         required: ["prompt"],
         additionalProperties: false
@@ -52,6 +54,8 @@ export const imageGenerationToolHandlers: Record<string, ToolHandler> = {
       const mask = maskSelector ? await readImageAsset(context, maskSelector, context.config.chatFiles.maxUploadBytes - inputBytes) : undefined;
       const image = await generateConfiguredImage(context.config, {
         prompt: getStringArg(args, "prompt"),
+        ...(getStringArg(args, "aspect_ratio") ? { aspectRatio: getStringArg(args, "aspect_ratio") } : {}),
+        ...(getStringArg(args, "resolution") ? { resolution: getStringArg(args, "resolution") } : {}),
         ...(getStringArg(args, "quality") ? { quality: getStringArg(args, "quality") } : {}),
         ...(getStringArg(args, "output_format") ? { outputFormat: getStringArg(args, "output_format") } : {}),
         ...(getNumberArg(args, "frame_count") !== undefined ? { frameCount: getNumberArg(args, "frame_count")! } : {}),

@@ -1,3 +1,4 @@
+import { requestGoogleEmbeddings } from "./googleEmbedding.ts";
 import { randomUUID } from "node:crypto";
 import type { Part } from "@google/genai";
 import { numberOrNull, type LlmProvider, type LlmProviderGenerateParams, type LlmProviderRequestContext, type LlmToolCall } from "../providerTypes.ts";
@@ -12,6 +13,7 @@ import { buildAiStudioConfig } from "./googleRequest.ts";
 export class GoogleAiStudioProvider implements LlmProvider {
   readonly type = "google" as const;
   readonly supportsStructuredOutput = true;
+  readonly embed = requestGoogleEmbeddings;
 
   resolveBaseUrl(config: LlmProviderRequestContext["providerConfig"]) {
     return config.baseUrl?.trim() || "https://generativelanguage.googleapis.com/v1beta";

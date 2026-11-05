@@ -39,13 +39,18 @@ export function createModelOperationShape(type?: LlmProviderType) {
     embedding: s.object({
       limits: s.object({ maxInputTokens: tokenLimit("输入上限") }).title("模型限制").default(empty),
       dimensions: s.number().int().positive().title("请求向量维度").describe("留空使用上游默认；服务必须支持此参数。").optional(),
-      inputMode: s.enum(type === "openai" ? ["plain"] as const : ["plain", "qwen3", "input_type"] as const).title("输入处理").describe("plain 原文；qwen3 查询任务指令；input_type 发送查询/文档类型。").default("plain"),
-      queryInstruction: s.string().trim().nonempty().title("查询任务说明").default("根据查询检索相关的资料和记忆。")
+      inputMode: s.enum(type === "google" ? ["plain", "task_type", "task_prefix"] as const : type === "openai" ? ["plain"] as const : !type ? ["plain", "qwen3", "input_type", "task_type", "task_prefix"] as const : ["plain", "qwen3", "input_type"] as const).title("输入处理").describe("plain 原文；Google task_type 发送检索任务；task_prefix 使用显式查询/文档前缀。qwen3/input_type 仅用于对应兼容接口。").default("plain"),
+      queryInstruction: s.string().trim().nonempty().title("qwen3 查询任务说明").default("根据查询检索相关的资料和记忆。"),
+      ...(!type || type === "google" ? {
+        queryPrefix: s.string().nonempty().title("查询前缀（task_prefix）").default("task: search result | query: "),
+        documentPrefix: s.string().nonempty().title("文档前缀（task_prefix）").default("title: none | text: ")
+      } : {})
     }).title("向量").optional(),
     image: s.object({
       capabilities: s.object({ referenceImages: capability("支持参考图编辑"), streaming: capability("支持流式（当前工具使用非流式）") }).title("已知能力").default(empty),
-      constraints: s.object({ sizes: choices("尺寸选项"), aspectRatios: choices("比例选项"), resolutions: choices("分辨率选项"), qualities: choices("质量选项") }).title("参数范围").default(empty),
+      constraints: s.object({ sizes: choices("尺寸选项"), aspectRatios: choices("比例选项"), resolutions: choices("分辨率选项"), qualities: choices("质量选项"), maxReferenceImages: s.number().int().positive().title("参考图数量上限").optional() }).title("参数范围").default(empty),
       defaults: s.object({
+        ...(type === "google" ? {} : {
         ...(type === "openrouter" ? {} : { size: s.string().trim().nonempty().title("尺寸").optional() }),
         ...(!type || type === "openrouter" ? { aspect_ratio: s.string().trim().nonempty().title("比例（OpenRouter）").optional(),
           resolution: s.string().trim().nonempty().title("分辨率（OpenRouter）").optional(),
@@ -60,6 +65,11 @@ export function createModelOperationShape(type?: LlmProviderType) {
         output_compression: s.number().int().min(0).max(100).title("输出压缩质量").optional(),
         input_fidelity: s.enum(["high", "low"] as const).title("参考图保真度").optional(),
         ...(!type || ["openai_compatible", "openai_responses_compatible"].includes(type) ? { response_format: s.enum(["b64_json", "url"] as const).title("响应格式（Images 兼容接口）").optional() } : {})
+        }),
+        ...(type === "google" ? {
+          aspect_ratio: s.string().trim().nonempty().title("图像比例").optional(),
+          resolution: s.string().trim().nonempty().title("图像分辨率（如 1K、2K、4K）").optional()
+        } : {})
       }).title("默认参数").default(empty)
     }).title("图像生成").optional(),
     transcription: s.object({

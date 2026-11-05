@@ -27,7 +27,7 @@ chat:
 
 `defaults.extra` 仅允许当前适配器支持的少见生成字段：`stopSequences`、`seed`、`frequencyPenalty`、`responseLogprobs`、`logprobs`。其他字段明确报错。传输、存储、工具和系统指令不能通过 extra 覆盖。常用参数使用显式控件。
 
-清单通过 SDK 分页获取，最多 50 页，整次请求受时限控制。SDK 的 `supportedActions` 在边界归一为内部生成方法；`thinking` 仅证明思考能力，不推断视觉、工具或关闭推理能力。Live 专用方法不会被当成 GenerateContent 聊天能力。清单缺少模态信息时不按模型名称猜用途；请核对模型文档再设置图像、音频等用途。Google 图像生成和向量调用尚未实现，模型目录登记不等于适配器可调用，能力测试会明确显示当前接入未支持。
+清单通过 SDK 分页获取，最多 50 页，整次请求受时限控制。SDK 的 `supportedActions` 在边界归一为内部生成方法；`thinking` 仅证明思考能力，不推断视觉、工具或关闭推理能力。Live 专用方法不会被当成 GenerateContent 聊天能力。清单缺少模态信息时不按模型名称猜用途；请核对模型文档再设置图像、音频等用途。Google 原生图像与文本向量已通过各自用途接入；模型目录仍需如实声明能力，账号可用性以单次探测为准。
 
 ## 历史与工具
 
@@ -37,7 +37,7 @@ chat:
 
 不能验证来源、签名或调用参数的工具历史转成带来源的普通历史观察，保留已执行结果，不构造伪签名或再次执行。显式调用 ID 用于配对；上游未提供 ID 时，项目生成唯一内部 ID，但回传时不冒充上游 ID。`toolCall`、`toolResponse` 和代码执行属于服务端工具事件，保留为协议历史，不交给本地工具调度。
 
-文本聊天不接受生成媒体输出，以免把图片 base64 写入会话历史。原生搜索的 grounding 来源经共享引用校验、去重后展示；这是来源列表，不代表逐句引用定位。
+文本聊天不接受生成媒体输出；原生图片由独立图像服务保存为资产。原生搜索的 grounding 来源经共享引用校验、去重后展示；这是来源列表，不代表逐句引用定位。
 
 ## 生命周期与诊断
 
@@ -48,3 +48,42 @@ GenerateContent 固定 `store: false`，关闭 SDK 自动续接、自动函数�
 默认回归测试不调用真实模型。真实验证使用 `GOOGLE_SMOKE_MODEL=google/模型别名 npm run smoke:llm:google`，必要时显式设置 `CONFIG_DIR` 和 `CONFIG_INSTANCE`。可用 `GOOGLE_SMOKE_THINKING_BUDGET=2048` 仅在 smoke 内指定预算控制。脚本仅传公开合成文本、工具及动画，不读取会话数据或保存 dump。
 
 独立能力通过不等于任意组合都可用。真实 Gemini 2.5 Flash 会拒绝搜索与 JSON 输出、部分搜索与本地工具组合；错误保留上游 400 状态交给现有策略处理，不删除用户选择的能力来伪装成功。smoke 分别验证纯 JSON、本地工具和原生搜索；Gemini 3.8 Flash 与 Gemini 4 Argon 另已验证带搜索的 JSON／本地工具组合。
+
+## Google 文本向量
+
+Google Provider 已实现 `embed()`。`embedding.inputMode` 显式选择输入协议，不根据模型名称推断：
+
+- `plain`：原文，不发送任务类型。
+- `task_type`：查询发送 `RETRIEVAL_QUERY`，文档发送 `RETRIEVAL_DOCUMENT`，适用于明确支持该字段的模型。
+- `task_prefix`：分别添加 `queryPrefix` 和 `documentPrefix`；默认使用官方检索格式。前缀的末尾空格有意义，应保留在 YAML 引号中。
+
+每条文本构造独立 Content，避免多模态向量模型把字符串数组合成一个输入。响应数量、维度、有限数值和非零范数都会校验，返回统一 L2 归一化的向量。输入模式、前缀和归一化版本进入向量空间标识，变更不会混用旧索引。这里只提供文本向量，不表示已经接入图片、音视频或 PDF 向量。
+
+```yaml
+embedding:
+  limits: { maxInputTokens: 8192 }
+  dimensions: 768
+  inputMode: task_prefix
+  queryPrefix: "task: search result | query: "
+  documentPrefix: "title: none | text: "
+```
+
+Embedding 2 不接受原生 taskType，使用 task_prefix；001 可使用 task_type。降低 001 的维度时，上游不保证单位范数，适配器统一归一化处理。任务前缀中的固定英文属于上游检索格式，不是聊天 prompt 的语言设置。
+
+## 原生图像生成与参考图编辑
+
+Google 的 `image` 用途通过 SDK GenerateContent 图像协议实现，与文本 Provider 分开。模型填写 `image` 后可通过现有 `imageGenerator` 路由和 `generate_image` 工具使用；只在模型明确声明 referenceImages 时支持参考图编辑。
+
+```yaml
+image:
+  capabilities: { referenceImages: true }
+  constraints:
+    aspectRatios: ["1:1", "16:9", "9:16"]
+    resolutions: ["1K", "2K", "4K"]
+    maxReferenceImages: 14
+  defaults: { aspect_ratio: "1:1", resolution: "1K" }
+```
+
+工具可按次提供 `aspect_ratio`、`resolution`。当前 Google 图像路径不接收 size、quality、output_format、GIF 帧参数或独立 mask；使用上游实际返回的静态 PNG/JPEG/WebP，不伪装这些参数受支持。参考图要求静态图片，数量和总大小受模型与资产限制约束。生成结果与编辑结果都进入统一资产库，编辑不覆盖原图。
+
+图片响应在 SDK JSON/base64 解码前限流，过滤思考预览图，只接受一个正常完成的最终图像。不会自动续接、重复生成或失败切换，也不将图片 base64 放入聊天 googleParts。当前编辑采用独立调用的参考图输入，不维护第二套多轮原生图片会话。
