@@ -4,6 +4,8 @@
 
 `qqOfficial` 与 `onebot` 独立配置。修改官方连接配置后需重启进程，运行中的连接持有创建时的配置快照，避免身份与授权漂移。默认 `groupContext: mentions_only`，接收 `C2C_MESSAGE_CREATE`、`GROUP_AT_MESSAGE_CREATE`。设置 `groupContext: all_received` 后也接收 `GROUP_MESSAGE_CREATE`，需要在 QQ 客户端允许机器人接收群内所有消息。
 
+官方连接在后台启动并按退避策略重连，不等待首次联网成功。缺少 AppID/AppSecret、鉴权失败、网络断开或网关握手失败只影响该连接，WebUI、内部 API 和其他本地服务继续运行。连接失败记录脱敏错误码（缺少凭据为 `missing_credentials`），不记录密钥或认证响应正文。填写或修改凭据后重启实例以应用连接配置。停止实例会清除重连及握手计时器，过期连接尝试不能重新建立 WebSocket。
+
 专用群 @ 事件直接表明机器人被提及。全量事件只从顶层平台 mentions 判断：明确的 `is_you`，或与 READY 确认的机器人 ID 精确匹配；正文、引用中的 @、@全体和另一机器人的标记均不能激活回复。无法确认的普通消息仅保存上下文。群正文可能已被平台移除 @ 前缀。若正文仍含平台已确认的 `<@id>` / `<@!id>`，仅在根消息拆为结构化 mention，并从命令文本中移除，因此前置或后置 @ 都不妨碍 `。context` 等指令；引用内命令不会升级为根命令，owner 权限检查照常执行。
 
 规范化入站消息位于 `services/messaging/incomingMessage.ts`；连接器位于 `services/qqOfficial`，统一投递入口为 `DeliveryCoordinator`。官方消息不伪造成 OneBot 事件。会话使用 `qq_official.<AppID>:p:<openid>`、`qq_official.<AppID>:g:<group_openid>`，平台消息引用保留字符串 ID 和连接维度。

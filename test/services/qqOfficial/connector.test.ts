@@ -370,3 +370,30 @@ test("media cancelled before entry reports upload/not_submitted without consumin
   assert.equal(f.calls.length, 0);
   for (let index = 0; index < 4; index++) client.permits.allocate(permit);
 });
+
+for (const missing of [{ appId: "", appSecret: "secret" }, { appId: "app", appSecret: "" }, { appId: " ", appSecret: " " }]) {
+  test(`missing ${missing.appId.trim() ? "secret" : "app ID"} affects authentication without breaking client startup`, async () => {
+    let calls = 0;
+    const client = new QqOfficialClient(missing, logger, { fetch: async () => { calls++; throw new Error("不应联网"); } });
+    try {
+      await assert.doesNotReject(client.start());
+      await assert.rejects(client.http.accessToken(), (error: unknown) => error instanceof QqDeliveryError && error.code === "missing_credentials" && error.kind === "rejected");
+      assert.equal(calls, 0);
+    } finally { await client.stop(); }
+  });
+}
+
+test("authentication rejection is contained by the background connector with safe diagnostics", async () => {
+  const lines: string[] = [];
+  const diagnosticLogger = pino({ level: "warn" }, { write(line) { lines.push(line); } });
+  const client = new QqOfficialClient(config, diagnosticLogger, { fetch: async () => response({ code: 40014, message: "secret-do-not-log", access_token: "private-token" }, 401) });
+  try {
+    await assert.doesNotReject(client.start());
+    await new Promise(resolve => setImmediate(resolve));
+    const log = lines.map(line => JSON.parse(line));
+    assert.equal(log[0]?.msg, "qq_official_gateway_connect_failed");
+    assert.equal(log[0]?.code, "40014");
+    assert.equal(log[0]?.httpStatus, 401);
+    assert.doesNotMatch(lines.join(""), /secret-do-not-log|private-token/);
+  } finally { await client.stop(); }
+});

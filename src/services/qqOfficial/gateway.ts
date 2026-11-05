@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import type { Logger } from "pino";
 import type { QqHttpClient } from "./httpClient.ts";
+import { QqDeliveryError } from "./types.ts";
 
 const OFFICIAL_GATEWAY_HOSTS = new Set(["api.bot.qq.com", "api.sgroup.qq.com"]);
 
@@ -29,7 +30,8 @@ export class QqGateway {
   async start(): Promise<void> {
     if (!this.stopped) return;
     this.stopped = false;
-    await this.connect();
+    // The connector owns retries; external availability must not delay the application startup.
+    void this.connect();
   }
 
   stop(): void {
@@ -112,9 +114,13 @@ export class QqGateway {
         this.teardown();
         this.scheduleReconnect();
       });
-    } catch {
-      this.logger.warn("qq_official_gateway_connect_failed");
-      if (generation === this.generation) this.scheduleReconnect();
+    } catch (error) {
+      if (this.stopped || generation !== this.generation) return;
+      this.logger.warn({
+        code: error instanceof QqDeliveryError ? error.code : "gateway_connect_failed",
+        ...(error instanceof QqDeliveryError && error.httpStatus !== undefined ? { httpStatus: error.httpStatus } : {})
+      }, "qq_official_gateway_connect_failed");
+      this.scheduleReconnect();
     }
   }
 

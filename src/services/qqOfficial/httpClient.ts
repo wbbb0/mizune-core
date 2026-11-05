@@ -24,13 +24,13 @@ export class QqHttpClient {
     private readonly fetchImpl: QqFetch = undiciFetch as QqFetch,
     private readonly now: () => number = Date.now
   ) {
-    if (!config.appId.trim() || !config.appSecret.trim()) throw new Error("QQ 官方 Bot 需要 AppID 和 AppSecret");
     this.timeoutMs = config.requestTimeoutMs ?? 15_000;
   }
 
   invalidateToken(): void { this.token = null; }
 
   async accessToken(): Promise<string> {
+    if (!this.config.appId.trim() || !this.config.appSecret.trim()) throw new QqDeliveryError("rejected", "missing_credentials");
     if (this.token && this.now() < this.token.refreshAt) return this.token.value;
     if (this.refreshing) return this.refreshing;
     this.refreshing = this.fetchToken();
