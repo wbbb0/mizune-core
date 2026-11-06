@@ -22,14 +22,12 @@ export class GoogleAiStudioProvider extends LlmProviderBase {
 
   async generate(context: LlmProviderRequestContext, params: LlmProviderGenerateParams) {
     const timeout = createProviderTimeoutController({
+      abortSignal: params.abortSignal,
       totalTimeoutMs: params.timeoutMsOverride ?? context.config.llm.timeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
       thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
     const signal = timeout.controller.signal;
-    const forwardAbort = () => timeout.controller.abort(params.abortSignal?.reason);
-    params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
-    if (params.abortSignal?.aborted) forwardAbort();
     let completed = false;
     const responses: Response[] = [];
     try {
@@ -105,7 +103,6 @@ export class GoogleAiStudioProvider extends LlmProviderBase {
       if (!completed && !signal.aborted) timeout.controller.abort(new Error("Google stream closed before completion"));
       if (!completed) await Promise.allSettled(responses.map(response => response.body?.cancel(signal.reason)));
       timeout.cleanup();
-      params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
 }

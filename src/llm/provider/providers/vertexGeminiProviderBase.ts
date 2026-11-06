@@ -120,12 +120,11 @@ export abstract class VertexGeminiProviderBase extends LlmProviderBase {
 
     const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.llm.timeoutMs;
     const timeoutController = createProviderTimeoutController({
+      abortSignal: params.abortSignal,
       totalTimeoutMs: resolvedTimeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
       thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
-    const forwardAbort = () => timeoutController.controller.abort();
-    params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
       const response = await fetchProviderResponse(
@@ -231,7 +230,6 @@ export abstract class VertexGeminiProviderBase extends LlmProviderBase {
       throw error;
     } finally {
       timeoutController.cleanup();
-      params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
 }

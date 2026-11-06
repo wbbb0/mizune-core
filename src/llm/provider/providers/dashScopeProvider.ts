@@ -93,12 +93,11 @@ export class DashScopeProvider extends LlmProviderBase {
     const requestBody = buildDashScopeRequestBody(context, params, resolvedEnableThinking, requestMessages);
 
     const timeoutController = createProviderTimeoutController({
+      abortSignal: params.abortSignal,
       totalTimeoutMs: resolvedTimeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
       thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
-    const forwardAbort = () => timeoutController.controller.abort();
-    params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
     try {
       const headers: Record<string, string> = {
@@ -210,7 +209,6 @@ export class DashScopeProvider extends LlmProviderBase {
       throw error;
     } finally {
       timeoutController.cleanup();
-      params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
 

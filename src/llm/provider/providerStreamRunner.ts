@@ -35,12 +35,11 @@ export async function runProviderSseStream<TFinalPayload>(input: {
   errorPrefix?: string;
 }): Promise<ProviderSseStreamResult<TFinalPayload>> {
   const timeoutController = createProviderTimeoutController({
+    abortSignal: input.params.abortSignal,
     totalTimeoutMs: input.resolvedTimeoutMs,
     firstTokenTimeoutMs: input.context.config.llm.firstTokenTimeoutMs,
     thinkingTimeoutMs: input.context.config.llm.thinkingTimeoutMs
   });
-  const forwardAbort = () => timeoutController.controller.abort();
-  input.params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
   try {
     const response = await fetchProviderResponse(input.context.config, "llm", input.endpoint, {
@@ -84,7 +83,6 @@ export async function runProviderSseStream<TFinalPayload>(input: {
     throw error;
   } finally {
     timeoutController.cleanup();
-    input.params.abortSignal?.removeEventListener("abort", forwardAbort);
   }
 }
 

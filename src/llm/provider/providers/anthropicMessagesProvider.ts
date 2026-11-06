@@ -145,13 +145,11 @@ export class AnthropicMessagesProvider extends LlmProviderBase {
     const requestBody = buildAnthropicRequestBody(context, params, requestMessages, resolvedEnableThinking);
 
     const timeoutController = createProviderTimeoutController({
+      abortSignal: params.abortSignal,
       totalTimeoutMs: resolvedTimeoutMs,
       firstTokenTimeoutMs: context.config.llm.firstTokenTimeoutMs,
       thinkingTimeoutMs: context.config.llm.thinkingTimeoutMs
     });
-    const forwardAbort = () => timeoutController.controller.abort();
-    params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
-    if (params.abortSignal?.aborted) forwardAbort();
 
     try {
       const response = await fetchProviderResponse(context.config, "llm", endpoint, {
@@ -272,7 +270,6 @@ export class AnthropicMessagesProvider extends LlmProviderBase {
       throw error;
     } finally {
       timeoutController.cleanup();
-      params.abortSignal?.removeEventListener("abort", forwardAbort);
     }
   }
 }
