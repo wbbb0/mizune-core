@@ -96,6 +96,8 @@
 
 定时任务拆为 `scheduled_jobs` 和 `scheduled_job_targets`：`scheduled_jobs` 保存任务定义、调度类型、下一次运行时间和最近运行状态等原生列；`scheduled_job_targets` 是目标会话竖表，一行对应一个任务目标。内部 API 的 `scheduled_jobs` registry 资源仍以完整任务对象读写，store 层负责在两张表之间组装和更新。
 
+运行中的任务使用 store 的原子状态变更入口，配置编辑和运行结果分别检查版本归属；停止调度、重载以及一次性任务的重复执行边界见 [定时任务的运行与编辑边界](scheduled-jobs.md)。
+
 ## Assets Store 表组
 
 当前 `assets/assets.sqlite` 已注册以下 source-of-truth 表组：

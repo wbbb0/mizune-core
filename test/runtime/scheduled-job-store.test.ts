@@ -114,11 +114,66 @@ test("ScheduledJobStore row creation rejects duplicates and preserves insertion 
   }
 });
 
-test("ScheduledJobStore update keeps legacy no-op behavior for missing jobs", async () => {
+test("ScheduledJobStore runtime transitions preserve the latest definition and ignore missing jobs", async () => {
   const harness = await createHarness();
   try {
-    await harness.store.update(createJob({ id: "missing-job", name: "missing" }));
-    assert.equal((await harness.store.listRows()).total, 0);
+    await harness.store.createRow(createJob());
+    await harness.store.patchRow("job-1", {
+      name: "new name",
+      instruction: "new instruction",
+      targets: [{ sessionId: "qqbot:p:new-owner" }]
+    });
+    const updated = await harness.store.transitionRuntime("job-1", (current) => ({
+      type: "update",
+      state: { ...current.state, lastRunStatus: "ok", lastDurationMs: 42 }
+    }));
+    assert.equal(updated?.name, "new name");
+    assert.equal(updated?.instruction, "new instruction");
+    assert.deepEqual(updated?.targets, [{ sessionId: "qqbot:p:new-owner" }]);
+    assert.equal((await harness.store.getRow("job-1"))?.state.lastDurationMs, 42);
+
+    const skipped = await harness.store.transitionRuntime("job-1", () => null);
+    assert.equal(skipped, null);
+    assert.equal((await harness.store.getRow("job-1"))?.state.lastDurationMs, 42);
+    await harness.store.transitionRuntime("job-1", () => ({ type: "remove" }));
+    assert.equal(await harness.store.getRow("job-1"), null);
+    assert.equal(await harness.store.transitionRuntime("missing-job", () => {
+      assert.fail("missing records must not receive a transition");
+    }), null);
+  } finally {
+    await harness.cleanup();
+  }
+});
+
+test("ScheduledJobStore versions follow definition changes and reclaim deleted identities", async () => {
+  const harness = await createHarness();
+  try {
+    const created = await harness.store.createRow(createJob());
+    const initial = harness.store.getVersion(created.id);
+    assert.ok(initial);
+    await harness.store.transitionRuntime(created.id, current => ({
+      type: "update", state: { ...current.state, lastRunStatus: "running", lastRunAtMs: 100 }
+    }));
+    assert.equal(harness.store.getVersion(created.id), initial);
+    await harness.store.patchRow(created.id, { updatedAtMs: 200 });
+    assert.equal(harness.store.getVersion(created.id), initial);
+
+    await harness.store.patchRow(created.id, { enabled: false });
+    const disabled = harness.store.getVersion(created.id);
+    assert.equal(disabled?.identity, initial.identity);
+    assert.notEqual(disabled?.definition, initial.definition);
+    await harness.store.patchRow(created.id, { enabled: true });
+    assert.notEqual(harness.store.getVersion(created.id)?.definition, disabled?.definition);
+    assert.equal((await harness.store.getRow(created.id))?.state.lastRunStatus, "running");
+
+    await harness.store.patchRow(created.id, { instruction: "new instruction" });
+    const edited = await harness.store.getRow(created.id);
+    assert.equal(edited?.state.lastRunStatus, null);
+    assert.equal(edited?.state.lastRunAtMs, null);
+    await harness.store.deleteRow(created.id);
+    assert.equal(harness.store.getVersion(created.id), null);
+    await harness.store.createRow(created);
+    assert.notEqual(harness.store.getVersion(created.id)?.identity, initial.identity);
   } finally {
     await harness.cleanup();
   }
