@@ -183,7 +183,7 @@ export function createBuiltinToolExecutor(
   const initialOperation = context.sessionManager.getOperationMode(context.lastMessage.sessionId);
   const expectedDraftId = options?.expectedCharacterDraftId !== undefined
     ? options.expectedCharacterDraftId
-    : (allowedToolNames.has("edit_character_section") || allowedToolNames.has("import_character_reference"))
+    : initialOperation.kind === "character_config"
       ? characterRepository(context.config.dataDir).draft(context.lastMessage.sessionId)?.id ?? null
       : null;
 
@@ -250,7 +250,7 @@ export function createBuiltinToolExecutor(
         return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: error instanceof Error ? error.message : String(error), code: "setup_operation_rejected", nextStep: "先读取当前草稿或场景状态确认结果，再按错误修正参数；不要原样重试。", expectedSchema: schema }));
       }
     }
-    if (["list_character_sections", "read_character_section", "import_character_reference"].includes(toolCall.function.name)
+    if (["list_character_sections", "read_character_section", "import_character_reference", "send_setup_draft"].includes(toolCall.function.name)
       && context.sessionManager.getOperationMode(context.lastMessage.sessionId).kind === "character_config") {
       const schema = getBuiltinToolDescriptors(context.config).find(tool => tool.definition.function.name === toolCall.function.name)!.definition.function.parameters;
       const errors = setupInputErrors(schema, args);
@@ -263,7 +263,8 @@ export function createBuiltinToolExecutor(
   };
   return async (toolCall, args) => {
     const name = toolCall.function.name;
-    const candidate = isCharacterSetupToolName(name) || characterToolNames.includes(name) || isScenarioSetupToolName(name);
+    const candidate = isCharacterSetupToolName(name) || characterToolNames.includes(name)
+      || name === "send_setup_draft" || isScenarioSetupToolName(name);
     const run = async () => {
       const result = await execute(toolCall, args);
       const content = typeof result === "string" ? result : result.content;

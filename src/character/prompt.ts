@@ -23,6 +23,7 @@ export function characterPrompt(dataDir: string, sessionId: string, mode: string
     ] : []),
     "主动根据已有设定推荐、尽量补全，先从最有帮助的小组开始。玩家明确要求留空、跳过或就这样时尊重选择，不反复追问，不擅自补造被拒绝的信息。",
     "每阶段由玩家发送 .confirm 保存，.cancel 放弃当前草稿。你不能替玩家确认，留空仍可确认。空值不是没有边界，也不等于关闭机制。",
+    "玩家要求核对草稿，或本阶段填写完成准备请玩家确认时，调用 send_setup_draft 发送当前阶段的完整草稿。工具直接读取已保存的草稿，通常不传 content；content 仅用于补充说明，不要由你重写或摘要代替完整草稿。发送后等待玩家反馈或 .confirm，不自动确认，也不在同一回复继续追问新的长串字段。",
     "如果这是进入阶段后的引导请求，用自然中文说明当前在配置什么、需要哪些信息、可接受推荐或跳过，再给出第一组建议；不要机械罗列全部字段。",
     `已确认的基础人格：${JSON.stringify(profile.persona)}`,
     ...(tier >= 2 && draft.stage !== "persona" ? [`已确认的社交设定：${JSON.stringify(projectSocialForContext(profile.social))}`] : []),

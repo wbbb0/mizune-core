@@ -10,6 +10,8 @@ import { editableScenarioProfileFieldNames, scenarioProfileFieldLabels } from "#
 import { editablePersonaFieldNames, personaFieldLabels } from "#persona/personaSchema.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import { captureSessionMutationGuard } from "../core/sessionMutationGuard.ts";
+import { characterRepository } from "../../../character/repository.ts";
+import { formatCharacterDraft } from "../../../character/draftFormatting.ts";
 
 export const setupDraftToolDescriptors: ToolDescriptor[] = [
   {
@@ -30,6 +32,7 @@ export const setupDraftToolDescriptors: ToolDescriptor[] = [
         }
       }
     },
+    accessLevel: "owner",
     resultObservation: stateChangePolicy()
   }
 ];
@@ -42,8 +45,34 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ error: "scenario_host_state_store_unavailable" });
     }
     const session = context.sessionManager.getSession(sessionId);
-    const isCurrent = captureSessionMutationGuard(context.sessionManager, sessionId);
-    const content = await buildDraftContent(context, session, operationMode, getStringArg(args, "content").trim());
+    const isSessionCurrent = captureSessionMutationGuard(context.sessionManager, sessionId);
+    let isCurrent = isSessionCurrent;
+    let draftContent: string;
+    const extraContent = getStringArg(args, "content").trim();
+    if (operationMode.kind === "character_config") {
+      if (context.relationship !== "owner") return JSON.stringify({ error: "角色配置仅 owner 可访问" });
+      const store = characterRepository(context.config.dataDir);
+      const draft = store.draft(sessionId);
+      if (!draft || draft.stage !== operationMode.stage
+        || context.expectedCharacterDraftId !== undefined && draft.id !== context.expectedCharacterDraftId
+        || !store.sections(sessionId, session.modeId).some(section => section.writable)) {
+        return JSON.stringify({ error: "角色草稿已取消或配置阶段已变化，请重新读取当前草稿。" });
+      }
+      const valueSnapshot = JSON.stringify(draft.value);
+      const modeId = session.modeId;
+      isCurrent = () => {
+        if (!isSessionCurrent()) return false;
+        const currentMode = context.sessionManager.getOperationMode(sessionId);
+        const current = store.draft(sessionId);
+        return currentMode.kind === "character_config" && currentMode.stage === draft.stage
+          && context.sessionManager.getSession(sessionId).modeId === modeId
+          && current?.id === draft.id && JSON.stringify(current.value) === valueSnapshot;
+      };
+      draftContent = formatCharacterDraft(draft);
+    } else {
+      draftContent = await buildDraftContent(context, session, operationMode);
+    }
+    const content = draftContent && extraContent ? `${draftContent}\n\n补充说明：\n${extraContent}` : draftContent || extraContent;
     if (!isCurrent()) return JSON.stringify({ error: "会话已清空或变更，草稿未发送。" });
     if (!content) {
       return JSON.stringify({ error: "content or active setup draft is required" });
@@ -62,7 +91,7 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
         context.abortSignal?.throwIfAborted();
         if (context.replyDelivery === "web") {
           await context.committedTextSink?.commitText(content);
-          if (!isCurrent()) return;
+          if (!isSessionCurrent()) return;
           context.sessionManager.appendAssistantHistory(sessionId, {
             chatType: session.type,
             userId: context.lastMessage.userId,
@@ -79,7 +108,7 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
         const deliveryRef = await (context.messaging ?? new DeliveryCoordinator(context.oneBotClient)).sendText({
           sessionId, replyContext: context.replyContext, signal: context.outboundSignal
         }, content);
-        if (!isCurrent()) return;
+        if (!isSessionCurrent()) return;
         if (deliveryRef?.platform === "onebot") {
           context.sessionManager.recordSentMessage(sessionId, { messageId: deliveryRef.messageId, text: content, sentAt: Date.now() });
         }
@@ -99,20 +128,12 @@ export const setupDraftToolHandlers: Record<string, ToolHandler> = {
 async function buildDraftContent(
   context: Parameters<ToolHandler>[2],
   session: ReturnType<Parameters<ToolHandler>[2]["sessionManager"]["getSession"]>,
-  operationMode: SessionOperationMode | null,
-  extraContent: string
+  operationMode: SessionOperationMode | null
 ): Promise<string> {
   const scenarioState = isScenarioHostOperationMode(operationMode)
     ? await context.scenarioHostStateStore.ensureForSession(session)
     : null;
-  const draft = operationMode ? formatOperationModeDraft(operationMode, scenarioState ? formatScenarioHostRuntimeDraftLines(scenarioState) : []) : "";
-  if (!draft) {
-    return extraContent;
-  }
-  if (!extraContent) {
-    return draft;
-  }
-  return `${draft}\n\n补充说明：\n${extraContent}`;
+  return operationMode ? formatOperationModeDraft(operationMode, scenarioState ? formatScenarioHostRuntimeDraftLines(scenarioState) : []) : "";
 }
 
 function isScenarioHostOperationMode(operationMode: SessionOperationMode | null): boolean {
