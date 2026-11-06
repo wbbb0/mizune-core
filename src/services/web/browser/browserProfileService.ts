@@ -94,7 +94,7 @@ export class BrowserProfileService {
     if (!cleared) {
       throw new Error(`Unknown profile_id: ${profileId}`);
     }
-    for (const session of this.deps.sessions.values()) {
+    for (const session of this.deps.sessions.all()) {
       if (session.profileId === normalizedProfileId) {
         session.profileId = null;
       }

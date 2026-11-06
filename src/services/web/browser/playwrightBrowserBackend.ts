@@ -144,6 +144,8 @@ type PlaywrightModule = typeof import("playwright");
 export class PlaywrightBrowserBackend implements BrowserBackend {
   readonly name = "playwright" as const;
   private playwrightModulePromise: Promise<PlaywrightModule> | null = null;
+  private readonly failedOpens = new Map<Browser, BrowserContext | null>();
+  private readonly browserClosures = new WeakMap<Browser, Promise<void>>();
 
   constructor(
     private readonly config: AppConfig,
@@ -158,6 +160,7 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
     sessionStorageByOrigin: Record<string, Record<string, string>>;
     persistState: boolean;
   }): Promise<BrowserBackendOpenResult> {
+    await this.cleanupFailedOpens();
     const { chromium } = await this.loadPlaywright();
     const launchOptions: Record<string, unknown> = {
       headless: this.config.browser.playwright.headless
@@ -169,39 +172,50 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
     }
 
     const browser = await chromium.launch(launchOptions);
-    const context = await browser.newContext(input.storageState ? { storageState: input.storageState as any } : {});
-    const page = await context.newPage();
-    page.setDefaultTimeout(this.config.browser.playwright.actionTimeoutMs);
-    page.setDefaultNavigationTimeout(this.config.browser.playwright.navigationTimeoutMs);
-    await page.goto(input.url, {
-      waitUntil: "domcontentloaded",
-      timeout: this.config.browser.playwright.navigationTimeoutMs
-    });
-    await this.waitForSettledPage(page);
-
-    const sessionState: PlaywrightSessionState = {
-      browser,
-      context,
-      page,
-      requestedUrl: input.requestedUrl,
-      profileId: input.profileId,
-      persistState: input.persistState,
-      sessionStorageByOrigin: normalizeSessionStorageByOrigin(input.sessionStorageByOrigin)
-    };
-    const restoredSessionStorage = await this.restoreSessionStorageForCurrentOrigin(sessionState);
-    if (restoredSessionStorage) {
-      await page.reload({
+    let context: BrowserContext | null = null;
+    try {
+      context = await browser.newContext(input.storageState ? { storageState: input.storageState as any } : {});
+      const page = await context.newPage();
+      page.setDefaultTimeout(this.config.browser.playwright.actionTimeoutMs);
+      page.setDefaultNavigationTimeout(this.config.browser.playwright.navigationTimeoutMs);
+      await page.goto(input.url, {
         waitUntil: "domcontentloaded",
         timeout: this.config.browser.playwright.navigationTimeoutMs
       });
       await this.waitForSettledPage(page);
-    }
-    await this.captureCurrentOriginSessionStorage(sessionState);
 
-    return {
-      state: sessionState,
-      snapshot: await this.captureSnapshot(page, input.requestedUrl, input.profileId)
-    };
+      const sessionState: PlaywrightSessionState = {
+        browser,
+        context,
+        page,
+        requestedUrl: input.requestedUrl,
+        profileId: input.profileId,
+        persistState: input.persistState,
+        sessionStorageByOrigin: normalizeSessionStorageByOrigin(input.sessionStorageByOrigin)
+      };
+      const restoredSessionStorage = await this.restoreSessionStorageForCurrentOrigin(sessionState);
+      if (restoredSessionStorage) {
+        await page.reload({
+          waitUntil: "domcontentloaded",
+          timeout: this.config.browser.playwright.navigationTimeoutMs
+        });
+        await this.waitForSettledPage(page);
+      }
+      await this.captureCurrentOriginSessionStorage(sessionState);
+
+      return {
+        state: sessionState,
+        snapshot: await this.captureSnapshot(page, input.requestedUrl, input.profileId)
+      };
+    } catch (error) {
+      this.failedOpens.set(browser, context);
+      try {
+        await this.cleanupFailedOpens();
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "Browser open failed and cleanup is pending", { cause: error });
+      }
+      throw error;
+    }
   }
 
   async interact(input: BrowserBackendInteractionInput): Promise<BrowserBackendOpenResult & {
@@ -276,8 +290,45 @@ export class PlaywrightBrowserBackend implements BrowserBackend {
 
   async close(state: unknown): Promise<void> {
     const session = state as PlaywrightSessionState | undefined;
-    await session?.context?.close?.().catch(() => undefined);
-    await session?.browser?.close?.().catch(() => undefined);
+    if (session?.browser) {
+      await this.closeBrowser(session.browser, session.context);
+    }
+  }
+
+  async cleanupFailedOpens(): Promise<void> {
+    const results = await Promise.allSettled(Array.from(this.failedOpens, async ([browser, context]) => {
+      await this.closeBrowser(browser, context);
+      this.failedOpens.delete(browser);
+    }));
+    const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Failed to release browsers from unsuccessful opens");
+    }
+  }
+
+  private closeBrowser(browser: Browser, context: BrowserContext | null): Promise<void> {
+    const existing = this.browserClosures.get(browser);
+    if (existing) {
+      return existing;
+    }
+    const closing = Promise.resolve().then(() => this.closeBrowserResources(browser, context)).catch((error: unknown) => {
+      this.browserClosures.delete(browser);
+      throw error;
+    });
+    this.browserClosures.set(browser, closing);
+    return closing;
+  }
+
+  private async closeBrowserResources(browser: Browser, context: BrowserContext | null): Promise<void> {
+    if (context) {
+      try {
+        await context.close();
+      } catch (error: unknown) {
+        this.logger.warn({ error }, "browser_context_close_failed");
+      }
+    }
+    // Closing the owning browser also releases its contexts if a context close failed.
+    await browser.close();
   }
 
   private async loadPlaywright(): Promise<PlaywrightModule> {

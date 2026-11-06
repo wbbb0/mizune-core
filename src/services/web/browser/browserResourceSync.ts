@@ -49,7 +49,7 @@ export class BrowserResourceSync {
   }
 
   async markExpired(resourceId: string, now = Date.now()): Promise<void> {
-    await this.resourceRegistry.markStatus(resourceId, "expired", now).catch(() => null);
+    await this.resourceRegistry.markStatus(resourceId, "expired", now);
   }
 
   async markMissingAsExpired(resourceId: string, now = Date.now()): Promise<void> {
@@ -66,7 +66,7 @@ export class BrowserResourceSync {
       }
       const activeSession = sessions.get(record.resourceId);
       const resolvedStatus = activeSession ? "active" : (record.status === "active" ? "expired" : record.status);
-      if (!activeSession && record.status === "active") {
+      if (!activeSession && record.status === "active" && !sessions.findPendingDisposal(record.resourceId)) {
         await this.markExpired(record.resourceId);
       }
       if (!activeSession || resolvedStatus !== "active") {

@@ -1,15 +1,5 @@
 import type { BrowserBackend, BrowserSnapshot } from "./types.ts";
 
-export interface BrowserSessionRecord {
-  resourceId: string;
-  backend: BrowserBackend;
-  state: unknown;
-  snapshot: BrowserSnapshot;
-  expiresAt: number;
-  ownerSessionId: string | null;
-  profileId: string | null;
-}
-
 export interface BrowserSessionInit {
   backend: BrowserBackend;
   state: unknown;
@@ -19,36 +9,73 @@ export interface BrowserSessionInit {
   profileId: string | null;
 }
 
+export interface BrowserSessionRecord extends BrowserSessionInit {
+  resourceId: string;
+}
+
 export class BrowserSessionRuntime {
   private readonly sessions = new Map<string, BrowserSessionRecord>();
+  private readonly pendingDisposals = new Set<BrowserSessionRecord>();
+  private openingCount = 0;
 
   constructor(private readonly maxSessions: number) {}
 
-  set(resourceId: string, init: BrowserSessionInit): BrowserSessionRecord[] {
-    this.sessions.set(resourceId, {
-      resourceId,
-      ...init
-    });
-    return this.evictOverflow();
+  reserveOpen(): (() => void) | null {
+    if (this.sessions.size + this.pendingDisposals.size + this.openingCount >= this.maxSessions) {
+      return null;
+    }
+    this.openingCount += 1;
+    let released = false;
+    return () => {
+      if (!released) {
+        released = true;
+        this.openingCount -= 1;
+      }
+    };
+  }
+
+  set(resourceId: string, init: BrowserSessionInit): BrowserSessionRecord {
+    if (this.sessions.has(resourceId) || this.findPendingDisposal(resourceId)) {
+      throw new Error(`Browser resource is already tracked: ${resourceId}`);
+    }
+    const session = {
+      ...init,
+      resourceId
+    };
+    this.sessions.set(resourceId, session);
+    return session;
   }
 
   get(resourceId: string): BrowserSessionRecord | undefined {
     return this.sessions.get(resourceId);
   }
 
-  delete(resourceId: string): BrowserSessionRecord | undefined {
-    const existing = this.sessions.get(resourceId);
-    if (!existing) {
-      return undefined;
+  beginDisposal(session: BrowserSessionRecord): void {
+    if (this.sessions.get(session.resourceId) === session) {
+      this.sessions.delete(session.resourceId);
     }
-    this.sessions.delete(resourceId);
-    return existing;
+    this.pendingDisposals.add(session);
   }
 
-  clear(): BrowserSessionRecord[] {
-    const existing = Array.from(this.sessions.values());
-    this.sessions.clear();
-    return existing;
+  completeDisposal(session: BrowserSessionRecord): void {
+    this.pendingDisposals.delete(session);
+  }
+
+  findPendingDisposal(resourceId: string): BrowserSessionRecord | undefined {
+    for (const session of this.pendingDisposals) {
+      if (session.resourceId === resourceId) {
+        return session;
+      }
+    }
+    return undefined;
+  }
+
+  pending(): BrowserSessionRecord[] {
+    return Array.from(this.pendingDisposals);
+  }
+
+  all(): BrowserSessionRecord[] {
+    return [...this.sessions.values(), ...this.pendingDisposals];
   }
 
   values(): BrowserSessionRecord[] {
@@ -81,24 +108,8 @@ export class BrowserSessionRuntime {
       }
     }
     for (const session of expired) {
-      this.sessions.delete(session.resourceId);
+      this.beginDisposal(session);
     }
     return expired;
-  }
-
-  private evictOverflow(): BrowserSessionRecord[] {
-    const evicted: BrowserSessionRecord[] = [];
-    while (this.sessions.size > this.maxSessions) {
-      const firstKey = this.sessions.keys().next().value;
-      if (!firstKey) {
-        break;
-      }
-      const session = this.sessions.get(firstKey);
-      this.sessions.delete(firstKey);
-      if (session) {
-        evicted.push(session);
-      }
-    }
-    return evicted;
   }
 }

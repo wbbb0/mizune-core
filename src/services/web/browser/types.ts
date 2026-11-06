@@ -327,4 +327,6 @@ export interface BrowserBackend {
     sessionStorageByOrigin: Record<string, Record<string, string>>;
   }>;
   close(state: unknown): Promise<void>;
+  /** Retry resources retained when open failed before it could return an owned state. */
+  cleanupFailedOpens(): Promise<void>;
 }

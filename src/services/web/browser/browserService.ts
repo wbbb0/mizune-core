@@ -59,6 +59,9 @@ export class BrowserService {
   private readonly profileService: BrowserProfileService;
   private readonly janitor: BrowserSessionJanitor;
   private readonly pageService: BrowserPageService;
+  private readonly openingPages = new Set<Promise<OpenPageResult>>();
+  private closingSessions: Promise<void> | null = null;
+  private stopped = false;
 
   constructor(
     readonly deps: BrowserServiceDeps
@@ -69,15 +72,46 @@ export class BrowserService {
   }
 
   async reloadConfig(): Promise<void> {
-    await this.janitor.closeAllSessions("browser_sessions_closed_after_config_reload");
+    await this.closeSessions("browser_sessions_closed_after_config_reload");
   }
 
   async shutdown(): Promise<void> {
-    await this.janitor.closeAllSessions("browser_sessions_closed_on_runtime_shutdown");
+    this.stopped = true;
+    await this.closeSessions("browser_sessions_closed_on_runtime_shutdown");
   }
 
   async openPage(input: OpenPageInput): Promise<OpenPageResult> {
-    return this.pageService.openPage(input);
+    if (this.stopped || this.closingSessions) {
+      throw new Error("Browser service is shutting down or reloading");
+    }
+    const opening = this.pageService.openPage(input);
+    this.openingPages.add(opening);
+    try {
+      return await opening;
+    } finally {
+      this.openingPages.delete(opening);
+    }
+  }
+
+  private closeSessions(logEvent: string): Promise<void> {
+    if (!this.closingSessions) {
+      this.closingSessions = this.finishClosingSessions(logEvent).finally(() => {
+        this.closingSessions = null;
+      });
+    }
+    return this.closingSessions;
+  }
+
+  private async finishClosingSessions(logEvent: string): Promise<void> {
+    await Promise.allSettled(this.openingPages);
+    const results = await Promise.allSettled([
+      this.janitor.closeAllSessions(logEvent),
+      this.deps.playwrightBackend.cleanupFailedOpens()
+    ]);
+    const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Browser cleanup failed; resources remain tracked for retry");
+    }
   }
 
   async inspectPage(input: InspectPageInput): Promise<InspectPageResult> {

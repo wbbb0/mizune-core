@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { BrowserSessionRuntime } from "../../src/services/web/browser/browserSessionRuntime.ts";
 import { BrowserSessionJanitor } from "../../src/services/web/browser/browserSessionJanitor.ts";
+import { BrowserResourceSync } from "../../src/services/web/browser/browserResourceSync.ts";
 import { createForwardFeatureConfig } from "../helpers/forward-test-support.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
 
@@ -163,3 +164,146 @@ function createSessionRecord(expiresAt: number) {
       Date.now = originalNow;
     }
   });
+
+function createDisposalHarness(maxSessions = 1) {
+  const sessions = new BrowserSessionRuntime(maxSessions);
+  const calls = { persist: 0, close: 0, closed: [] as string[], expired: [] as string[] };
+  const failure = { persist: false, close: false, markClosed: false };
+  const session = sessions.set("resource_1", {
+    ...createSessionRecord(Date.now() + 60_000),
+    backend: {
+      ...createSessionRecord(0).backend,
+      async close() {
+        calls.close += 1;
+        if (failure.close) throw new Error("close failed");
+      }
+    }
+  });
+  const janitor = new BrowserSessionJanitor({
+    config: createForwardFeatureConfig(),
+    logger: createSilentLogger(),
+    sessions,
+    resourceSync: {
+      async markClosed(resourceId: string) {
+        if (failure.markClosed) throw new Error("registry failed");
+        calls.closed.push(resourceId);
+      },
+      async markExpired(resourceId: string) { calls.expired.push(resourceId); },
+      logExpiredSessions() {}
+    } as any
+  }, {
+    async persistSessionProfile() {
+      calls.persist += 1;
+      if (failure.persist) throw new Error("profile write failed");
+    }
+  });
+  return { sessions, session, janitor, calls, failure };
+}
+
+for (const trigger of ["manual", "expiry", "capacity", "shutdown"] as const) {
+  test(`profile persistence failure cannot prevent browser disposal via ${trigger}`, async () => {
+    const { sessions, session, janitor, calls, failure } = createDisposalHarness();
+    failure.persist = true;
+    if (trigger === "manual") {
+      await janitor.closeSession(session.resourceId);
+    } else if (trigger === "expiry") {
+      session.expiresAt = 0;
+      await janitor.cleanupExpiredSessions();
+    } else if (trigger === "capacity") {
+      const release = await janitor.reserveOpen();
+      release();
+    } else {
+      await janitor.closeAllSessions("test_shutdown");
+    }
+    assert.equal(calls.persist, 1);
+    assert.equal(calls.close, 1);
+    assert.deepEqual(sessions.all(), []);
+    assert.deepEqual(trigger === "manual" ? calls.closed : calls.expired, [session.resourceId]);
+  });
+}
+
+test("concurrent disposal entry points share a single close and preserve the first terminal status", async () => {
+  const { sessions, session, janitor, calls } = createDisposalHarness();
+  await Promise.all([
+    janitor.closeSession(session.resourceId),
+    janitor.closeAllSessions("test_shutdown"),
+    janitor.cleanupExpiredSessions()
+  ]);
+  await janitor.disposeSession(session, "expired");
+  assert.equal(calls.persist, 1);
+  assert.equal(calls.close, 1);
+  assert.deepEqual(calls.closed, [session.resourceId]);
+  assert.deepEqual(calls.expired, []);
+  assert.deepEqual(sessions.all(), []);
+});
+
+test("failed close retains ownership and capacity until a later cleanup succeeds", async () => {
+  const { sessions, session, janitor, calls, failure } = createDisposalHarness();
+  failure.close = true;
+  await assert.rejects(janitor.closeSession(session.resourceId), /close failed/);
+  assert.equal(sessions.get(session.resourceId), undefined);
+  assert.deepEqual(sessions.pending(), [session]);
+  assert.equal(sessions.reserveOpen(), null);
+  await assert.rejects(janitor.reserveOpen(), /cleanup is still pending/);
+  assert.deepEqual(calls.closed, []);
+  assert.deepEqual(calls.expired, []);
+
+  failure.close = false;
+  await janitor.cleanupExpiredSessions();
+  assert.equal(calls.close, 2);
+  assert.deepEqual(calls.closed, [session.resourceId]);
+  assert.deepEqual(sessions.all(), []);
+  const release = await janitor.reserveOpen();
+  release();
+});
+
+test("registry failure retries metadata without closing the browser twice", async () => {
+  const { sessions, session, janitor, calls, failure } = createDisposalHarness();
+  failure.markClosed = true;
+  await assert.rejects(janitor.closeSession(session.resourceId), /registry failed/);
+  assert.deepEqual(sessions.pending(), [session]);
+  failure.markClosed = false;
+  await janitor.closeSession(session.resourceId);
+  assert.equal(calls.close, 1);
+  assert.equal(calls.persist, 1);
+  assert.deepEqual(calls.closed, [session.resourceId]);
+  assert.deepEqual(sessions.all(), []);
+});
+
+test("shutdown reports close failures and retains them for retry", async () => {
+  const { sessions, session, janitor, calls, failure } = createDisposalHarness(2);
+  let otherClosed = false;
+  sessions.set("resource_2", {
+    ...createSessionRecord(Date.now() + 60_000),
+    backend: { ...session.backend, async close() { otherClosed = true; } }
+  });
+  failure.close = true;
+  await assert.rejects(janitor.closeAllSessions("test_shutdown"), /remain tracked for retry/);
+  assert.equal(otherClosed, true);
+  assert.deepEqual(sessions.pending(), [session]);
+  assert.deepEqual(calls.expired, ["resource_2"]);
+  failure.close = false;
+  await janitor.closeAllSessions("test_shutdown_retry");
+  assert.deepEqual(sessions.all(), []);
+});
+
+test("listing pages cannot mark a still-owned pending disposal as expired", async () => {
+  const { sessions, session } = createDisposalHarness();
+  const statuses: string[] = [];
+  const resourceSync = new BrowserResourceSync({
+    async list() {
+      return [{
+        resourceId: session.resourceId,
+        status: "active",
+        browserPage: { requestedUrl: "https://example.com/", resolvedUrl: "https://example.com/" }
+      }];
+    },
+    async markStatus(_resourceId: string, status: string) { statuses.push(status); }
+  } as any, createSilentLogger());
+  sessions.beginDisposal(session);
+  assert.deepEqual(await resourceSync.listActivePages(sessions), []);
+  assert.deepEqual(statuses, []);
+  sessions.completeDisposal(session);
+  await resourceSync.listActivePages(sessions);
+  assert.deepEqual(statuses, ["expired"]);
+});
