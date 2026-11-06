@@ -24,7 +24,6 @@ import type {
   ParsedUpdateSessionTitleBody
 } from "../routeSupport.ts";
 import type { PersistedSessionState, SessionParticipantRef, SessionState } from "#conversation/session/sessionTypes.ts";
-import type { InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { SessionSnapshotModeState } from "#conversation/session/sessionSnapshotStore.ts";
 import { createNormalSessionOperationMode } from "#conversation/session/sessionOperationMode.ts";
 import { createEmptySessionTaskTracker } from "#conversation/taskTracker/taskTrackerTypes.ts";
@@ -41,7 +40,7 @@ import {
 } from "#modes/statefulRp/types.ts";
 import { createSessionTitleGenerationEvent } from "#conversation/session/internalTranscriptEvents.ts";
 import { DerivedObservationReader } from "#llm/derivations/derivedObservationReader.ts";
-import { isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
+import { collectTranscriptMediaIds } from "#data/assets/sessionAssetReferences.ts";
 import {
   buildInitialSessionListStreamEvents,
   diffSessionListStreamEvents,
@@ -269,7 +268,7 @@ export async function getSessionDetail(
     participantUserId: _participantUserId,
     ...sessionView
   } = deps.sessionManager.getSessionView(sessionId);
-  const mediaIds = collectDerivedObservationMediaIds(sessionView.internalTranscript);
+  const mediaIds = collectTranscriptMediaIds(sessionView.internalTranscript);
   const derivedObservationReader = new DerivedObservationReader({
     chatFileStore: deps.chatFileStore,
     audioStore: deps.audioStore
@@ -308,48 +307,6 @@ function normalizeAdminContentSafetyAudits<T extends { originalText?: string | u
     return records;
   }
   return records.map(({ originalText: _originalText, ...record }) => record as T);
-}
-
-function collectDerivedObservationMediaIds(transcript: readonly InternalTranscriptItem[]): {
-  chatFileIds: string[];
-  audioIds: string[];
-} {
-  const chatFileIds = new Set<string>();
-  const audioIds = new Set<string>();
-  for (const item of transcript) {
-    if (item.kind === "user_message") {
-      for (const imageId of item.imageIds) {
-        if (!isPendingChatAttachmentId(imageId)) {
-          chatFileIds.add(imageId);
-        }
-      }
-      for (const emojiId of item.emojiIds) {
-        if (!isPendingChatAttachmentId(emojiId)) {
-          chatFileIds.add(emojiId);
-        }
-      }
-      for (const attachment of item.attachments) {
-        if (!isPendingChatAttachmentId(attachment.fileId)) {
-          chatFileIds.add(attachment.fileId);
-        }
-      }
-    }
-    for (const match of extractMediaIdsFromText(JSON.stringify(item))) {
-      if (match.startsWith("file_")) {
-        chatFileIds.add(match);
-      } else if (match.startsWith("aud_")) {
-        audioIds.add(match);
-      }
-    }
-  }
-  return {
-    chatFileIds: Array.from(chatFileIds),
-    audioIds: Array.from(audioIds)
-  };
-}
-
-function extractMediaIdsFromText(text: string): string[] {
-  return Array.from(String(text ?? "").matchAll(/\b(?:file|aud)_[a-zA-Z0-9_:-]+\b/g), (match) => match[0]);
 }
 
 async function getSessionModeStateDetail(
@@ -426,39 +383,34 @@ export async function restoreSessionSnapshot(
     return null;
   }
   assertSessionSnapshotMutationAllowed(session, "读档");
-  const snapshot = await deps.sessionSnapshotStore.get(session.id, snapshotId);
-  if (!snapshot) {
-    return { ok: false as const };
-  }
-  if (snapshot.payload.session.id !== session.id) {
-    throw new Error(`Snapshot ${snapshotId} does not belong to session ${session.id}`);
-  }
-
-  const previousSession = deps.sessionManager.getPersistedSession(session.id);
-  const previousScenarioState = await deps.scenarioHostStateStore.get(session.id);
-  const previousStatefulRpState = await deps.statefulRpStateStore?.get(session.id) ?? null;
-  let restored: SessionState | null = null;
-  try {
-    await applySessionSnapshotModeState(deps, session.id, snapshot.payload.modeState);
-    restored = deps.sessionManager.restorePersistedSession(snapshot.payload.session);
-    await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(restored.id));
-  } catch (error: unknown) {
-    await restorePreviousSnapshotModeState(deps, session.id, {
-      scenarioHost: previousScenarioState,
-      statefulRp: previousStatefulRpState
-    }).catch(() => undefined);
-    if (restored) {
-      deps.sessionManager.restorePersistedSession(previousSession);
+  const result = await deps.sessionSnapshotStore.withSnapshot(session.id, snapshotId, async (snapshot) => {
+    const previousSession = deps.sessionManager.getPersistedSession(session.id);
+    const previousScenarioState = await deps.scenarioHostStateStore.get(session.id);
+    const previousStatefulRpState = await deps.statefulRpStateStore?.get(session.id) ?? null;
+    let restored: SessionState | null = null;
+    try {
+      await applySessionSnapshotModeState(deps, session.id, snapshot.payload.modeState);
+      restored = deps.sessionManager.restorePersistedSession(snapshot.payload.session);
+      await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(restored.id));
+    } catch (error: unknown) {
+      await restorePreviousSnapshotModeState(deps, session.id, {
+        scenarioHost: previousScenarioState,
+        statefulRp: previousStatefulRpState
+      }).catch(() => undefined);
+      if (restored) {
+        deps.sessionManager.restorePersistedSession(previousSession);
+      }
+      throw error;
     }
-    throw error;
-  }
 
-  return {
-    ok: true as const,
-    session: buildSessionSummary(restored),
-    modeState: await getSessionModeStateDetail(deps, restored),
-    snapshot: snapshot.summary
-  };
+    return {
+      ok: true as const,
+      session: buildSessionSummary(restored),
+      modeState: await getSessionModeStateDetail(deps, restored),
+      snapshot: snapshot.summary
+    };
+  });
+  return result ?? { ok: false as const };
 }
 
 export async function deleteSessionSnapshot(

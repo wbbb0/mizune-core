@@ -63,13 +63,14 @@
 
 ## Sessions Store 表组
 
-当前 `sessions/sessions.sqlite` 注册了三个 source-of-truth 表组：
+当前 `sessions/sessions.sqlite` 注册了以下表组：
 
 - `sessions.persisted_sessions`：`sessions`、`session_transcript_items`，承载会话快照持久化数据
 - `sessions.scenario_host_state`：`scenario_host_session_states`，承载 `scenario_host` 每会话状态与当前会话 Scenario 资料
 - `sessions.snapshots`：`session_snapshots`，承载手动存档读档用的完整 session 快照
+- `sessions.asset_ownership`：`session_asset_owners`、`session_owned_asset_refs`，保存当前会话与每份手动存档各自拥有的资产引用
 
-`sessions.scenario_host_state` 与 `sessions.snapshots` 使用 `block_reset`，不接受版本不匹配时的自动重建。`sessions.persisted_sessions` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
+`sessions.scenario_host_state`、`sessions.snapshots` 与 `sessions.asset_ownership` 使用 `block_reset`，不接受版本不匹配时的自动重建。`sessions.persisted_sessions` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。
 
 `sessions` 表保存会话元数据、pending 消息、摘要、用量、已发送消息，以及 `published_conversation_json` 中有界的上次完整回答聊天窗口。后者随手动存档读档保存，压缩时保留，清空或撤回已发布内容时失效；表组版本 11 通过已有数据模型的增列机制加入可空字段。
 
@@ -78,6 +79,14 @@
 `scenario_host_session_states.state_json` 当前 payload 版本为 5，其中 `profile` 保存当前会话的 Scenario 资料，`currentSituation`、`currentLocation`、`player`、`npcs`、`objectives`、`loreEntries`、`entities`、`relations`、`journal`、`mechanics` 等字段保存运行态。玩家与 NPC 的随身穿着和持有物分别保存在角色的 `wornItems` 与 `heldItems` 中；通用 `entities` 只描述地点、阵营、物品、组织等非角色对象。v1/v2/v3/v4 行会在打开数据库时显式迁移为 v5；旧 `inventory` 会按 owner 归并到玩家或 NPC 的 `heldItems`，无法归属到角色的旧物品会迁移为 `entities` 中的 `item`；旧 `worldFacts` 会归并为 `loreEntries`，旧全局 Scenario 资料会在迁移时一次性复制到已有会话状态。
 
 `session_snapshots.payload_json` 保存版本化快照 payload，当前包含 `PersistedSessionState` 与可选 mode state。读档会恢复完整 session 持久化状态，并在 `scenario_host` 快照中同步恢复 `scenario_host_session_states`；读档期间会拒绝正在生成或外发中的会话，避免旧回复在读档后继续发出。
+
+会话和存档是独立的资产 owner，引用与对应内容在同一 SQLite 事务中写入或删除。清空当前会话、恢复另一份存档或卸载运行时会话都不会移除其他存档的引用；只有最后一个 owner 消失且没有运行时引用时，资产才有资格进入 TTL 或容量回收。引用提取统一读取 pending、排队目标、transcript、嵌套内容和工具结果中的资产字段；管理 API 的媒体投影使用同一规则，不从任意正文猜测 ID。
+
+创建新存档还会在 GC 协调边界内核对本次引用的资产登记：聊天文件按 `file_id` 或 `file_ref` 查找，音频按 `audio_files.id` 查找，不把远端音频 URL 当成本地文件。如果 GC 先完成删除、随后才首次创建引用，存档会以 `无法存档：引用的资产不存在（类型: ID）` 明确失败，不写入快照或静默丢弃引用。该检查也会拒绝源会话已经引用缺失媒体的新存档；日常会话持久化仍保留原始历史，不因旧附件缺失而丢失聊天记录。检查针对资产登记，不承诺外部音频 URL 的可达性，也不检测绕过应用直接删除的文件。
+
+首次加入引用表后，初始化只为缺少 owner 标记的记录建立索引：逐个读取存档 payload，逐条读取会话 transcript，不把所有存档 JSON 同时载入内存。空引用也保存 owner 标记，避免以后重复扫描。内容解析失败会阻止初始化，引用数据库读取失败会中止本次回收，均不会把不可读数据视为无引用。正常启动与回收读取轻量引用表，不依赖会话历史是否常驻内存。
+
+启动装配向会话持久化、存档库和资产回收器注入同一个 `AssetReferenceCoordinator`。它基于 `p-queue` 串行化 owner 变更与整个 GC 删除阶段，防止引用查询和最终文件删除之间插入新的 owner 提交。读档通过 `withSnapshot` 在这一边界内取得临时引用，随后在边界外恢复模式及保存会话，避免重新入队造成死锁；完成或失败都在 `finally` 释放引用。聊天文件租约复用 `ChatFileStore.retainFiles`，音频等类型由协调器管理。因此读档过程中即使原存档被删除，正在恢复的媒体也仍受保护。assets 库的 `asset_session_refs` 仍是按当前运行态重建的辅助引用索引，不能替代存档 owner。
 
 内部 API 的 Data Registry 将这两个表分别暴露为 `sessions` 和 `session_transcript_items` 资源；WebUI `Data` 页对这两个资源使用专用只读查看器，便于直接检查会话元数据和单条 transcript 内容。
 
@@ -99,6 +108,8 @@
 音频、聊天文件和内容安全审计表组使用 `block_reset`，不会在版本不匹配或结构校验失败时自动 drop/recreate。`assets.comfy_tasks` 当前使用默认 reset 策略，结构破坏性调整会以当前代码结构为准重建该表组。音频元数据已经以 SQLite 为准，内部 API 的 `audio_files` registry 资源也直接读取该表组，而不是旧的 `audio-files.json`。
 
 聊天文件真实内容仍保留在文件系统下的 `chat-files/media/` 与 `chat-files/documents/`，但索引与 caption 元数据已经以 `chat_files` 表为准；内部 API 的 `workspace_files` registry 资源也直接读取该表组，而不是旧的 `chat-files/files.json`。
+
+`assets.chat_files` 表组版本 2 增加 `file_ref` 查询索引，升级仅补索引，保留原有资产记录；存档提交前的引用检查按主键或该索引查找，不加载整份资产元数据列表。
 
 Comfy 任务记录以 `comfy_tasks` 表为准；结果文件引用拆为 `comfy_task_result_files` 竖表，一行对应一个输出文件。任务状态轮询只更新运行态列和结果文件竖表，不再反复重写 `workflow_snapshot_json`。真实生成出的媒体文件仍通过聊天文件存储链路落到文件系统。
 

@@ -10,9 +10,11 @@ import { getDefaultSessionModeId } from "#modes/registry.ts";
 import { createNormalSessionOperationMode } from "./sessionOperationMode.ts";
 import {
   SqliteService,
-  type SqliteDatabase,
-  type SqliteDatabaseHandle
+  type SqliteDatabase
 } from "#data/sqlite/sqliteService.ts";
+import { AssetReferenceCoordinator } from "#data/assets/assetReferenceCoordinator.ts";
+import { collectSessionAssetReferences, collectTranscriptAssetReferences, type AssetReference } from "#data/assets/sessionAssetReferences.ts";
+import { listOwnedSessionAssetReferences, removeSessionAssetOwnership, replaceSessionAssetOwnership, SESSION_ASSET_OWNERSHIP_TABLE_GROUP } from "./sessionAssetOwnership.ts";
 import { createTableGroupsFromDataDomain, migrateDataDomainSchema, listDataModelRows } from "#data/model/index.ts";
 import { chatAttachmentSchema } from "#types/chatContracts.ts";
 import { internalTranscriptItemSchema, transcriptMessageContentPartsSchema } from "./transcriptContract.ts";
@@ -204,19 +206,24 @@ export const persistedSessionStateSchema = z.object({
 
 export class SessionPersistence {
   private readonly dbPath: string;
-  private sqlite: SqliteDatabaseHandle | null = null;
-  private readonly writes = new Map<string, Promise<void>>();
+  private readyDb: Promise<SqliteDatabase> | null = null;
 
   constructor(
     dataDir: string,
     private readonly logger: Logger,
-    private readonly sqliteService = new SqliteService(logger)
+    private readonly sqliteService = new SqliteService(logger),
+    private readonly assetReferences = new AssetReferenceCoordinator()
   ) {
     this.dbPath = join(dataDir, "sessions", "sessions.sqlite");
   }
 
   async init(): Promise<void> {
-    await this.getReadyDb();
+    await this.assetReferences.run(async () => { await this.getReadyDb(); });
+  }
+
+  /** Lightweight durable references, including snapshots; does not hydrate session histories. */
+  async listAssetReferences(): Promise<AssetReference[]> {
+    return listOwnedSessionAssetReferences(await this.getReadyDb());
   }
 
   async loadAll(): Promise<PersistedSessionState[]> {
@@ -282,7 +289,7 @@ export class SessionPersistence {
   async save(session: PersistedSessionState): Promise<void> {
     const validated = persistedSessionStateSchema.parse({ ...session, internalTranscript: [] }) as PersistedSessionState;
     validated.internalTranscript = session.internalTranscript.map(validateTranscriptItem);
-    await this.enqueueWrite(session.id, async () => {
+    await this.assetReferences.run(async () => {
       const db = await this.getReadyDb();
       const write = db.transaction(() => {
         db.prepare(`
@@ -387,17 +394,19 @@ export class SessionPersistence {
             updated_at_ms = excluded.updated_at_ms
         `).run(toPersistedSessionParams(validated));
         syncSessionTranscriptItems(db, validated);
+        replaceSessionAssetOwnership(db, { kind: "session", id: validated.id, sessionId: validated.id }, collectSessionAssetReferences(validated));
       });
       write();
     });
   }
 
   async remove(sessionId: string): Promise<void> {
-    await this.enqueueWrite(sessionId, async () => {
+    await this.assetReferences.run(async () => {
       const db = await this.getReadyDb();
       const remove = db.transaction(() => {
         db.prepare(`DELETE FROM session_transcript_items WHERE session_id = ?`).run(sessionId);
         db.prepare(`DELETE FROM sessions WHERE session_id = ?`).run(sessionId);
+        removeSessionAssetOwnership(db, "session", sessionId);
       });
       remove();
     });
@@ -413,39 +422,39 @@ export class SessionPersistence {
     return row?.updatedAtMs ?? null;
   }
 
-  private async enqueueWrite(sessionId: string, operation: () => Promise<void>): Promise<void> {
-    const previous = this.writes.get(sessionId) ?? Promise.resolve();
-    const next = previous
-      .catch(() => undefined)
-      .then(operation)
-      .finally(() => {
-        if (this.writes.get(sessionId) === next) {
-          this.writes.delete(sessionId);
-        }
-      });
-    this.writes.set(sessionId, next);
-    await next;
-  }
-
-  private async getReadyDb(): Promise<SqliteDatabase> {
-    if (!this.sqlite) {
-      this.sqlite = await this.sqliteService.openDatabase({
-        databaseId: "sessions",
-        dbPath: this.dbPath,
-        tableGroups: SESSION_TABLE_GROUPS,
-        pragmas: {
-          wal: true,
-          foreignKeys: true,
-          busyTimeoutMs: 5000
-        },
-        selfHealing: {
-          resetDatabaseOnOpenFailure: false,
-          resetDatabaseOnIntegrityFailure: false,
-          backupInvalidDatabase: false
-        }
+  private getReadyDb(): Promise<SqliteDatabase> {
+    if (!this.readyDb) {
+      this.readyDb = this.openDb().catch((error: unknown) => {
+        this.readyDb = null;
+        throw error;
       });
     }
-    return this.sqlite.db;
+    return this.readyDb;
+  }
+
+  private async openDb(): Promise<SqliteDatabase> {
+    const sqlite = await this.sqliteService.openDatabase({
+      databaseId: "sessions",
+      dbPath: this.dbPath,
+      tableGroups: [...SESSION_TABLE_GROUPS, SESSION_ASSET_OWNERSHIP_TABLE_GROUP],
+      pragmas: {
+        wal: true,
+        foreignKeys: true,
+        busyTimeoutMs: 5000
+      },
+      selfHealing: {
+        resetDatabaseOnOpenFailure: false,
+        resetDatabaseOnIntegrityFailure: false,
+        backupInvalidDatabase: false
+      }
+    });
+    try {
+      backfillSessionAssetOwnership(sqlite.db);
+      return sqlite.db;
+    } catch (error) {
+      sqlite.close();
+      throw error;
+    }
   }
 
   async listSessionRows(input: { offset?: number; limit?: number } = {}): Promise<{
@@ -699,6 +708,38 @@ function syncSessionTranscriptItems(db: SqliteDatabase, session: PersistedSessio
       continue;
     }
     upsert.run(row);
+  }
+}
+
+function backfillSessionAssetOwnership(db: SqliteDatabase): void {
+  db.prepare(`DELETE FROM session_asset_owners WHERE owner_kind = 'session'
+    AND NOT EXISTS (SELECT 1 FROM sessions WHERE session_id = owner_id)`).run();
+  const nextSession = db.prepare(`SELECT session_id, pending_messages_json, queued_group_reply_targets_json
+    FROM sessions WHERE session_id > ? AND NOT EXISTS (
+      SELECT 1 FROM session_asset_owners WHERE owner_kind = 'session' AND owner_id = sessions.session_id
+    ) ORDER BY session_id LIMIT 1`);
+  const transcriptItems = db.prepare("SELECT item_json FROM session_transcript_items WHERE session_id = ? ORDER BY item_index");
+  let after = "";
+  while (true) {
+    const row = nextSession.get(after) as {
+      session_id: string; pending_messages_json: string; queued_group_reply_targets_json: string;
+    } | undefined;
+    if (!row) return;
+    // Only one owner's metadata and one transcript item are decoded at a time.
+    const references = function* (): IterableIterator<AssetReference> {
+      const metadata = {
+        pendingMessages: persistedSessionStateSchema.shape.pendingMessages.parse(JSON.parse(row.pending_messages_json)),
+        queuedGroupReplyTargets: persistedSessionStateSchema.shape.queuedGroupReplyTargets.parse(JSON.parse(row.queued_group_reply_targets_json)) ?? [],
+        internalTranscript: []
+      };
+      yield* collectSessionAssetReferences(metadata);
+      for (const item of transcriptItems.iterate(row.session_id) as Iterable<{ item_json: string }>) {
+        yield* collectTranscriptAssetReferences([internalTranscriptItemSchema.parse(JSON.parse(item.item_json))]);
+      }
+    };
+    db.transaction(() => replaceSessionAssetOwnership(db,
+      { kind: "session", id: row.session_id, sessionId: row.session_id }, references()))();
+    after = row.session_id;
   }
 }
 

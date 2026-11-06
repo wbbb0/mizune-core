@@ -13,7 +13,7 @@ import { registerDownloadRoutes } from "../../src/internalApi/routes/downloadRou
 import { registerUploadRoutes } from "../../src/internalApi/routes/uploadRoutes.ts";
 import { createInternalApiServices, type InternalApiDeps } from "../../src/internalApi/types.ts";
 import type { InternalTranscriptItem, PersistedSessionState } from "../../src/conversation/session/sessionTypes.ts";
-import type { SessionSnapshotPayload, SessionSnapshotSummary } from "../../src/conversation/session/sessionSnapshotStore.ts";
+import type { SessionSnapshotPayload, SessionSnapshotRecord, SessionSnapshotSummary } from "../../src/conversation/session/sessionSnapshotStore.ts";
 import { createNormalSessionOperationMode } from "../../src/conversation/session/sessionOperationMode.ts";
 import { createEmptySessionTaskTracker } from "../../src/conversation/taskTracker/taskTrackerTypes.ts";
 import {
@@ -1532,6 +1532,10 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         return state.sessionSnapshots.find((snapshot) => (
           snapshot.summary.sessionId === sessionId && snapshot.summary.id === snapshotId
         )) ?? null;
+      },
+      async withSnapshot<T>(sessionId: string, snapshotId: string, use: (snapshot: SessionSnapshotRecord) => Promise<T>) {
+        const snapshot = state.sessionSnapshots.find((item) => item.summary.sessionId === sessionId && item.summary.id === snapshotId);
+        return snapshot ? use(snapshot) : null;
       },
       async delete(sessionId: string, snapshotId: string) {
         const index = state.sessionSnapshots.findIndex((snapshot) => (
