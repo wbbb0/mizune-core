@@ -62,9 +62,11 @@ export function createGenerationOutbound(
     },
     captureOpen: () => {
       const replyContext = input.sendTarget.replyContext;
+      const outboundSignal = sessionManager.getOutboundAbortSignal(input.sessionId);
+      const signal = AbortSignal.any([input.abortController.signal, input.responseAbortController.signal, ...(outboundSignal ? [outboundSignal] : [])]);
       return () => {
         if (input.isCurrent?.() === false) throw new Error("当前回复已被更新的会话取代。");
-        return messaging.openTextStream({ sessionId: input.sessionId, replyContext });
+        return messaging.openTextStream({ sessionId: input.sessionId, replyContext, signal });
       };
     },
     scheduleStart: (text, signal, send) => messageQueue.enqueueText({
