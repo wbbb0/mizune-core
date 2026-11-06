@@ -1,3 +1,4 @@
+import { isOwnerBootstrapCommandText, isTextOnlyBootstrapMessage } from "../bootstrap/ownerBootstrapPolicy.ts";
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { UserIdentityStore } from "#identity/userIdentityStore.ts";
 import type { WhitelistStore } from "#identity/whitelistStore.ts";
@@ -7,7 +8,7 @@ export function isOfficialMessageAllowed(
   message: ParsedIncomingMessage,
   whitelistEnabled: boolean,
   whitelist: Pick<WhitelistStore, "hasGroup" | "hasUser">,
-  identities: Pick<UserIdentityStore, "findInternalUserIdSync">,
+  identities: Pick<UserIdentityStore, "findInternalUserIdSync" | "hasOwnerIdentitySync">,
   options: { allowGroupContext?: boolean } = {}
 ): boolean {
   if (message.source !== "qq_official" || !message.channelId) return false;
@@ -16,6 +17,8 @@ export function isOfficialMessageAllowed(
   if (!contextOnly && !message.replyContext) return false;
   if (!contextOnly && message.chatType === "group" && !message.isAtMentioned) return false;
   if (!whitelistEnabled) return true;
+  if (message.chatType === "private" && !identities.hasOwnerIdentitySync()
+    && isTextOnlyBootstrapMessage(message) && isOwnerBootstrapCommandText(message.text)) return true;
   const externalId = message.externalUserId ?? message.userId;
   const internalId = identities.findInternalUserIdSync({
     channelId: message.chatType === "group" ? `${message.channelId}.group.${message.groupId}` : message.channelId,

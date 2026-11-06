@@ -35,7 +35,7 @@ function incoming(command = "clear", contextOnly = false, messageId = "message",
 const admission = {
   whitelistEnabled: false, allowGroupContext: true,
   whitelist: { hasGroup: () => false, hasUser: () => false },
-  identities: { findInternalUserIdSync: () => "owner" }
+  identities: { hasOwnerIdentitySync: () => false, findInternalUserIdSync: () => "owner" }
 };
 
 for (const scenario of ["clear-first", "clear-after-context", "reset-first", "clear-fails-after-effect"] as const) {
@@ -140,7 +140,7 @@ test("runtime admission rejects before claiming, and receipt failure blocks all 
     receipts: { claim() { claims += 1; throw new Error("synthetic receipt failure"); } },
     handleIncomingMessage: async () => { handled += 1; }
   };
-  await receiveOfficialMessage({ ...dependencies, whitelistEnabled: true, identities: { findInternalUserIdSync: () => undefined } }, incoming());
+  await receiveOfficialMessage({ ...dependencies, whitelistEnabled: true, identities: { hasOwnerIdentitySync: () => false, findInternalUserIdSync: () => undefined } }, incoming());
   assert.equal(claims, 0);
   await assert.rejects(receiveOfficialMessage(dependencies, incoming()), /synthetic receipt failure/);
   assert.equal(claims, 1);

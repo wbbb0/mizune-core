@@ -25,42 +25,43 @@ export type PreRouterSetupDecision =
 export function resolvePreRouterSetupDecision(input: {
   setupState: SetupStateValue;
   channelId: string;
-  eventMessageType: "private" | "group";
-  eventUserId: string;
-  selfId: string;
-  rawText: string;
-  segmentCount: number;
+  chatType: "private" | "group";
+  externalUserId: string;
+  isSelf: boolean;
+  text: string;
+  hasContent: boolean;
+  textOnly: boolean;
 }): PreRouterSetupDecision {
-  const bootstrapCommand = resolveDispatchableDirectCommand({
+  if (input.isSelf) return { kind: "allow" };
+  const bootstrapCommand = input.textOnly ? resolveDispatchableDirectCommand({
     phase: "owner_bootstrap",
     setupState: input.setupState,
     chatType: "private",
-    text: input.rawText
-  });
+    text: input.text
+  }) : null;
 
-  if (bootstrapCommand && input.eventMessageType === "private") {
+  if (bootstrapCommand && input.chatType === "private") {
     return {
       kind: "handle_bootstrap_command",
       command: bootstrapCommand,
-      sessionId: buildPrivateSessionId(input.channelId, input.eventUserId),
+      sessionId: buildPrivateSessionId(input.channelId, input.externalUserId),
       incomingMessage: {
         channelId: input.channelId,
         chatType: "private",
-        userId: input.eventUserId
+        userId: input.externalUserId
       }
     };
   }
 
   if (
     input.setupState === "needs_owner"
-    && input.eventMessageType === "private"
-    && input.eventUserId !== input.selfId
-    && (Boolean(input.rawText) || input.segmentCount > 0)
+    && input.chatType === "private"
+    && input.hasContent
   ) {
     return {
       kind: "reject_private_before_owner_bound",
-      userId: input.eventUserId,
-      text: "当前实例还没有完成 OneBot 管理者绑定。请私聊发送 `.own` 绑定自己，或发送 `.own <userId>` 指定一个已与 bot 建立好友关系的用户 ID。"
+      userId: input.externalUserId,
+      text: "当前实例还没有完成管理者绑定。请私聊发送 `.own` 绑定自己。"
     };
   }
 
@@ -93,7 +94,7 @@ export function resolvePostRouterSetupDecision(input: {
     return {
       kind: "block_private_non_owner",
       text: input.ownerBound
-        ? "当前实例仍在 OneBot 初始化阶段，暂时只接受管理者私聊补全角色设定。"
+        ? "当前实例仍在初始化阶段，暂时只接受管理者私聊补全角色设定。"
         : "当前实例还没有完成管理者绑定。请先发送 `.own` 完成认领。"
     };
   }

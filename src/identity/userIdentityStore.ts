@@ -146,6 +146,24 @@ export class UserIdentityStore {
     });
   }
 
+  /** Initial claim is global and atomic; explicit admin linking remains a separate operation. */
+  async claimInitialOwnerIdentity(input: { channelId: string; externalId: string }): Promise<boolean> {
+    const record = userIdentityRecordSchema.parse({ ...input, scope: "private_user", internalUserId: "owner", createdAt: Date.now() });
+    await this.stateDatabase.init();
+    const db = this.stateDatabase.getDb();
+    const claimed = db.transaction(() => {
+      if (db.prepare("SELECT 1 FROM user_identities WHERE internal_user_id = 'owner' LIMIT 1").get()) return false;
+      db.prepare(`
+        INSERT INTO user_identities (channel_id, scope, external_id, internal_user_id, created_at_ms)
+        VALUES (@channelId, @scope, @externalId, @internalUserId, @createdAt)
+        ON CONFLICT(channel_id, scope, external_id) DO UPDATE SET internal_user_id = excluded.internal_user_id
+      `).run(record);
+      return true;
+    })();
+    this.current = await this.readAllFromDb();
+    return claimed;
+  }
+
   async ensureUserIdentity(input: {
     channelId: string;
     externalId: string;

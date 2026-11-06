@@ -109,7 +109,8 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
     persistSession,
     sendImmediateText,
     notifyOwnerSetupIfNeeded,
-    assignOwner
+    assignOwner,
+    isOwnerAssignmentAvailable
   } = createAppSetupSupport({
     channelId: config.configRuntime.instanceName,
     logger,
@@ -235,13 +236,10 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
       persistSession,
       flushSession: (sessionId, options) => sessionWorkCoordinator.flushSession(sessionId, options),
       onebotSendImmediateText: sendImmediateText,
+      qqOfficialClient,
       messaging,
-      assignOwner: async ({ channelId, requesterUserId, targetUserId, chatType }) => assignOwner({
-        channelId,
-        requesterUserId,
-        targetUserId,
-        chatType
-      })
+      assignOwner,
+      isOwnerAssignmentAvailable
     },
     persistSession
   });

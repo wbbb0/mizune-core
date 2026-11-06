@@ -67,6 +67,7 @@ export async function handlePostRouterSetupDecision(
   context: MessageProcessingContext,
   sendImmediateText: MessageEventHandlerDeps["sendImmediateText"]
 ): Promise<boolean> {
+  if (context.setupState.state === "ready") return false;
   const decision = resolvePostRouterSetupDecision({
     setupState: context.setupState.state,
     chatType: context.enrichedMessage.chatType,

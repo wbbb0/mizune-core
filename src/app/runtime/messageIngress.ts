@@ -1,3 +1,5 @@
+import type { OwnerBootstrapRequest, OwnerBootstrapTransport } from "../bootstrap/ownerBootstrap.ts";
+import { oneBotOwnerBootstrapTransport, officialOwnerBootstrapTransport } from "./ownerBootstrapTransport.ts";
 import { buildSessionId } from "#conversation/session/sessionIdentity.ts";
 import type { MessageReplyContext } from "#services/messaging/incomingMessage.ts";
 import type { DeliveryCoordinator } from "#services/messaging/deliveryCoordinator.ts";
@@ -26,6 +28,7 @@ type DirectCommandDeps = Pick<
   AppServiceBootstrap,
   | "config"
   | "oneBotClient"
+  | "qqOfficialClient"
   | "logger"
   | "historyCompressor"
   | "setupStore"
@@ -43,13 +46,8 @@ type DirectCommandDeps = Pick<
   chatFileStore?: import("../../character/writes.ts").CharacterAssetStore;
   sessionManager: SessionDirectCommandAccess & Pick<SessionMessagingAccess, "appendAssistantHistory" | "appendInternalTranscript">;
   persistSession: (sessionId: string, reason: string) => void;
-  assignOwner: (input: {
-    channelId: string;
-    requesterUserId: string;
-    targetUserId: string;
-    sessionId: string;
-    chatType: "private" | "group";
-  }) => Promise<string>;
+  assignOwner: (input: OwnerBootstrapRequest, transport: OwnerBootstrapTransport) => Promise<string>;
+  isOwnerAssignmentAvailable: () => Promise<boolean>;
   flushSession: MessageFlushSession;
   onebotSendImmediateText: MessageSendImmediateText;
   messaging: DeliveryCoordinator;
@@ -169,25 +167,16 @@ function createDeliveryHandleDirectCommand(
       deps.persistSession,
       delivery
     ),
-    isOwnerAssignmentAvailable: async () => (await deps.setupStore.get()).state !== "ready" && !deps.userIdentityStore.hasOwnerIdentitySync(),
-    assignOwner: async ({ channelId, requesterUserId, targetUserId, sessionId, chatType }) => deps.assignOwner({
-      channelId,
-      requesterUserId,
-      targetUserId,
-      sessionId,
-      chatType
-    })
-  });
-  return async (input) => {
-    if (delivery.kind === "qq_official" && input.command.name === "own") {
-      await createDeliverySendImmediateText(deps.onebotSendImmediateText, { sessionManager: deps.sessionManager, messaging: deps.messaging }, deps.persistSession, delivery)({
-        sessionId: input.sessionId, userId: input.incomingMessage.userId,
-        text: input.command.name === "own" ? "请通过已认证的 WebUI 身份管理绑定官方账号。" : "当前官方连接暂不提供此命令。"
+    isOwnerAssignmentAvailable: deps.isOwnerAssignmentAvailable,
+    assignOwner: async (request) => {
+      if (delivery.kind === "web") return "请在机器人私聊中使用 `.own`，或通过 WebUI 身份管理绑定账号。";
+      const transport = delivery.kind === "onebot" ? oneBotOwnerBootstrapTransport(deps.oneBotClient) : officialOwnerBootstrapTransport({
+        client: deps.qqOfficialClient, replyContext: delivery.replyContext, messaging: deps.messaging, sessionId: request.sessionId
       });
-      return;
+      return deps.assignOwner(request, transport);
     }
-    await handler(input);
-  };
+  });
+  return handler;
 }
 
 function createDeliverySendImmediateText(

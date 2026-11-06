@@ -1,3 +1,4 @@
+import { createOwnerBootstrap } from "./ownerBootstrap.ts";
 import { normalizeOneBotMessageId } from "#services/onebot/messageId.ts";
 import type { SessionPersistence } from "#conversation/session/sessionPersistence.ts";
 import type {
@@ -158,59 +159,14 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     await setupStore.markOwnerPromptSent();
   };
 
-  // Assigns the owner and advances setup state after a valid private command.
-  const assignOwner = async (params: {
-    channelId: string;
-    requesterUserId: string;
-    targetUserId: string;
-    chatType: "private" | "group";
-  }): Promise<string> => {
-    if (params.chatType !== "private") {
-      return "`.own` 只能在 OneBot 私聊里使用。";
-    }
-    const currentState = await setupStore.get();
-    if (currentState.state === "ready") {
-      return "当前实例已完成 OneBot 初始化，`.own` 不再可用。";
-    }
-    const currentOwnerIdentity = await userIdentityStore.findIdentityByInternalUserId("owner", { channelId: channelId });
-    if (currentOwnerIdentity) {
-      return `当前实例已绑定管理者：${currentOwnerIdentity.externalId}。请由该管理者继续完成设定。`;
-    }
-    const targetUserId = params.targetUserId.trim();
-    if (!targetUserId) {
-      return "请提供有效的用户 ID，或直接使用 `.own` 绑定自己。";
-    }
-    const friends = await oneBotClient.getFriendList();
-    const matchedFriend = friends.find((friend) => String(friend.user_id) === targetUserId);
-    if (!matchedFriend) {
-      return "只能把已经在 OneBot 中与 bot 建立好友关系的用户 ID 设为管理者。";
-    }
-
-    await userStore.ensureInternalUser("owner");
-    await userIdentityStore.bindOwnerIdentity({
-      channelId: params.channelId,
-      externalId: targetUserId
-    });
-    const setupState = await setupStore.advanceAfterOwnerBound();
-
-    if (targetUserId !== params.requesterUserId) {
-      await oneBotClient.sendText({
-        userId: targetUserId,
-        text: await buildSetupInstructionText()
-      });
-      await setupStore.markOwnerPromptSent();
-      return `已将 ${targetUserId} 设为管理者，并通知对方${setupState.state === "ready" ? "可以开始对话" : "继续确认角色设定"}。`;
-    }
-
-    await notifyOwnerSetupIfNeeded({ force: true, ownerExternalId: targetUserId });
-    return setupState.state === "ready" ? "已将你设为管理者。基础人格已确认，可以开始对话。" : "已将你设为管理者。接下来请配置并确认基础人格，允许留空。";
-  };
+  const ownerBootstrap = createOwnerBootstrap({ setupStore, userIdentityStore, userStore, buildSetupInstructionText });
 
   return {
     persistSession,
     sendImmediateText,
     buildSetupInstructionText,
     notifyOwnerSetupIfNeeded,
-    assignOwner
+    assignOwner: ownerBootstrap.assignOwner,
+    isOwnerAssignmentAvailable: ownerBootstrap.isAvailable
   };
 }

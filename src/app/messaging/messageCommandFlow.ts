@@ -30,7 +30,7 @@ export async function dispatchChatDirectCommand(
   sessionManager: MessageHandlerServices["sessionManager"],
   persistSession: MessageEventHandlerDeps["persistSession"],
   handleDirectCommand: MessageEventHandlerDeps["handleDirectCommand"],
-  context: MessageProcessingContext,
+  context: Pick<MessageProcessingContext, "session" | "enrichedMessage"> & { user: Pick<MessageProcessingContext["user"], "relationship"> },
   command: DirectCommandInput["command"]
 ): Promise<void> {
   const sourceRef = context.enrichedMessage.source === "qq_official"

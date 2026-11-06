@@ -173,29 +173,32 @@ function createScenarioState(input: {
     const preRouterCommand = resolvePreRouterSetupDecision({
       setupState: "needs_owner",
       channelId: "qqbot",
-      eventMessageType: "private",
-      eventUserId: "10001",
-      selfId: "20002",
-      rawText: ".own",
-      segmentCount: 1
+      chatType: "private",
+      externalUserId: "10001",
+      isSelf: false,
+      text: ".own",
+      hasContent: true,
+      textOnly: true
     });
     const preRouterReject = resolvePreRouterSetupDecision({
       setupState: "needs_owner",
       channelId: "qqbot",
-      eventMessageType: "private",
-      eventUserId: "10001",
-      selfId: "20002",
-      rawText: "你好",
-      segmentCount: 1
+      chatType: "private",
+      externalUserId: "10001",
+      isSelf: false,
+      text: "你好",
+      hasContent: true,
+      textOnly: true
     });
     const preRouterUnknown = resolvePreRouterSetupDecision({
       setupState: "needs_owner",
       channelId: "qqbot",
-      eventMessageType: "private",
-      eventUserId: "10001",
-      selfId: "20002",
-      rawText: ".unknown",
-      segmentCount: 1
+      chatType: "private",
+      externalUserId: "10001",
+      isSelf: false,
+      text: ".unknown",
+      hasContent: true,
+      textOnly: true
     });
     const postRouterGroup = resolvePostRouterSetupDecision({
       setupState: "needs_persona",
@@ -1142,3 +1145,14 @@ function createScenarioState(input: {
     assert.equal(syntheticMessages[0]!.text, "发我看下现在的完整系统消息");
     assert.deepEqual(flushCalls, [{ sessionId: "qqbot:p:owner", options: { skipReplyGate: true } }]);
   });
+
+test("初始化认领策略拒绝自身回声、群聊和非纯文本指令，并接受不透明身份 ID", () => {
+  const input = { setupState: "needs_owner" as const, channelId: "qq_official.app", chatType: "private" as const,
+    externalUserId: "opaque_user", isSelf: false, text: ".own opaque_user", hasContent: true, textOnly: true };
+  const decision = resolvePreRouterSetupDecision(input);
+  assert.equal(decision.kind, "handle_bootstrap_command");
+  if (decision.kind === "handle_bootstrap_command") assert.deepEqual(decision.command, { name: "own", userId: "opaque_user" });
+  for (const patch of [{ isSelf: true }, { chatType: "group" as const }, { textOnly: false }]) {
+    assert.notEqual(resolvePreRouterSetupDecision({ ...input, ...patch }).kind, "handle_bootstrap_command");
+  }
+});

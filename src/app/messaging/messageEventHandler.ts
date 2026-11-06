@@ -1,3 +1,4 @@
+import { isTextOnlyBootstrapMessage } from "../bootstrap/ownerBootstrapPolicy.ts";
 import { resolvePreRouterSetupDecision } from "./messageAdmission.ts";
 import type { ParsedIncomingMessage } from "#services/messaging/incomingMessage.ts";
 import type { OneBotMessageEvent } from "#services/onebot/types.ts";
@@ -81,6 +82,27 @@ export async function processIncomingMessage(
     }
   }
 
+  // Official ingress already validates the event and claims its durable receipt. Bootstrap
+  // before ordinary identity/media processing, just as the raw OneBot setup gate does.
+  if (deps.inboundDelivery === "qq_official" && !incomingMessage.contextOnly) {
+    const setupState = await setupStore.get();
+    const decision = resolvePreRouterSetupDecision({
+      setupState: setupState.state, channelId: incomingMessage.channelId!, chatType: incomingMessage.chatType,
+      externalUserId: incomingMessage.externalUserId ?? incomingMessage.userId, isSelf: false, text: incomingMessage.text,
+      hasContent: Boolean(incomingMessage.text || incomingMessage.contentParts?.length) || !isTextOnlyBootstrapMessage(incomingMessage), textOnly: isTextOnlyBootstrapMessage(incomingMessage)
+    });
+    if (decision.kind !== "allow") {
+      const session = sessionManager.getOrCreateSession(incomingMessage);
+      if (decision.kind === "handle_bootstrap_command") {
+        await dispatchChatDirectCommand(logger, sessionManager, persistSession, handleDirectCommand,
+          { session, enrichedMessage: incomingMessage, user: { relationship: "known" } }, decision.command);
+      } else {
+        await sendImmediateText({ sessionId: session.id, userId: incomingMessage.userId, text: decision.text, recordInHistory: false });
+      }
+      return;
+    }
+  }
+
   let context = await createMessageProcessingContext(
     { audioStore, chatFileStore, mediaImportService, oneBotReferenceResolver, sessionManager, userStore, setupStore, userIdentityStore },
     incomingMessage,
@@ -103,7 +125,7 @@ export async function processIncomingMessage(
     return;
   }
 
-  if (deps.inboundDelivery === "onebot" && await handlePostRouterSetupDecision({ logger, userIdentityStore }, context, sendImmediateText)) {
+  if (deps.inboundDelivery !== "web" && await handlePostRouterSetupDecision({ logger, userIdentityStore }, context, sendImmediateText)) {
     return;
   }
   const command = resolveChatDirectCommand(context);
@@ -225,11 +247,12 @@ export function createMessageEventHandler(deps: MessageEventHandlerDeps) {
     const preRouterDecision = resolvePreRouterSetupDecision({
       setupState: currentSetupState.state,
       channelId: config.configRuntime.instanceName,
-      eventMessageType: event.message_type,
-      eventUserId: String(event.user_id),
-      selfId: String(event.self_id),
-      rawText,
-      segmentCount: event.message.length
+      chatType: event.message_type,
+      externalUserId: String(event.user_id),
+      isSelf: String(event.user_id) === String(event.self_id),
+      text: rawText,
+      hasContent: Boolean(rawText) || event.message.length > 0,
+      textOnly: event.message.every(segment => segment.type === "text")
     });
 
     if (await handlePreRouterDecision({ logger, oneBotClient }, handleDirectCommand, preRouterDecision)) {

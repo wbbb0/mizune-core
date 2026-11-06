@@ -118,5 +118,5 @@ test("post-router setup block forwards external user id to immediate replies", a
   assert.equal(sendCalls.length, 1);
   assert.equal(sendCalls[0]?.userId, "owner");
   assert.equal(sendCalls[0]?.externalUserId, "2254600711");
-  assert.match(String(sendCalls[0]?.text ?? ""), /当前实例仍在 OneBot 初始化阶段/);
+  assert.match(String(sendCalls[0]?.text ?? ""), /当前实例仍在初始化阶段/);
 });
