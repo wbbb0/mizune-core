@@ -10,6 +10,7 @@ import { readFile, stat } from "node:fs/promises";
 import type { ImageEditSource } from "#services/images/imageEditInputs.ts";
 
 export const imageGenerationToolDescriptors: ToolDescriptor[] = [{
+  modelPolicy: { kind: "bounded_content" },
   definition: {
     type: "function",
     function: {

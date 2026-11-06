@@ -19,7 +19,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 - persona、RP / Scenario 资料、用户资料、记忆和规则持久化
 - LLM provider → model 分层目录与 routing preset，支持供应商内局部模型别名、同名模型快速切换，以及按 preset 设置历史窗口和 token 上下限
 - 历史压缩、自动会话标题、图片说明、音频转写、turn planner
-  - turn planner 按需调用：配置有效 `decision` 路由时优先使用原生决策，否则使用 `turnPlanner` 聊天路由；默认全量提供当前允许的工具、关闭语义等待。大小模型候选链与参数等价时自动跳过模型选择和升级工具，话题切换仅在旧历史值得压缩时判断。配置、结构边界与成本观测见 [轮次规划](docs/architecture/turn-planner.md)。
+  - turn planner 按需调用：统一维护 Decision 风格的问题与选项条件，配置有效 `decision` 路由时优先使用原生决策；普通聊天模型的 prompt 和输出约束自动生成，并先输出简短任务依据。回复动作与模型档位独立，按操作影响和质量要求选模，工具执行前再次校验最低档位；Sessions 展示未判定、策略升级及操作未执行状态。默认全量提供当前允许的工具、关闭语义等待；大小候选链等价时不宣称存在实际能力提升。配置、结构边界与成本观测见 [轮次规划](docs/architecture/turn-planner.md)。
 - 实例共享的标准 `SKILL.md` 技能库：WebUI 管理、模型按需加载与自主维护、任务版本固定、可编辑工具组绑定和版本回滚。技能只提供方法，具体边界见 [实例技能库](docs/architecture/skills.md)。
 - shell、workspace 文件、网页搜索、浏览器、ComfyUI 等可选工具能力
   - 后台 shell、下载、ComfyUI 任务完成后，事件会以 `⟦section name="background_event_batch"⟧` 批注入到当前工具调用循环的下一次 LLM 推理前，无需等待当前响应收尾；定时任务（scheduled instruction）仍在无活动响应时开独立 session。

@@ -28,6 +28,7 @@ const descriptions: Record<keyof typeof schemas, string> = {
   sticker_qq_list: "只读获取当前NapCat账号已有收藏的图片URL清单，返回可用于sticker_collect的qq_url；不自动导入、不修改QQ收藏。按需挑选收藏，收藏时再进行图片理解。"
 };
 export const stickerToolDescriptors: ToolDescriptor[] = (Object.keys(schemas) as Array<keyof typeof schemas>).map((name) => ({
+  modelPolicy: { kind: "bounded_content" },
   ...(name === "sticker_qq_list" ? { capabilities: { all: ["sticker.native_collection.read" as const] } } : {}),
   ...(name === "sticker_collect" ? { parameterCapabilities: { qq_url: "sticker.native_collection.read" as const }, descriptionWithoutParameters: "收藏值得长期复用的已有图片asset_id；填写简短reason。达到上限时提供replace_id和replace_revision原子替换。" } : {}),
   ...(name === "sticker_send" ? { capabilities: { all: ["media.image.send" as const] } } : {}),

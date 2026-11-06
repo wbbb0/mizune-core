@@ -126,7 +126,7 @@ export class TurnPlanner {
       }
       const result = { ...normalizeTurnPlan(plan, input, prepared!.batchAnalysis, this.config, this.logger), metrics: metrics() };
       this.logger.info({ sessionId: input.sessionId, callReasons: getTurnPlannerReasons(input.requirements), ...result.metrics,
-        replyDecision: result.replyDecision, topicDecision: result.topicDecision, toolsetIds: result.toolsetIds,
+        replyDecision: result.replyDecision, modelTier: result.modelTier, modelSelectionStatus: result.modelSelectionStatus, undeterminedQuestions: result.undeterminedQuestions, topicDecision: result.topicDecision, toolsetIds: result.toolsetIds,
         ...(result.taskIntent ? { taskIntent: result.taskIntent.kind, taskIntentConfidence: result.taskIntent.confidence } : {}), reason: result.reason
       }, "turn_planner_decided");
       if (result.metrics.durationMs >= 3000) {
@@ -136,7 +136,7 @@ export class TurnPlanner {
     } catch (error) {
       originalInput.abortSignal?.throwIfAborted();
       this.logger.warn({ sessionId: input.sessionId, ...metrics(), callReasons: getTurnPlannerReasons(input.requirements), err: error }, "turn_planner_llm_failed");
-      return { ...createDefaultTurnPlan("规划失败，继续回复"), metrics: metrics() };
+      return { ...createDefaultTurnPlan("规划失败，继续回复"), modelSelectionStatus: input.requirements.modelSelection ? "undetermined" : "not_requested", metrics: metrics() };
     } finally {
       clearTimeout(timer);
     }

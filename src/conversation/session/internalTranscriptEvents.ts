@@ -91,6 +91,37 @@ export function createModelSelfUpgradeRouteEvent(input: {
   };
 }
 
+export function createModelPolicyRouteEvent(input: {
+  timestampMs?: number;
+  reason: string;
+  fromModelRefs: string[];
+  toModelRefs: string[];
+  provider?: string;
+  toolName: string;
+  sourceModelRef?: string;
+  unavailable?: boolean;
+}): InternalModelRouteEventItem {
+  return {
+    kind: "model_route_event",
+    llmVisible: false,
+    timestampMs: input.timestampMs ?? Date.now(),
+    routeType: input.unavailable ? "policy_unavailable" : "policy_upgrade",
+    fromRole: "main_small",
+    toRole: "main_large",
+    title: input.unavailable ? "模型路由 · 无法升级" : "模型路由 · 策略升级",
+    summary: input.unavailable
+      ? "当前操作要求完整模型，但没有可用的切换路线；操作未执行"
+      : "操作已延后，后续请求切换到完整模型后重新判断；当前操作未执行",
+    reason: input.reason,
+    fromModelRefs: [...input.fromModelRefs],
+    toModelRefs: [...input.toModelRefs],
+    ...(input.provider ? { provider: input.provider } : {}),
+    toolName: input.toolName,
+    ...(input.sourceModelRef ? { sourceModelRef: input.sourceModelRef } : {}),
+    executed: false
+  };
+}
+
 export function createSessionTitleGenerationEvent(input: {
   source: "auto" | "regenerate";
   modeId: string;

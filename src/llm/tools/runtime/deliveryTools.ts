@@ -3,6 +3,7 @@ import { waitForMediaDelivery, mediaDeliveryResult, MAX_MEDIA_WAIT_MS } from "..
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 
 export const deliveryToolDescriptors: ToolDescriptor[] = [{
+  modelPolicy: { kind: "observe" },
   definition: { type: "function", function: {
     name: "delivery_status",
     description: "查询当前会话一条媒体投递的状态。使用发送工具返回的delivery_id；可等待最多10秒。accepted仅表示平台接受，unknown禁止自动重发；等待超时不取消发送。",

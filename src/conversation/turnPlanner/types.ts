@@ -34,6 +34,8 @@ export interface TurnPlannerInput {
   recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
   abortSignal?: AbortSignal;
   availableToolsets?: ToolsetView[];
+  operationSummary?: string[];
+  taskSummary?: string | null | undefined;
   taskContext?: TurnPlannerTaskContext | null | undefined;
   batchMessages: Array<{
     senderName: string;
@@ -57,7 +59,11 @@ export interface TurnPlannerInput {
 }
 
 export interface TurnPlannerResult {
-  replyDecision: "reply_small" | "reply_large" | "wait" | "no_reply";
+  replyDecision: "reply" | "wait" | "no_reply";
+  modelTier?: "small" | "large";
+  modelSelectionStatus?: "decided" | "undetermined" | "not_requested";
+  taskBasis?: string;
+  undeterminedQuestions?: string[];
   topicDecision: "continue_topic" | "new_topic";
   reason: string;
   waitReason?: "unfinished_message" | "none";

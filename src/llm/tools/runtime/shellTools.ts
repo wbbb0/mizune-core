@@ -32,6 +32,7 @@ const TERMINAL_KEY_NAMES = [
 
 export const shellToolDescriptors: ToolDescriptor[] = [
   {
+  modelPolicy: { kind: "observe" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -49,6 +50,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "execution" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -78,6 +80,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: terminalPolicy()
   },
   {
+  modelPolicy: { kind: "execution" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -106,6 +109,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: terminalPolicy()
   },
   {
+  modelPolicy: { kind: "observe" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -126,6 +130,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: terminalPolicy()
   },
   {
+  modelPolicy: { kind: "execution" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -147,6 +152,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: terminalPolicy()
   },
   {
+  modelPolicy: { kind: "execution" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -174,6 +180,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: terminalPolicy({ preserveRecentRawCount: 0 })
   },
   {
+  modelPolicy: { kind: "execution" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -212,6 +219,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: terminalPolicy()
   },
   {
+  modelPolicy: { kind: "execution" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -233,6 +241,7 @@ export const shellToolDescriptors: ToolDescriptor[] = [
     resultObservation: terminalPolicy()
   },
   {
+  modelPolicy: { kind: "execution" },
     ownerOnly: true,
     definition: {
       type: "function",

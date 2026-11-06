@@ -37,7 +37,7 @@ function createBatchMessage(overrides: Partial<Parameters<typeof resolveAutoActi
 function createPlannerDecision(overrides: Partial<NonNullable<Parameters<typeof resolveAutoActivatedToolsets>[0]["plannerDecision"]>> = {}) {
   return {
     reason: "继续追问上下文",
-    replyDecision: "reply_small" as const,
+    replyDecision: "reply" as const,
     topicDecision: "continue_topic" as const,
     requiredCapabilities: [],
     contextDependencies: [],

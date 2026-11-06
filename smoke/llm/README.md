@@ -4,6 +4,40 @@
 
 这类测试用于验证真实模型在当前 prompt 和配置下是否满足关键行为契约。失败原因可能是模型服务未启动、首次加载超时、模型输出漂移、配置变更或真实代码回归，需要结合输出判断。
 
+## Planner 选模与前置任务依据
+
+`smoke:llm:planner` 只请求模型对合成任务分类，不提供任何执行工具，不读取会话、附件、角色或日志数据。配置仅用于连接和模型元数据，临时 `dataDir` 在结束后清理，不写业务配置；请求禁用 debug dump，日志只输出合成用例 ID、模型引用、结构化判断、耗时和 token 数。
+
+先列出用例无需加载连接配置，也不会发请求：
+
+```bash
+npm run smoke:llm:planner -- --list
+```
+
+默认使用配置中 `turnPlanner` 的首个聊天模型，关闭思考，顺序执行 8 个用例，只跑正式 `task_basis` 协议。可显式指定配置目录、实例和模型引用；未指定目录和实例时遵循 `CONFIG_DIR` / `CONFIG_INSTANCE`。例如：
+
+```bash
+npm run smoke:llm:planner -- --config-dir /path/to/config --instance web --model-ref provider/model
+npm run smoke:llm:planner -- --instance acc2 --backend decision
+```
+
+`--backend decision` 默认使用原生 `decision` 路由首个模型，也可用 `--model-ref` 指定；沿用相同问题定义，原生模式不生成任务依据。拒答或未判定不能通过。
+
+需要比较前置文本的效果时显式开启对照组，默认 8 次请求会增加到 24 次：
+
+```bash
+npm run smoke:llm:planner -- --instance web --model-ref provider/model --compare
+npm run smoke:llm:planner -- --instance web --model-ref provider/model --mode direct --case host-shell,public-query
+```
+
+三组只改变输出要求，模型选择条件均来自生产 `definitions.ts`：`task_basis` 使用正式协议（依据上限 80 字），`direct` 不输出依据，`short_basis` 把前置依据限制在 12 字内。后两种只在评测工具中解析，不扩展生产协议；Decision 不支持这两组或 `--compare`。
+
+用例覆盖公开查询、宿主机命令、宿主机文件、受限附件处理、权限与长期规则、复杂推理质量、当前聊天回复和普通用户偏好。每例有确定的档位预期。`--case` 用逗号选取，`--repeat` 默认为 1、最多 20，`--timeout-ms` 默认为 30000、最多 600000；本地模型首次加载较慢时可增大超时。聊天模型必须声明可关闭思考，否则在请求前返回受控错误。
+
+每个模式报告解析成功数、已判定数、档位准确率、漏升级、额外升级、未判定、请求失败、总耗时、p95 及输入/输出/缓存 token；任何失败或错误档位使退出码为 1。用量未知时保持 `null`。不打印原始响应、endpoint、配置值或错误正文。`configWarningCount` 只报告配置加载告警数量。
+
+这些有限合成样例用于回归和对照，不代表业务准确率或完整 benchmark。首次加载、缓存与组间顺序会影响延迟，应在相同模型和环境下重复观察。
+
 ## 记忆抽取
 
 默认使用 `CONFIG_INSTANCE=web` 和 `local_qwen` routing preset，临时创建独立 `dataDir`，不会读写实例正式数据。

@@ -8,6 +8,7 @@ import { getStringArg } from "../core/toolArgHelpers.ts";
 
 export const selfAccountToolDescriptors: ToolDescriptor[] = [
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["account.profile.read"] },
     definition: {
       type: "function",
@@ -24,6 +25,7 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
     ownerOnly: true
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     capabilities: { all: ["account.avatar.write"] },
     definition: {
       type: "function",
@@ -47,6 +49,7 @@ export const selfAccountToolDescriptors: ToolDescriptor[] = [
     ownerOnly: true
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     capabilities: { all: ["account.profile.write"] },
     definition: {
       type: "function",

@@ -11,6 +11,7 @@ function buildComfyToolDescriptor(config: AppConfig): ToolDescriptor {
   const aspectRatioEnum = Object.keys(config.comfy.aspectRatios);
 
   return {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {

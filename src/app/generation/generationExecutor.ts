@@ -15,7 +15,10 @@ import { publishConversation } from "#conversation/crossConversationContext.ts";
 import { createBuiltinToolExecutor, getBuiltinTools } from "#llm/builtinTools.ts";
 import type { LlmMessage, LlmProviderCallUsage, LlmToolCall, LlmToolExecutionResult } from "#llm/llmClient.ts";
 import { createEmptyUsage, mergeUsage, type LlmUsage } from "#llm/provider/providerTypes.ts";
-import { getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
+import { getModelRefsForRole, getRoutingPresetTokenLimits } from "#llm/shared/modelRouting.ts";
+import { GenerationModelPolicy, type GenerationModelTier } from "./generationModelPolicy.ts";
+import { areModelRoutesEquivalent, modelRefMatchesRoute } from "#llm/shared/modelRouteEquivalence.ts";
+import { resolveToolModelRequirement } from "#llm/tools/core/toolModelPolicy.ts";
 import { extractToolError, parseToolArguments } from "#llm/shared/toolArgs.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import {
@@ -29,6 +32,7 @@ import {
   createInternalTriggerEvent,
   createModelFallbackEvent,
   createModelSelfUpgradeRouteEvent,
+  createModelPolicyRouteEvent,
   formatErrorDetails
 } from "#conversation/session/internalTranscriptEvents.ts";
 import { buildBuiltinToolContext, type PromptDebugSnapshot } from "#llm/tools/core/shared.ts";
@@ -504,6 +508,45 @@ export function createGenerationExecutor(
       let toolsetUpgradeUsed = false;
       let modelUpgradeUsed = false;
       let activeGenerationModelRefs = [...resolvedModelRef];
+      const largeModelRefs = getModelRefsForRole(config, "main_large");
+      let activeModelTier: GenerationModelTier = areModelRoutesEquivalent(config, resolvedModelRef, largeModelRefs) ? "large" : "small";
+
+      const recordPolicyRoute = (details: { toolName: string; reason: string; sourceModelRef: string | null }, unavailable: boolean): boolean => {
+        const targetRefs = unavailable ? [] : modelSelfUpgradePlan?.largeModelRefs ?? largeModelRefs;
+        const provider = config.llm.models[targetRefs[0] ?? ""]?.provider;
+        const recorded = sessionManager.appendInternalTranscriptIfEpochMatches(sessionId, expectedEpoch, createModelPolicyRouteEvent({
+          toolName: details.toolName,
+          reason: details.reason,
+          ...(details.sourceModelRef ? { sourceModelRef: details.sourceModelRef } : {}),
+          fromModelRefs: [...activeGenerationModelRefs],
+          toModelRefs: targetRefs,
+          ...(provider ? { provider } : {}),
+          unavailable
+        }));
+        if (recorded) {
+          persistSession(sessionId, unavailable ? "model_policy_unavailable" : "model_policy_upgrade");
+          logger.info({ sessionId, toolName: details.toolName, routeType: unavailable ? "policy_unavailable" : "policy_upgrade", executed: false }, unavailable ? "model_policy_unavailable" : "model_policy_upgrade");
+        }
+        return recorded;
+      };
+      const modelPolicy = new GenerationModelPolicy({
+        largeModelRefs,
+        matchesLargeModel: ref => modelRefMatchesRoute(config, ref, largeModelRefs),
+        requestUpgrade: (details) => {
+          if (abortController.signal.aborted || responseAbortController.signal.aborted || sessionManager.getMutationEpoch(sessionId) !== expectedEpoch) return false;
+          // Calls from an earlier response remain deferred even after another call upgraded the route.
+          if (activeModelTier === "large" && details.sourceTier !== "large") return true;
+          if (activeModelTier === "large" || !modelSelfUpgradePlan || !llmClient.isConfigured(modelSelfUpgradePlan.largeModelRefs)) {
+            recordPolicyRoute(details, true);
+            return false;
+          }
+          if (!recordPolicyRoute(details, false)) return false;
+          modelUpgradeUsed = true;
+          activeGenerationModelRefs = [...modelSelfUpgradePlan.largeModelRefs];
+          activeModelTier = "large";
+          return true;
+        }
+      });
 
       const isModelSelfUpgradeAvailable = (): boolean => modelSelfUpgradePlan != null && !modelUpgradeUsed;
 
@@ -540,7 +583,7 @@ export function createGenerationExecutor(
           operationMode: sessionManager.getOperationMode(sessionId),
           modeId: sessionManager.getModeId(sessionId),
           setupMode,
-          modelRef: resolvedModelRef,
+          modelRef: activeGenerationModelRefs,
           includeDebugTools: interactionMode === "debug",
           visibilityContext: {
             sessionId,
@@ -605,6 +648,7 @@ export function createGenerationExecutor(
               }
               modelUpgradeUsed = true;
               activeGenerationModelRefs = [...modelSelfUpgradePlan.largeModelRefs];
+              activeModelTier = "large";
               persistSession(sessionId, "model_self_upgrade_requested");
               return {
                 ok: true,
@@ -790,7 +834,14 @@ export function createGenerationExecutor(
           if (operationKey() !== providerOperationKey) return JSON.stringify({ error: "会话配置阶段已变化，请重新请求工具清单。" });
           const rawToolExecutor = createBuiltinToolExecutor(
             builtinToolContext,
-            { ...buildToolSelectionOptions({ forExecution: true }), availableToolNames: [...providerToolNames] }
+            {
+              ...buildToolSelectionOptions({ forExecution: true }),
+              availableToolNames: [...providerToolNames],
+              beforeToolExecution: (descriptor, values, call) => modelPolicy.authorize(call, resolveToolModelRequirement(descriptor, values, {
+                sessionId,
+                operationMode: sessionManager.getOperationMode(sessionId)
+              }))
+            }
           );
           toolResult = await rawToolExecutor(toolCall, args);
         } catch (error: unknown) {
@@ -828,9 +879,7 @@ export function createGenerationExecutor(
           const result = await llmClient.generate({
             messages: promptMessages,
             modelRefOverride: resolvedModelRef,
-            ...(modelSelfUpgradePlan ? {
-              resolveModelRefOverride: () => activeGenerationModelRefs
-            } : {}),
+            resolveModelRefOverride: () => activeGenerationModelRefs,
             enableThinkingOverride: config.llm.mainRouting.enableThinking,
             tools: resolveProviderTools,
             abortSignal: abortController.signal,
@@ -937,6 +986,7 @@ export function createGenerationExecutor(
               }
             },
             onAssistantToolCalls: async (message, usageEvent) => {
+              modelPolicy.capture(message.tool_calls ?? [], usageEvent?.usage.modelRef ?? null, activeModelTier);
               const tokenStats = usageEvent
                 ? createProviderOutputTokenStats({
                     outputTokens: usageEvent.usage.outputTokens,

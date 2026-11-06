@@ -73,27 +73,6 @@ function shouldExposePrimaryToPlanner(status: SessionTaskStatus): boolean {
   return status !== "completed" && status !== "canceled" && status !== "failed";
 }
 
-export function parseTaskPlannerIntent(value: unknown): TaskPlannerIntent | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const normalized = value.trim();
-  if (!normalized || normalized === "-" || normalized.toLowerCase() === "none") {
-    return { kind: "none", confidence: "high" };
-  }
-  const [kindRaw, targetRaw, confidenceRaw] = normalized.split("|").map((part) => part?.trim() ?? "");
-  const kind = normalizeTaskPlannerIntentKind(kindRaw);
-  const confidence = normalizeTaskPlannerIntentConfidence(confidenceRaw);
-  const targetTaskId = targetRaw && targetRaw !== "-" && targetRaw.toLowerCase() !== "none"
-    ? targetRaw
-    : undefined;
-  return {
-    kind,
-    confidence,
-    ...(targetTaskId ? { targetTaskId: cap(targetTaskId, 80) } : {})
-  };
-}
-
 export function normalizeTaskPlannerIntent(input: unknown): TaskPlannerIntent | undefined {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return undefined;

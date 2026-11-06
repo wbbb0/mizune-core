@@ -4,6 +4,7 @@ import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObser
 
 export const turnPlannerToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -19,6 +20,7 @@ export const turnPlannerToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {

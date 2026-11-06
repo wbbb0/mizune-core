@@ -4,6 +4,7 @@ import { getStringArg } from "../core/toolArgHelpers.ts";
 import { stateChangePolicy } from "../core/resultObservationPresets.ts";
 
 export const modelRoutingToolDescriptors: ToolDescriptor[] = [{
+  modelPolicy: { kind: "bounded_content" },
   definition: {
     type: "function",
     function: {

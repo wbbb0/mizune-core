@@ -228,6 +228,7 @@ const isAssetDocumentInspectEnabled: ToolDescriptor["isEnabled"] = (config) => {
 
 export const assetDocumentToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -247,6 +248,7 @@ export const assetDocumentToolDescriptors: ToolDescriptor[] = [
     resultObservation: assetDocumentPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -268,6 +270,7 @@ export const assetDocumentToolDescriptors: ToolDescriptor[] = [
     resultObservation: assetDocumentPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -291,6 +294,7 @@ export const assetDocumentToolDescriptors: ToolDescriptor[] = [
     resultObservation: assetDocumentPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {

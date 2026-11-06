@@ -20,6 +20,7 @@ export function isDecisionAvailable(config: AppConfig): boolean {
 
 export const nativeCapabilityToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -42,6 +43,7 @@ export const nativeCapabilityToolDescriptors: ToolDescriptor[] = [
     resultObservation: chatFileListPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {

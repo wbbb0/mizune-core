@@ -28,6 +28,7 @@ const isChatFileToolEnabled: ToolDescriptor["isEnabled"] = (config) => config.ch
 
 export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescriptors([
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -47,6 +48,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileListPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -68,6 +70,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileReadPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -89,6 +92,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileMutationPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -115,6 +119,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileMutationPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -135,6 +140,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileMutationPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -155,6 +161,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileMutationPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -172,6 +179,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileMutationPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -194,6 +202,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileSearchPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -211,6 +220,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
     resultObservation: localFileMutationPolicy()
   },
   {
+  modelPolicy: { kind: "filesystem" },
     capabilities: { any: ["media.image.send", "media.audio.send", "media.file.send"] },
     definition: {
       type: "function",
@@ -234,6 +244,7 @@ export const localFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDes
 
 export const chatFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescriptors([
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -257,6 +268,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDesc
     resultObservation: chatFileListPolicy()
   },
   {
+  modelPolicy: { kind: "bounded_content" },
     capabilities: { any: ["media.image.send", "media.audio.send", "media.file.send"] },
     definition: {
       type: "function",
@@ -277,6 +289,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDesc
     resultObservation: fileSendPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -297,6 +310,7 @@ export const chatFileToolDescriptors: ToolDescriptor[] = withFilesystemScopeDesc
     resultObservation: assetLocalPathPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {

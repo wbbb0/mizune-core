@@ -1,3 +1,4 @@
+import { completePlannerChatFixture } from "../helpers/planner-chat-fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
@@ -33,16 +34,7 @@ test("turn planner captions visible media and keeps forwarded media folded", asy
         assert.equal(textPart?.type, "text");
         capturedPromptText = textPart.text;
         return {
-          text: [
-            "reason: 含图片信息",
-            "reply_decision: reply_small",
-            "topic_decision: continue_topic",
-            "required_capabilities: none",
-            "context_dependencies: none",
-            "recent_domain_reuse: none",
-            "followup_mode: none",
-            "toolset_ids: none"
-          ].join("\n")
+          text: completePlannerChatFixture(params, "{\"task_basis\":\"含图片信息\",\"reply\":\"reply\",\"model\":\"small\",\"topic\":\"continue_topic\",\"followup\":\"none\"}")
         };
       }
     } as never,
@@ -108,7 +100,7 @@ test("turn planner captions visible media and keeps forwarded media folded", asy
     }]
   });
 
-  assert.equal(result.replyDecision, "reply_small");
+  assert.equal(result.replyDecision, "reply");
   assert.doesNotMatch(capturedPromptText, /不可提前读取的记录|file_forward_hidden/);
   assert.deepEqual(ensuredImageIds, ["file_history_1", "file_image_1", "file_emoji_1", "file_asset_1"]);
   assert.match(capturedPromptText, /图片描述：历史里的一张项目看板截图/);

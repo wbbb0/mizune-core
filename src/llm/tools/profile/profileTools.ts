@@ -35,6 +35,7 @@ const scenarioProfilePatchFieldNames = new Set(editableScenarioProfileFieldNames
 
 export const profileToolDescriptors: ToolDescriptor[] = ([
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -49,6 +50,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "observe" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -64,6 +66,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "bounded_content" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -85,6 +88,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "bounded_content" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -106,6 +110,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "observe" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -121,6 +126,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -145,6 +151,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -163,6 +170,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "observe" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -183,6 +191,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -208,6 +217,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -226,6 +236,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -242,6 +253,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -265,6 +277,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -281,6 +294,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -310,6 +324,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -328,6 +343,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -357,6 +373,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "bounded_content" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -382,6 +399,7 @@ export const profileToolDescriptors: ToolDescriptor[] = ([
     }
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     definition: {
       type: "function",

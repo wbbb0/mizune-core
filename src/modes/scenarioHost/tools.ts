@@ -43,6 +43,7 @@ function getScenarioDefaults(context: ScenarioToolContext) {
 
 export const scenarioHostToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -58,6 +59,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -88,6 +90,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -106,6 +109,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -125,6 +129,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -170,6 +175,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -192,6 +198,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -245,6 +252,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -270,6 +278,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -297,6 +306,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -320,6 +330,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -342,6 +353,7 @@ export const scenarioHostToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {

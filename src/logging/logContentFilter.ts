@@ -8,7 +8,7 @@ export const FILTERED_LOG_MESSAGE = "[日志内容已过滤]";
 const identifierFields = new Set([
   "app", "sessionId", "userId", "groupId", "messageId", "replyMessageId",
   "jobId", "resourceId", "toolCallId", "toolName", "fileId", "modelRef", "model",
-  "provider", "providerId", "instanceName"
+  "provider", "providerId", "instanceName", "sourceModelRef"
 ]);
 const numberFields = new Set([
   "level", "time", "pid", "status", "statusCode", "retcode", "durationMs", "timeoutMs",
@@ -17,12 +17,19 @@ const numberFields = new Set([
   "rawSegmentCount", "fileSegmentCount", "fileSourceCount", "forwardCount", "mentionUserCount",
   "userCount", "groupCount", "deletedCount", "skippedCount", "fileCount", "memoryCount",
   "contextTokens", "safetyTokens", "beforeTokens", "afterTokens", "compactedToolResults",
-  "contentLength", "inputTokens", "outputTokens", "totalTokens", "cachedTokens", "reasoningTokens"
+  "contentLength", "inputTokens", "outputTokens", "totalTokens", "cachedTokens", "reasoningTokens", "undeterminedQuestionCount"
 ]);
 const booleanFields = new Set([
   "summaryApplied", "streaming", "shouldFallback", "cancelled", "interrupted", "force", "atMentioned",
-  "userMatched", "groupMatched", "directlyAddressed", "mentionedAll"
+  "userMatched", "groupMatched", "directlyAddressed", "mentionedAll", "executed", "deferred"
 ]);
+const enumFields: Record<string, readonly string[]> = {
+  modelTier: ["small", "large"],
+  modelSelectionStatus: ["decided", "undetermined", "not_requested"],
+  routeType: ["self_upgrade", "policy_upgrade", "policy_unavailable"],
+  backend: ["chat", "decision"],
+  fallbackReason: ["decision_failed", "question_limit"]
+};
 const errorNames = new Set([
   "Error", "TypeError", "RangeError", "SyntaxError", "AbortError", "TimeoutError", "AggregateError"
 ]);
@@ -51,6 +58,8 @@ export function filterLogContent(record: Record<string, unknown>): Record<string
     } else if (booleanFields.has(key) && typeof value === "boolean") {
       filtered[key] = value;
     } else if (identifierFields.has(key) && isIdentifier(value)) {
+      filtered[key] = value;
+    } else if (typeof value === "string" && Object.hasOwn(enumFields, key) && enumFields[key]!.includes(value)) {
       filtered[key] = value;
     }
   }

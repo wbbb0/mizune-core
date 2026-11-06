@@ -31,7 +31,7 @@ function toolResult(toolName: string): InternalTranscriptItem {
       recentTranscriptItems: [],
       plannerDecision: {
         reason: "需要打开网页并存本地",
-        replyDecision: "reply_small",
+        replyDecision: "reply",
         topicDecision: "continue_topic",
         requiredCapabilities: ["web_navigation", "filesystem_access"],
         contextDependencies: [],
@@ -51,7 +51,7 @@ function toolResult(toolName: string): InternalTranscriptItem {
       recentTranscriptItems: [],
       plannerDecision: {
         reason: "需要在网页里定位并下载资源",
-        replyDecision: "reply_small",
+        replyDecision: "reply",
         topicDecision: "continue_topic",
         requiredCapabilities: ["web_navigation"],
         contextDependencies: [],
@@ -71,7 +71,7 @@ function toolResult(toolName: string): InternalTranscriptItem {
       recentTranscriptItems: [],
       plannerDecision: {
         reason: "需要判断是否更新长期记忆",
-        replyDecision: "reply_small",
+        replyDecision: "reply",
         topicDecision: "continue_topic",
         requiredCapabilities: ["memory_write"],
         contextDependencies: [],
@@ -90,7 +90,7 @@ function toolResult(toolName: string): InternalTranscriptItem {
       availableToolsets: AVAILABLE_TOOLSETS,
       plannerDecision: {
         reason: "延续上轮操作",
-        replyDecision: "reply_small",
+        replyDecision: "reply",
         topicDecision: "continue_topic",
         requiredCapabilities: [],
         contextDependencies: [],
@@ -109,7 +109,7 @@ function toolResult(toolName: string): InternalTranscriptItem {
       availableToolsets: AVAILABLE_TOOLSETS,
       plannerDecision: {
         reason: "延续终端排查",
-        replyDecision: "reply_small",
+        replyDecision: "reply",
         topicDecision: "continue_topic",
         requiredCapabilities: [],
         contextDependencies: [],

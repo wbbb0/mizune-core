@@ -15,6 +15,7 @@ import { formatCharacterDraft } from "../../../character/draftFormatting.ts";
 
 export const setupDraftToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {

@@ -1,3 +1,4 @@
+import { completePlannerChatFixture } from "./planner-chat-fixtures.ts";
 import pino from "pino";
 import { TurnPlanner } from "../../src/conversation/turnPlanner.ts";
 import type { TurnPlannerInput } from "../../src/conversation/turnPlanner/types.ts";
@@ -42,7 +43,7 @@ export function createReplyGate(
   const llmClient = {
     async generate(input: LlmGenerateParams) {
       await options.onGenerate?.(input);
-      return { text: options.resultText ?? "reason: 继续处理\nreply_decision: reply_small\ntopic_decision: continue_topic" };
+      return { text: completePlannerChatFixture(input, options.resultText) };
     }
   } as unknown as LlmClient;
 
@@ -65,6 +66,7 @@ export function createGenerationReplyGateDeps(
   return {
     config: overrides.config ?? (null as unknown as GenerationTurnPlannerDeps["config"]),
     logger: pino({ level: "silent" }),
+    contentSafetyService: overrides.contentSafetyService,
     llmClient: {
       isConfigured() {
         return true;
@@ -75,7 +77,7 @@ export function createGenerationReplyGateDeps(
         return true;
       },
       async decide() {
-        return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
+        return { replyDecision: "reply", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
       }
     } as unknown as GenerationTurnPlannerDeps["turnPlanner"]),
     sessionCaptioner: overrides.sessionCaptioner ?? ({

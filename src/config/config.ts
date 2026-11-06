@@ -1,4 +1,5 @@
 import { migrateRoutingPresetContextBudgets } from "./contextBudgetMigration.ts";
+import { getMainModelRouteWarnings } from "#llm/shared/modelRouteEquivalence.ts";
 import { mergeConfigLayers } from "#config/mergeConfigLayers.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -272,7 +273,7 @@ function emitConfigConsistencyWarnings(config: AppConfig): void {
   }
 
   const routingPresetValidation = getValidatedRoutingPreset(config);
-  for (const warning of routingPresetValidation.warnings) {
+  for (const warning of [...routingPresetValidation.warnings, ...getMainModelRouteWarnings(config)]) {
     process.emitWarning(warning, "ConfigLoadWarning");
   }
 }

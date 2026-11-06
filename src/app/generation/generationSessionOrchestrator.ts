@@ -29,6 +29,7 @@ import type {
   GenerationDraftOverlaySink
 } from "./generationOutputContracts.ts";
 import { handleGenerationTurnPlanner } from "./generationTurnPlanner.ts";
+import { planGenerationModel, projectPlannerBatchMessages } from "./generationModelPlanner.ts";
 import { resolveAutoActivatedToolsets } from "./toolsetAutoActivation.ts";
 import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import {
@@ -745,6 +746,7 @@ export function createGenerationSessionOrchestrator(
             sessionCaptioner,
             turnPlanner: sessionRuntime.turnPlanner,
             debounceManager: sessionRuntime.debounceManager,
+            contentSafetyService: promptBuilder.contentSafetyService,
             sessionManager,
             persistSession
           },
@@ -764,6 +766,7 @@ export function createGenerationSessionOrchestrator(
             batchMessages: promptSafety.runtimeBatchMessages,
             availableToolsets: plannerToolsets,
             taskContext: buildTurnPlannerTaskContext(refreshedSession.taskTracker),
+            taskSummary: refreshedSession.historySummary,
             topicCompressionCandidate: historyCompressor.getTopicCompressionCandidate(sessionId, promptSafety.runtimeBatchMessages.length),
             sendTarget: {
               delivery: resolvedDelivery,
@@ -858,7 +861,20 @@ export function createGenerationSessionOrchestrator(
           }, "turn_planner_available_toolsets_empty_after_routing");
         }
       } else {
-        logger.info({ sessionId, reason: setupMode ? "setup_mode" : "explicit_continuation", inputTokens: 0, outputTokens: 0 }, "turn_planner_skipped");
+        const modelPlan = await planGenerationModel({ config, logger, llmClient: sessionRuntime.llmClient, turnPlanner: sessionRuntime.turnPlanner, sessionManager, persistSession, contentSafetyService: promptBuilder.contentSafetyService }, {
+          entryPoint: setupMode ? "setup" : "continuation", sessionId, chatType: last.chatType, relationship,
+          currentUserSpecialRole: user?.specialRole ?? null, modeId: sessionModeId,
+          modeSignalLine: sessionModeId === "stateful_rp" ? buildStatefulRpPlannerSignalLine(await identity.statefulRpStateStore?.get(sessionId) ?? null, last.text) : null,
+          recentMessages: promptSafety.historyForPrompt, batchMessages: projectPlannerBatchMessages(promptSafety.runtimeBatchMessages),
+          availableToolsets: plannerToolsets, taskContext: buildTurnPlannerTaskContext(refreshedSession.taskTracker),
+          taskSummary: refreshedSession.historySummary, abortSignal: abortController.signal
+        });
+        resolvedModelRef = modelPlan.resolvedModelRef;
+        plannerDecision = modelPlan.plannerDecision;
+        plannerToolsets = listTurnToolsets({ config, relationship, currentUser: user, modelRef: resolvedModelRef,
+          includeDebugTools: interactionMode === "debug", visibilityContext: toolVisibilityContext, modeId: sessionModeId,
+          toolsetPreferences: refreshedSession.toolsetPreferences, profileToolScope, ...setupPhaseSelection });
+        plannedToolsetIds = plannerToolsets.map(toolset => toolset.id);
       }
       if (config.llm.turnPlanner.toolSelection === "all") {
         plannedToolsetIds = plannerToolsets.map((item) => item.id);
@@ -1149,17 +1165,12 @@ export function createGenerationSessionOrchestrator(
         requesterUserId: currentUser.userId,
         signal: abortController.signal
       }) : Promise.resolve(null);
-      const scheduledModelRef = getModelRefsForRole(config, "main_small");
+      let scheduledModelRef = getModelRefsForRole(config, "main_small");
       const session = sessionManager.getSession(sessionId);
-      const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
-        config,
-        currentModelRefs: scheduledModelRef,
-        enabled: modelSelfUpgradeEnabled
-      });
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = characterPersonaView(config.dataDir);
-      const scheduledAvailableToolsets = listTurnToolsets({
+      const listScheduledToolsets = () => listTurnToolsets({
         config,
         relationship: "owner",
         currentUser,
@@ -1176,6 +1187,25 @@ export function createGenerationSessionOrchestrator(
           activeSetupOperationKind: null,
           modeId: session.modeId
         })
+      });
+      let scheduledAvailableToolsets = listScheduledToolsets();
+      const modelPlan = await planGenerationModel({ config, logger, llmClient: sessionRuntime.llmClient, turnPlanner: sessionRuntime.turnPlanner, sessionManager, persistSession, contentSafetyService: promptBuilder.contentSafetyService }, {
+        entryPoint: "internal_trigger", sessionId, chatType: trigger.targetType, relationship: promptRelationship,
+        currentUserSpecialRole: currentUser?.specialRole ?? null, modeId: session.modeId,
+        modeSignalLine: session.modeId === "stateful_rp" ? buildStatefulRpPlannerSignalLine(await identity.statefulRpStateStore?.get(sessionId) ?? null) : null,
+        recentMessages: createSessionTranscriptStore(session, config).projectRuntimeHistory(),
+        batchMessages: [trigger].map(item => ({ senderName: item.targetSenderName, text: `后台任务：${item.jobName}\n任务要求：${item.instruction}`,
+          images: [], audioSources: [], imageIds: [], emojiIds: [], forwardIds: [], replyMessageId: null,
+          mentionUserIds: [], mentionedAll: false, mentionedSelf: false, timestampMs: item.enqueuedAt })),
+        availableToolsets: scheduledAvailableToolsets, taskContext: buildTurnPlannerTaskContext(session.taskTracker),
+        taskSummary: session.historySummary, abortSignal: abortController.signal
+      });
+      scheduledModelRef = modelPlan.resolvedModelRef;
+      scheduledAvailableToolsets = listScheduledToolsets();
+      const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
+        config,
+        currentModelRefs: scheduledModelRef,
+        enabled: modelSelfUpgradeEnabled
       });
       const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, trigger.kind));
       const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
@@ -1286,6 +1316,7 @@ export function createGenerationSessionOrchestrator(
         persona,
         batchMessages: [],
         resolvedModelRef: scheduledModelRef,
+        ...(modelPlan.plannerDecision ? { skillPlannerDecision: modelPlan.plannerDecision } : {}),
         ...(modelSelfUpgradePlan ? { modelSelfUpgradePlan } : {}),
         sendTarget: {
           delivery: scheduledReplyDelivery satisfies SessionDelivery,
@@ -1363,17 +1394,12 @@ export function createGenerationSessionOrchestrator(
         requesterUserId: currentUser.userId,
         signal: abortController.signal
       }) : Promise.resolve(null);
-      const scheduledModelRef = getModelRefsForRole(config, "main_small");
+      let scheduledModelRef = getModelRefsForRole(config, "main_small");
       const session = sessionManager.getSession(sessionId);
-      const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
-        config,
-        currentModelRefs: scheduledModelRef,
-        enabled: modelSelfUpgradeEnabled
-      });
       const mode = requireSessionModeDefinition(session.modeId);
       const assistantMode = isAssistantMode(session.modeId);
       const persona = characterPersonaView(config.dataDir);
-      const scheduledAvailableToolsets = listTurnToolsets({
+      const listScheduledToolsets = () => listTurnToolsets({
         config,
         relationship: "owner",
         currentUser,
@@ -1390,6 +1416,25 @@ export function createGenerationSessionOrchestrator(
           activeSetupOperationKind: null,
           modeId: session.modeId
         })
+      });
+      let scheduledAvailableToolsets = listScheduledToolsets();
+      const modelPlan = await planGenerationModel({ config, logger, llmClient: sessionRuntime.llmClient, turnPlanner: sessionRuntime.turnPlanner, sessionManager, persistSession, contentSafetyService: promptBuilder.contentSafetyService }, {
+        entryPoint: "inline_trigger", sessionId, chatType: primaryTrigger.targetType, relationship: promptRelationship,
+        currentUserSpecialRole: currentUser?.specialRole ?? null, modeId: session.modeId,
+        modeSignalLine: session.modeId === "stateful_rp" ? buildStatefulRpPlannerSignalLine(await identity.statefulRpStateStore?.get(sessionId) ?? null) : null,
+        recentMessages: createSessionTranscriptStore(session, config).projectRuntimeHistory(),
+        batchMessages: triggers.map(item => ({ senderName: item.targetSenderName, text: `后台任务：${item.jobName}\n任务要求：${item.instruction}`,
+          images: [], audioSources: [], imageIds: [], emojiIds: [], forwardIds: [], replyMessageId: null,
+          mentionUserIds: [], mentionedAll: false, mentionedSelf: false, timestampMs: item.enqueuedAt })),
+        availableToolsets: scheduledAvailableToolsets, taskContext: buildTurnPlannerTaskContext(session.taskTracker),
+        taskSummary: session.historySummary, abortSignal: abortController.signal
+      });
+      scheduledModelRef = modelPlan.resolvedModelRef;
+      scheduledAvailableToolsets = listScheduledToolsets();
+      const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
+        config,
+        currentModelRefs: scheduledModelRef,
+        enabled: modelSelfUpgradeEnabled
       });
       const activeScheduledToolsetIds = new Set(selectScheduledActiveToolsetIds(session.modeId, primaryTrigger.kind));
       const activeScheduledToolsets = scheduledAvailableToolsets.filter((toolset) => activeScheduledToolsetIds.has(toolset.id));
@@ -1502,6 +1547,7 @@ export function createGenerationSessionOrchestrator(
         persona,
         batchMessages: [],
         resolvedModelRef: scheduledModelRef,
+        ...(modelPlan.plannerDecision ? { skillPlannerDecision: modelPlan.plannerDecision } : {}),
         ...(modelSelfUpgradePlan ? { modelSelfUpgradePlan } : {}),
         sendTarget: {
           delivery: scheduledReplyDelivery satisfies SessionDelivery,

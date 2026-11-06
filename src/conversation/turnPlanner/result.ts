@@ -2,9 +2,10 @@ import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
 import type { TurnPlannerBatchAnalysisMessage, analyzeTurnPlannerBatch } from "../turnPlannerBatchAnalysis.ts";
 import type { TurnPlannerInput, TurnPlannerResult } from "./types.ts";
+import { PLANNER_SKILL_LIMIT } from "./limits.ts";
 
 export function createDefaultTurnPlan(reason: string): TurnPlannerResult {
-  return { replyDecision: "reply_small", topicDecision: "continue_topic", reason,
+  return { replyDecision: "reply", topicDecision: "continue_topic", reason,
     requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none", toolsetIds: [] };
 }
 
@@ -27,20 +28,21 @@ export function normalizeTurnPlan(
     ...parsed,
     replyDecision: (parsed.replyDecision === "wait" && !needs.semanticWait)
       || (parsed.replyDecision === "no_reply" && !needs.replyGate)
-      || (parsed.replyDecision === "reply_large" && !needs.modelSelection)
-      ? "reply_small" : parsed.replyDecision,
+      ? "reply" : parsed.replyDecision,
+    modelSelectionStatus: !needs.modelSelection ? "not_requested" : parsed.modelSelectionStatus ?? "undetermined",
     topicDecision: needs.topicSwitch ? parsed.topicDecision : "continue_topic",
     topicDecisionEvaluated: needs.topicSwitch,
     requiredCapabilities: needs.toolSelection ? parsed.requiredCapabilities : [],
     contextDependencies: needs.toolSelection ? parsed.contextDependencies : [],
     recentDomainReuse: needs.toolSelection ? parsed.recentDomainReuse : [],
     followupMode: needs.toolSelection ? parsed.followupMode : "none",
-    skillIds: needs.skillSelection && config.skills.plannerSelectionEnabled ? Array.from(new Set(parsed.skillIds ?? [])).filter(id => input.availableSkills?.some(skill => skill.id === id)).slice(0, 3) : [],
+    skillIds: needs.skillSelection && config.skills.plannerSelectionEnabled ? Array.from(new Set(parsed.skillIds ?? [])).filter(id => input.availableSkills?.some(skill => skill.id === id)).slice(0, PLANNER_SKILL_LIMIT) : [],
     toolsetIds: needs.toolSelection ? parsed.toolsetIds : []
   };
   const allowedToolsetIds = new Set((input.availableToolsets ?? []).map((item) => item.id));
   const filteredToolsetIds = Array.from(new Set(parsed.toolsetIds.filter((id) => allowedToolsetIds.has(id))));
   const normalized = { ...parsed, toolsetIds: filteredToolsetIds };
+  if (!needs.modelSelection) delete normalized.modelTier;
   if (!needs.taskIntent || !input.taskContext) {
     delete normalized.taskIntent;
   }
@@ -62,7 +64,7 @@ export function normalizeTurnPlan(
       );
       return {
         ...normalized,
-        replyDecision: "reply_small",
+        replyDecision: "reply",
         topicDecision: "continue_topic",
         reason: "必须回应当前消息",
         toolsetIds: []
@@ -89,7 +91,7 @@ export function normalizeTurnPlan(
     );
     return {
       ...normalized,
-      replyDecision: "reply_small",
+      replyDecision: "reply",
       topicDecision: "continue_topic",
       waitReason: "none",
       reason: "不满足等待条件，继续回复",

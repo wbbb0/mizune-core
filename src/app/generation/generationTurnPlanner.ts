@@ -1,3 +1,4 @@
+import { projectPlannerTaskEvidence } from "./plannerTaskEvidence.ts";
 import { mustReplyToPlannerBatch } from "#conversation/turnPlanner/result.ts";
 import { isSkillRuntimeAllowedForSession, type SkillSessionContext } from "../../skills/skillPolicy.ts";
 import { getSkillStore } from '../../skills/skillStore.ts';
@@ -7,13 +8,11 @@ import type { GenerationPromptHistoryMessage } from "./generationPromptBuilder.t
 import type { GenerationCurrentUser, GenerationTurnPlannerDeps } from "./generationRunnerDeps.ts";
 import type { GenerationRuntimeBatchMessage, GenerationSendTarget } from "./generationExecutor.ts";
 import type { ToolsetView } from "#llm/tools/toolsetCatalog.ts";
+import { describePlannerOperations, projectPlannerBatchMessages, recordGenerationPlannerDecision } from "./generationModelPlanner.ts";
 import type { TurnPlannerResult } from "#conversation/turnPlanner/types.ts";
 import type { TurnPlannerTaskContext } from "#conversation/taskTracker/taskTrackerPlannerContext.ts";
 import { getTurnPlannerReasons, resolveTurnPlannerRequirements, type TopicCompressionCandidate } from "#conversation/turnPlannerPolicy.ts";
-import {
-  dedupeResolvedChatAttachments,
-  isPendingChatAttachmentId
-} from "#services/workspace/chatAttachments.ts";
+
 
 export interface GenerationTurnPlannerInput extends SkillSessionContext {
   sessionId: string;
@@ -24,6 +23,7 @@ export interface GenerationTurnPlannerInput extends SkillSessionContext {
   batchMessages: GenerationRuntimeBatchMessage[];
   availableToolsets: ToolsetView[];
   taskContext?: TurnPlannerTaskContext | null | undefined;
+  taskSummary?: string | null | undefined;
   topicCompressionCandidate?: TopicCompressionCandidate | null | undefined;
   sendTarget: GenerationSendTarget;
   historyForPrompt: GenerationPromptHistoryMessage[];
@@ -91,28 +91,7 @@ export async function handleGenerationTurnPlanner(
   )
     ? getSkillStore(config).list().filter(skill => skill.effectiveAvailable)
     : [];
-  const plannerBatchMessages = input.batchMessages.map((message) => {
-    const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
-    return {
-      senderName: message.senderName,
-      text: message.text,
-      ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: message.contentParts } : {}),
-      images: message.images,
-      audioSources: message.audioSources,
-      audioIds: message.audioIds,
-      imageIds: message.imageIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
-      emojiIds: message.emojiIds.filter((fileId) => !isPendingChatAttachmentId(fileId)),
-      ...(attachments.length > 0 ? { attachments } : {}),
-      ...(message.messageFiles && message.messageFiles.length > 0 ? { messageFiles: message.messageFiles } : {}),
-      ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: message.specialSegments } : {}),
-      forwardIds: message.forwardIds,
-      replyMessageId: message.replyMessageId,
-      mentionUserIds: message.mentionUserIds,
-      mentionedAll: message.mentionedAll,
-      mentionedSelf: message.isAtMentioned,
-      timestampMs: message.receivedAt
-    };
-  });
+  const plannerBatchMessages = projectPlannerBatchMessages(input.batchMessages);
 
   const mustReply = mustReplyToPlannerBatch(input.sendTarget.chatType,
     input.batchMessages.map(message => ({ ...message, mentionedSelf: message.isAtMentioned })));
@@ -127,6 +106,10 @@ export async function handleGenerationTurnPlanner(
   const callReasons = getTurnPlannerReasons(requirements);
   if (callReasons.length === 0) return continueWithoutPlanner("no_required_decisions");
   logger.info({ sessionId: input.sessionId, callReasons, topicCompressionCandidate: input.topicCompressionCandidate }, "turn_planner_required");
+  const taskEvidence = await projectPlannerTaskEvidence(deps.contentSafetyService, {
+    sessionId: input.sessionId, source: "turn_planner_task_evidence", taskContext: input.taskContext,
+    taskSummary: input.taskSummary, abortSignal: input.abortSignal
+  });
   let planner = await turnPlanner.decide({
     requirements,
     availableSkills: requirements.skillSelection ? selectableSkills.map(({ id, name, description }) => ({ id, name, description })) : [],
@@ -138,7 +121,9 @@ export async function handleGenerationTurnPlanner(
     modeSignalLine: input.modeSignalLine ?? null,
     recentMessages: input.historyForPrompt,
     availableToolsets: requirements.toolSelection ? input.availableToolsets : [],
-    taskContext: requirements.taskIntent ? input.taskContext : null,
+    operationSummary: describePlannerOperations(config, input.availableToolsets),
+    taskContext: taskEvidence.taskContext,
+    taskSummary: taskEvidence.taskSummary,
     abortSignal: input.abortSignal,
     batchMessages: plannerBatchMessages
   });
@@ -161,7 +146,7 @@ export async function handleGenerationTurnPlanner(
     );
     planner = {
       ...planner,
-      replyDecision: "reply_small",
+      replyDecision: "reply",
       topicDecision: "continue_topic",
       toolsetIds: []
     };
@@ -227,27 +212,11 @@ export async function handleGenerationTurnPlanner(
     }
   }
 
-  if (typeof (sessionManager as { appendInternalTranscript?: unknown }).appendInternalTranscript === "function") {
-    sessionManager.appendInternalTranscript(input.sessionId, {
-      kind: "gate_decision",
-      llmVisible: false,
-      action: finalAction,
-      reason: planner.reason ?? null,
-      ...(planner.reasoningContent ? { reasoningContent: planner.reasoningContent } : {}),
-      ...(typeof finalWaitPassCount === "number" ? { waitPassCount: finalWaitPassCount } : {}),
-      replyDecision: !requirements.modelSelection && planner.replyDecision === "reply_small" ? "reply" : planner.replyDecision,
-      ...(requirements.topicSwitch ? { topicDecision: planner.topicDecision } : {}),
-      plannerReasons: callReasons,
-      ...(planner.metrics ? { plannerMetrics: planner.metrics } : {}),
-      ...(planner.requiredCapabilities.length > 0 ? { requiredCapabilities: planner.requiredCapabilities } : {}),
-      ...(planner.contextDependencies.length > 0 ? { contextDependencies: planner.contextDependencies } : {}),
-      ...(planner.recentDomainReuse.length > 0 ? { recentDomainReuse: planner.recentDomainReuse } : {}),
-      ...(planner.followupMode !== "none" ? { followupMode: planner.followupMode } : {}),
-      ...(planner.toolsetIds.length > 0 ? { toolsetIds: planner.toolsetIds } : {}),
-      timestampMs: Date.now()
-    });
-    persistSession(input.sessionId, `turn_planner_${finalAction}_recorded`);
-  }
+  recordGenerationPlannerDecision(deps, {
+    sessionId: input.sessionId, planner, action: finalAction, plannerReasons: callReasons,
+    topicDecisionEvaluated: requirements.topicSwitch,
+    ...(finalWaitPassCount !== undefined ? { waitPassCount: finalWaitPassCount } : {})
+  });
 
   if (finalAction === "wait" || finalAction === "skip") {
     return { action: "skip", plannerDecision: planner };
@@ -257,7 +226,7 @@ export async function handleGenerationTurnPlanner(
     action: "continue",
     resolvedModelRef: getModelRefsForRole(
       config,
-      requirements.modelSelection && planner.replyDecision === "reply_large" ? "main_large" : "main_small"
+      requirements.modelSelection && (planner.modelTier === "large" || planner.modelSelectionStatus === "undetermined") ? "main_large" : "main_small"
     ),
     toolsetIds: requirements.toolSelection ? planner.toolsetIds : input.availableToolsets.map((item) => item.id),
     plannerDecision: planner,

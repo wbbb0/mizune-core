@@ -216,7 +216,7 @@ test("配置模式缺失草稿文件时维护工具不能落入正式库", async
 
 test("task身份只按实际语义信号续接，活跃primary优先于压缩换题", async () => {
   const { resolveSkillTaskId } = await import("../../src/skills/skillTaskIdentity.ts");
-  const planner = { replyDecision: "reply_small" as const, topicDecision: "continue_topic" as const, reason: "默认", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none" as const, toolsetIds: [] };
+  const planner = { replyDecision: "reply" as const, topicDecision: "continue_topic" as const, reason: "默认", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none" as const, toolsetIds: [] };
   const context = { sessionId: "session", primary: null, previousTaskId: "old", planner, explicitContinuation: false, startedAt: 10 };
   assert.equal(resolveSkillTaskId(context), "turn:session:10");
   assert.equal(resolveSkillTaskId({ ...context, planner: { ...planner, topicDecisionEvaluated: true } }), "old");

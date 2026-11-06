@@ -72,7 +72,7 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.replyDecision, "reply");
     assert.equal(result.topicDecision, "continue_topic");
     const system = String(capturedMessages[0]?.content ?? "");
     const secondMessage = capturedMessages[1];
@@ -80,41 +80,23 @@ function createConfig() {
       secondMessage && Array.isArray(secondMessage.content) ? secondMessage.content : [];
     const user = userParts.find((part: { type: string; text?: string }) => part.type === "text")?.text ?? "";
     assert.equal(hasPromptSection(system, "planner_identity"), true);
-    assert.equal(hasPromptSection(system, "planner_model_selection"), true);
+    assert.equal(hasPromptSection(system, "planner_questions"), true);
     assert.equal(hasPromptSection(system, "planner_rules"), true);
-    assert.match(system, /reply_decision: <reply_small\|reply_large\|wait\|no_reply>/);
-    assert.match(system, /模型大小只按当前可见的任务要求判断，与工具集选择分开/);
-    assert.match(system, /已明确需要复杂推理、多约束权衡、形式化验证或高风险决策时，选择 reply_large/);
-    assert.match(system, /否则选择 reply_small；不要仅因需要工具、执行步骤多、原因未知/);
-    assert.match(system, /难度取决于尚未读取的代码、日志和工具结果/);
-    assert.ok(
-      system.indexOf("已明确需要复杂推理") < system.indexOf("否则选择 reply_small"),
-      "明确复杂任务的规则应优先于未读取材料的默认规则"
-    );
+    assert.match(system, /必须首先生成 task_basis/);
+    assert.match(system, /任一大模型条件成立就选择 large/);
+    assert.match(system, /工具数量、执行步骤、回答长度/);
+    assert.match(system, /当前消息明显只说到一半/);
+    assert.match(system, /群聊当前批次明显不需要机器人回应/);
     assert.doesNotMatch(system, /request_model_upgrade/);
-    assert.doesNotMatch(system, /主模型.*升级|自行升级/);
-    assert.match(system, /仅在明显半句话未完时判 wait/);
-    assert.match(system, /群聊中当前批次明显不需要机器人回应时可判 no_reply/);
-    assert.doesNotMatch(system, /包括但不限于/);
-    assert.doesNotMatch(system, /像“取消这个吧”/);
     assert.equal(hasPromptSection(user, "planner_batch_features"), true);
     assert.match(user, /signals=需要未来触发、延时提醒或周期执行/);
     assert.match(user, /tags=mention, text/);
     assert.equal(findPromptProtocolLine(user, "planner_batch_message")?.attrs.index, "1");
   });
 
-  test("reply gate parses structured planner semantics while keeping reason first", async () => {
+  test("reply gate parses structured planner semantics while keeping task basis first", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: [
-        "reason: 需要先看引用并打开网页",
-        "reply_decision: reply_small",
-        "topic_decision: continue_topic",
-        "required_capabilities: web_navigation, filesystem_access",
-        "context_dependencies: structured_message_context, prior_web_context",
-        "recent_domain_reuse: web_research",
-        "followup_mode: explicit_reference",
-        "toolset_ids: web_research"
-      ].join("\n")
+      resultText: "{\"task_basis\":\"需要先看引用并打开网页\",\"reply\":\"reply\",\"model\":\"small\",\"topic\":\"continue_topic\",\"capability:web_navigation\":true,\"capability:filesystem_access\":true,\"dependency:structured_message_context\":true,\"dependency:prior_web_context\":true,\"reuse:web_research\":true,\"followup\":\"explicit_reference\",\"toolset:web_research\":true}"
     });
 
     const result = await gate.decide({
@@ -139,7 +121,7 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.reason, "需要先看引用并打开网页");
+    assert.equal(result.taskBasis, "需要先看引用并打开网页");
     assert.deepEqual(result.requiredCapabilities, ["web_navigation", "filesystem_access"]);
     assert.deepEqual(result.contextDependencies, ["structured_message_context", "prior_web_context"]);
     assert.deepEqual(result.recentDomainReuse, ["web_research"]);
@@ -150,17 +132,7 @@ function createConfig() {
   test("reply gate adds task intent only when task context is present", async () => {
     let capturedMessages: LlmMessage[] = [];
     const gate = createReplyGate(createConfig(), {
-      resultText: [
-        "reason: 用户想暂停任务",
-        "reply_decision: reply_small",
-        "topic_decision: continue_topic",
-        "task_intent: pause_current|none|high",
-        "required_capabilities: none",
-        "context_dependencies: none",
-        "recent_domain_reuse: none",
-        "followup_mode: none",
-        "toolset_ids: none"
-      ].join("\n"),
+      resultText: "{\"task_basis\":\"用户想暂停任务\",\"reply\":\"reply\",\"model\":\"small\",\"topic\":\"continue_topic\",\"task\":\"pause_current\",\"followup\":\"none\"}",
       onGenerate(input) {
         capturedMessages = input.messages;
       }
@@ -198,14 +170,14 @@ function createConfig() {
 
     assert.equal(result.taskIntent?.kind, "pause_current");
     assert.equal(result.taskIntent?.confidence, "high");
-    assert.match(system, /task_intent: <none\|continue_current/);
+    assert.match(system, /task: 仅根据用户新消息/);
     assert.equal(hasPromptSection(user, "planner_task_context"), true);
     assert.match(user, /primary=task-1 status=active/);
   });
 
   test("group reply gate keeps no_reply and clears toolsets", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "reason: 群里闲聊无需回应\nreply_decision: no_reply\ntopic_decision: continue_topic\ntoolset_ids: web_research"
+      resultText: "{\"task_basis\":\"群里闲聊无需回应\",\"reply\":\"no_reply\",\"topic\":\"continue_topic\",\"toolset:web_research\":true}"
     });
 
     const result = await gate.decide({
@@ -234,18 +206,9 @@ function createConfig() {
     assert.deepEqual(result.toolsetIds, []);
   });
 
-  test("private reply gate coerces model no_reply back to reply_small", async () => {
+  test("private reply gate coerces model no_reply back to reply", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: [
-        "reason: 私聊收尾",
-        "reply_decision: no_reply",
-        "topic_decision: continue_topic",
-        "required_capabilities: none",
-        "context_dependencies: none",
-        "recent_domain_reuse: none",
-        "followup_mode: none",
-        "toolset_ids: web_research"
-      ].join("\n")
+      resultText: "{\"task_basis\":\"私聊收尾\",\"reply\":\"no_reply\",\"topic\":\"continue_topic\",\"followup\":\"none\",\"toolset:web_research\":true}"
     });
 
     const result = await gate.decide({
@@ -269,7 +232,7 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.replyDecision, "reply");
     assert.equal(result.topicDecision, "continue_topic");
     assert.deepEqual(result.toolsetIds, []);
   });
@@ -285,7 +248,7 @@ function createConfig() {
           },
           async decide() {
             llmCalled = true;
-            return { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
+            return { replyDecision: "reply", topicDecision: "continue_topic", reason: "should not run", toolsetIds: [] };
           }
         } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
         debounceManager: {
@@ -314,7 +277,7 @@ function createConfig() {
 
   test("reply gate no longer locally ignores explicit chat-closing acknowledgements", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "reason: 礼貌收尾但仍可接住\nreply_decision: reply_small\ntopic_decision: continue_topic"
+      resultText: "{\"task_basis\":\"礼貌收尾但仍可接住\",\"reply\":\"reply\",\"model\":\"small\",\"topic\":\"continue_topic\"}"
     });
 
     const result = await gate.decide({
@@ -332,7 +295,7 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.replyDecision, "reply");
   });
 
   test("generation reply gate requests old history compaction on topic switch", async () => {
@@ -348,7 +311,7 @@ function createConfig() {
             return true;
           },
           async decide() {
-            return { replyDecision: "reply_large", topicDecision: "new_topic", reason: "明显换题", toolsetIds: [] };
+            return { replyDecision: "reply", modelTier: "large", topicDecision: "new_topic", reason: "明显换题", toolsetIds: [] };
           }
         } as unknown as ReturnType<typeof createGenerationReplyGateDeps>["turnPlanner"],
         persistSession(_sessionId, reason) {
@@ -510,7 +473,7 @@ function createConfig() {
     if (result.action === "continue") {
       assert.deepEqual(result.resolvedModelRef, ["main"]);
       assert.deepEqual(result.toolsetIds, []);
-      assert.equal(result.plannerDecision?.replyDecision, "reply_small");
+      assert.equal(result.plannerDecision?.replyDecision, "reply");
     }
     assert.equal(transcriptItems[0]?.replyDecision, "reply");
     assert.equal(transcriptItems[0]?.action, "continue");
@@ -518,7 +481,7 @@ function createConfig() {
 
   test("reply gate coerces no_reply back to reply for private requests", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "reason: 请求敏感内容\nreply_decision: no_reply"
+      resultText: "{\"task_basis\":\"请求敏感内容\",\"reply\":\"no_reply\"}"
     });
 
     const result = await gate.decide({
@@ -536,12 +499,12 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.replyDecision, "reply");
   });
 
   test("reply gate coerces no-reply wait decisions back to reply", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "reason: 对方只是确认无需回复\nreply_decision: wait"
+      resultText: "{\"task_basis\":\"对方只是确认无需回复\",\"reply\":\"wait\"}"
     });
 
     const result = await gate.decide({
@@ -559,12 +522,12 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.replyDecision, "reply");
   });
 
   test("reply gate keeps wait only for clearly unfinished text", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "reason: 半句话未完\nreply_decision: wait\nwait_reason: unfinished_message"
+      resultText: "{\"task_basis\":\"半句话未完\",\"reply\":\"wait\"}"
     });
 
     const result = await gate.decide({
@@ -586,7 +549,7 @@ function createConfig() {
     assert.equal(result.topicDecision, "continue_topic");
   });
 
-  test("reply gate degrades to reply_small on LLM timeout error", async () => {
+  test("reply gate degrades to reply on LLM timeout error", async () => {
     const gate = createReplyGate(createConfig(), {
       async onGenerate() {
         throw new Error("LLM total timeout after 20000ms");
@@ -608,11 +571,11 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.replyDecision, "reply");
     assert.equal(result.topicDecision, "continue_topic");
   });
 
-  test("reply gate degrades to reply_small on other LLM errors", async () => {
+  test("reply gate degrades to reply on other LLM errors", async () => {
     const gate = createReplyGate(createConfig(), {
       async onGenerate() {
         throw new Error("network error");
@@ -634,13 +597,13 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_small");
+    assert.equal(result.replyDecision, "reply");
     assert.equal(result.topicDecision, "continue_topic");
   });
 
   test("reply gate parses topic_switch decisions", async () => {
     const gate = createReplyGate(createConfig(), {
-      resultText: "reason: 明显换题了\nreply_decision: reply_large\ntopic_decision: new_topic"
+      resultText: "{\"task_basis\":\"明显换题了\",\"reply\":\"reply\",\"model\":\"large\",\"topic\":\"new_topic\"}"
     });
 
     const result = await gate.decide({
@@ -664,7 +627,7 @@ function createConfig() {
       ]
     });
 
-    assert.equal(result.replyDecision, "reply_large");
+    assert.equal(result.replyDecision, "reply");
     assert.equal(result.topicDecision, "new_topic");
-    assert.equal(result.reason, "明显换题了");
+    assert.equal(result.taskBasis, "明显换题了");
   });

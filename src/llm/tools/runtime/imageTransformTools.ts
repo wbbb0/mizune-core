@@ -47,6 +47,7 @@ interface TransformSummary {
 
 export const imageTransformToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "asset_or_filesystem", pathParameter: "path" },
     definition: {
       type: "function",
       function: {

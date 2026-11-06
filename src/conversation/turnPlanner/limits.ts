@@ -1,0 +1,5 @@
+export const PLANNER_TASK_BASIS_MAX_LENGTH = 80;
+export const PLANNER_ACTION_CONFIDENCE = 0.8;
+export const PLANNER_SKILL_LIMIT = 3;
+export const PLANNER_MAX_QUESTIONS = 400;
+export const PLANNER_MAX_CHOICES = 255;

@@ -4,6 +4,7 @@ import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObser
 
 export const schedulerToolDescriptors: ToolDescriptor[] = [
   {
+  modelPolicy: { kind: "observe" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -20,6 +21,7 @@ export const schedulerToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "schedule" },
     ownerOnly: true,
     definition: {
       type: "function",
@@ -61,6 +63,7 @@ export const schedulerToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     definition: {
       type: "function",

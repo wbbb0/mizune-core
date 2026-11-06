@@ -4,6 +4,7 @@ import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObser
 
 export const requestToolDescriptors: ToolDescriptor[] = [
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["requests.read"] },
     definition: {
       type: "function",
@@ -20,6 +21,7 @@ export const requestToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["requests.read"] },
     definition: {
       type: "function",
@@ -36,6 +38,7 @@ export const requestToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     capabilities: { all: ["requests.respond"] },
     definition: {

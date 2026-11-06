@@ -4,6 +4,7 @@ import { keepRawUnlessLargePolicy, stateChangePolicy } from "../core/resultObser
 
 export const whitelistToolDescriptors: ToolDescriptor[] = [
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["contacts.read"] },
     definition: {
       type: "function",
@@ -22,6 +23,7 @@ export const whitelistToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["contacts.read"] },
     definition: {
       type: "function",
@@ -40,6 +42,7 @@ export const whitelistToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "persistent_policy" },
     ownerOnly: true,
     capabilities: { all: ["chat.permission.write"] },
     definition: {

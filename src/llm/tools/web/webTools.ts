@@ -16,6 +16,7 @@ const isBrowserDownloadToolEnabled: ToolDescriptor["isEnabled"] = (config) => co
 
 export const webToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -35,6 +36,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: searchResultPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -62,6 +64,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: searchResultPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -83,6 +86,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserPagePolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -104,6 +108,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserPagePolicy()
   },
   {
+    modelPolicy: { kind: "browser_interaction" },
     definition: {
       type: "function",
       function: {
@@ -161,6 +166,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserPagePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -180,6 +186,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -200,6 +207,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserScreenshotPolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -225,6 +233,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserDownloadPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -241,6 +250,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserProfilePolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -260,6 +270,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserProfilePolicy()
   },
   {
+    modelPolicy: { kind: "persistent_policy" },
     definition: {
       type: "function",
       function: {
@@ -279,6 +290,7 @@ export const webToolDescriptors: ToolDescriptor[] = [
     resultObservation: browserProfilePolicy()
   },
   {
+    modelPolicy: { kind: "persistent_policy" },
     definition: {
       type: "function",
       function: {

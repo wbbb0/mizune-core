@@ -46,11 +46,12 @@ async function main() {
   }
 
   const result = await runTurnPlannerFormatProbe({
+    config,
     modelRef: [options.modelRef],
     availableToolsets: createDefaultTurnPlannerProbeToolsets(),
     cases: selectedCases,
     executePrompt: createTurnPlannerFormatProbeExecutor({
-      client,
+      config, client,
       ...(typeof options.timeoutMs === "number" ? { timeoutMs: options.timeoutMs } : {})
     })
   });

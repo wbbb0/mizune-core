@@ -24,6 +24,7 @@ const MAX_ANNOUNCEMENT_DETAIL_CHARS = 8000;
 
 export const groupContextToolDescriptors: ToolDescriptor[] = [
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["group.info.read"] },
     definition: {
       type: "function",
@@ -40,6 +41,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["group.files.read"] },
     definition: {
       type: "function",
@@ -60,6 +62,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
+  modelPolicy: { kind: "bounded_content" },
     isEnabled: (config) => config.chatFiles.enabled,
     capabilities: { all: ["group.files.read"] },
     definition: {
@@ -83,6 +86,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["group.announcements.read"] },
     definition: {
       type: "function",
@@ -102,6 +106,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["group.announcements.read"] },
     definition: {
       type: "function",
@@ -125,6 +130,7 @@ export const groupContextToolDescriptors: ToolDescriptor[] = [
     resultObservation: currentGroupContextPolicy()
   },
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["group.members.read"] },
     definition: {
       type: "function",

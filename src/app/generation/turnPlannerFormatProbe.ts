@@ -1,3 +1,10 @@
+import pino from "pino";
+import type { AppConfig } from "#config/config.ts";
+import { buildTurnPlannerChatRequest, parseStructuredPlannerResult } from "#conversation/turnPlanner/chat.ts";
+import { normalizeTurnPlan } from "#conversation/turnPlanner/result.ts";
+import type { PreparedTurnPlannerInput, TurnPlannerInput, TurnPlannerResult } from "#conversation/turnPlanner/types.ts";
+import { resolveAutoActivatedToolsets } from "./toolsetAutoActivation.ts";
+import { supplementPlannedToolsets } from "./toolsetSupplement.ts";
 import { analyzeTurnPlannerBatch } from "#conversation/turnPlannerBatchAnalysis.ts";
 import { buildTurnPlannerPrompt } from "#llm/prompts/turn-planner.prompt.ts";
 import type { LlmClient, LlmMessage } from "#llm/llmClient.ts";
@@ -7,12 +14,14 @@ import {
   type ToolsetView
 } from "#llm/tools/toolsetCatalog.ts";
 
-export type TurnPlannerProbeReplyDecision = "reply_small" | "reply_large" | "wait" | "no_reply";
+export type TurnPlannerProbeReplyDecision = TurnPlannerResult["replyDecision"];
 export type TurnPlannerProbeTopicDecision = "continue_topic" | "new_topic";
 export type TurnPlannerProbeFollowupMode = "none" | "elliptical" | "explicit_reference";
 
 export interface TurnPlannerProbeDecision {
   reason: string;
+  taskBasis?: string;
+  modelTier?: "small" | "large";
   replyDecision: TurnPlannerProbeReplyDecision;
   topicDecision: TurnPlannerProbeTopicDecision;
   requiredCapabilities: string[];
@@ -25,6 +34,7 @@ export interface TurnPlannerProbeDecision {
 
 export interface TurnPlannerProbeExpectations {
   expectedReplyDecisions?: TurnPlannerProbeReplyDecision[];
+  expectedModelTiers?: Array<"small" | "large">;
   expectedTopicDecisions?: TurnPlannerProbeTopicDecision[];
   requiredToolsetIds?: string[];
   forbiddenToolsetIds?: string[];
@@ -46,11 +56,7 @@ export interface TurnPlannerProbeBatchMessage {
   audioSources: string[];
   imageIds: string[];
   emojiIds: string[];
-  attachments?: Array<{
-    fileId: string;
-    kind: string;
-    semanticKind?: "image" | "emoji";
-  }>;
+  attachments?: NonNullable<TurnPlannerInput["batchMessages"][number]["attachments"]>;
   forwardIds: string[];
   replyMessageId: string | null;
   mentionUserIds: string[];
@@ -64,8 +70,8 @@ export interface TurnPlannerProbeCase {
   title: string;
   sessionId?: string;
   chatType: "private" | "group";
-  relationship: string;
-  currentUserSpecialRole?: string | null;
+  relationship: TurnPlannerInput["relationship"];
+  currentUserSpecialRole?: TurnPlannerInput["currentUserSpecialRole"];
   recentMessages: Array<{ role: "user" | "assistant"; content: string; timestampMs?: number | null }>;
   batchMessages: TurnPlannerProbeBatchMessage[];
   expectations?: TurnPlannerProbeExpectations;
@@ -99,22 +105,12 @@ export interface TurnPlannerProbeExecutorInput {
 }
 
 export interface TurnPlannerFormatProbeInput {
+  config: AppConfig;
   modelRef: string[];
   availableToolsets: ToolsetView[];
   cases: TurnPlannerProbeCase[];
   executePrompt: (input: TurnPlannerProbeExecutorInput) => Promise<string>;
 }
-
-const REQUIRED_FIELDS = [
-  "reason",
-  "reply_decision",
-  "topic_decision",
-  "required_capabilities",
-  "context_dependencies",
-  "recent_domain_reuse",
-  "followup_mode",
-  "toolset_ids"
-] as const;
 
 const DEFAULT_PROBE_TOOLSET_IDS = [
   "chat_context",
@@ -164,7 +160,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "帮我查一下 OpenAI 最近的 API 定价变化。"
       }, now - 60_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         expectedTopicDecisions: ["new_topic"],
         requiredToolsetIds: ["web_research"]
       }
@@ -183,10 +180,11 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         }
       ],
       batchMessages: [createProbeBatchMessage({
-        text: "继续，点进去看看"
+        text: "继续打开之前搜索结果中的文章，阅读并总结内容。"
       }, now - 40_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         expectedTopicDecisions: ["continue_topic"],
         requiredToolsetIds: ["web_research"]
       }
@@ -205,12 +203,19 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         }
       ],
       batchMessages: [createProbeBatchMessage({
-        text: "把这个页面里的图片下载到本地文件里。"
+        text: "把这个页面里的图片保存到宿主机 /srv/reports/current.png，覆盖已有文件。"
       }, now - 20_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["large"],
         requiredToolsetIds: ["web_research", "filesystem_io"]
       }
+    },
+    {
+      id: "web-asset-download", title: "网页资源作为当前附件", chatType: "private", relationship: "owner",
+      currentUserSpecialRole: null, recentMessages: [],
+      batchMessages: [createProbeBatchMessage({ text: "将这张公开网页图片下载为登记附件，发到当前会话，不指定宿主机路径。" }, now - 18_000)],
+      expectations: { expectedReplyDecisions: ["reply"], expectedModelTiers: ["small"], requiredToolsetIds: ["web_research"] }
     },
     {
       id: "structured-context",
@@ -224,7 +229,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         replyMessageId: "msg-123"
       }, now - 10_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         expectedTopicDecisions: ["continue_topic"],
         requiredToolsetIds: ["chat_context"]
       }
@@ -241,7 +247,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         forwardIds: ["fwd-1"]
       }, now - 8_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         requiredToolsetIds: ["chat_context"]
       }
     },
@@ -256,7 +263,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "看下 3000 端口是谁占着，再帮我看最近日志。"
       }, now - 5_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["large"],
         requiredToolsetIds: ["shell_runtime", "filesystem_io"]
       }
     },
@@ -274,10 +282,11 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         }
       ],
       batchMessages: [createProbeBatchMessage({
-        text: "继续看看日志最后 50 行"
+        text: "继续运行命令，读取宿主机日志文件最后 50 行。"
       }, now - 3_500)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["large"],
         requiredToolsetIds: ["shell_runtime"]
       }
     },
@@ -292,7 +301,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "去另一个群里找下我昨天提过的那件事。"
       }, now - 3_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         requiredToolsetIds: ["conversation_navigation"]
       }
     },
@@ -307,7 +317,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "把这条结论转告到项目群。"
       }, now - 2_500)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["large"],
         requiredToolsetIds: ["chat_delegation"]
       }
     },
@@ -322,7 +333,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "记住我以后默认都要先给结论再解释。"
       }, now - 2_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         requiredToolsetIds: ["memory_profile"]
       }
     },
@@ -337,7 +349,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "我现在住在上海，是产品经理，时区按北京时间算。"
       }, now - 1_900)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         requiredToolsetIds: ["memory_profile"]
       }
     },
@@ -352,7 +365,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "以后叫我老王，别替我做决定。"
       }, now - 1_800)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         requiredToolsetIds: ["memory_profile"]
       }
     },
@@ -367,7 +381,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "这次把下面这段话润色成更正式的邮件。"
       }, now - 1_700)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         forbiddenToolsetIds: ["memory_profile"]
       }
     },
@@ -382,7 +397,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "明天上午十点提醒我提交周报。"
       }, now - 1_500)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         requiredToolsetIds: ["scheduler_admin"]
       }
     },
@@ -397,7 +413,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "现在几点了？"
       }, now - 1_000)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["small"],
         requiredToolsetIds: ["time_utils"]
       }
     },
@@ -412,7 +429,8 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
         text: "把这个群放进白名单。"
       }, now - 800)],
       expectations: {
-        expectedReplyDecisions: ["reply_small", "reply_large"],
+        expectedReplyDecisions: ["reply"],
+        expectedModelTiers: ["large"],
         requiredToolsetIds: ["social_admin"]
       }
     },
@@ -424,7 +442,7 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
       currentUserSpecialRole: null,
       recentMessages: [],
       batchMessages: [createProbeBatchMessage({
-        text: "比如我觉得这个问题主要是"
+        text: "比如说"
       }, now)],
       expectations: {
         expectedReplyDecisions: ["wait"],
@@ -434,74 +452,39 @@ export function createDefaultTurnPlannerProbeCases(): TurnPlannerProbeCase[] {
   ];
 }
 
-export function parseTurnPlannerProbeResponse(rawText: string): TurnPlannerProbeParseResult {
-  const normalized = rawText.trim();
-  if (!normalized) {
-    return { ok: false, error: "empty response" };
+export function parseTurnPlannerProbeResponse(
+  rawText: string,
+  probeCase: TurnPlannerProbeCase,
+  availableToolsets: ToolsetView[],
+  config: AppConfig
+): TurnPlannerProbeParseResult {
+  const prepared = buildTurnPlannerProbeInput(probeCase, availableToolsets);
+  const plan = parseStructuredPlannerResult(rawText.trim(), prepared);
+  if (!plan) return { ok: false, error: "invalid planner protocol" };
+  const rawData: TurnPlannerProbeDecision = { ...plan, normalizationWarnings: [] };
+  const normalized = normalizeTurnPlan(plan, prepared, prepared.batchAnalysis, config, pino({ level: "silent" }));
+  const warnings: string[] = [];
+  if (normalized.replyDecision !== rawData.replyDecision) warnings.push("reply_decision_normalized");
+  if (normalized.topicDecision !== rawData.topicDecision) warnings.push("topic_decision_normalized");
+  let toolsetIds = normalized.toolsetIds;
+  if (normalized.replyDecision === "reply") {
+    const activation = resolveAutoActivatedToolsets({
+      availableToolsets, selectedToolsetIds: toolsetIds, modeId: "default",
+      recentMessages: probeCase.recentMessages, plannerDecision: normalized,
+      batchMessages: probeCase.batchMessages.map(message => ({
+        ...message, userId: "probe", chatType: probeCase.chatType,
+        audioIds: [], emojiSources: [], isAtMentioned: message.mentionedSelf,
+        receivedAt: message.timestampMs ?? 0
+      }))
+    });
+    const supplement = supplementPlannedToolsets({
+      availableToolsets, selectedToolsetIds: activation.toolsetIds,
+      recentTranscriptItems: [], plannerDecision: normalized
+    });
+    toolsetIds = supplement.toolsetIds;
+    warnings.push(...activation.reasons, ...supplement.reasons);
   }
-
-  const fieldMap = new Map<string, string>();
-  for (const line of normalized.split(/\r?\n/g)) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const match = trimmed.match(/^([a-z_]+)\s*:\s*(.*)$/);
-    if (!match) {
-      return { ok: false, error: `invalid line: ${trimmed}` };
-    }
-    fieldMap.set(match[1] ?? "", (match[2] ?? "").trim());
-  }
-
-  for (const field of REQUIRED_FIELDS) {
-    if (!fieldMap.has(field)) {
-      return { ok: false, error: `missing ${field}` };
-    }
-  }
-
-  const reason = fieldMap.get("reason") ?? "";
-  const replyDecision = fieldMap.get("reply_decision") ?? "";
-  const topicDecision = fieldMap.get("topic_decision") ?? "";
-  const followupMode = fieldMap.get("followup_mode") ?? "";
-
-  if (!isReplyDecision(replyDecision)) {
-    return { ok: false, error: `invalid reply_decision: ${replyDecision}` };
-  }
-  if (!isTopicDecision(topicDecision)) {
-    return { ok: false, error: `invalid topic_decision: ${topicDecision}` };
-  }
-  if (!isFollowupMode(followupMode)) {
-    return { ok: false, error: `invalid followup_mode: ${followupMode}` };
-  }
-  if (!reason) {
-    return { ok: false, error: "missing reason" };
-  }
-
-  return {
-    ok: true,
-    rawData: {
-      reason,
-      replyDecision,
-      topicDecision,
-      requiredCapabilities: parseListField(fieldMap.get("required_capabilities") ?? ""),
-      contextDependencies: parseListField(fieldMap.get("context_dependencies") ?? ""),
-      recentDomainReuse: parseListField(fieldMap.get("recent_domain_reuse") ?? ""),
-      followupMode,
-      toolsetIds: parseListField(fieldMap.get("toolset_ids") ?? ""),
-      normalizationWarnings: []
-    },
-    data: normalizeTurnPlannerProbeDecision({
-      reason,
-      replyDecision,
-      topicDecision,
-      requiredCapabilities: parseListField(fieldMap.get("required_capabilities") ?? ""),
-      contextDependencies: parseListField(fieldMap.get("context_dependencies") ?? ""),
-      recentDomainReuse: parseListField(fieldMap.get("recent_domain_reuse") ?? ""),
-      followupMode,
-      toolsetIds: parseListField(fieldMap.get("toolset_ids") ?? ""),
-      normalizationWarnings: []
-    })
-  };
+  return { ok: true, rawData, data: { ...normalized, toolsetIds, normalizationWarnings: warnings } };
 }
 
 export async function runTurnPlannerFormatProbe(input: TurnPlannerFormatProbeInput): Promise<TurnPlannerFormatProbeRunResult> {
@@ -514,13 +497,7 @@ export async function runTurnPlannerFormatProbe(input: TurnPlannerFormatProbeInp
       availableToolsets: input.availableToolsets,
       promptMessages
     });
-    const parsed = parseTurnPlannerProbeResponse(rawText);
-    const parse = parsed.ok
-      ? {
-          ...parsed,
-          data: normalizeTurnPlannerProbeDecisionForCase(probeCase, parsed.data)
-        }
-      : parsed;
+    const parse = parseTurnPlannerProbeResponse(rawText, probeCase, input.availableToolsets, input.config);
     results.push({
       caseId: probeCase.id,
       rawText,
@@ -537,7 +514,7 @@ export async function runTurnPlannerFormatProbe(input: TurnPlannerFormatProbeInp
 }
 
 export function summarizeTurnPlannerProbeResults(results: TurnPlannerProbeCaseResult[]): TurnPlannerProbeSummary {
-  const failedCaseIds = results.filter((item) => !item.parse.ok).map((item) => item.caseId);
+  const failedCaseIds = results.filter((item) => !item.parse.ok || item.semantic?.ok === false).map((item) => item.caseId);
   return {
     totalCases: results.length,
     okCases: results.length - failedCaseIds.length,
@@ -553,7 +530,7 @@ export function renderTurnPlannerProbeReport(result: TurnPlannerFormatProbeRunRe
 
   for (const item of result.results) {
     if (item.parse.ok) {
-      lines.push(`- ${item.caseId}: ok reply=${item.parse.data.replyDecision} topic=${item.parse.data.topicDecision} toolsets=${item.parse.data.toolsetIds.join(",") || "none"} semantic=${item.semantic?.ok === false ? "mismatch" : "ok"}`);
+      lines.push(`- ${item.caseId}: ok reply=${item.parse.data.replyDecision} model=${item.parse.data.modelTier ?? "undetermined"} topic=${item.parse.data.topicDecision} toolsets=${item.parse.data.toolsetIds.join(",") || "none"} semantic=${item.semantic?.ok === false ? "mismatch" : "ok"}`);
       if (item.parse.rawData.replyDecision !== item.parse.data.replyDecision) {
         lines.push(`  raw_reply=${item.parse.rawData.replyDecision}`);
       }
@@ -594,6 +571,9 @@ export function evaluateTurnPlannerProbeSemantics(
   if (expected.expectedReplyDecisions && !expected.expectedReplyDecisions.includes(decision.replyDecision)) {
     issues.push(`unexpected_reply:${decision.replyDecision}`);
   }
+  if (expected.expectedModelTiers && (!decision.modelTier || !expected.expectedModelTiers.includes(decision.modelTier))) {
+    issues.push(`unexpected_model:${decision.modelTier ?? "undetermined"}`);
+  }
   if (expected.expectedTopicDecisions && !expected.expectedTopicDecisions.includes(decision.topicDecision)) {
     issues.push(`unexpected_topic:${decision.topicDecision}`);
   }
@@ -612,18 +592,16 @@ export function evaluateTurnPlannerProbeSemantics(
 }
 
 export function createTurnPlannerFormatProbeExecutor(input: {
-  client: Pick<LlmClient, "generate">;
+  config: AppConfig;
+  client: Pick<LlmClient, "generate"> & Partial<Pick<LlmClient, "supportsStructuredOutput">>;
   timeoutMs?: number;
 }) {
-  return async ({ modelRef, promptMessages }: TurnPlannerProbeExecutorInput): Promise<string> => {
-    const result = await input.client.generate({
-      modelRefOverride: modelRef,
-      enableThinkingOverride: false,
-      preferNativeNoThinkingChatEndpoint: true,
-      skipDebugDump: true,
-      messages: promptMessages,
-      ...(typeof input.timeoutMs === "number" ? { timeoutMsOverride: input.timeoutMs } : {})
-    });
+  return async ({ modelRef, probeCase, availableToolsets }: TurnPlannerProbeExecutorInput): Promise<string> => {
+    const prepared = buildTurnPlannerProbeInput(probeCase, availableToolsets);
+    const result = await input.client.generate(buildTurnPlannerChatRequest(
+      input.config, input.client, prepared, modelRef,
+      input.timeoutMs ?? input.config.llm.turnPlanner.timeoutMs
+    ));
     return result.text;
   };
 }
@@ -632,7 +610,11 @@ export function buildTurnPlannerFormatProbePrompt(
   probeCase: TurnPlannerProbeCase,
   availableToolsets: ToolsetView[]
 ): LlmMessage[] {
-  const basePrompt = buildTurnPlannerPrompt({
+  return buildTurnPlannerPrompt(buildTurnPlannerProbeInput(probeCase, availableToolsets));
+}
+
+export function buildTurnPlannerProbeInput(probeCase: TurnPlannerProbeCase, availableToolsets: ToolsetView[]): PreparedTurnPlannerInput {
+  return {
     requirements: { modelSelection: true, toolSelection: true, replyGate: probeCase.chatType === "group", semanticWait: true, topicSwitch: true, taskIntent: false },
     sessionId: probeCase.sessionId ?? `probe-${probeCase.id}`,
     chatType: probeCase.chatType,
@@ -642,10 +624,9 @@ export function buildTurnPlannerFormatProbePrompt(
     batchMessages: probeCase.batchMessages,
     availableToolsets,
     batchAnalysis: analyzeTurnPlannerBatch(probeCase.batchMessages),
-    visualInputs: []
-  });
-
-  return basePrompt;
+    visualInputs: [],
+    mediaCaptions: []
+  };
 }
 
 function createProbeBatchMessage(
@@ -682,108 +663,6 @@ function toProbeToolsetView(definition: ToolsetDefinition): ToolsetView {
   };
 }
 
-function parseListField(value: string): string[] {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized || normalized === "none" || normalized === "-") {
-    return [];
-  }
-  return normalized.split(/[\s,，|]+/g).map((item) => item.trim()).filter(Boolean);
-}
-
-function isReplyDecision(value: string): value is TurnPlannerProbeReplyDecision {
-  return value === "reply_small" || value === "reply_large" || value === "wait" || value === "no_reply";
-}
-
-function isTopicDecision(value: string): value is TurnPlannerProbeTopicDecision {
-  return value === "continue_topic" || value === "new_topic";
-}
-
-function isFollowupMode(value: string): value is TurnPlannerProbeFollowupMode {
-  return value === "none" || value === "elliptical" || value === "explicit_reference";
-}
-
 function singleLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
-}
-
-
-function normalizeTurnPlannerProbeDecision(input: TurnPlannerProbeDecision): TurnPlannerProbeDecision {
-  const normalizationWarnings = [...input.normalizationWarnings];
-  const toolsetIds = [...input.toolsetIds];
-  let topicDecision = input.topicDecision;
-
-  if (input.replyDecision === "wait" && topicDecision !== "continue_topic") {
-    topicDecision = "continue_topic";
-    normalizationWarnings.push("wait_forces_continue_topic");
-  }
-  if (input.replyDecision === "no_reply") {
-    return {
-      ...input,
-      topicDecision: "continue_topic",
-      toolsetIds: [],
-      normalizationWarnings: topicDecision === "continue_topic"
-        ? [...normalizationWarnings, ...(input.toolsetIds.length > 0 ? ["no_reply_clears_toolsets"] : [])]
-        : [...normalizationWarnings, "no_reply_forces_continue_topic", ...(input.toolsetIds.length > 0 ? ["no_reply_clears_toolsets"] : [])]
-    };
-  }
-  if (input.requiredCapabilities.includes("filesystem_access") && !toolsetIds.includes("filesystem_io")) {
-    toolsetIds.push("filesystem_io");
-    normalizationWarnings.push("capability_requires_filesystem_io");
-  }
-  if (input.requiredCapabilities.includes("shell_execution") && !toolsetIds.includes("shell_runtime")) {
-    toolsetIds.push("shell_runtime");
-    normalizationWarnings.push("capability_requires_shell_runtime");
-  }
-  if (input.requiredCapabilities.includes("memory_write") && !toolsetIds.includes("memory_profile")) {
-    toolsetIds.push("memory_profile");
-    normalizationWarnings.push("capability_requires_memory_profile");
-  }
-  if (
-    (input.requiredCapabilities.includes("web_navigation") || input.requiredCapabilities.includes("external_info_lookup"))
-    && !toolsetIds.includes("web_research")
-  ) {
-    toolsetIds.push("web_research");
-    normalizationWarnings.push("capability_requires_web_research");
-  }
-  if (input.requiredCapabilities.includes("conversation_navigation") && !toolsetIds.includes("conversation_navigation")) {
-    toolsetIds.push("conversation_navigation");
-    normalizationWarnings.push("capability_requires_conversation_navigation");
-  }
-  if (input.requiredCapabilities.includes("chat_delegation") && !toolsetIds.includes("chat_delegation")) {
-    toolsetIds.push("chat_delegation");
-    normalizationWarnings.push("capability_requires_chat_delegation");
-  }
-  return {
-    ...input,
-    topicDecision,
-    toolsetIds,
-    normalizationWarnings
-  };
-}
-
-function normalizeTurnPlannerProbeDecisionForCase(
-  probeCase: TurnPlannerProbeCase,
-  input: TurnPlannerProbeDecision
-): TurnPlannerProbeDecision {
-  if (!probeCaseHasStructuredResolvableContent(probeCase) || input.toolsetIds.includes("chat_context")) {
-    return input;
-  }
-  if (!input.contextDependencies.includes("structured_message_context")) {
-    return input;
-  }
-  return {
-    ...input,
-    toolsetIds: [...input.toolsetIds, "chat_context"],
-    normalizationWarnings: [...input.normalizationWarnings, "structured_context_requires_chat_context"]
-  };
-}
-
-function probeCaseHasStructuredResolvableContent(probeCase: TurnPlannerProbeCase): boolean {
-  return probeCase.batchMessages.some((message) => (
-    Boolean(message.replyMessageId)
-    || (message.forwardIds?.length ?? 0) > 0
-    || (message.imageIds?.length ?? 0) > 0
-    || (message.emojiIds?.length ?? 0) > 0
-    || (message.attachments?.length ?? 0) > 0
-  ));
 }

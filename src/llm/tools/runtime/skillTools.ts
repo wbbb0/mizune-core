@@ -5,6 +5,7 @@ import { getSkillStore } from "../../../skills/skillStore.ts";
 import { requireActiveSkillDraft, writeSkillDraft } from "../../../skills/skillDrafts.ts";
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 const definition = (name: string, description: string, properties: Record<string, unknown>, required: string[] = []): ToolDescriptor => ({
+  modelPolicy: { kind: "observe" },
   definition: { type: "function", function: { name, description, parameters: { type: "object", properties, required, additionalProperties: false } } },
   isEnabled: config => config.skills.enabled,
   resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 3 })
@@ -20,8 +21,8 @@ export const skillToolDescriptors: ToolDescriptor[] = [
   { ...definition("save_skill", "新增或编辑技能，提交完整标准SKILL.md、引用和工具集绑定。自主维护必须填写具体依据changeReason；不能解除用户禁用或锁定。配置草稿阶段仅暂存，等待用户.confirm。", {
       id: { type: "string" }, expectedRevision: { type: ["integer", "null"] }, document: { type: "string" }, resources: { type: "object", additionalProperties: { type: "string" } }, toolsetIds: { type: "array", items: { type: "string" } },
       userPolicy: { type: "string", enum: ["auto", "disabled"] }, modelEditable: { type: "boolean" }, modelPaused: { type: "boolean" }, modelPauseReason: { type: ["string", "null"] }, changeReason: { type: "string" }
-    }, ["id", "expectedRevision", "document", "resources", "toolsetIds", "userPolicy", "modelEditable", "modelPaused", "changeReason"]), isEnabled: maintenanceEnabled, accessLevel: "owner" },
-  { ...definition("set_skill_paused", "自主暂停或恢复未锁定且未禁用的技能，必须说明依据。", { id: { type: "string" }, expectedRevision: { type: ["integer", "null"] }, paused: { type: "boolean" }, reason: { type: "string" } }, ["id", "expectedRevision", "paused", "reason"]), isEnabled: maintenanceEnabled, accessLevel: "owner" }
+    }, ["id", "expectedRevision", "document", "resources", "toolsetIds", "userPolicy", "modelEditable", "modelPaused", "changeReason"]), modelPolicy: { kind: "skill_maintenance" }, isEnabled: maintenanceEnabled, accessLevel: "owner" },
+  { ...definition("set_skill_paused", "自主暂停或恢复未锁定且未禁用的技能，必须说明依据。", { id: { type: "string" }, expectedRevision: { type: ["integer", "null"] }, paused: { type: "boolean" }, reason: { type: "string" } }, ["id", "expectedRevision", "paused", "reason"]), modelPolicy: { kind: "skill_maintenance" }, isEnabled: maintenanceEnabled, accessLevel: "owner" }
 ];
 function objectArgs(args: unknown): Record<string, unknown> { return args && typeof args === "object" ? args as Record<string, unknown> : {}; }
 export const skillToolHandlers: Record<string, ToolHandler> = {

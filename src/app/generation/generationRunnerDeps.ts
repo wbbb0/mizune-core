@@ -160,6 +160,7 @@ export type GenerationPersona = Awaited<ReturnType<GenerationIdentityDeps["perso
 
 export type GenerationTurnPlannerDeps =
   Pick<GenerationPromptBuilderDeps, "config">
+  & { contentSafetyService?: GenerationPromptBuilderDeps["contentSafetyService"] }
   & Pick<GenerationSessionRuntimeDeps, "logger" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager">
   & Pick<GenerationLifecycleDeps, "persistSession">
   & {
@@ -183,7 +184,8 @@ export type GenerationExecutorDeps =
 export type GenerationSessionOrchestratorDeps =
   Pick<GenerationRunnerDeps, "lifecycle">
   & {
-    promptBuilder: Pick<GenerationPromptBuilderDeps, "config" | "contentSafetyService">;
+    promptBuilder: Pick<GenerationPromptBuilderDeps, "config">
+  & { contentSafetyService?: GenerationPromptBuilderDeps["contentSafetyService"] };
     sessionRuntime: Pick<GenerationSessionRuntimeDeps, "logger" | "historyCompressor" | "llmClient" | "sessionCaptioner" | "turnPlanner" | "debounceManager" | "messageQueue"> & {
       sessionManager: SessionGenerationOrchestratorAccess;
     };

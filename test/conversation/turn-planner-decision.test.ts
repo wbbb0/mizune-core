@@ -1,3 +1,4 @@
+import { plannerChatFixture } from "../helpers/planner-chat-fixtures.ts";
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
@@ -57,7 +58,7 @@ function decisionResponse(request: LlmDecideParams, overrides: Record<string, st
 }
 
 function chatResponse() {
-  return createSseResponse([{ choices: [{ delta: { content: "reason: 聊天规划成功\nreply_decision: reply_large\ntopic_decision: continue_topic" }, finish_reason: "stop" }] }]);
+  return createSseResponse([{ choices: [{ delta: { content: plannerChatFixture(baseInput, { model: "large" }) }, finish_reason: "stop" }] }]);
 }
 
 test("有效 decision 路由自动接管一次完整规划，工具可见性开关不影响内部选路", async () => {
@@ -72,7 +73,7 @@ test("有效 decision 路由自动接管一次完整规划，工具可见性开�
     assert.doesNotMatch(JSON.stringify(request.input), /严格输出以下|严格输出一个 JSON/);
     assert.ok(request.questions.some(question => question.name === "skill:skill-1"));
     return decisionResponse(request, {
-      reply: "reply_large", task: "restore_parked:parked", "toolset:shell_runtime": 0.6,
+      model: "large", task: "restore_parked:parked", "toolset:shell_runtime": 0.6,
       "capability:shell_execution": 0.9, "dependency:prior_shell_context": 0.8,
       "reuse:shell_runtime": 0.8, followup: "explicit_reference",
       "skill:skill-1": 0.71, "skill:skill-2": 0.9, "skill:skill-3": 0.8, "skill:skill-4": 0.95
@@ -80,7 +81,7 @@ test("有效 decision 路由自动接管一次完整规划，工具可见性开�
   });
   const result = await planner.decide(baseInput);
   assert.equal(calls, 1);
-  assert.equal(result.replyDecision, "reply_large");
+  assert.equal(result.modelTier, "large");
   assert.deepEqual(result.taskIntent, { kind: "restore_parked", confidence: "high", targetTaskId: "parked" });
   assert.deepEqual(result.toolsetIds, ["shell_runtime"]);
   assert.deepEqual(result.requiredCapabilities, ["shell_execution"]);
@@ -107,7 +108,7 @@ test("仅配置 decision 也能启用规划；没有本轮职责或关闭规划�
   setFetchImplementationForTests(async (_url, init) => {
     calls++;
     const request: LlmDecideParams = JSON.parse(String(init?.body));
-    assert.deepEqual(request.questions.map(question => question.name), ["reply"]);
+    assert.deepEqual(request.questions.map(question => question.name), ["model"]);
     return decisionResponse(request);
   });
   const input = { ...baseInput, requirements: { modelSelection: true, toolSelection: false, replyGate: false, semanticWait: false, topicSwitch: false, taskIntent: false } };
@@ -130,7 +131,7 @@ for (const disable of ["route", "capability"] as const) {
     setFetchImplementationForTests(async url => { calls++; assert.match(String(url), /chat\/completions$/); return chatResponse(); });
     const result = await planner.decide(baseInput);
     assert.equal(calls, 1);
-    assert.equal(result.replyDecision, "reply_large");
+    assert.equal(result.modelTier, "large");
     assert.equal(result.metrics?.backend, "chat");
     assert.equal(result.metrics?.fallbackReason, undefined);
   });
@@ -146,12 +147,13 @@ test("独立判断拒绝保留保守结果，工具候选不会被误判为不�
   });
   const result = await planner.decide(baseInput);
   assert.equal(calls, 1);
-  assert.equal(result.replyDecision, "reply_small");
+  assert.equal(result.replyDecision, "reply");
   assert.equal(result.topicDecision, "continue_topic");
-  assert.equal(result.taskIntent, undefined);
+  assert.deepEqual(result.taskIntent, { kind: "unknown", confidence: "low" });
   assert.deepEqual(result.toolsetIds, ["shell_runtime"]);
   assert.deepEqual(result.skillIds, []);
-  assert.match(result.reason, /部分判断被拒绝/);
+  assert.match(result.reason, /部分判断未确定/);
+  assert.equal(result.modelSelectionStatus, "undetermined");
 });
 
 test("低置信度不会跳过回复、等待、切换话题或改变任务", async () => {
@@ -160,18 +162,18 @@ test("低置信度不会跳过回复、等待、切换话题或改变任务", as
     reply: "no_reply", topic: "new_topic", task: "cancel_current"
   }, 0.6));
   const result = await planner.decide(baseInput);
-  assert.equal(result.replyDecision, "reply_small");
+  assert.equal(result.replyDecision, "reply");
   assert.equal(result.topicDecision, "continue_topic");
   assert.deepEqual(result.taskIntent, { kind: "unknown", confidence: "low" });
 });
 
 for (const scenario of [
   { name: "群聊闲聊可跳过", message: { text: "只是随口聊聊" }, chatType: "group", choice: "no_reply", expected: "no_reply" },
-  { name: "私聊必须回复", message: { text: "只是随口聊聊" }, chatType: "private", choice: "no_reply", expected: "reply_small" },
-  { name: "明确提及必须回复", message: { text: "帮我看看", mentionedSelf: true }, chatType: "group", choice: "no_reply", expected: "reply_small" },
+  { name: "私聊必须回复", message: { text: "只是随口聊聊" }, chatType: "private", choice: "no_reply", expected: "reply" },
+  { name: "明确提及必须回复", message: { text: "帮我看看", mentionedSelf: true }, chatType: "group", choice: "no_reply", expected: "reply" },
   { name: "未完文本允许等待", message: { text: "比如说" }, chatType: "private", choice: "wait", expected: "wait" },
-  { name: "完整消息不能等待", message: { text: "完成了，谢谢" }, chatType: "private", choice: "wait", expected: "reply_small" },
-  { name: "引用不能按短文本等待", message: { text: "比如说", replyMessageId: "message-1" }, chatType: "private", choice: "wait", expected: "reply_small" }
+  { name: "完整消息不能等待", message: { text: "完成了，谢谢" }, chatType: "private", choice: "wait", expected: "reply" },
+  { name: "引用不能按短文本等待", message: { text: "比如说", replyMessageId: "message-1" }, chatType: "private", choice: "wait", expected: "reply" }
 ] as const) {
   test(`decision 与聊天模型共用规则：${scenario.name}`, async () => {
     const { planner } = setup();
@@ -196,7 +198,7 @@ test("decision 请求失败在剩余预算内降级聊天，失败请求用量�
   assert.equal(paths.length, 2);
   assert.match(paths[0]!, /decisions$/);
   assert.match(paths[1]!, /chat\/completions$/);
-  assert.equal(result.replyDecision, "reply_large");
+  assert.equal(result.modelTier, "large");
   assert.equal(result.metrics?.backend, "chat");
   assert.equal(result.metrics?.fallbackReason, "decision_failed");
   assert.equal(result.metrics?.inputTokens, null);
@@ -208,7 +210,7 @@ test("答案契约损坏可降级，聊天规划仍不能恢复不存在的任�
   setFetchImplementationForTests(async () => {
     calls++;
     return calls === 1 ? Response.json({ answers: [] }) : createSseResponse([{ choices: [{ delta: {
-      content: "reason: 恢复任务\ntask_intent: restore_parked|unknown-task|high"
+      content: plannerChatFixture(baseInput, { task: null })
     }, finish_reason: "stop" }] }]);
   });
   const result = await planner.decide(baseInput);
@@ -250,6 +252,8 @@ test("整个规划共享期限，即使上游忽略取消也不增加一次聊�
   setFetchImplementationForTests(async () => { calls++; return response.promise; });
   const result = await planner.decide(baseInput);
   assert.equal(result.reason, "规划失败，继续回复");
+  assert.equal(result.modelSelectionStatus, "undetermined");
+  assert.equal(result.modelTier, undefined);
   assert.equal(result.metrics?.backend, "decision");
   assert.equal(result.metrics?.fallbackReason, undefined);
   assert.equal(calls, 1);
@@ -348,19 +352,19 @@ test("聊天降级只获得整个规划阶段剩余的超时预算", async () =>
     return chatResponse();
   });
   const result = await planner.decide(baseInput);
-  assert.equal(result.replyDecision, "reply_large");
+  assert.equal(result.modelTier, "large");
   assert.equal(calls, 2);
   assert.ok(chatTimeout && chatTimeout <= config.llm.turnPlanner.timeoutMs - 25);
 });
 
-for (const waitReason of ["unfinished_message", "none"] as const) {
-  test(`等待只读取显式语义字段，不检查展示理由：${waitReason}`, async () => {
+for (const answer of ["wait", null] as const) {
+  test(`等待依据只来自独立回复选择而非展示理由：${answer}`, async () => {
     const { config, planner } = setup();
     config.llm.routingPresets.test!.decision = [];
     setFetchImplementationForTests(async () => createSseResponse([{ choices: [{ delta: {
-      content: `reason: 无需回复，只是确认\nreply_decision: wait\nwait_reason: ${waitReason}`
+      content: plannerChatFixture(baseInput, { reply: answer }, "无需回复，只是确认。")
     }, finish_reason: "stop" }] }]));
     const result = await planner.decide({ ...baseInput, batchMessages: [createReplyGateBatchMessage({ text: "比如说" })] });
-    assert.equal(result.replyDecision, waitReason === "unfinished_message" ? "wait" : "reply_small");
+    assert.equal(result.replyDecision, answer === "wait" ? "wait" : "reply");
   });
 }

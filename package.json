@@ -53,6 +53,7 @@
     "smoke:llm:openai": "tsx smoke/llm/openai-capabilities-smoke.ts",
     "smoke:llm:image": "tsx smoke/llm/image-generation-smoke.ts",
     "smoke:llm:memory": "tsx smoke/llm/context-memory-smoke.ts --preset local_qwen --instance web --timeout-ms 180000",
+    "smoke:llm:planner": "node --import tsx smoke/llm/turn-planner-smoke.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck:all": "npm run typecheck && npm run typecheck:test",

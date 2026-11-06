@@ -31,6 +31,7 @@ const MAX_MEDIA_VIEW_PER_CALL = 5;
 
 export const imageToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescriptors([
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -62,6 +63,7 @@ export const imageToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescrip
     resultObservation: directMediaViewPolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -95,6 +97,7 @@ export const imageToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescrip
     resultObservation: mediaInspectionPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {
@@ -114,6 +117,7 @@ export const imageToolDescriptors: ToolDescriptor[] = withFilesystemScopeDescrip
     resultObservation: directMediaViewPolicy()
   },
   {
+    modelPolicy: { kind: "filesystem" },
     definition: {
       type: "function",
       function: {

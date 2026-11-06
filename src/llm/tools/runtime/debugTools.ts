@@ -33,6 +33,7 @@ const DEBUG_LITERALS: DebugLiteral[] = [
 
 export const debugToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -48,6 +49,7 @@ export const debugToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "observe" },
     modelVisible: false,
     definition: {
       type: "function",
@@ -64,6 +66,7 @@ export const debugToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 0, includeInHistorySummary: false })
   },
   {
+  modelPolicy: { kind: "external_effect" },
     ownerOnly: true,
     debugOnly: true,
     definition: {

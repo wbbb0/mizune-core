@@ -9,6 +9,7 @@ import type { DownloadRuntimeSnapshot } from "#services/workspace/downloadRuntim
 
 export const resourceToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -30,6 +31,7 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -53,6 +55,7 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
     resultObservation: downloadResourcePolicy()
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -72,6 +75,7 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
     resultObservation: downloadResourcePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -91,6 +95,7 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
     resultObservation: downloadResourcePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -110,6 +115,7 @@ export const resourceToolDescriptors: ToolDescriptor[] = [
     resultObservation: downloadResourcePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {

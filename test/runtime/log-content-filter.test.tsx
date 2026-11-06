@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "../../src/logger.ts";
-import { FILTERED_LOG_MESSAGE } from "../../src/logging/logContentFilter.ts";
+import { FILTERED_LOG_MESSAGE, filterLogContent } from "../../src/logging/logContentFilter.ts";
 import type { RecentErrorLogInput } from "../../src/runtime/recentErrorStore.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createLlmTestConfig, createSseResponse } from "../helpers/llm-test-support.tsx";
@@ -43,6 +43,30 @@ test("content filter hides all free text and nested payloads while retaining dia
   assert.equal(record.reason, undefined);
   assert.equal(record.unknown, undefined);
   assert.ok(!lines.join("").includes(secret));
+});
+
+test("planner filtering retains controlled routing metadata and removes task evidence", () => {
+  const { logger, records, lines } = setup();
+  logger.info({
+    taskBasis: secret, task_basis: secret, undeterminedQuestions: [secret],
+    modelTier: "large", modelSelectionStatus: "undetermined", routeType: "policy_upgrade",
+    backend: "decision", fallbackReason: "decision_failed", sourceModelRef: "provider/small",
+    executed: false, deferred: true, undeterminedQuestionCount: 1
+  }, "model_policy_upgrade");
+  const record = records()[0];
+  assert.equal(record.msg, "model_policy_upgrade");
+  assert.equal(record.modelTier, "large");
+  assert.equal(record.modelSelectionStatus, "undetermined");
+  assert.equal(record.routeType, "policy_upgrade");
+  assert.equal(record.sourceModelRef, "provider/small");
+  assert.equal(record.executed, false);
+  assert.equal(record.undeterminedQuestionCount, 1);
+  assert.equal(record.taskBasis, undefined);
+  assert.ok(!lines.join("").includes(secret));
+  logger.info({ modelTier: secret, modelSelectionStatus: secret, routeType: secret }, "model_policy_unavailable");
+  assert.equal(records()[1].modelTier, undefined);
+  assert.equal(records()[1].msg, "model_policy_unavailable");
+  assert.deepEqual(filterLogContent({ constructor: secret, toString: secret }), { msg: FILTERED_LOG_MESSAGE });
 });
 
 test("serialized output filtering covers child bindings, all levels, interpolation and Error causes", () => {

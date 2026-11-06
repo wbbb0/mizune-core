@@ -9,23 +9,26 @@ export const temporaryWorkspaceToolDescriptors: ToolDescriptor[] = [
     { name: "workspace_clone", description: "获取公开 HTTPS Git 仓库的最新浅克隆文件到新子目录，不执行代码，不保留 Git 历史，不下载子模块。地址应使用最终 URL，不支持重定向。", fields: { url: { type: "string" }, to_path: { type: "string" } }, required: ["url", "to_path"] },
     { name: "workspace_extract", description: "解压工作区中的 ZIP 到新的子目录；不允许越界路径、链接或特殊文件，展开最多 256 MiB。", fields: { path: { type: "string" }, to_path: { type: "string" } }, required: ["path", "to_path"] },
     { name: "workspace_pack", description: "将工作区内的文件或目录打包为新的 ZIP 文件，路径均相对于工作区。之后可用 workspace_export 或 filesystem_send_to_chat。", fields: { paths: { type: "array", items: { type: "string" }, minItems: 1 }, to_path: { type: "string" } }, required: ["paths", "to_path"] }
-  ].map((tool): ToolDescriptor => ({ definition: { type: "function", function: {
+  ].map((tool): ToolDescriptor => ({ modelPolicy: { kind: "bounded_content" }, definition: { type: "function", function: {
     name: tool.name, description: tool.description,
     parameters: { type: "object", properties: { workspace_id: { type: "string" }, ...tool.fields }, required: ["workspace_id", ...tool.required], additionalProperties: false }
   } }, isEnabled: (config) => config.localFiles.enabled })),
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: { type: "function", function: {
       name: "workspace_create", description: "没有明确目标路径或需要处理临时文件时，创建工作区。固定保留一天，重启仍可用。后续 filesystem 工具和 asset_export_to_filesystem 都传 workspace_id 和相对路径。网络、消息、群文件先用现有下载工具取得 asset，再复制进工作区。",
       parameters: { type: "object", properties: { name: { type: "string", description: "简短任务名称" } }, additionalProperties: false }
     } }, isEnabled: (config) => config.localFiles.enabled
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: { type: "function", function: {
       name: "workspace_close", description: "关闭当前用户的临时工作区并删除其中所有文件；已导出的 asset 保留。",
       parameters: { type: "object", properties: { workspace_id: { type: "string" } }, required: ["workspace_id"], additionalProperties: false }
     } }, isEnabled: (config) => config.localFiles.enabled
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: { type: "function", function: {
       name: "workspace_export", description: "把工作区中的一个文件复制登记为持久 asset，用于之后发送或处理。原文件不变。",
       parameters: { type: "object", properties: { workspace_id: { type: "string" }, path: { type: "string", description: "工作区内相对文件路径" } }, required: ["workspace_id", "path"], additionalProperties: false }

@@ -101,7 +101,7 @@ test("task-only planning omits inactive fields and rejects unsolicited routing, 
   let system = "";
   let user = "";
   const planner = createReplyGate(config(), {
-    resultText: "reason: 暂停当前任务\nreply_decision: wait\ntopic_decision: new_topic\ntoolset_ids: shell_runtime\ntask_intent: pause_current|task-1|high",
+    resultText: "{\"task_basis\":\"暂停当前任务\",\"reply\":\"wait\",\"topic\":\"new_topic\",\"toolset:shell_runtime\":true,\"task\":\"pause_current\"}",
     onGenerate(input) {
       system = String(input.messages[0]?.content);
       user = JSON.stringify(input.messages[1]?.content);
@@ -117,8 +117,8 @@ test("task-only planning omits inactive fields and rejects unsolicited routing, 
   });
   assert.doesNotMatch(system, /reply_decision|topic_decision|toolset_ids|planner_model_selection|required_capabilities/);
   assert.doesNotMatch(user, /available_toolsets|shell_run/);
-  assert.match(system, /严格输出以下 2 行/);
-  assert.equal(result.replyDecision, "reply_small");
+  assert.match(system, /严格输出一个 JSON object/);
+  assert.equal(result.replyDecision, "reply");
   assert.equal(result.topicDecision, "continue_topic");
   assert.deepEqual(result.toolsetIds, []);
   assert.equal(result.taskIntent?.kind, "pause_current");

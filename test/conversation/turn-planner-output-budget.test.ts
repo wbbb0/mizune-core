@@ -45,7 +45,7 @@ test("OpenRouter planner sends a short budget with reasoning disabled, but prese
   const planner = new TurnPlanner(config, new LlmClient(config, logger), { getMany: async () => [] }, {
     prepareFilesForModel: async () => []
   }, logger);
-  const text = "reason: 用户要求暂停\ntask_intent: pause_current|task-1|high";
+  const text = "{\"task_basis\":\"用户要求暂停\",\"task\":\"pause_current\"}";
   await withMockFetch([{
     assertRequest(body: Record<string, any>) {
       assert.equal(body.max_tokens, 512);
@@ -85,7 +85,7 @@ for (const type of ["google", "openai_responses_compatible"] as const) {
     const planner = new TurnPlanner(config, new LlmClient(config, logger), { getMany: async () => [] }, {
       prepareFilesForModel: async () => []
     }, logger);
-    const text = "reason: 用户要求暂停\ntask_intent: pause_current|task-1|high";
+    const text = "{\"task_basis\":\"用户要求暂停\",\"task\":\"pause_current\"}";
     await withMockFetch([{
       assertRequest(body: Record<string, any>) {
         if (type === "google") {

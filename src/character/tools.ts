@@ -14,10 +14,11 @@ export const characterToolNames = [
 ];
 export function characterToolDescriptors(config?: AppConfig): ToolDescriptor[] {
   return [
-    { definition: { type: "function", function: { name: characterToolNames[0]!, description: "列出当前角色配置阶段或动态状态的分块目录与填写进度，不返回整份档案。按需查询，可直接使用对应编辑工具，无需先读取。", parameters: { type: "object", properties: {}, additionalProperties: false } } } },
-    { definition: { type: "function", function: { name: characterToolNames[1]!, description: "读取指定分块的字段说明、格式与当前值；集合分块可传 itemId 按单条读取。例如 persona.name、social.identity、social.referenceImages、embodiment.physiology.menstrualCycle。", parameters: { type: "object", properties: { id: { type: "string" }, itemId: { type: "string", description: "可选。读取集合分块中的单条记录 ID" } }, required: ["id"], additionalProperties: false } } } },
-    { definition: { type: "function", function: { name: characterToolNames[2]!, description: "只填写当前一个分块；集合按单条 ID 增改或删除。配置只写草稿，由用户 .confirm 发布。用户明确不填可 skip。普通游玩只能写动态状态。周期发生日期由代码控制。", parameters: { type: "object", properties: { id: { type: "string" }, action: { type: "string", enum: ["set", "upsert", "remove", "skip"] }, value: { description: "严格按 read_character_section 返回的 schema 提供一个分块或条目" }, itemId: { type: "string" }, draftId: { type: "string", description: "配置时传目录返回的草稿 ID；普通动态更新省略" } }, required: ["id", "action"], additionalProperties: false } } } },
+    { modelPolicy: { kind: "observe" }, definition: { type: "function", function: { name: characterToolNames[0]!, description: "列出当前角色配置阶段或动态状态的分块目录与填写进度，不返回整份档案。按需查询，可直接使用对应编辑工具，无需先读取。", parameters: { type: "object", properties: {}, additionalProperties: false } } } },
+    { modelPolicy: { kind: "observe" }, definition: { type: "function", function: { name: characterToolNames[1]!, description: "读取指定分块的字段说明、格式与当前值；集合分块可传 itemId 按单条读取。例如 persona.name、social.identity、social.referenceImages、embodiment.physiology.menstrualCycle。", parameters: { type: "object", properties: { id: { type: "string" }, itemId: { type: "string", description: "可选。读取集合分块中的单条记录 ID" } }, required: ["id"], additionalProperties: false } } } },
+    { modelPolicy: { kind: "bounded_content" }, definition: { type: "function", function: { name: characterToolNames[2]!, description: "只填写当前一个分块；集合按单条 ID 增改或删除。配置只写草稿，由用户 .confirm 发布。用户明确不填可 skip。普通游玩只能写动态状态。周期发生日期由代码控制。", parameters: { type: "object", properties: { id: { type: "string" }, action: { type: "string", enum: ["set", "upsert", "remove", "skip"] }, value: { description: "严格按 read_character_section 返回的 schema 提供一个分块或条目" }, itemId: { type: "string" }, draftId: { type: "string", description: "配置时传目录返回的草稿 ID；普通动态更新省略" } }, required: ["id", "action"], additionalProperties: false } } } },
     {
+      modelPolicy: { kind: "bounded_content" },
       definition: {
         type: "function",
         function: {

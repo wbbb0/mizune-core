@@ -157,6 +157,7 @@ export function createBuiltinToolExecutor(
     operationMode?: SessionOperationMode | undefined;
     profileToolScope?: ProfileToolScope | null;
     visibilityContext?: ToolVisibilityContext;
+    beforeToolExecution?: (tool: ToolDescriptor, args: unknown, call: LlmToolCall) => string | null;
   }
 ): (toolCall: LlmToolCall, args: unknown) => Promise<string | LlmToolExecutionResult> {
   const allowedToolNames = new Set(
@@ -222,6 +223,12 @@ export function createBuiltinToolExecutor(
     context.projectionToolNames = [...currentTools].filter(name => allowedToolNames.has(name));
     const baseName = isCharacterSetupToolName(toolCall.function.name) ? "edit_character_section" : toolCall.function.name;
     if (!currentTools.has(baseName)) return projectRawToolContent(toolCall.function.name, JSON.stringify({ error: "当前权限、会话模式或连接能力已不允许此工具。" }));
+    const descriptor = getBuiltinToolDescriptors(context.config).find(tool => tool.definition.function.name === baseName);
+    if (descriptor && options?.beforeToolExecution && (allowedToolNames.has(toolCall.function.name)
+      || (isCharacterSetupToolName(toolCall.function.name) && allowedToolNames.has(baseName)))) {
+      const blocked = options.beforeToolExecution(descriptor, args, toolCall);
+      if (blocked !== null) return projectRawToolContent(toolCall.function.name, blocked);
+    }
     if (isCharacterSetupToolName(toolCall.function.name) && allowedToolNames.has("edit_character_section")
       && (options?.availableToolNames === undefined || options.availableToolNames.includes("edit_character_section")
         || options.availableToolNames.includes(toolCall.function.name))) {

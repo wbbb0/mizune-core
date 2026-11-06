@@ -1114,7 +1114,7 @@ test(`normal prompt receives task tracker changes from turn planner intent (comp
           async decide(input: { taskContext?: unknown }) {
             capturedPlannerTaskContext = input.taskContext;
             return {
-              replyDecision: "reply_small",
+              replyDecision: "reply",
               topicDecision: "new_topic",
               reason: "用户想先放下任务",
             requiredCapabilities: [],
@@ -1333,7 +1333,7 @@ test("turn planner receives content-safety projected history and batch", async (
           capturedPlannerHistory = input.recentMessages;
           capturedPlannerBatchMessages = input.batchMessages;
           return {
-            replyDecision: "reply_small",
+            replyDecision: "reply",
             topicDecision: "continue_topic",
             reason: "ok",
             requiredCapabilities: [],

@@ -7,6 +7,7 @@ import { conversationContextPolicy, keepRawUnlessLargePolicy, stateChangePolicy 
 import { getSessionModeDefinition, sessionModeSupportsChatType } from "#modes/registry.ts";
 export const sessionToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -22,6 +23,7 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -40,6 +42,7 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
     resultObservation: stateChangePolicy()
   },
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
@@ -57,6 +60,7 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 0 })
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {
@@ -74,6 +78,7 @@ export const sessionToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {

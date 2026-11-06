@@ -155,7 +155,7 @@ for (const value of plannerCases) {
       async decide(input: { availableSkills: Array<{ id: string }> }) {
         selected = input.availableSkills.map(skill => skill.id);
         return {
-          replyDecision: "reply_small", topicDecision: "continue_topic", reason: "验证候选", toolsetIds: ["time_utils"],
+          replyDecision: "reply", topicDecision: "continue_topic", reason: "验证候选", toolsetIds: ["time_utils"],
           requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none"
         };
       }

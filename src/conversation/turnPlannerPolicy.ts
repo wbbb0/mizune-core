@@ -47,7 +47,7 @@ export function getTurnPlannerReasons(requirements: TurnPlannerRequirements): st
 
 // Output limits may include hidden reasoning. Only cap routes whose every candidate
 // is non-thinking or whose provider actually disables thinking for this request.
-export function resolveTurnPlannerOutputTokenLimit(config: AppConfig, modelRefs: readonly string[]): number | undefined {
+export function resolveTurnPlannerOutputTokenLimit(config: AppConfig, modelRefs: readonly string[], estimatedOutputTokens = 512): number | undefined {
   if (config.llm.turnPlanner.enableThinking || modelRefs.length === 0) return undefined;
   const canUseShortBudget = modelRefs.every((ref) => {
     const model = config.llm.models[ref];
@@ -73,12 +73,12 @@ export function resolveTurnPlannerOutputTokenLimit(config: AppConfig, modelRefs:
         return false;
     }
   });
-  return canUseShortBudget ? 512 : undefined;
+  return canUseShortBudget ? Math.max(512, estimatedOutputTokens) : undefined;
 }
 
 export function getTurnPlannerReplyOptions(needs: TurnPlannerRequirements): string[] {
   return [
-    ...(needs.modelSelection ? ["reply_small", "reply_large"] : ["reply"]),
+    "reply",
     ...(needs.semanticWait ? ["wait"] : []),
     ...(needs.replyGate ? ["no_reply"] : [])
   ];

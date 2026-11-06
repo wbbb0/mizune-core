@@ -7,6 +7,7 @@ import { WorkbenchCard, WorkbenchDisclosure, useWorkbenchWindows } from "@workbe
 import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
 import MediaDeliveryStatus from "./MediaDeliveryStatus.vue";
 import { describeMediaDelivery } from "./mediaDeliveryState";
+import { describeModelRouteType, describePlannerModelSelection } from "./plannerPresentation";
 import NativeSearchResults from "./NativeSearchResults.vue";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
 import MessageContentParts from "./MessageContentParts.vue";
@@ -177,7 +178,7 @@ const itemTone = computed(() => {
     case "fallback_event":
       return props.item.fallbackType === "generation_failure_reply" ? "gate-skip" : "gate";
     case "model_route_event":
-      return "gate";
+      return props.item.routeType === "policy_unavailable" ? "gate-skip" : "gate";
     case "internal_trigger_event":
       return "status";
     case "context_extraction_event":
@@ -307,6 +308,7 @@ const metaChips = computed(() => {
       chips = [
         `action=${props.item.action}`,
         props.item.replyDecision ? `reply=${props.item.replyDecision}` : null,
+        describePlannerModelSelection(props.item),
         props.item.waitPassCount != null ? `wait#${props.item.waitPassCount}` : null,
         props.item.topicDecision ? `topic=${props.item.topicDecision}` : null,
         props.item.toolsetIds && props.item.toolsetIds.length > 0 ? `toolsets=${props.item.toolsetIds.length}` : null
@@ -331,10 +333,12 @@ const metaChips = computed(() => {
       break;
     case "model_route_event":
       chips = [
-        "自助升级",
+        describeModelRouteType(props.item.routeType),
         `${props.item.fromRole} -> ${props.item.toRole}`,
-        props.item.provider
-      ];
+        props.item.provider,
+        props.item.executed === false ? "操作未执行" : null,
+        props.item.toolName
+      ].filter(Boolean) as string[];
       break;
     case "internal_trigger_event":
       chips = [
@@ -526,6 +530,8 @@ const plannerOutputRows = computed(() => {
     { key: "规划 Token", value: props.item.plannerMetrics ? `输入 ${props.item.plannerMetrics.inputTokens ?? "未知"} / 输出 ${props.item.plannerMetrics.outputTokens ?? "未知"} / 缓存 ${props.item.plannerMetrics.cachedTokens ?? "未知"}` : null },
     { key: "规划媒体", value: props.item.plannerMetrics ? `描述 ${props.item.plannerMetrics.mediaCaptionCount} / 图片输入 ${props.item.plannerMetrics.imageInputCount ?? 0} / 表情输入 ${props.item.plannerMetrics.emojiInputCount}` : null },
     { key: "replyDecision", value: props.item.replyDecision ?? null },
+    { key: "模型档位", value: describePlannerModelSelection(props.item) },
+    { key: "未判定项", value: props.item.undeterminedQuestions?.join("、") ?? null },
     { key: "topicDecision", value: props.item.topicDecision ?? null },
     { key: "waitPassCount", value: props.item.waitPassCount != null ? String(props.item.waitPassCount) : null },
     { key: "toolsetIds", value: props.item.toolsetIds && props.item.toolsetIds.length > 0 ? props.item.toolsetIds.join(", ") : null }
@@ -896,6 +902,9 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'gate_decision'" class="flex flex-col gap-2">
+        <WorkbenchCard v-if="item.taskBasis" title="任务依据" compact>
+          <TranscriptTextBlock :text="item.taskBasis" tone="muted" />
+        </WorkbenchCard>
         <WorkbenchDisclosure
           v-if="item.reasoningContent"
           :expanded="reasoningExpanded"
@@ -994,6 +1003,18 @@ function openActions(): void {
         >
           <WorkbenchCard title="模型路由">
             <div class="grid gap-1.5">
+              <WorkbenchCard v-if="item.toolName" compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">操作</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.toolName }} · 尚未执行</span>
+                </div>
+              </WorkbenchCard>
+              <WorkbenchCard v-if="item.sourceModelRef" compact>
+                <div class="flex items-start justify-between gap-3">
+                  <span class="font-mono text-small text-text-subtle">调用来源模型</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.sourceModelRef }}</span>
+                </div>
+              </WorkbenchCard>
               <WorkbenchCard compact>
                 <div class="flex items-start justify-between gap-3">
                   <span class="font-mono text-small text-text-subtle">route</span>
@@ -1003,13 +1024,13 @@ function openActions(): void {
               <WorkbenchCard compact>
                 <div class="flex items-start justify-between gap-3">
                   <span class="font-mono text-small text-text-subtle">modelRefs</span>
-                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.fromModelRefs.join(', ') }} -&gt; {{ item.toModelRefs.join(', ') }}</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.fromModelRefs.join(', ') }} -&gt; {{ item.toModelRefs.join(', ') || '无可用候选' }}</span>
                 </div>
               </WorkbenchCard>
               <WorkbenchCard compact>
                 <div class="flex items-start justify-between gap-3">
                   <span class="font-mono text-small text-text-subtle">provider</span>
-                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.provider }}</span>
+                  <span class="font-mono text-small text-text-muted text-right wrap-break-word">{{ item.provider ?? '无可用供应商' }}</span>
                 </div>
               </WorkbenchCard>
               <WorkbenchCard compact>

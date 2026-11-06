@@ -77,6 +77,7 @@ export interface ToolVisibilityContext {
 }
 
 export interface ToolDescriptor {
+  modelPolicy?: import("./toolModelPolicy.ts").ToolModelPolicy;
   capabilities?: { all?: import("#services/messaging/connectorCapabilities.ts").ConnectorCapability[]; any?: import("#services/messaging/connectorCapabilities.ts").ConnectorCapability[] };
   parameterCapabilities?: Record<string, import("#services/messaging/connectorCapabilities.ts").ConnectorCapability>;
   descriptionWithoutParameters?: string;

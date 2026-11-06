@@ -22,12 +22,14 @@ import { projectToolResult, type JsonObject } from "../core/toolResultProjection
 
 export const messageToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: { type: "function", function: {
       name: "resolve_media_reference", description: "补下载本会话中 pending_media 标记的媒体，返回真实 asset 句柄；受下载退避与平台可用来源限制。",
       parameters: { type: "object", properties: { media_ref: { type: "string" } }, required: ["media_ref"], additionalProperties: false }
     } }, resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "observe" },
     capabilities: { all: ["message.read_native"] },
     definition: {
       type: "function",
@@ -47,6 +49,7 @@ export const messageToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "bounded_content" },
     capabilities: { all: ["message.file.read"] },
     definition: {
       type: "function",

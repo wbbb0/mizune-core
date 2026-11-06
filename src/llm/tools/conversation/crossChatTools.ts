@@ -16,6 +16,7 @@ type GroupListItem = Awaited<ReturnType<BuiltinToolContext["oneBotClient"]["getG
 
 export const crossChatToolDescriptors: ToolDescriptor[] = [
   {
+  modelPolicy: { kind: "observe" },
     accessLevel: "operator",
     capabilities: { all: ["message.targets.read"] },
     definition: {
@@ -35,6 +36,7 @@ export const crossChatToolDescriptors: ToolDescriptor[] = [
     resultObservation: keepRawUnlessLargePolicy({ preserveRecentRawCount: 1 })
   },
   {
+  modelPolicy: { kind: "external_effect" },
     accessLevel: "operator",
     capabilities: { all: ["message.delegate"] },
     definition: {

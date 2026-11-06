@@ -36,6 +36,7 @@ function buildCurrentTimePayload(timezone: string): {
 
 export const timeToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {

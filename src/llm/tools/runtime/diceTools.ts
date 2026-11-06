@@ -6,6 +6,7 @@ import { rollDiceExpression, type DiceRollResult } from "./diceExpression.ts";
 
 export const diceToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "observe" },
     definition: {
       type: "function",
       function: {

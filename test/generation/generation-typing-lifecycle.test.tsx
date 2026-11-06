@@ -96,6 +96,7 @@ async function waitForCondition(predicate: () => boolean, message: string): Prom
 
 function createExecutorHarness(options?: {
   setupMode?: boolean;
+  onFilesystemWrite?: () => void;
   operationMode?: SessionOperationMode;
   unrestrictedTools?: boolean;
   prepareConfig?: (config: ReturnType<typeof createTestAppConfig>) => void;
@@ -162,7 +163,7 @@ function createExecutorHarness(options?: {
           arguments: string;
         };
       }>;
-    }) => Promise<void>;
+    }, usage?: ProviderCallUsageEvent) => Promise<void>;
     onToolResultMessage?: (message: {
       role: "tool";
       tool_call_id: string;
@@ -372,7 +373,7 @@ function createExecutorHarness(options?: {
           return null;
         }
       } as never,
-      localFileService: {} as never,
+      localFileService: { async writeFile(path: string, content: string) { options?.onFilesystemWrite?.(); return { path, bytes: Buffer.byteLength(content) }; } } as never,
       chatFileStore: {} as never,
       comfyClient: {} as never,
       comfyTaskStore: {} as never,
@@ -2006,7 +2007,7 @@ for (const toolSelection of ["all", "planned"] as const) {
       prepareConfig: seedTimeSkill,
       configOverrides: { skills: { plannerSelectionEnabled: false }, llm: { turnPlanner: { toolSelection } } },
       availableToolsets: [timeToolset],
-      skillPlannerDecision: { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "测试", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none", toolsetIds: ["time_utils"], skillIds: ["time-guide"] },
+      skillPlannerDecision: { replyDecision: "reply", topicDecision: "continue_topic", reason: "测试", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none", toolsetIds: ["time_utils"], skillIds: ["time-guide"] },
       customGenerate: async input => {
         reached = true;
         const first = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }, { role: "user", content: "查询时间" }]);
@@ -2043,7 +2044,7 @@ test(`${toolSelection}模式planner skillIds与toolSelection独立`, async () =>
     prepareConfig: seedTimeSkill,
     configOverrides: { llm: { turnPlanner: { toolSelection } } },
     availableToolsets: [timeToolset],
-    skillPlannerDecision: { replyDecision: "reply_small", topicDecision: "continue_topic", reason: "时间方法", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none", toolsetIds: [], skillIds: ["time-guide"] },
+    skillPlannerDecision: { replyDecision: "reply", topicDecision: "continue_topic", reason: "时间方法", requiredCapabilities: [], contextDependencies: [], recentDomainReuse: [], followupMode: "none", toolsetIds: [], skillIds: ["time-guide"] },
     customGenerate: async input => {
       const messages = await input.projectMessagesBeforeProvider!([{ role: "system", content: "系统" }]);
       firstLoaded = JSON.stringify(messages).includes("查询时间前先确认用户要求的时区");
@@ -2269,3 +2270,105 @@ for (const toolSelection of ['all', 'planned'] as const) {
     });
   }
 }
+
+
+const policyModels = {
+  llm: {
+    enabled: true,
+    models: {
+      main: { provider: "test", model: "small", chat: { capabilities: { supportsTools: true } } },
+      large: { provider: "test", model: "large", chat: { capabilities: { supportsTools: true } } }
+    },
+    routingPresets: { test: { mainSmall: ["main"], mainLarge: ["large"] } }
+  },
+  localFiles: { enabled: true }
+};
+const upgradePlan = { fromRole: "main_small" as const, toRole: "main_large" as const, smallModelRefs: ["main"], largeModelRefs: ["large"], provider: "test" };
+const policyCall = (id: string, name = "filesystem_write") => ({ id, type: "function" as const, function: {
+  name, arguments: JSON.stringify(name === "request_model_upgrade" ? { reason: "需要核查操作范围" } : { path: "/host/target.txt", content: "测试产物" })
+} });
+
+for (const explicitUpgrade of [false, true]) test(`真实executor：${explicitUpgrade ? "同批自主升级" : "策略升级"}不会执行旧小模型的文件操作`, async () => {
+  let writes = 0;
+  const harness = createExecutorHarness({
+    sessionSource: "web", streamResponse: false,
+    configOverrides: policyModels,
+    modelSelfUpgradePlan: upgradePlan,
+    availableToolNames: ["filesystem_write", "request_model_upgrade"],
+    onFilesystemWrite: () => { writes++; },
+    customGenerate: async input => {
+      const first = policyCall("write-first");
+      const second = policyCall("write-second");
+      const upgrade = policyCall("upgrade", "request_model_upgrade");
+      const calls = explicitUpgrade ? [upgrade, first, second] : [first, second];
+      const usage = (modelRef: string): ProviderCallUsageEvent => ({ iteration: 1, phase: "tool_call", usage: { ...createUsage(), modelRef }, text: "", reasoningContent: "" });
+      await input.onAssistantToolCalls?.({ role: "assistant", content: "", tool_calls: calls }, usage("main"));
+      if (explicitUpgrade) await input.toolExecutor?.(upgrade);
+      const deferred = await Promise.all([first, second].map(item => input.toolExecutor!(item)));
+      for (const result of deferred) {
+        const data = JSON.parse(typeof result === "string" ? result : result.content);
+        assert.equal(data.executed, false);
+        assert.equal(data.code, "model_policy_deferred");
+      }
+      assert.equal(writes, 0);
+      assert.deepEqual(input.resolveModelRefOverride?.(), ["large"]);
+      if (typeof input.tools === "function") input.tools();
+      const replanned = policyCall("large-write");
+      await input.onAssistantToolCalls?.({ role: "assistant", content: "", tool_calls: [replanned] }, usage("large"));
+      await input.toolExecutor?.(replanned);
+      assert.equal(writes, 1);
+      return { text: "处理完成。", reasoningContent: "", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await harness.runPromise;
+  assert.equal(writes, 1);
+  const routes = harness.sessionManager.getSession(harness.sessionId).internalTranscript.filter(item => item.kind === "model_route_event");
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0]?.routeType, explicitUpgrade ? "self_upgrade" : "policy_upgrade");
+});
+
+test("真实executor：没有允许的升级路径时不执行宿主机文件操作", async () => {
+  let writes = 0;
+  const harness = createExecutorHarness({
+    sessionSource: "web", streamResponse: false, configOverrides: policyModels,
+    availableToolNames: ["filesystem_write"], onFilesystemWrite: () => { writes++; },
+    customGenerate: async input => {
+      const item = policyCall("blocked-write");
+      await input.onAssistantToolCalls?.({ role: "assistant", content: "", tool_calls: [item] }, { iteration: 1, phase: "tool_call", usage: createUsage(), text: "", reasoningContent: "" });
+      const result = await input.toolExecutor!(item);
+      const data = JSON.parse(typeof result === "string" ? result : result.content);
+      assert.equal(data.executed, false);
+      assert.equal(data.code, "model_policy_unavailable");
+      return { text: "当前无法执行该操作。", reasoningContent: "", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await harness.runPromise;
+  assert.equal(writes, 0);
+  assert.ok(harness.sessionManager.getSession(harness.sessionId).internalTranscript.some(item => item.kind === "model_route_event" && item.routeType === "policy_unavailable"));
+});
+
+test("真实executor：配置等价但别名不同的单档路由不会被误判无法升级", async () => {
+  let writes = 0;
+  const harness = createExecutorHarness({
+    sessionSource: "web", streamResponse: false,
+    configOverrides: policyModels,
+    prepareConfig(config) {
+      config.llm.models.alias = structuredClone(config.llm.models.main!);
+      config.llm.routingPresets.test!.mainLarge = ["alias"];
+    },
+    availableToolNames: ["filesystem_write"], onFilesystemWrite: () => { writes++; },
+    customGenerate: async input => {
+      const item = policyCall("equivalent-write");
+      await input.onAssistantToolCalls?.({ role: "assistant", content: "", tool_calls: [item] }, { iteration: 1, phase: "tool_call", usage: createUsage(), text: "", reasoningContent: "" });
+      const result = await input.toolExecutor!(item);
+      assert.doesNotMatch(typeof result === "string" ? result : result.content, /model_policy_unavailable|model_policy_deferred/);
+      return { text: "处理完成。", reasoningContent: "", usage: createUsage() };
+    }
+  });
+  harness.resolveDrain();
+  await harness.runPromise;
+  assert.equal(writes, 1);
+  assert.equal(harness.sessionManager.getSession(harness.sessionId).internalTranscript.filter(item => item.kind === "model_route_event").length, 0);
+});

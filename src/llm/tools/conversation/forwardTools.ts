@@ -10,6 +10,7 @@ import { getStringArg } from "../core/toolArgHelpers.ts";
 import { keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 
 export const forwardToolDescriptors: ToolDescriptor[] = [{
+  modelPolicy: { kind: "observe" },
   definition: { type: "function", function: {
     name: "view_forward_record",
     description: "在当前会话按 record_ref 分页展开转发记录。每段最多1000字，默认10段、最多20段；嵌套记录保持折叠。图片仅返回资产引用，不自动发给视觉API；先读正文，再选少量相关图片用 asset_media_view 查看。",

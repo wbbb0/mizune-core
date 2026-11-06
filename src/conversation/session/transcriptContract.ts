@@ -2,6 +2,7 @@ import { mediaDeliveryStatusSchema, mediaDeliveryErrorSchema } from "./mediaDeli
 import { z } from "zod";
 import type { PersistedMessageContentPart } from "#messages/contentParts.ts";
 import { chatAttachmentSchema, chatFileKindValues } from "../../types/chatContracts.ts";
+import { PLANNER_TASK_BASIS_MAX_LENGTH } from "../turnPlanner/limits.ts";
 
 export const transcriptItemRuntimeExclusionReasonValues = ["history_compressed", "manual_single", "manual_group", "manual_truncate_after", "interrupt_cleanup", "system"] as const;
 export const transcriptSystemMarkerKindValues = [
@@ -398,6 +399,10 @@ export const transcriptGateDecisionItemSchema = z.object({
   reasoningContent: z.string().optional(),
   waitPassCount: z.number().int().nonnegative().optional(),
   replyDecision: z.enum(["reply", "reply_small", "reply_large", "wait", "no_reply", "ignore"]).optional(),
+  modelTier: z.enum(["small", "large"]).optional(),
+  modelSelectionStatus: z.enum(["decided", "undetermined", "not_requested"]).optional(),
+  taskBasis: z.string().refine(value => [...value].length <= PLANNER_TASK_BASIS_MAX_LENGTH, "任务依据超过长度上限").optional(),
+  undeterminedQuestions: z.array(z.string().min(1)).optional(),
   topicDecision: z.string().optional(),
   requiredCapabilities: z.array(z.string()).optional(),
   contextDependencies: z.array(z.string()).optional(),
@@ -452,15 +457,28 @@ export const transcriptModelRouteEventItemSchema = z.object({
   kind: z.literal("model_route_event"),
   llmVisible: z.literal(false),
   timestampMs: z.number().int().nonnegative(),
-  routeType: z.literal("self_upgrade"),
+  routeType: z.enum(["self_upgrade", "policy_upgrade", "policy_unavailable"]),
   fromRole: z.literal("main_small"),
   toRole: z.literal("main_large"),
   title: z.string(),
   summary: z.string(),
   reason: z.string(),
   fromModelRefs: z.array(z.string().min(1)).min(1),
-  toModelRefs: z.array(z.string().min(1)).min(1),
-  provider: z.string().min(1)
+  toModelRefs: z.array(z.string().min(1)),
+  provider: z.string().min(1).optional(),
+  toolName: z.string().min(1).optional(),
+  sourceModelRef: z.string().min(1).optional(),
+  executed: z.literal(false).optional()
+}).superRefine((event, context) => {
+  if (event.routeType !== "policy_unavailable" && event.toModelRefs.length === 0) {
+    context.addIssue({ code: "custom", path: ["toModelRefs"], message: "模型路由变更必须包含目标候选" });
+  }
+  if (event.routeType !== "policy_unavailable" && !event.provider) {
+    context.addIssue({ code: "custom", path: ["provider"], message: "模型路由变更必须包含目标供应商" });
+  }
+  if (event.routeType !== "self_upgrade" && (!event.toolName || event.executed !== false)) {
+    context.addIssue({ code: "custom", message: "操作策略路由事件必须标识尚未执行的工具" });
+  }
 });
 
 export const transcriptInternalTriggerEventItemSchema = z.object({

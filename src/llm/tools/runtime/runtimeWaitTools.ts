@@ -8,6 +8,7 @@ const activeRuntimeWaitSessions = new Set<string>();
 
 export const runtimeWaitToolDescriptors: ToolDescriptor[] = [
   {
+    modelPolicy: { kind: "bounded_content" },
     definition: {
       type: "function",
       function: {
