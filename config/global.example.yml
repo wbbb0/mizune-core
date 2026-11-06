@@ -92,6 +92,7 @@ llm:
     timeoutMs: 30000
     enableThinking: false
     maxConcurrency: 2
+  # 原生选模采用 small/large 最大概率，同概率取 large；日志与 WebUI 展示概率和 confidence。
   turnPlanner:
     enabled: true
     timeoutMs: 20000

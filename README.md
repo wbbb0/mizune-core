@@ -19,7 +19,7 @@ Mizune Core 是一个基于 Node.js / TypeScript 的长期运行 LLM 聊天代�
 - persona、RP / Scenario 资料、用户资料、记忆和规则持久化
 - LLM provider → model 分层目录与 routing preset，支持供应商内局部模型别名、同名模型快速切换，以及按 preset 设置历史窗口和 token 上下限
 - 历史压缩、自动会话标题、图片说明、音频转写、turn planner
-  - turn planner 按需调用：统一维护 Decision 风格的问题与选项条件，配置有效 `decision` 路由时优先使用原生决策；普通聊天模型的 prompt 和输出约束自动生成，并先输出简短任务依据。回复动作与模型档位独立，按操作影响和质量要求选模，工具执行前再次校验最低档位；Sessions 展示未判定、策略升级及操作未执行状态。默认全量提供当前允许的工具、关闭语义等待；大小候选链等价时不宣称存在实际能力提升。配置、结构边界与成本观测见 [轮次规划](docs/architecture/turn-planner.md)。
+  - turn planner 按需调用：统一维护 Decision 风格的问题与选项条件，配置有效 `decision` 路由时优先使用原生决策；普通聊天模型的 prompt 和输出约束自动生成，并先输出简短任务依据。回复动作与模型档位独立，原生选模采用概率最高的档位（同概率取大档），日志与 Sessions 消息展示各档概率及置信度；按操作影响和质量要求选模，工具执行前再次校验最低档位；Sessions 展示未判定、策略升级及操作未执行状态。默认全量提供当前允许的工具、关闭语义等待；大小候选链等价时不宣称存在实际能力提升。配置、结构边界与成本观测见 [轮次规划](docs/architecture/turn-planner.md)。
 - 实例共享的标准 `SKILL.md` 技能库：WebUI 管理、模型按需加载与自主维护、任务版本固定、可编辑工具组绑定和版本回滚。技能只提供方法，具体边界见 [实例技能库](docs/architecture/skills.md)。
 - shell、workspace 文件、网页搜索、浏览器、ComfyUI 等可选工具能力
   - 后台 shell、下载、ComfyUI 任务完成后，事件会以 `⟦section name="background_event_batch"⟧` 批注入到当前工具调用循环的下一次 LLM 推理前，无需等待当前响应收尾；定时任务（scheduled instruction）仍在无活动响应时开独立 session。
@@ -330,7 +330,7 @@ Agent 可按需收藏、检索、维护和发送表情。`stickers.enabled` 默�
 
 ### 三层角色初始化
 
-角色配置采用 `persona`、`social`、`embodiment` 三层；沉浸模式开局再确认本会话 `state`。模型按分块推荐填写，每阶段使用 `.confirm` 保存，允许留空；`.config <阶段>` 修改，`.cancel` 放弃草稿。进入阶段会自动触发一次引导。详见 [角色初始化与状态边界](docs/architecture/character-initialization.md)。旧角色数据不迁移，新配置保存在实例 `character.sqlite`。 WebUI 的 Data →「三层角色档案」提供树形编辑、验证与保存；保存发布实际改动层，检查版本冲突。会话「RP 状态」页使用标准工作台组件查看动态状态与存档。
+角色配置采用 `persona`、`social`、`embodiment` 三层；沉浸模式开局再确认本会话 `state`。模型按分块推荐填写，每阶段使用 `.confirm` 保存，允许留空；`.config <阶段>` 修改，`.cancel` 放弃草稿。进入阶段会自动触发一次引导，沿用真实请求授权，并在文本实际送达后记录完成；失败或取消不会永久消耗引导机会。详见 [角色初始化与状态边界](docs/architecture/character-initialization.md)。旧角色数据不迁移，新配置保存在实例 `character.sqlite`。 WebUI 的 Data →「三层角色档案」提供树形编辑、验证与保存；保存发布实际改动层，检查版本冲突。会话「RP 状态」页使用标准工作台组件查看动态状态与存档。
 
 在 `.config social` 阶段上传并明确指定角色设定图，模型可调用图片精读，保存原图关联与详细中文描述，再辅助填写外观。资料随草稿确认发布，后续可按需看图、发送或作为绘图参考；沉浸模式游玩期的发送与绘图仍需启用对应会话工具集。Data 可预览图片、编辑标签和描述或解除关联；来源图片和目标主体只读。
 

@@ -162,10 +162,13 @@ export class CharacterRepository {
     const current = this.draft(sessionId); if (current) return current;
     const stage = this.requiredStage(sessionId, mode); return stage ? this.begin(sessionId, stage, "setup", mode) : null;
   }
-  claimIntroduction(sessionId: string): boolean {
+  markIntroductionDelivered(sessionId: string, expectedDraftId: string): boolean {
     return this.transaction(() => {
-      const draft = this.draft(sessionId); if (!draft || draft.introduction !== "pending") return false;
-      draft.introduction = "claimed"; this.write(`draft:${sessionId}`, draft); return true;
+      const draft = this.draft(sessionId);
+      if (!draft || draft.id !== expectedDraftId || draft.introduction === "delivered") return false;
+      draft.introduction = "delivered";
+      this.write(`draft:${sessionId}`, draft);
+      return true;
     });
   }
   cancel(sessionId: string): void { this.db.prepare("DELETE FROM character_documents WHERE id = ?").run(`draft:${sessionId}`); }

@@ -1,3 +1,4 @@
+import { modelSelectionScoresSchema } from "./modelSelectionScores.ts";
 import type { DecisionQuestion } from "#llm/provider/nativeCapabilityTypes.ts";
 import { MODEL_SELECTION_INSTRUCTIONS, MODEL_SELECTION_LARGE_WHEN, MODEL_SELECTION_SMALL_WHEN, STATEFUL_RP_MODEL_SELECTION_RULE } from "#llm/shared/modelSelectionPolicy.ts";
 import { taskPlannerIntentKinds, type TaskPlannerIntentKind } from "../taskTracker/taskTrackerPlannerContext.ts";
@@ -12,10 +13,12 @@ export interface PlannerAnswer {
   value: string | boolean | null;
   probability?: number;
   confidence?: number;
+  probabilities?: Array<{ value: string | boolean; probability: number }>;
 }
 export interface PlannerQuestionDefinition {
   question: Extract<DecisionQuestion, { type: "choice" | "predicate" }>;
   threshold?: number;
+  choicePolicy?: "highest_probability";
   apply: (answer: PlannerAnswer, plan: TurnPlannerResult) => void;
 }
 const capabilityDescriptions: Record<typeof turnPlannerRequiredCapabilities[number], string> = {
@@ -55,8 +58,8 @@ const intentDescriptions: Record<TaskPlannerIntentKind, string> = {
 export function buildPlannerQuestions(input: PlannerDefinitionInput): PlannerQuestionDefinition[] {
   const definitions: PlannerQuestionDefinition[] = [];
   const needs = input.requirements;
-  const choice = (name: string, instructions: string, choices: Array<{ value: string; description: string }>, apply: PlannerQuestionDefinition["apply"]) => {
-    definitions.push({ question: { name, type: "choice", instructions, choices }, apply });
+  const choice = (name: string, instructions: string, choices: Array<{ value: string; description: string }>, apply: PlannerQuestionDefinition["apply"], choicePolicy?: "highest_probability") => {
+    definitions.push({ question: { name, type: "choice", instructions, choices }, apply, ...(choicePolicy ? { choicePolicy } : {}) });
   };
   const predicate = (name: string, instructions: string, threshold: number, apply: PlannerQuestionDefinition["apply"]) => {
     definitions.push({ question: { name, type: "predicate", instructions, }, threshold, apply });
@@ -80,8 +83,13 @@ export function buildPlannerQuestions(input: PlannerDefinitionInput): PlannerQue
       if (answer.value === "small" || answer.value === "large") {
         plan.modelTier = answer.value;
         plan.modelSelectionStatus = "decided";
+        if (answer.probabilities) plan.modelSelectionScores = modelSelectionScoresSchema.parse({
+          small: answer.probabilities.find(item => item.value === "small")?.probability,
+          large: answer.probabilities.find(item => item.value === "large")?.probability,
+          confidence: answer.confidence
+        });
       }
-    });
+    }, "highest_probability");
   }
   if (needs.topicSwitch) {
     choice("topic", "判断本轮与近期内容的语义关系，不判断是否取消、完成或恢复任务。", [
@@ -133,7 +141,13 @@ export function applyPlannerAnswers(input: PlannerDefinitionInput, definitions: 
   for (const definition of definitions) {
     const name = definition.question.name;
     let answer: PlannerAnswer = answers.get(name) ?? { value: null };
-    if (definition.question.type === "choice" && answer.value !== null && (
+    if (definition.question.type === "choice" && definition.choicePolicy === "highest_probability" && answer.value !== null && answer.probabilities) {
+      // Declared order breaks ties deterministically: small, then large; the last maximum wins.
+      const candidates = definition.question.choices.map(choice => answer.probabilities!.find(item => item.value === choice.value)!);
+      const selected = candidates.reduce((best, item) => item.probability >= best.probability ? item : best);
+      answer = { ...answer, value: selected.value, probability: selected.probability };
+    }
+    if (definition.question.type === "choice" && definition.choicePolicy !== "highest_probability" && answer.value !== null && (
       (answer.confidence !== undefined && answer.confidence < PLANNER_ACTION_CONFIDENCE)
       || (answer.probability !== undefined && answer.probability < PLANNER_ACTION_CONFIDENCE)
     )) answer = { ...answer, value: null };

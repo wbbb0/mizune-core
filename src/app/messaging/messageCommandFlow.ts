@@ -52,6 +52,8 @@ export async function dispatchChatDirectCommand(
     command,
     sessionId: context.session.id,
     incomingMessage: {
+      ...(context.enrichedMessage.actorAuthorization ? { actorAuthorization: context.enrichedMessage.actorAuthorization } : {}),
+      ...(context.enrichedMessage.replyContext ? { replyContext: context.enrichedMessage.replyContext } : {}),
       ...(context.enrichedMessage.channelId ? { channelId: context.enrichedMessage.channelId } : {}),
       chatType: context.enrichedMessage.chatType,
       userId: context.enrichedMessage.userId,

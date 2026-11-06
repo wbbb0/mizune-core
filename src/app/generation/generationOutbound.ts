@@ -21,6 +21,7 @@ export interface GenerationOutboundInput {
   sendTarget: GenerationSendTarget;
   committedTextSink?: GenerationCommittedTextSink | undefined;
   isCurrent?: (() => boolean) | undefined;
+  onTextDelivered?: (() => void) | undefined;
 }
 
 // Sends outbound assistant text and mirrors successful chunks into session history.
@@ -45,6 +46,7 @@ export function createGenerationOutbound(
       senderName: input.sendTarget.senderName, text, ...(deliveryRef ? { deliveryRef } : {})
     }, Date.now());
     if (!appended) return;
+    input.onTextDelivered?.();
     if (deliveryRef) sessionManager.recordSentMessage(input.sessionId, { messageId: deliveryRef.messageId, text, sentAt: Date.now() });
     sessionManager.appendActiveAssistantResponseChunkIfResponseEpochMatches(input.sessionId, input.responseEpoch, {
       chatType: input.sendTarget.chatType, userId: input.sendTarget.userId, senderName: input.sendTarget.senderName
@@ -172,6 +174,7 @@ export function createGenerationOutbound(
         timestampMs
       );
       if (appended) {
+        input.onTextDelivered?.();
         persistSession(input.sessionId, "assistant_chunk_history_appended");
       } else {
         logger.info(

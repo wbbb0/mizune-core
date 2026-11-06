@@ -1,3 +1,4 @@
+import type { SyntheticPendingMessage } from "./sessionTypes.ts";
 import { patchMediaDeliveryState, type MediaDeliveryPatch } from "./mediaDelivery.ts";
 import { applySessionMediaResolution } from "./sessionMediaRecovery.ts";
 import type { MediaResolution } from "#services/workspace/mediaSources/types.ts";
@@ -211,28 +212,7 @@ export class SessionManager {
 
   appendSyntheticPendingMessage(
     sessionId: string,
-    message: {
-      chatType: "private" | "group";
-      userId: string;
-      groupId?: string;
-      senderName: string;
-      text: string;
-      contentParts?: SessionMessage["contentParts"];
-      images: string[];
-      audioSources?: string[];
-      audioIds?: string[];
-      emojiSources?: string[];
-      imageIds?: string[];
-      emojiIds?: string[];
-      attachments?: SessionMessage["attachments"];
-      messageFiles?: SessionMessage["messageFiles"];
-      specialSegments?: SessionMessage["specialSegments"];
-      forwardIds?: string[];
-      replyMessageId?: string | null;
-      mentionUserIds?: string[];
-      mentionedAll?: boolean;
-      isAtMentioned?: boolean;
-    }
+    message: SyntheticPendingMessage
   ): SessionState {
     const session = this.requireSession(sessionId);
     const updated = appendSessionMessage(session, {

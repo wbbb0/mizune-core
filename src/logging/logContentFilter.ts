@@ -1,3 +1,4 @@
+import { modelSelectionScoresSchema } from "../conversation/turnPlanner/modelSelectionScores.ts";
 import { projectRequestDiagnostic } from "../llm/provider/requestDiagnostics.ts";
 import { safeLogEvents } from "./safeLogEvents.ts";
 
@@ -70,6 +71,8 @@ export function filterLogContent(record: Record<string, unknown>): Record<string
     if (record[key] !== undefined) filtered[key] = filterError(record[key]);
   }
   if (typeof record.stage === "string" && ["prepare", "generate", "delivery"].includes(record.stage)) filtered.stage = record.stage;
+  const scores = modelSelectionScoresSchema.safeParse(record.modelSelectionScores);
+  if (scores.success) filtered.modelSelectionScores = scores.data;
   const diagnostic = projectRequestDiagnostic(record.requestDiagnostic);
   if (diagnostic) filtered.requestDiagnostic = diagnostic;
   return filtered;

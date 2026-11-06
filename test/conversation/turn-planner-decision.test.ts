@@ -2,6 +2,8 @@ import { plannerChatFixture } from "../helpers/planner-chat-fixtures.ts";
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import pino from "pino";
+import { createLogger } from "../../src/logger.ts";
+import { recordGenerationPlannerDecision } from "../../src/app/generation/generationModelPlanner.ts";
 import { TurnPlanner } from "../../src/conversation/turnPlanner.ts";
 import type { TurnPlannerInput } from "../../src/conversation/turnPlanner/types.ts";
 import type { DecisionAnswer, LlmDecideParams } from "../../src/llm/provider/nativeCapabilityTypes.ts";
@@ -368,3 +370,39 @@ for (const answer of ["wait", null] as const) {
     assert.equal(result.replyDecision, answer === "wait" ? "wait" : "reply");
   });
 }
+
+for (const sample of [
+  { small: 0.6, large: 0.4, choice: "large", expected: "small" },
+  { small: 0.45, large: 0.55, choice: "small", expected: "large" },
+  { small: 0.5, large: 0.5, choice: "small", expected: "large" },
+  { small: 0, large: 1, choice: "small", expected: "large" }
+] as const) test(`选模采用最大概率并记录原始数值：${sample.small}/${sample.large}`, async () => {
+  const { config, client } = setup();
+  config.logLevel = "info";
+  const logs: string[] = [];
+  const logger = createLogger(config, { destination: { write(line) { logs.push(line); } } });
+  const planner = new TurnPlanner(config, client, { getMany: async () => [] }, { prepareFilesForModel: async () => [] }, logger);
+  setFetchImplementationForTests(async (_url, init) => {
+    const request: LlmDecideParams = JSON.parse(String(init?.body));
+    const response = await decisionResponse(request, {}, 0.95).json();
+    const model = response.answers.find((answer: { name: string }) => answer.name === "model");
+    Object.assign(model, { choice: sample.choice, confidence: 0.1,
+      probabilities: [{ value: "large", probability: sample.large }, { value: "small", probability: sample.small }] });
+    return Response.json(response);
+  });
+  const result = await planner.decide(baseInput);
+  const scores = { small: sample.small, large: sample.large, confidence: 0.1 };
+  assert.equal(result.modelTier, sample.expected);
+  assert.equal(result.modelSelectionStatus, "decided");
+  assert.ok(!result.undeterminedQuestions?.includes("model"));
+  assert.deepEqual(result.modelSelectionScores, scores);
+  const log = logs.map(line => JSON.parse(line)).find(record => record.msg === "turn_planner_decided");
+  assert.deepEqual(log.modelSelectionScores, scores);
+  assert.equal(log.modelTier, sample.expected);
+  let record: unknown;
+  recordGenerationPlannerDecision({ sessionManager: { appendInternalTranscript(_id: string, item: unknown) { record = item; } } as never, persistSession() {} },
+    { sessionId: baseInput.sessionId, planner: result, action: "continue", plannerReasons: ["modelSelection"] });
+  const stored = transcriptGateDecisionItemSchema.parse(record);
+  assert.equal(stored.modelTier, sample.expected);
+  assert.deepEqual(stored.modelSelectionScores, scores);
+});
