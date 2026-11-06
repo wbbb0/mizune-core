@@ -1,4 +1,5 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { JsonSchemaValidatorCache } from "../utils/jsonSchemaValidatorCache.ts";
 import personaDocument from "./schemas/tier1-persona.schema.json" with { type: "json" };
 import socialDocument from "./schemas/tier2-social.schema.json" with { type: "json" };
 import embodimentDocument from "./schemas/tier3-embodiment-and-simulation.schema.json" with { type: "json" };
@@ -15,8 +16,7 @@ export interface CharacterSection {
   collectionKey?: string;
   immutableItemFields?: readonly string[];
 }
-const ajv = new Ajv2020({ strict: false, allErrors: true });
-const validators = new WeakMap<JsonObject, ReturnType<typeof ajv.compile>>();
+const validators = new JsonSchemaValidatorCache(() => new Ajv2020({ strict: false, allErrors: true }));
 
 function expand(schema: JsonObject, document: JsonObject): JsonObject {
   if (schema.$ref) {
@@ -78,8 +78,7 @@ export function getCharacterSection(id: string): CharacterSection {
 }
 
 export function validateJson(schema: JsonObject, value: unknown, id: string): void {
-  let validate = validators.get(schema);
-  if (!validate) { validate = ajv.compile(schema); validators.set(schema, validate); }
+  const validate = validators.get(schema);
   if (!validate(value)) {
     const details = (validate.errors ?? []).slice(0, 8).map(error => `${error.instancePath || "/"}: ${error.message}`).join("；");
     throw new Error(`分块 ${id} 格式不正确：${details}`);

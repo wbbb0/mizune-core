@@ -1,14 +1,16 @@
 import { Ajv, type ErrorObject, type ValidateFunction } from "ajv";
 import type { LlmToolCall, LlmToolDefinition } from "./provider/providerTypes.ts";
 import { parseNormalizedToolArguments } from "./shared/toolArgs.ts";
+import { JsonSchemaValidatorCache } from "../utils/jsonSchemaValidatorCache.ts";
 
 const MAX_TOOL_CALLS_PER_BATCH = 32;
 const MAX_TOOL_CALL_PAYLOAD_CHARS = 256_000;
 const TOOL_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]{0,127}$/;
 const DSML_TOOL_ENVELOPE = /<[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*tool_calls\s*>[\s\S]*?<\/[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*tool_calls\s*>/iu;
 
-const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
-const validatorCache = new WeakMap<object, ValidateFunction>();
+const validatorCache = new JsonSchemaValidatorCache(
+  () => new Ajv({ allErrors: true, strict: false, validateFormats: false })
+);
 
 export type ToolCallEnvelopeIssueCode =
   | "dsml_tool_envelope"
@@ -199,11 +201,7 @@ function validateArguments(
 ): { ok: true } | { ok: false; message: string } {
   let validator: ValidateFunction;
   try {
-    const cached = validatorCache.get(schema);
-    validator = cached ?? ajv.compile(schema);
-    if (!cached) {
-      validatorCache.set(schema, validator);
-    }
+    validator = validatorCache.get(schema);
   } catch {
     return { ok: false, message: "工具参数定义不可用" };
   }
