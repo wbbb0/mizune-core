@@ -52,6 +52,25 @@ function normalizeChatFilesRoot(root: string | undefined): string {
   return normalized === "." ? "chat-files" : normalized;
 }
 
+const CHAT_FILE_SELECT = `SELECT
+  file_id AS fileId,
+  file_ref AS fileRef,
+  kind,
+  origin,
+  chat_file_path AS chatFilePath,
+  source_name AS sourceName,
+  mime_type AS mimeType,
+  size_bytes AS sizeBytes,
+  created_at_ms AS createdAtMs,
+  source_context_json AS sourceContextJson,
+  caption,
+  caption_status AS captionStatus,
+  caption_updated_at_ms AS captionUpdatedAtMs,
+  caption_model_ref AS captionModelRef,
+  caption_error AS captionError
+FROM chat_files
+`;
+
 export class ChatFileStore {
   private readonly storeRootPath: string;
   private readonly storeRootDir: string;
@@ -91,27 +110,27 @@ export class ChatFileStore {
       return null;
     }
     const db = await this.getReadyDb();
-    const row = db.prepare(`
-      SELECT
-        file_id AS fileId,
-        file_ref AS fileRef,
-        kind,
-        origin,
-        chat_file_path AS chatFilePath,
-        source_name AS sourceName,
-        mime_type AS mimeType,
-        size_bytes AS sizeBytes,
-        created_at_ms AS createdAtMs,
-        source_context_json AS sourceContextJson,
-        caption,
-        caption_status AS captionStatus,
-        caption_updated_at_ms AS captionUpdatedAtMs,
-        caption_model_ref AS captionModelRef,
-        caption_error AS captionError
-      FROM chat_files
-      WHERE file_id = ?
-    `).get(normalizedFileId) as ChatFileRow | undefined;
+    const row = db.prepare(`${CHAT_FILE_SELECT} WHERE file_id = ?`).get(normalizedFileId) as ChatFileRow | undefined;
     return row ? rowToChatFileRecord(row) : null;
+  }
+
+  /** Exact identities take precedence; names must identify one registered asset. */
+  async resolveSelector(selector: string, options: { allowName?: boolean } = {}): Promise<ChatFileRecord | null> {
+    const normalized = String(selector ?? "").trim();
+    if (!normalized) return null;
+    const direct = await this.getFile(normalized);
+    if (direct) return direct;
+    const db = await this.getReadyDb();
+    let rows = db.prepare(`${CHAT_FILE_SELECT} WHERE file_ref = ? LIMIT 2`).all(normalized) as ChatFileRow[];
+    if (rows.length === 0 && options.allowName) {
+      rows = db.prepare(`${CHAT_FILE_SELECT}
+        WHERE source_name = @selector OR chat_file_path = @selector
+          OR (@basename = 1 AND substr(chat_file_path, -length(@selector) - 1) = '/' || @selector)
+        LIMIT 2
+      `).all({ selector: normalized, basename: normalized.includes("/") ? 0 : 1 }) as ChatFileRow[];
+    }
+    if (rows.length > 1) throw new Error(`ambiguous asset selector: ${normalized}; use asset_ref or asset_id`);
+    return rows[0] ? rowToChatFileRecord(rows[0]) : null;
   }
 
   async isFileAvailable(fileId: string): Promise<boolean> {
@@ -123,8 +142,12 @@ export class ChatFileStore {
     if (wanted.size === 0) {
       return [];
     }
-    const files = await this.listAll();
-    return files.filter((item) => wanted.has(item.fileId));
+    const db = await this.getReadyDb();
+    const rows = db.prepare(`${CHAT_FILE_SELECT}
+      WHERE file_id IN (SELECT value FROM json_each(?))
+      ORDER BY created_at_ms DESC, file_id ASC
+    `).all(JSON.stringify([...wanted])) as ChatFileRow[];
+    return rows.map(rowToChatFileRecord);
   }
 
   async importBuffer(input: {
@@ -540,24 +563,7 @@ export class ChatFileStore {
     const limit = input.limit ?? 100;
     const db = await this.getReadyDb();
     const total = (db.prepare("SELECT COUNT(*) AS count FROM chat_files").get() as { count: number }).count;
-    const rows = db.prepare(`
-      SELECT
-        file_id AS fileId,
-        file_ref AS fileRef,
-        kind,
-        origin,
-        chat_file_path AS chatFilePath,
-        source_name AS sourceName,
-        mime_type AS mimeType,
-        size_bytes AS sizeBytes,
-        created_at_ms AS createdAtMs,
-        source_context_json AS sourceContextJson,
-        caption,
-        caption_status AS captionStatus,
-        caption_updated_at_ms AS captionUpdatedAtMs,
-        caption_model_ref AS captionModelRef,
-        caption_error AS captionError
-      FROM chat_files
+    const rows = db.prepare(`${CHAT_FILE_SELECT}
       ORDER BY created_at_ms DESC, file_id ASC
       LIMIT ? OFFSET ?
     `).all(limit, offset) as ChatFileRow[];
@@ -589,24 +595,7 @@ export class ChatFileStore {
 
   private async listAll(): Promise<ChatFileRecord[]> {
     const db = await this.getReadyDb();
-    const rows = db.prepare(`
-      SELECT
-        file_id AS fileId,
-        file_ref AS fileRef,
-        kind,
-        origin,
-        chat_file_path AS chatFilePath,
-        source_name AS sourceName,
-        mime_type AS mimeType,
-        size_bytes AS sizeBytes,
-        created_at_ms AS createdAtMs,
-        source_context_json AS sourceContextJson,
-        caption,
-        caption_status AS captionStatus,
-        caption_updated_at_ms AS captionUpdatedAtMs,
-        caption_model_ref AS captionModelRef,
-        caption_error AS captionError
-      FROM chat_files
+    const rows = db.prepare(`${CHAT_FILE_SELECT}
       ORDER BY created_at_ms DESC, file_id ASC
     `).all() as ChatFileRow[];
     return rows.map(rowToChatFileRecord);

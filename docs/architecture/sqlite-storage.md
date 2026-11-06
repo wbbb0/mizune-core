@@ -113,6 +113,8 @@
 
 `assets.chat_files` 表组版本 2 增加 `file_ref` 查询索引，升级仅补索引，保留原有资产记录；存档提交前的引用检查按主键或该索引查找，不加载整份资产元数据列表。
 
+资产工具统一由 `ChatFileStore.resolveSelector` 解析引用：优先精确 `fileId` / `fileRef`，需要名称查找的工具显式启用 `allowName`，名称和已登记路径均区分大小写；同名资产返回歧义错误，调用方须改用唯一 ID 或引用。图片参考等要求明确身份的入口只接受 ID / 引用。批量 ID 读取直接在 SQLite 过滤，不再把整张资产表加载后逐个查找。
+
 Comfy 任务记录以 `comfy_tasks` 表为准；结果文件引用拆为 `comfy_task_result_files` 竖表，一行对应一个输出文件。任务状态轮询只更新运行态列和结果文件竖表，不再反复重写 `workflow_snapshot_json`。真实生成出的媒体文件仍通过聊天文件存储链路落到文件系统。
 
 内容安全审计记录也已经以 `content_safety_audits` 表为准；投影、后台会话视图和文件安全状态查询都直接读取该表，而不是旧的 `content-safety/results.json`。

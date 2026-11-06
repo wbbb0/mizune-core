@@ -1,12 +1,61 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
+import { AssetsDatabase } from "../../src/data/assets/assetsDatabase.ts";
 import { characterReferencedFileIds, characterRepository } from "../../src/character/repository.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createSilentLogger } from "../helpers/browser-test-support.tsx";
+
+test("asset selectors prefer exact identities and reject ambiguous names", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "chat-file-selectors-"));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const database = new AssetsDatabase(rootDir, createSilentLogger());
+  const store = new ChatFileStore(createTestAppConfig(), createSilentLogger(), {
+    rootDir,
+    resolvePath(path: string) { return { sourcePath: path, absolutePath: join(rootDir, path) }; }
+  } as any, rootDir, database);
+  await store.init();
+  const first = await store.importBuffer({ buffer: Buffer.from("first"), sourceName: "report.txt", kind: "file", origin: "user_upload" });
+  t.mock.method(store, "listFiles", async () => { throw new Error("selector must not load the whole asset registry"); });
+  assert.equal((await store.resolveSelector(` ${first.fileId} `))?.fileId, first.fileId);
+  assert.equal((await store.resolveSelector(first.fileRef))?.fileId, first.fileId);
+  assert.equal(await store.resolveSelector("report.txt"), null);
+  assert.equal((await store.resolveSelector("report.txt", { allowName: true }))?.fileId, first.fileId);
+  assert.equal((await store.resolveSelector(first.chatFilePath, { allowName: true }))?.fileId, first.fileId);
+  assert.equal(await store.resolveSelector("REPORT.TXT", { allowName: true }), null);
+  const second = await store.importBuffer({ buffer: Buffer.from("second"), sourceName: "report.txt", kind: "file", origin: "user_upload" });
+  await assert.rejects(store.resolveSelector("report.txt", { allowName: true }), /ambiguous asset selector.*asset_ref or asset_id/);
+  assert.equal((await store.resolveSelector(second.fileRef, { allowName: true }))?.fileId, second.fileId);
+  await store.importBuffer({ buffer: Buffer.from("collision"), sourceName: first.fileId, kind: "file", origin: "user_upload" });
+  await store.importBuffer({ buffer: Buffer.from("collision"), sourceName: first.fileRef, kind: "file", origin: "user_upload" });
+  assert.equal((await store.resolveSelector(first.fileId, { allowName: true }))?.fileId, first.fileId);
+  assert.equal((await store.resolveSelector(first.fileRef, { allowName: true }))?.fileId, first.fileId);
+  const alternatePath = `${first.chatFilePath.slice(0, first.chatFilePath.lastIndexOf("/"))}/stored-alias.txt`;
+  await rename(join(rootDir, first.chatFilePath), join(rootDir, alternatePath));
+  database.getDb().prepare("UPDATE chat_files SET chat_file_path = ? WHERE file_id = ?").run(alternatePath, first.fileId);
+  assert.equal((await store.resolveSelector("stored-alias.txt", { allowName: true }))?.fileId, first.fileId);
+  assert.equal(await store.resolveSelector(""), null);
+  assert.equal(await store.resolveSelector("missing"), null);
+});
+
+test("asset batch lookup normalizes and deduplicates ids without SQLite parameter-count limits", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "chat-file-batch-"));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const store = new ChatFileStore(createTestAppConfig(), createSilentLogger(), {
+    rootDir,
+    resolvePath(path: string) { return { sourcePath: path, absolutePath: join(rootDir, path) }; }
+  } as any);
+  await store.init();
+  const first = await store.importBuffer({ buffer: Buffer.from("first"), sourceName: "one.txt", kind: "file", origin: "user_upload" });
+  const second = await store.importBuffer({ buffer: Buffer.from("second"), sourceName: "two.txt", kind: "file", origin: "user_upload" });
+  await store.importBuffer({ buffer: Buffer.from("unselected"), sourceName: "three.txt", kind: "file", origin: "user_upload" });
+  const selected = await store.getMany([first.fileId, ` ${second.fileId} `, first.fileId, "", ...Array.from({ length: 35_000 }, (_, i) => `missing_${i}`)]);
+  assert.deepEqual(selected.map(file => file.fileId).sort(), [first.fileId, second.fileId].sort());
+  assert.deepEqual(await store.getMany([]), []);
+});
 
 test("asset store serializes concurrent caption writes across files", async () => {
   const rootDir = await mkdtemp(join(tmpdir(), "llm-onebot-chat-file-store-"));

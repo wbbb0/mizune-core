@@ -121,8 +121,9 @@ function parseCanonicalToolJson<T>(result: unknown): T {
           }
         } as any,
         chatFileStore: {
-          async listFiles() {
-            return [{
+          async resolveSelector(selector: string) {
+            assert.equal(selector, "chat_test0001.png");
+            return {
               fileId: "file_test_1",
               fileRef: "chat_test0001.png",
               kind: "image",
@@ -134,7 +135,7 @@ function parseCanonicalToolJson<T>(result: unknown): T {
               createdAtMs: Date.now(),
               sourceContext: {},
               caption: null
-            }];
+            };
           },
           async getMany(fileIds: string[]) {
             assert.deepEqual(fileIds, ["file_test_1"]);

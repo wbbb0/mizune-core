@@ -13,8 +13,7 @@ export function parseReferenceImageSelectors(value: unknown): string[] {
 /** Resolve exact instance asset identities only; paths and URLs never become file reads. */
 export async function resolveStaticImageAsset(context: Pick<BuiltinToolContext, "chatFileStore" | "abortSignal">, selector: string): Promise<ChatFileRecord> {
   context.abortSignal?.throwIfAborted();
-  const file = await context.chatFileStore.getFile(selector)
-    ?? (await context.chatFileStore.listFiles()).find(candidate => candidate.fileRef === selector);
+  const file = await context.chatFileStore.resolveSelector(selector);
   if (!file || file.kind !== "image") throw new Error(`未找到静态图片资产：${selector}`);
   return file;
 }

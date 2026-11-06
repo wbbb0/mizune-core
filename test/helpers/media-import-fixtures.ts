@@ -51,7 +51,16 @@ export function withMediaServices<T extends object>(services: T): NoInfer<T> & {
   files.getMany = existing.chatFileStore?.getMany?.bind(existing.chatFileStore) ?? (async ids => ids.map(id => imported.get(id)!).filter(Boolean));
   files.listFiles = existing.chatFileStore?.listFiles?.bind(existing.chatFileStore) ?? (async () => [...imported.values()]);
   files.isFileAvailable = existing.chatFileStore?.isFileAvailable?.bind(existing.chatFileStore) ?? (async id => imported.has(id));
-  return { ...services, ...(typeof existing.chatFileStore?.importRemoteSource === "function" ? { chatFileStore: files } : {}), mediaImportService: existing.mediaImportService ?? createTestMediaImportService(files),
+  files.resolveSelector = existing.chatFileStore?.resolveSelector?.bind(existing.chatFileStore) ?? (async (selector, options = {}) => {
+    const direct = await files.getFile(selector);
+    if (direct) return direct;
+    const records = await files.listFiles();
+    return records.find(file => file.fileRef === selector)
+      ?? (options.allowName ? records.find(file => file.sourceName === selector || file.chatFilePath === selector || file.chatFilePath?.split("/").at(-1) === selector) : null)
+      ?? null;
+  });
+  const referenceFiles = Object.assign(Object.create(existing.chatFileStore ?? null), { resolveSelector: files.resolveSelector });
+  return { ...services, ...(existing.chatFileStore ? { chatFileStore: typeof existing.chatFileStore.importRemoteSource === "function" ? files : referenceFiles } : {}), mediaImportService: existing.mediaImportService ?? createTestMediaImportService(files),
     oneBotReferenceResolver: existing.oneBotReferenceResolver ?? { expand: async (_scope: MediaScope, parts: readonly MessageContentPart[]) => [...parts] } as unknown as OneBotReferenceResolver };
 }
 
