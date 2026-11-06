@@ -136,3 +136,16 @@ test("stageProviderModels dedupes repeated upstream ids within the fetched list"
   const slots = stageProviderModels(["a", "a", "b"].map(id => ({ id, profile: {}, source: "test" })), {});
   assert.deepEqual(slots.map(s => s.upstreamModel), ["a", "b"]);
 });
+
+test("已有目录同一上游存在多个别名时保持首个匹配，并保留其他别名占用", () => {
+  const slots = stageProviderModels([
+    { id: "same", profile: {}, source: "test" },
+    { id: "reserved", profile: {}, source: "test" }
+  ], {
+    first: { upstreamModel: "same", displayName: "first" },
+    reserved: { upstreamModel: "same", displayName: "second" }
+  });
+  assert.equal(slots[0]?.alias, "first");
+  assert.equal(slots[0]?.profile.displayName, "first");
+  assert.equal(slots[1]?.alias, "reserved_2");
+});

@@ -1,3 +1,4 @@
+import { LlmProviderBase } from "../llmProviderBase.ts";
 import { buildGoogleContents, googleReplayScope } from "./googleContent.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 import { readProviderSseData } from "../providerSseReader.ts";
@@ -95,8 +96,8 @@ const GOOGLE_FAILED_FINISH_REASONS = new Set([
   "TOO_MANY_TOOL_CALLS", "NO_IMAGE", "IMAGE_OTHER"
 ]);
 
-export abstract class VertexGeminiProviderBase implements LlmProvider {
-  abstract readonly type: LlmProvider["type"];
+export abstract class VertexGeminiProviderBase extends LlmProviderBase {
+  abstract override readonly type: LlmProvider["type"];
 
   protected abstract readonly providerLabel: string;
 

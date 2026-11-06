@@ -1,3 +1,4 @@
+import { LlmProviderBase } from "../llmProviderBase.ts";
 import { requestOpenAiDecision } from "../openAiNativeDecision.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 import { buildTag } from "#utils/structuredEnvelope.ts";
@@ -62,7 +63,7 @@ type NativeLmStudioInput =
  *   自动注入 enable_thinking 控制字段，无需额外 provider feature 配置
  * - 当无 tools 且本轮要求关闭思考时，自动切换到 /api/v1/chat（reasoning: off）
  */
-export class LmStudioProvider implements LlmProvider {
+export class LmStudioProvider extends LlmProviderBase {
   decide: NonNullable<LlmProvider["decide"]> = (context, params) => requestOpenAiDecision(context, params);
   readonly type = "lmstudio" as const;
   private readonly delegate = new OpenAiCompatibleProvider();

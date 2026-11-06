@@ -1,3 +1,4 @@
+import { LlmProviderBase } from "../llmProviderBase.ts";
 import { requestOpenAiDecision } from "../openAiNativeDecision.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 
@@ -64,8 +65,8 @@ interface OpenAiResponsesStreamPayload {
   };
 }
 
-export abstract class OpenAiResponsesProvider implements LlmProvider {
-  abstract readonly type: "openai" | "openai_responses_compatible";
+export abstract class OpenAiResponsesProvider extends LlmProviderBase {
+  abstract override readonly type: "openai" | "openai_responses_compatible";
   readonly supportsStructuredOutput = true;
 
   resolveBaseUrl(providerConfig: LlmProviderRequestContext["providerConfig"]): string | null {

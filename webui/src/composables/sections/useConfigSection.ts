@@ -8,6 +8,7 @@ import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useWorkbenchToasts, useWorkbenchWindows } from "@workbench-kit/vue";
 import { createModelTestNodeActions } from "@/sections/config/modelTestActions";
 import LlmModelTestWindow from "@/sections/config/LlmModelTestWindow.vue";
+import { resolveModelAddSchema } from "@/sections/config/modelAddSchema";
 import LlmModelAddWindow from "@/sections/config/LlmModelAddWindow.vue";
 import { type LlmModelAddEntry } from "@/api/editor";
 import {
@@ -33,12 +34,6 @@ export type ConfigSectionState = ResourceEditorState & {
   standardize: () => Promise<void>;
   nodeActions: EditorNodeActions;
   beforeRecordMutation: (event: EditorRecordMutationEvent) => Promise<boolean>;
-};
-
-type LlmModelAddDialogValues = Record<string, unknown> & {
-  entry?: LlmModelAddEntry;
-  canSubmit?: boolean;
-  updating?: boolean;
 };
 
 function cloneValue<T>(value: T): T {
@@ -188,60 +183,82 @@ export const useConfigSection = createSharedSectionState<ConfigSectionState>(() 
       return true;
     }
     const providerRecord = provider as Record<string, unknown>;
-    const existingModels = (providerRecord.models as Record<string, unknown> | undefined) ?? {};
+    const providerType = providerRecord.type;
+    const sourceModel = state.model.value;
+    const modelSchema = resolveModelAddSchema(sourceModel?.uiTree, providerType);
+    if (!modelSchema || !sourceModel) {
+      toast.push({ type: "error", message: "模型表单尚未加载，请重新读取目录" });
+      return false;
+    }
 
-    const modelWindow = windows.openSync<LlmModelAddDialogValues, void>({
+    function currentProvider(): Record<string, unknown> {
+      if (state.selectedKey.value !== "llm_catalog" || state.model.value !== sourceModel) {
+        throw new Error("当前配置目录已切换或重新读取，请重新打开添加窗口");
+      }
+      const current = (state.draftValue.value as Record<string, unknown>)?.[providerName];
+      if (!current || typeof current !== "object" || (current as Record<string, unknown>).type !== providerType) {
+        throw new Error("供应商已删除或类型已变化，请重新打开添加窗口");
+      }
+      return current as Record<string, unknown>;
+    }
+
+    async function submitEntry(rawEntry: LlmModelAddEntry): Promise<boolean> {
+      const entry = cloneValue(rawEntry);
+      entry.upstreamModel = entry.upstreamModel.trim();
+      entry.alias = entry.alias.trim();
+      if (!entry.upstreamModel || !/^[a-z0-9_]+$/.test(entry.alias)) throw new Error("模型配置尚未完成");
+      const provider = currentProvider();
+      const models = (provider.models ?? {}) as Record<string, Record<string, unknown>>;
+      const updating = models[entry.alias]?.upstreamModel === entry.upstreamModel;
+      const baseline = JSON.stringify(state.draftValue.value);
+      function assertDraftUnchanged() {
+        currentProvider();
+        if (JSON.stringify(state.draftValue.value) !== baseline) throw new Error("配置草稿已变化，请检查后重新添加");
+      }
+      const confirmation = await windows.openDialog({
+        title: updating ? "确认更新模型" : "确认添加模型",
+        description: `${providerName}/${entry.alias}`,
+        size: "sm", modal: true,
+        blocks: [{ kind: "text", content: `将模型 ${entry.upstreamModel} ${updating ? "更新到" : "加入"}当前配置草稿。确认后可继续添加其他模型，完成后仍需保存目录。` }],
+        actions: [{ id: "confirm", label: updating ? "确认更新" : "确认添加", variant: "primary", run: () => true }]
+      });
+      if (confirmation.reason !== "action" || confirmation.actionId !== "confirm") return false;
+      if (!windows.get(modelWindow.id)) return false;
+      assertDraftUnchanged();
+      const nextDraft = cloneValue(state.draftValue.value) as Record<string, unknown>;
+      const nextProvider = nextDraft[providerName] as Record<string, unknown>;
+      const nextModels = (nextProvider.models ?? {}) as Record<string, Record<string, unknown>>;
+      const existing = nextModels[entry.alias];
+      if (existing && existing.upstreamModel !== entry.upstreamModel) throw new Error(`别名 ${entry.alias} 已被其他模型使用`);
+      if (!existing && Object.values(nextModels).some(model => model.upstreamModel === entry.upstreamModel)) {
+        throw new Error("该上游模型已有其他别名，请重新选择模型");
+      }
+      nextModels[entry.alias] = { ...entry.profile, upstreamModel: entry.upstreamModel };
+      nextProvider.models = nextModels;
+      // 所有表单字段共用目录校验，错误时保留窗口与当前草稿。
+      await editorApi.validate("llm_catalog", nextDraft);
+      if (!windows.get(modelWindow.id)) return false;
+      assertDraftUnchanged();
+      state.updateDraft(nextDraft);
+      toast.push({ type: "success", message: `${updating ? "已更新" : "已添加"} ${providerName}/${entry.alias} 到草稿` });
+      return true;
+    }
+
+    const modelWindow = windows.openSync({
       kind: "dialog",
       title: `添加模型 · ${providerName}`,
-      description: "从供应商清单选择，或手动填写模型；确认别名与能力后写入目录。",
-      size: "xl",
-      modal: true,
-      closeOnBackdrop: false,
-      closeOnEscape: false,
+      description: "从供应商清单选择，或手动填写模型；确认后加入草稿，可连续添加。",
+      size: "xl", modal: true, footer: "hidden",
+      closeOnBackdrop: false, closeOnEscape: false,
       blocks: [{
-        kind: "component",
-        component: LlmModelAddWindow,
-        grow: true,
-        props: {
-          provider: providerRecord,
-          existingAliases: Object.keys(existingModels)
-        }
-      }],
-      actions: [{
-        id: "save",
-        label: ({ values }) => values.updating ? "更新模型" : "添加模型",
-        variant: "primary",
-        disabled: ({ values }) => values.canSubmit !== true,
-        run: ({ values }) => {
-          try {
-            const entry = values.entry;
-            if (!values.canSubmit || !entry || !entry.upstreamModel.trim() || !/^[a-z0-9_]+$/.test(entry.alias)) {
-              throw new Error("模型配置尚未完成");
-            }
-            if (state.selectedKey.value !== "llm_catalog") {
-              throw new Error("当前配置目录已切换，请重新打开添加窗口");
-            }
-            const nextDraft = cloneValue(state.draftValue.value) as Record<string, unknown>;
-            const nextProvider = nextDraft[providerName] as Record<string, unknown> | undefined;
-            if (!nextProvider) {
-              throw new Error("供应商已不存在，请重新打开添加窗口");
-            }
-            const nextModels = (nextProvider.models as Record<string, unknown> | undefined) ?? {};
-            const existing = nextModels[entry.alias] as Record<string, unknown> | undefined;
-            if (existing && existing.upstreamModel !== entry.upstreamModel.trim()) {
-              throw new Error(`别名 ${entry.alias} 已被其他模型使用`);
-            }
-            nextModels[entry.alias] = {
-              upstreamModel: entry.upstreamModel.trim(),
-              ...cloneValue(entry.profile)
-            };
-            nextProvider.models = nextModels;
-            state.updateDraft(nextDraft);
-          } catch (error: unknown) {
-            toast.push({ type: "error", message: error instanceof Error ? error.message : "添加模型失败" });
-            throw error;
-          }
-        }
+        kind: "component", component: LlmModelAddWindow, grow: true,
+        props: () => ({
+          provider: (state.draftValue.value as Record<string, unknown>)?.[providerName] ?? providerRecord,
+          modelSchema,
+          editorFeatures: sourceModel.editorFeatures,
+          submitEntry,
+          closeWindow: () => windows.close(modelWindow.id, { reason: "close", values: {} })
+        })
       }]
     });
 

@@ -1,7 +1,8 @@
+import { LlmProviderBase } from "../llmProviderBase.ts";
 import { requestGoogleEmbeddings } from "./googleEmbedding.ts";
 import { randomUUID } from "node:crypto";
 import type { Part } from "@google/genai";
-import { numberOrNull, type LlmProvider, type LlmProviderGenerateParams, type LlmProviderRequestContext, type LlmToolCall } from "../providerTypes.ts";
+import { numberOrNull, type LlmProviderGenerateParams, type LlmProviderRequestContext, type LlmToolCall } from "../providerTypes.ts";
 import { createProviderStreamAccumulator, createReportedUsage } from "../providerStreamAdapter.ts";
 import { createProviderTimeoutController, rethrowProviderAbortReason } from "../providerTimeout.ts";
 import { LlmProviderPolicyError } from "../providerProtocolError.ts";
@@ -10,7 +11,7 @@ import { createAiStudioClient, normalizeGoogleSdkError } from "./googleSdkClient
 import { buildGoogleContents, googleReplayScope } from "./googleContent.ts";
 import { buildAiStudioConfig } from "./googleRequest.ts";
 
-export class GoogleAiStudioProvider implements LlmProvider {
+export class GoogleAiStudioProvider extends LlmProviderBase {
   readonly type = "google" as const;
   readonly supportsStructuredOutput = true;
   readonly embed = requestGoogleEmbeddings;

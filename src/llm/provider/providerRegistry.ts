@@ -25,6 +25,12 @@ const providers = new Map<string, LlmProvider>([
   ["anthropic", new AnthropicProvider()]
 ]);
 
+export function getLlmProviderByType(type: LlmProvider["type"]): LlmProvider {
+  const provider = providers.get(type);
+  if (!provider) throw new Error(`Unsupported LLM provider type: ${type}`);
+  return provider;
+}
+
 export function hasLlmProvider(type: string): boolean {
   return providers.has(type);
 }

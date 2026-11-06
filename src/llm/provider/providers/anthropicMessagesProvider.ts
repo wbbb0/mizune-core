@@ -1,3 +1,4 @@
+import { LlmProviderBase } from "../llmProviderBase.ts";
 import { ModelRequestBudgetError } from "../../shared/requestTokenBudget.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 import { readProviderSseData } from "../providerSseReader.ts";
@@ -13,7 +14,6 @@ import {
   numberOrNull,
   type LlmContentPart,
   type LlmMessage,
-  type LlmProvider,
   type LlmProviderGenerateParams,
   type LlmProviderGenerateResult,
   type LlmProviderRequestContext,
@@ -127,8 +127,8 @@ interface AnthropicStreamBlockState {
   signature: string;
 }
 
-export class AnthropicMessagesProvider implements LlmProvider {
-  constructor(readonly type: "anthropic" | "deepseek") {}
+export class AnthropicMessagesProvider extends LlmProviderBase {
+  constructor(readonly type: "anthropic" | "deepseek") { super(); }
 
   resolveBaseUrl(providerConfig: LlmProviderRequestContext["providerConfig"]): string | null {
     return providerConfig.baseUrl?.trim() || (this.type === "deepseek" ? "https://api.deepseek.com/anthropic" : "https://api.anthropic.com");

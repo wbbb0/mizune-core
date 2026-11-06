@@ -161,6 +161,7 @@ test("思考控制显式配置，无模型名称推断；额外参数不得覆�
 test("SDK 清单公开分页与 supportedActions 正确归一，Live 不伪装聊天", async () => {
   const ctx = context(); let requests = 0;
   setFetchImplementationForTests(async (url, init) => {
+    if (url.startsWith("https://models.dev/")) return Response.json({ google: { models: { text: { name: "Text" } } } });
     requests++; assert.ok(init?.dispatcher); assert.match(url, /\/prefix\/v1beta\/models\?/);
     assert.equal(new Headers(init?.headers as HeadersInit).get("x-goog-api-key"), ctx.providerConfig.apiKey);
     const payload = requests === 1 ? { models: [{ name: "models/text", thinking: true, inputTokenLimit: 100, supportedGenerationMethods: ["generateContent"] }], nextPageToken: "page2" }

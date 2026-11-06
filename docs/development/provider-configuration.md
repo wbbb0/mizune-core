@@ -25,13 +25,13 @@ LLM 目录以供应商为一级目录。创建供应商后先选择类型，表�
 - **从供应商清单选择**：打开窗口后自动调用后端 `POST /api/editors/llm_catalog/list-models`，携带当前 provider 草稿连接信息，
   从模型清单接口拉取模型 id；窗口支持按模型名或别名搜索、区分可添加与已配置模型，并可手动刷新。支持 OpenAI 兼容协议
   （`openai` / `openai_compatible` / `openai_responses_compatible` / `deepseek` / `dashscope` / `lmstudio` 走 `{baseUrl}/models`，
-  DashScope 默认重写到 `compatible-mode/v1`）与 Anthropic（`{baseUrl}/v1/models`）；Google AI Studio 使用 SDK 模型清单与有界分页；Vertex 暂不自动拉取，会给出提示。
+  DashScope 默认重写到 `compatible-mode/v1`）与 Anthropic（`{baseUrl}/v1/models`）；Google AI Studio 使用 SDK 模型清单与有界分页；Vertex 暂不自动拉取，会给出提示。原生清单缺失的信息由 provider 基类通过 models.dev 补齐；自定义网关可用 `modelsDevProvider` 显式选择元信息供应商，匹配规则与缓存策略见 [模型目录与向量配置](model-catalog.md)。
 - **手动填写**：直接输入上游模型名。
-- 两种方式都会自动生成 `[a-z0-9_]` 格式的局部模型别名（新模型可改，重复时追加 `_2`、`_3`），并给出默认能力选择
-  （思考 / 视觉 / 音频 / 工具 / 联网搜索（适用供应商）/ 保留思考），提交后写入该 provider 的 `models`。
-- 若模型已存在于当前 provider（按上游模型名匹配），窗口会锁定并沿用原别名，提交时更新其能力而保留原 alias 与 `apiParameters`；
+- 两种方式都会自动生成 `[a-z0-9_]` 格式的局部模型别名（新模型可改，重复时追加 `_2`、`_3`），允许选择一个或多个用途。模型信息表单直接使用后端目录 Schema 的对应供应商分支生成，覆盖显示名、能力、限制、请求默认参数、思考/搜索设置、向量处理参数、图像参数以及原生转写/语音设置；无需另外维护一份字段表；没有固定字段的开放对象（如 `extra`）统一使用 JSON 输入。
+- 若模型已存在于当前 provider（按上游模型名匹配），窗口会锁定并沿用原别名，提交时更新其设置而保留原 alias 与未改动的参数；
   新模型若手动输入了其他模型正在使用的别名，会阻止提交，避免静默覆盖目录项。
-- 窗口使用 workbench-kit 的容器响应式分栏：宽窗口并排显示来源与配置，拖窄后改为“模型来源 / 模型配置”两个 Tab；模型清单会填充可用高度并独立滚动。切换 Tab 保留选择与配置草稿；确认成功后才关闭窗口，失败时显示错误并保留窗口。
+- 窗口使用 workbench-kit 的容器响应式分栏：宽窗口并排显示来源与配置，拖窄后改为“模型来源 / 模型信息”两个 Tab；模型清单会填充可用高度并独立滚动。点击清单项通过 `activePaneId` 切换到模型信息；初次自动选择不跳转。切换 Tab 保留选择与配置草稿。
+- 点击“添加模型 / 更新模型”后先弹出确认窗口，确认后通过目录统一校验再写入当前草稿。新增窗口保持打开，窄屏返回来源页签，清单状态和别名占用随草稿实时更新，允许连续添加；手动模式成功后清空输入。取消确认或校验失败保留输入。点击“完成”关闭窗口，之后仍需保存目录才会写入配置文件。确认和校验期间若窗口关闭、目录切换/重载、供应商类型变化或草稿发生并发修改，会停止写入。
 
 该流程复用了 workbench-kit `vue-resource-editor` 的 record 变更拦截钩子：`beforeRecordMutation` 事件扩展了
 `kind: "add"`（含 record 节点 `path`），返回 `false` 时可取消默认的空白新增，转由业务层弹窗写入。
@@ -50,7 +50,7 @@ LLM 目录以供应商为一级目录。创建供应商后先选择类型，表�
 ## 配置更新
 
 正式目录结构以 `config/llm.catalog.example.yml` 为准。已知协议下旧的手工 `features` 字段已不再使用；
-DeepSeek 搜索参数改为 `search.maxUses`，是否允许搜索仍由模型 `supportsSearch` 控制。
+DeepSeek 搜索参数改为 `search.maxUses`，是否允许搜索仍由模型 `chat.capabilities.supportsSearch` 与 `chat.searchEnabled` 控制。
 非 Google 供应商不再持久化 `harmBlockThreshold`。加载会按当前 Schema 去掉不适用字段，
 不保留旧能力映射的双读逻辑。更新正式配置前应单独备份并校验；开发 worktree 不自动改写运行实例配置。
 
@@ -60,7 +60,7 @@ DeepSeek 搜索参数改为 `search.maxUses`，是否允许搜索仍由模型 `s
 
 ## 生成参数与连接设置
 
-模型的 `apiParameters` 按供应商生成参数表单，数值都有基础校验：概率范围、非负随机程度、整数输出上限等。
+模型各用途的 `defaults`（例如 `chat.defaults`）按供应商生成参数表单，数值都有基础校验：概率范围、非负随机程度、整数输出上限等。
 具体模型可能不支持某些协议级参数，不确定时留空使用上游默认值。
 
 - Google 系列不显示 `min_p`、`repetition_penalty`；Anthropic 不显示 presence/repetition penalty。
@@ -85,10 +85,13 @@ vertex:
   models:
     flash:
       upstreamModel: gemini-2.5-flash
-      supportsSearch: true
-      apiParameters:
-        temperature: 0.7
-        maxOutputTokens: 4096
+      chat:
+        capabilities:
+          supportsSearch: true
+        searchEnabled: true
+        defaults:
+          temperature: 0.7
+          maxOutputTokens: 4096
 ```
 
 参考：[Vertex 地址](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/locations)、

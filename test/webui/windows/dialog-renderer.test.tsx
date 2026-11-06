@@ -1,10 +1,14 @@
 /// <reference lib="dom" />
 
 import test from "node:test";
+import { llmCatalogFileSchema } from "#config/configModel.ts";
+import { buildUiTree } from "#data/schema/ui.ts";
+import { resolveModelAddSchema } from "../../../webui/src/sections/config/modelAddSchema.ts";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { createTempDir } from "../../helpers/temp-paths.ts";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 // @ts-expect-error jsdom vendor path has no bundled declaration file in this workspace layout
 import { JSDOM } from "../../../webui/node_modules/jsdom/lib/api.js";
 import type { WorkbenchDialogField, WorkbenchWindowDefinition } from "@workbench-kit/vue";
@@ -571,85 +575,136 @@ test("dialog renderer keeps the window open when an action throws", async () => 
   assert.equal((wrapper.get('input[type="text"]').element as HTMLInputElement).value, "保留输入");
 });
 
-test("模型组件状态在窗口快照刷新后保留，向量模型仍可提交", async () => {
-  const apiUrl = createDataModule(`
-    export async function listProviderModels() {
-      return { kind: 'ok', warnings: [], models: [{
-        upstreamModel: 'qwen/qwen3-embedding-8b', alias: 'qwen_qwen3_embedding_8b', exists: false,
-        profile: { embedding: { limits: { maxInputTokens: 32768 } } },
-        suggested: { embedding: { limits: { maxInputTokens: 32768 } } }, sources: ['embedding']
-      }] };
-    }
-  `);
+function realSchemaNodeModule() {
+  const resourceRoot = new URL('../../../vendor/workbench-kit/packages/vue-resource-editor/src/', import.meta.url);
+  const resourceFile = (path: string) => new URL(path, resourceRoot).href;
+  const iconsUrl = createDataModule(`import { h } from '${VUE_RUNTIME_URL}'; const Icon = { render: () => h('svg') }; export const ChevronRight = Icon, ChevronDown = Icon, Folder = Icon, FolderOpen = Icon, Plus = Icon, Trash2 = Icon, ArrowUp = Icon, ArrowDown = Icon, Pencil = Icon, Check = Icon, Undo2 = Icon, Copy = Icon, Play = Icon;`);
+  const field = compileVueModule(`${ROOT}/vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaField.vue`, {
+    vue: vueStubUrl, '../resourceEditorClient': resourceFile('resourceEditorClient.ts')
+  });
+  const picker = compileVueModule(`${ROOT}/vendor/workbench-kit/packages/vue-resource-editor/src/components/GroupedOptionPicker.vue`, {
+    vue: vueStubUrl, '../editorState.js': resourceFile('editorState.ts'), '../resourceEditorClient.js': resourceFile('resourceEditorClient.ts')
+  });
+  const tree = compileVueModule(`${ROOT}/vendor/workbench-kit/packages/vue-workbench/src/primitives/TreeNodeShell.vue`, {
+    vue: vueStubUrl, 'lucide-vue-next': iconsUrl,
+    '../runtime/workbenchAreaContext.js': new URL('../../../vendor/workbench-kit/packages/vue-workbench/src/runtime/workbenchAreaContext.ts', import.meta.url).href
+  });
+  const workbench = createDataModule(`export { default as TreeNodeShell } from ${JSON.stringify(tree)};`);
+  const schemaNode = compileVueModule(`${ROOT}/vendor/workbench-kit/packages/vue-resource-editor/src/components/SchemaNode.vue`, {
+    vue: vueStubUrl, 'lucide-vue-next': iconsUrl, '@workbench-kit/vue-workbench': workbench,
+    '../schemaVariant': resourceFile('schemaVariant.ts'), '../editorState': resourceFile('editorState.ts'),
+    './SchemaField.vue': field, './GroupedOptionPicker.vue': picker
+  });
+  // 避免把较大的递归组件重复嵌入外层 data URL，实际模块保持普通文件导入。
+  const file = `${createTempDir('model-add-schema-renderer')}/SchemaNode.mjs`;
+  writeFileSync(file, decodeURIComponent(schemaNode.slice(schemaNode.indexOf(',') + 1)));
+  return pathToFileURL(file).href;
+}
+
+async function loadModelAdd(models: unknown[], actualSchema = false) {
+  const apiUrl = createDataModule(`export async function listProviderModels() { return ${JSON.stringify({ kind: "ok", warnings: [], models })}; }`);
   const widgetsUrl = createDataModule(`
     import { h } from '${VUE_RUNTIME_URL}';
     const Box = { setup: (_, { slots }) => () => h('div', slots.default?.()) };
-    export const WorkbenchButton = Box, WorkbenchCard = Box, WorkbenchEmptyState = Box,
-      WorkbenchFormField = Box, WorkbenchMultiSelect = Box, WorkbenchSelect = Box,
+    export const WorkbenchCard = Box, WorkbenchEmptyState = Box, WorkbenchSelect = Box,
       WorkbenchTabStrip = Box, WorkbenchTextInput = Box, WorkbenchDataTable = Box;
+    export const WorkbenchButton = { props: ['label','disabled'], emits: ['click'], setup: (props, {emit}) => () => h('button', {disabled: props.disabled, onClick: () => emit('click')}, props.label) };
+    export const WorkbenchFormField = { props: ['label'], setup: (props, { slots }) => () => h('label', [props.label, slots.default?.()]) };
+    export const WorkbenchMultiSelect = { props: ['options'], setup: props => () => h('div', { 'data-model-options': JSON.stringify(props.options) }) };
+    const labels = node => [node.schema.title, ...Object.values(node.children ?? {}).map(child => labels(child.node))].flat().filter(Boolean);
+    ${actualSchema ? `export { default as SchemaNode } from '${realSchemaNodeModule()}';` : `export const SchemaNode = { props: ['node'], setup: props => () => h('div', {'data-profile-schema': 'true'}, labels(props.node).join(' ')) };`}
     export const ResponsiveSplitPane = { setup: (_, { slots }) => () => h('div', [slots.primary?.({compact: false}), slots.secondary?.({compact: false})]) };
   `);
   const iconsUrl = createDataModule(`export const AlertCircle = {}, Check = {}, DownloadCloud = {}, RefreshCw = {}, Search = {};`);
-  const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, {
-    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href
-  });
   const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
-    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
-    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href
+    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl, 'lucide-vue-next': iconsUrl,
+    './modelAddSchema': new URL('../../../webui/src/sections/config/modelAddSchema.ts', import.meta.url).href,
+    '../../../../src/llm/provider/modelDiscoveryMetadata.ts': new URL('../../../src/llm/provider/modelDiscoveryMetadata.ts', import.meta.url).href
   });
-  const { default: ModelAdd } = await import(modelUrl);
+  return (await import(modelUrl)).default;
+}
+
+function modelFormProps(type: string) {
+  return {
+    provider: { type, models: {} },
+    modelSchema: resolveModelAddSchema(JSON.parse(JSON.stringify(buildUiTree(llmCatalogFileSchema))), type)!,
+    editorFeatures: {}, submitEntry: async (_entry: unknown) => true, closeWindow: () => {}
+  };
+}
+
+test("模型组件状态在窗口快照刷新后保留，向量模型提交后窗口保持打开", async () => {
+  const profile = { embedding: { limits: { maxInputTokens: 32768 } } };
+  const ModelAdd = await loadModelAdd([{
+    upstreamModel: 'qwen/qwen3-embedding-8b', alias: 'qwen_qwen3_embedding_8b', exists: false,
+    profile, suggested: profile, sources: ['embedding']
+  }]);
+  const calls: unknown[] = [];
+  const props = modelFormProps('openai_compatible');
+  props.submitEntry = async entry => { calls.push(entry); return true; };
   const definition: WorkbenchWindowDefinition = {
-    kind: 'dialog', title: '添加模型', size: 'xl',
-    blocks: [{ kind: 'component', component: ModelAdd, props: { provider: {}, existingAliases: [] } }],
-    actions: [{ id: 'save', label: '添加模型', disabled: ({ values }) => values.canSubmit !== true }]
+    kind: 'dialog', title: '添加模型', size: 'xl', footer: 'hidden',
+    blocks: [{ kind: 'component', component: ModelAdd, props }]
   };
   const wrapper = vueMount(DialogRenderer, { props: { windowId: 'model-add', definition } });
   await vueTestUtils.flushPromises();
-  const button = wrapper.get('[data-action-id="save"]');
+  const button = wrapper.findAll('button').find((button: any) => button.text() === '添加模型')!;
   assert.equal((button.element as HTMLButtonElement).disabled, false, "before refresh");
-  // 移动、最大化、调整尺寸或另一个窗口变动都会刷新 definition 快照。
   await wrapper.setProps({ definition: { ...definition } });
   assert.equal((button.element as HTMLButtonElement).disabled, false, "after refresh");
   await button.trigger('click');
-  assert.deepEqual((wrapper.emitted('resolve')?.[0]?.[0] as any)?.values.entry, {
-    upstreamModel: 'qwen/qwen3-embedding-8b', alias: 'qwen_qwen3_embedding_8b',
-    profile: { embedding: { limits: { maxInputTokens: 32768 } } }
-  });
+  await vueTestUtils.flushPromises();
+  assert.deepEqual(calls, [{ upstreamModel: 'qwen/qwen3-embedding-8b', alias: 'qwen_qwen3_embedding_8b', profile }]);
+  assert.equal(wrapper.emitted('resolve'), undefined);
   wrapper.unmount();
 });
 
-test("新增模型按供应商展示原生用途，官方转写不展示聊天能力", async () => {
-  const apiUrl = createDataModule(`
-    export async function listProviderModels() {
-      return { kind: 'ok', warnings: [], models: [{ upstreamModel: 'transcriber', alias: 'transcriber', exists: false,
-        profile: { transcription: {} }, suggested: {}, sources: ['test'] }] };
-    }
-  `);
-  const widgetsUrl = createDataModule(`
-    import { h } from '${VUE_RUNTIME_URL}';
-    const Box = { setup: (_, { slots }) => () => h('div', slots.default?.()) };
-    export const WorkbenchButton = Box, WorkbenchCard = Box, WorkbenchEmptyState = Box,
-      WorkbenchSelect = Box, WorkbenchTabStrip = Box, WorkbenchTextInput = Box, WorkbenchDataTable = Box;
-    export const WorkbenchFormField = { props: ['label'], setup: (props, { slots }) => () => h('label', [props.label, slots.default?.()]) };
-    export const WorkbenchMultiSelect = { props: ['options'], setup: props => () => h('div', { 'data-model-options': JSON.stringify(props.options) }) };
-    export const ResponsiveSplitPane = { setup: (_, { slots }) => () => h('div', [slots.primary?.({compact: false}), slots.secondary?.({compact: false})]) };
-  `);
-  const iconsUrl = createDataModule(`export const AlertCircle = {}, Check = {}, DownloadCloud = {}, RefreshCw = {}, Search = {};`);
-  const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, { vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href });
-  const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
-    vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
-    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href
-  });
-  const { default: ModelAdd } = await import(modelUrl);
+test("新增模型按供应商 Schema 展示原生用途及完整转写参数", async () => {
+  const ModelAdd = await loadModelAdd([{
+    upstreamModel: 'transcriber', alias: 'transcriber', exists: false,
+    profile: { transcription: {} }, suggested: {}, sources: ['test']
+  }]);
   for (const type of ['openai', 'google']) {
-    const wrapper = vueMount(ModelAdd, { props: { provider: { type }, existingAliases: [], values: {} } });
+    const wrapper = vueMount(ModelAdd, { props: modelFormProps(type) });
     await vueTestUtils.flushPromises();
     const options = JSON.parse(wrapper.get('[data-model-options]').attributes('data-model-options'));
     assert.equal(options.some((item: { value: string }) => item.value === 'speech'), type === 'openai');
     assert.equal(options.some((item: { value: string }) => item.value === 'decision'), type === 'openai');
     assert.equal(wrapper.text().includes('可关闭思考'), type !== 'openai');
-    assert.equal(wrapper.text().includes('原生视频输入'), type === 'google');
-    assert.equal(wrapper.text().includes('保存后可在目录表单设置语言代码和转写提示'), type === 'openai');
+    assert.equal(wrapper.text().includes('支持原生视频输入'), type === 'google');
+    assert.ok(wrapper.text().includes('音频语言代码'));
+    assert.ok(wrapper.text().includes('转写提示'));
     wrapper.unmount();
   }
+});
+
+
+test("新增模型通过真实 SchemaNode 编辑额外 JSON 参数并提交，窗口不关闭", async () => {
+  const ModelAdd = await loadModelAdd([{
+    upstreamModel: 'synthetic-chat', alias: 'synthetic_chat', exists: false,
+    profile: { chat: {} }, suggested: { chat: {} }, sources: ['synthetic']
+  }], true);
+  const calls: any[] = [];
+  const props = modelFormProps('openai_compatible');
+  props.submitEntry = async entry => { calls.push(entry); return true; };
+  const wrapper = vueMount(DialogRenderer, { props: { windowId: 'model-extra', definition: {
+    kind: 'dialog', title: '添加模型', size: 'xl', footer: 'hidden',
+    blocks: [{ kind: 'component', component: ModelAdd, props }]
+  } } });
+  await vueTestUtils.flushPromises();
+  for (const label of ['聊天', '生成参数']) {
+    const toggle = wrapper.findAll('.tree-shell-header button').find((button: any) => button.text() === label);
+    assert.ok(toggle, `missing ${label} group`);
+    await toggle.trigger('click');
+  }
+  const row = wrapper.findAll('.editor-field-row').find((row: any) => row.text().includes('额外请求参数（高级）'));
+  assert.ok(row, 'extra JSON field');
+  const extra = { provider: { order: ['synthetic'] }, enable_search: false, limit: 0 };
+  await row.get('textarea').setValue(JSON.stringify(extra));
+  const submit = wrapper.findAll('button').find((button: any) => button.text() === '添加模型')!;
+  await submit.trigger('click');
+  await vueTestUtils.flushPromises();
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].profile.chat.defaults.extra, extra);
+  assert.equal(wrapper.emitted('resolve'), undefined);
+  wrapper.unmount();
 });

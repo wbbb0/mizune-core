@@ -1,5 +1,7 @@
 # 模型可同时配置 chat / embedding / image / transcription 多种用途；OpenAI 官方另支持 speech / decision。
 # 未声明的用途不可路由；未提供的能力标记表示未知。
+# 自动发现优先使用原生清单，再以 models.dev 补缺；自定义网关可在 provider 层填写 modelsDevProvider: openai。
+# modelsDevProvider 仅指定元信息来源，不改变请求协议、接口地址或可用模型清单。
 dashscope:
   type: dashscope
   apiKey: replace-me

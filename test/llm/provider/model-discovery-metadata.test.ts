@@ -40,7 +40,9 @@ test("专属清单解析尺寸、Google 分页模型信息及本地加载限制"
 test("OpenRouter 并行发现部分失败仍返回向量和聊天模型", async () => {
   const urls: string[] = [];
   setFetchImplementationForTests(async url => {
-    const endpoint = String(url); urls.push(endpoint);
+    const endpoint = String(url);
+    if (endpoint.startsWith("https://models.dev/")) return Response.json({ openrouter: { models: { chat: { name: "Chat" } } } });
+    urls.push(endpoint);
     if (endpoint.endsWith("/images/models")) return new Response("unavailable", { status: 503 });
     return new Response(JSON.stringify({ data: [{ id: endpoint.endsWith("/embeddings/models") ? "qwen/qwen3-embedding-8b" : "chat" }] }));
   });

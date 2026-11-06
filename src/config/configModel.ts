@@ -199,6 +199,7 @@ const llmProviderFeaturesSchema = s.object({
 const llmProviderSchemaShape = {
   type: s.enum(llmProviderTypes).title("供应商类型").default("openai_compatible"),
   baseUrl: s.string().url().nonempty().title("Base URL").optional(),
+  modelsDevProvider: s.string().trim().nonempty().title("models.dev 供应商 ID").describe("可选：为自定义网关指定模型元信息来源，如 openai、anthropic；留空按协议类型或接口地址识别。仅补齐清单中缺失的信息。").optional(),
   apiKey: s.string().trim().nonempty().title("API Key").optional(),
   proxy: s.boolean().title("使用代理").default(false),
   harmBlockThreshold: s.enum([
@@ -567,6 +568,7 @@ function createProviderCatalogVariant<T extends LlmProviderType>(type: T) {
     baseUrl: s.string().url().nonempty().title("接口地址（可选覆盖）")
       .describe(type === "vertex" ? "填写项目 ID 时自动生成；自定义地址应以 /publishers/google 结尾。" : "标准接口留空即可使用协议默认地址；转发服务请填写其接口地址。").optional(),
     apiKey: s.string().trim().nonempty().title(type === "vertex" ? "访问令牌" : type === "lmstudio" ? "API Key（本地服务可选）" : "API Key").optional(),
+    modelsDevProvider: llmProviderSchemaShape.modelsDevProvider,
     ...(type === "openai_compatible" ? { maxOutputTokenField: llmProviderSchemaShape.maxOutputTokenField } : {}),
     ...(type === "vertex" ? { projectId: llmProviderSchemaShape.projectId, location: llmProviderSchemaShape.location } : {}),
     proxy: llmProviderSchemaShape.proxy,

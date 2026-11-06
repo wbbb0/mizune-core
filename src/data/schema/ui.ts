@@ -8,6 +8,10 @@ export function buildUiTree(schema: BaseSchema<any>): UiNode {
 export function buildUiTreeFromMeta(meta: SchemaMeta): UiNode {
   switch (meta.kind) {
     case "object": {
+      // 无固定字段的开放对象需要 JSON 编辑器；严格空对象仍表示可启用的空配置。
+      if (meta.unknownKeys === "passthrough" && Object.keys(meta.fields).length === 0) {
+        return { kind: "field", schema: meta };
+      }
       const children: Record<string, { field: ObjectFieldMeta; node: UiNode }> = {};
       for (const [key, field] of Object.entries(meta.fields)) {
         children[key] = {

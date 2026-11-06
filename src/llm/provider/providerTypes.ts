@@ -1,3 +1,4 @@
+import type { ModelDiscoveryInput, NativeModelDiscoveryResult } from "./modelDiscoveryTypes.ts";
 import type { LlmTranscribeParams, LlmTranscribeResult, LlmSynthesizeParams, LlmSynthesizeResult, LlmDecideParams, LlmDecideResult } from "./nativeCapabilityTypes.ts";
 import type { Logger } from "pino";
 import type { AppConfig } from "#config/config.ts";
@@ -244,6 +245,7 @@ export interface LlmProviderGenerateResult {
 }
 
 export interface LlmProvider {
+  discoverModels(input: ModelDiscoveryInput): Promise<NativeModelDiscoveryResult>;
   readonly type: LlmProviderConfig["type"];
   readonly supportsStructuredOutput?: boolean;
   transcribe?(context: LlmProviderRequestContext, params: LlmTranscribeParams): Promise<LlmTranscribeResult>;
