@@ -1,4 +1,5 @@
 import test from "node:test";
+import "../helpers/network-interfaces-fixture.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";

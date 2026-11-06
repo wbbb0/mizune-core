@@ -1,3 +1,4 @@
+import "../helpers/network-interfaces-fixture.ts";
 import assert from "node:assert/strict";
 import { mkdir, rm } from "node:fs/promises";
 import { test } from "node:test";
