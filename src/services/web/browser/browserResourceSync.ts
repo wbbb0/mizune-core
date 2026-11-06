@@ -39,8 +39,7 @@ export class BrowserResourceSync {
       accessedAtMs: Date.now(),
       expiresAtMs: session.expiresAt,
       title: session.snapshot.title,
-      summary: summarizeSnapshot(session.snapshot),
-      status: "active"
+      summary: summarizeSnapshot(session.snapshot)
     });
   }
 

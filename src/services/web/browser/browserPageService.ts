@@ -181,9 +181,11 @@ export class BrowserPageService {
       filePaths: input.filePaths,
       waitMs: normalizeWaitMs(input.waitMs)
     });
+    this.assertSessionOwned(session);
     session.state = next.state;
     session.snapshot = next.snapshot;
     await this.profileService.persistSessionProfile(session);
+    this.assertSessionOwned(session);
     await this.deps.resourceSync.touchPage(resourceId, session);
 
     return {
@@ -348,6 +350,12 @@ export class BrowserPageService {
       state: result.state,
       snapshot: result.snapshot
     };
+  }
+
+  private assertSessionOwned(session: BrowserSessionRecord): void {
+    if (this.deps.sessions.get(session.resourceId) !== session) {
+      throw new Error(`Browser page was closed during interaction: ${session.resourceId}`);
+    }
   }
 }
 

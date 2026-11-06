@@ -15,7 +15,7 @@ function createServiceHarness() {
   const config = createForwardFeatureConfig();
   config.browser.playwright.enabled = true;
   const sessions = new BrowserSessionRuntime(1);
-  const calls = { open: 0, close: 0, register: 0, closed: [] as string[], expired: [] as string[] };
+  const calls = { open: 0, close: 0, register: 0, touch: 0, closed: [] as string[], expired: [] as string[] };
   const failure = { open: false, register: false, close: false };
   const openingStarted = deferred();
   const control = { openGate: Promise.resolve() };
@@ -63,7 +63,7 @@ function createServiceHarness() {
       async markClosed(resourceId: string) { calls.closed.push(resourceId); },
       async markExpired(resourceId: string) { calls.expired.push(resourceId); },
       async markMissingAsExpired() {},
-      async touchPage() {},
+      async touchPage() { calls.touch += 1; },
       async listActivePages() { return []; },
       logExpiredSessions() {}
     } as unknown as BrowserServiceDeps["resourceSync"]
@@ -156,5 +156,30 @@ test("concurrent manual close and shutdown share disposal and shutdown can retry
   await service.shutdown();
   assert.equal(calls.close, 2);
   assert.deepEqual(calls.closed, [opened.resource_id]);
+  assert.deepEqual(sessions.all(), []);
+});
+
+test("an interaction finishing after shutdown cannot write its snapshot or reactivate a page", async () => {
+  const { service, sessions, calls } = createServiceHarness();
+  const opened = await service.openPage({ url: "https://example.com/" });
+  const session = sessions.get(opened.resource_id);
+  assert.ok(session);
+  const interacting = deferred();
+  const release = deferred();
+  service.deps.playwrightBackend.interact = async (input) => {
+    interacting.resolve();
+    await release.promise;
+    return { state: input.state, snapshot: { ...input.snapshot, title: "Late result" } };
+  };
+  const interaction = service.interactWithPage({ resourceId: opened.resource_id, action: "wait" });
+  await interacting.promise;
+  assert.equal(calls.touch, 1);
+  await service.shutdown();
+  release.resolve();
+  await assert.rejects(interaction, /closed during interaction/);
+  assert.equal(session.snapshot.title, "Example");
+  assert.equal(calls.touch, 1);
+  assert.equal(calls.close, 1);
+  assert.deepEqual(calls.expired, [opened.resource_id]);
   assert.deepEqual(sessions.all(), []);
 });

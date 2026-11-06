@@ -307,3 +307,17 @@ test("listing pages cannot mark a still-owned pending disposal as expired", asyn
   await resourceSync.listActivePages(sessions);
   assert.deepEqual(statuses, ["expired"]);
 });
+
+test("page metadata touches cannot change a terminal resource status", async () => {
+  const { session } = createDisposalHarness();
+  let status = "active";
+  const resourceSync = new BrowserResourceSync({
+    async touch(_resourceId: string, patch: { status?: string }) {
+      // Model a close winning while the metadata write is waiting for storage.
+      status = "expired";
+      if (patch.status) status = patch.status;
+    }
+  } as any, createSilentLogger());
+  await resourceSync.touchPage(session.resourceId, session);
+  assert.equal(status, "expired");
+});
