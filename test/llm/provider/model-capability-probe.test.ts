@@ -67,7 +67,7 @@ test("local unsupported capabilities do not send requests or falsely label the u
   setFetchImplementationForTests(async () => { calls++; throw new Error("unexpected"); });
   const probe = new ModelCapabilityProbe(createTestAppConfig());
   for (const operation of ["speech", "decision"] as const) {
-    const result = await probe.run(input(operation));
+    const result = await probe.run(input(operation, { provider: { ...draft, type: "anthropic" } }));
     assert.equal(result.status, "unsupported");
     assert.match(result.message, /当前供应商接入/);
     assert.match(result.message, /不能据此判断上游/);

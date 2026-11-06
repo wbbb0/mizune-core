@@ -42,3 +42,8 @@ export function getLlmProvider(context: LlmProviderRequestContext): LlmProvider 
 export function resolveProviderBaseUrl(config: LlmProviderRequestContext["providerConfig"]): string | null {
   return providers.get(config.type)?.resolveBaseUrl(config) ?? null;
 }
+
+/** Provider implementation is the source of truth; model usage still requires explicit configuration. */
+export function supportsProviderDecision(type: string): boolean {
+  return typeof providers.get(type)?.decide === "function";
+}

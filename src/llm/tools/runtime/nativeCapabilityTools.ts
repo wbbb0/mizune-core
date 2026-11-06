@@ -1,8 +1,9 @@
+import { supportsProviderDecision } from "#llm/provider/providerRegistry.ts";
 import { buildDecisionToolInput } from "../core/decisionToolInput.ts";
 import type { AppConfig } from "#config/config.ts";
 import { resolveModelRefsForRole } from "#llm/shared/modelRouting.ts";
 import type { DecisionQuestion, SpeechFormat } from "#llm/provider/nativeCapabilityTypes.ts";
-import { validateDecisionQuestions } from "#llm/provider/openAiNativeDecision.ts";
+import { validateDecisionQuestions } from "#llm/provider/decision/validation.ts";
 import { buildChatFileHandleResultFromContext } from "../core/chatFileHandle.ts";
 import { chatFileListPolicy, keepRawUnlessLargePolicy } from "../core/resultObservationPresets.ts";
 import { getStringArg, getNumberArg } from "../core/toolArgHelpers.ts";
@@ -15,7 +16,7 @@ export function isSpeechGenerationAvailable(config: AppConfig): boolean {
 
 export function isDecisionAvailable(config: AppConfig): boolean {
   return config.llm.enabled && config.llm.decision.enabled
-    && resolveModelRefsForRole(config, "decision").acceptedModelRefs.some(ref => config.llm.providers[config.llm.models[ref]!.provider]?.type === "openai");
+    && resolveModelRefsForRole(config, "decision").acceptedModelRefs.some(ref => supportsProviderDecision(config.llm.providers[config.llm.models[ref]!.provider]?.type ?? ""));
 }
 
 export const nativeCapabilityToolDescriptors: ToolDescriptor[] = [
@@ -105,7 +106,7 @@ export const nativeCapabilityToolHandlers: Record<string, ToolHandler> = {
   },
   async make_decision(_call, args, context) {
     try {
-      if (!isDecisionAvailable(context.config) || !context.nativeCapabilities) throw new Error("决策能力未启用或未配置官方模型");
+      if (!isDecisionAvailable(context.config) || !context.nativeCapabilities) throw new Error("决策能力未启用或未配置支持的模型");
       const questions = (args as Record<string, unknown>)?.questions as DecisionQuestion[];
       validateDecisionQuestions(questions);
       const input = await buildDecisionToolInput(args, context);

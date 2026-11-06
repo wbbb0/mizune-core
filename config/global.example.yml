@@ -68,6 +68,7 @@ llm:
   speechGeneration:
     enabled: false
     timeoutMs: 120000
+  # 决策供应商：OpenAI、两类 OpenAI Compatible、OpenRouter、百炼、LM Studio；模型需声明 decision: {}。
   decision:
     enabled: false # 仅控制 make_decision 工具；有效 decision 路由会自动用于已启用的轮次规划。
     timeoutMs: 15000

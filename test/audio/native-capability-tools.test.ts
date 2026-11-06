@@ -94,7 +94,7 @@ test("原生工具按配置和供应商能力隐藏，禁用后处理器也拒�
   assert.equal(isDecisionAvailable(c), true);
   c.llm.providers.native!.type = "openai_compatible";
   assert.equal(isSpeechGenerationAvailable(c), false);
-  assert.equal(isDecisionAvailable(c), false);
+  assert.equal(isDecisionAvailable(c), true);
   const context = { config: c } as BuiltinToolContext;
   const speech = JSON.parse(String(await nativeCapabilityToolHandlers.generate_speech!(call("generate_speech"), { text: "你好" }, context)));
   assert.equal(speech.ok, false);

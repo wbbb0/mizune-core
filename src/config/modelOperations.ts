@@ -1,6 +1,6 @@
 import { s } from "#data/schema/index.ts";
 import { createModelApiParametersSchema, modelApiParametersSchema } from "./modelApiParameterSchema.ts";
-import { supportsNativeVideoInput, type LlmProviderType } from "./llmProviderDefinitions.ts";
+import { supportsNativeDecision, supportsNativeVideoInput, type LlmProviderType } from "./llmProviderDefinitions.ts";
 
 export const modelOperations = ["chat", "embedding", "image", "transcription", "speech", "decision"] as const;
 export type ModelOperation = typeof modelOperations[number];
@@ -83,7 +83,8 @@ export function createModelOperationShape(type?: LlmProviderType) {
       format: s.enum(["mp3", "opus", "aac", "flac", "wav"] as const).title("音频格式").default("mp3"),
       speed: s.number().min(0.25).max(4).title("语速").default(1),
       instructions: s.string().trim().nonempty().title("语音风格提示").optional()
-    }).title("语音生成").describe("使用供应商的原生语音合成接口。").optional(),
-    decision: s.object({}).title("原生决策").describe("支持条件概率、固定选项选择和评分，不用于生成任意 JSON 或调用工具。").optional() } : {})
+    }).title("语音生成").describe("使用供应商的原生语音合成接口。").optional()
+    } : {}),
+    ...(!type || supportsNativeDecision(type) ? { decision: s.object({}).title("原生决策").describe("支持条件概率、固定选项选择和评分，不用于生成任意 JSON 或调用工具。").optional() } : {})
   };
 }

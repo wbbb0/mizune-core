@@ -2,18 +2,18 @@
 export const llmProviderTypes = ["openai_compatible", "openai", "openrouter", "openai_responses_compatible", "deepseek", "google", "vertex", "vertex_express", "dashscope", "lmstudio", "anthropic"] as const;
 export type LlmProviderType = typeof llmProviderTypes[number];
 export const llmProviderDefinitions = {
-  openai: { title: "OpenAI 官方", search: "native", googleSafety: false, customFeatures: false },
-  openrouter: { title: "OpenRouter", search: "none", googleSafety: false, customFeatures: false },
-  openai_compatible: { title: "OpenAI 兼容 · Chat Completions", search: "custom", googleSafety: false, customFeatures: true },
-  openai_responses_compatible: { title: "OpenAI 兼容 · Responses", search: "native", googleSafety: false, customFeatures: true },
-  deepseek: { title: "DeepSeek", search: "native", googleSafety: false, customFeatures: false },
-  google: { title: "Google AI Studio", search: "native", googleSafety: true, customFeatures: false },
-  vertex: { title: "Google Vertex AI", search: "native", googleSafety: true, customFeatures: false },
-  vertex_express: { title: "Google Vertex Express", search: "native", googleSafety: true, customFeatures: false },
-  dashscope: { title: "阿里云 DashScope", search: "native", googleSafety: false, customFeatures: false },
-  lmstudio: { title: "LM Studio", search: "none", googleSafety: false, customFeatures: true },
-  anthropic: { title: "Anthropic", search: "none", googleSafety: false, customFeatures: false }
-} as const satisfies Record<LlmProviderType, { title: string; search: "native" | "custom" | "none"; googleSafety: boolean; customFeatures: boolean }>;
+  openai: { decision: true, title: "OpenAI 官方", search: "native", googleSafety: false, customFeatures: false },
+  openrouter: { decision: true, title: "OpenRouter", search: "none", googleSafety: false, customFeatures: false },
+  openai_compatible: { decision: true, title: "OpenAI 兼容 · Chat Completions", search: "custom", googleSafety: false, customFeatures: true },
+  openai_responses_compatible: { decision: true, title: "OpenAI 兼容 · Responses", search: "native", googleSafety: false, customFeatures: true },
+  deepseek: { decision: false, title: "DeepSeek", search: "native", googleSafety: false, customFeatures: false },
+  google: { decision: false, title: "Google AI Studio", search: "native", googleSafety: true, customFeatures: false },
+  vertex: { decision: false, title: "Google Vertex AI", search: "native", googleSafety: true, customFeatures: false },
+  vertex_express: { decision: false, title: "Google Vertex Express", search: "native", googleSafety: true, customFeatures: false },
+  dashscope: { decision: true, title: "阿里云 DashScope", search: "native", googleSafety: false, customFeatures: false },
+  lmstudio: { decision: true, title: "LM Studio", search: "none", googleSafety: false, customFeatures: true },
+  anthropic: { decision: false, title: "Anthropic", search: "none", googleSafety: false, customFeatures: false }
+} as const satisfies Record<LlmProviderType, { decision: boolean; title: string; search: "native" | "custom" | "none"; googleSafety: boolean; customFeatures: boolean }>;
 
 /** 图像端点独立于聊天协议，能力由供应商类型明确声明。 */
 export function supportsStandardImageGeneration(type: LlmProviderType): boolean {
@@ -31,4 +31,8 @@ export function getNativeVideoInputLimits(type: LlmProviderType) {
   return type === "dashscope"
     ? { minDurationMs: 2000, minFrames: 4, maxBytes: 7 * 1024 * 1024 }
     : { minDurationMs: 0, minFrames: 1, maxBytes: 20 * 1024 * 1024 };
+}
+
+export function supportsNativeDecision(type: unknown): boolean {
+  return typeof type === "string" && Object.prototype.hasOwnProperty.call(llmProviderDefinitions, type) && llmProviderDefinitions[type as LlmProviderType].decision;
 }

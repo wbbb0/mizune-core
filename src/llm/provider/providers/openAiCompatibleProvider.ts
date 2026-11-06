@@ -1,3 +1,4 @@
+import { requestOpenAiDecision } from "../openAiNativeDecision.ts";
 import { LlmProviderHttpError } from "../providerProtocolError.ts";
 import { OpenRouterReasoning } from "../openRouterReasoning.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
@@ -99,6 +100,7 @@ interface OpenAiRequestMessage {
 }
 
 export class OpenAiCompatibleProvider implements LlmProvider {
+  decide: NonNullable<LlmProvider["decide"]> = (context, params) => requestOpenAiDecision(context, params);
   readonly type = "openai_compatible" as const;
   readonly supportsStructuredOutput = true;
 

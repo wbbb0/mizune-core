@@ -126,7 +126,7 @@ for (const disable of ["route", "capability"] as const) {
   test(`decision ${disable} 不可用时直接使用聊天模型`, async () => {
     const { config, planner } = setup();
     if (disable === "route") config.llm.routingPresets.test!.decision = [];
-    else config.llm.providers.official!.type = "openai_compatible";
+    else { config.llm.providers.unsupported = { ...config.llm.providers.official!, type: "anthropic" }; config.llm.models.judge!.provider = "unsupported"; }
     let calls = 0;
     setFetchImplementationForTests(async url => { calls++; assert.match(String(url), /chat\/completions$/); return chatResponse(); });
     const result = await planner.decide(baseInput);

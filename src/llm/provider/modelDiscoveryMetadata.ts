@@ -23,7 +23,9 @@ export function parseDiscoveredModels(payload: unknown, source: string, kind: "g
     const displayName = item.display_name ?? item.displayName ?? (kind === "google" ? undefined : item.name);
     const profile: ObjectValue = defined({ displayName: typeof displayName === "string" && displayName.trim() ? displayName : undefined });
     const isEmbedding = kind === "embedding" || item.type === "embedding" || output?.includes("embeddings") || methods?.includes("embedContent");
-    const isChat = (kind === "chat" || kind === "anthropic" || item.type === "llm" || output?.includes("text") || methods?.includes("generateContent"));
+    const isDecision = item.type === "decision" || output?.includes("decision") === true;
+    if (isDecision) profile.decision = {};
+    const isChat = !isDecision && ( (kind === "chat" || kind === "anthropic" || item.type === "llm" || output?.includes("text") || methods?.includes("generateContent")));
     if (isChat) {
       const caps = object(item.capabilities);
       const reasoning = object(item.reasoning);

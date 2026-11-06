@@ -1,3 +1,4 @@
+import { requestSystemOne } from "../decision/systemOne.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 import { readProviderSseData, throwIfProviderError } from "../providerSseReader.ts";
 import { fetchProviderResponse } from "../providerExchangeDump.ts";
@@ -73,6 +74,7 @@ interface DashScopeRequestMessage {
 }
 
 export class DashScopeProvider implements LlmProvider {
+  decide: NonNullable<LlmProvider["decide"]> = (context, params) => requestSystemOne(context, params);
   readonly type = "dashscope" as const;
 
   resolveBaseUrl(providerConfig: LlmProviderRequestContext["providerConfig"]): string | null {

@@ -1,3 +1,4 @@
+import { requestOpenAiDecision } from "../openAiNativeDecision.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 
 import { buildOpenAiResponsesModelApiParameters } from "../modelApiParameters.ts";
@@ -598,5 +599,6 @@ function serializeError(error: unknown): Record<string, unknown> {
 
 /** Third-party Responses-compatible endpoints share the wire protocol only. */
 export class OpenAiResponsesCompatibleProvider extends OpenAiResponsesProvider {
+  decide: NonNullable<LlmProvider["decide"]> = (context, params) => requestOpenAiDecision(context, params);
   readonly type = "openai_responses_compatible" as const;
 }

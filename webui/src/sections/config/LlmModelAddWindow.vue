@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { supportsNativeDecision } from "../../../../src/config/llmProviderDefinitions.ts";
 import ModelOperationEditor from "./ModelOperationEditor.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { AlertCircle, Check, DownloadCloud, RefreshCw, Search } from "lucide-vue-next";
@@ -82,7 +83,7 @@ const MODEL_TYPE_OPTIONS = [
 ];
 
 const availableModelTypeOptions = computed(() => MODEL_TYPE_OPTIONS.filter(option =>
-  props.provider.type === "openai" || !["speech", "decision"].includes(option.value)
+  (option.value === "speech" ? props.provider.type === "openai" : option.value === "decision" ? supportsNativeDecision(props.provider.type) : true)
 ));
 
 const MODEL_COLUMNS: WorkbenchDataTableColumn<ProviderModelSlot>[] = [

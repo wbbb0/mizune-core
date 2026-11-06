@@ -595,7 +595,7 @@ test("模型组件状态在窗口快照刷新后保留，向量模型仍可提�
   });
   const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
     vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
-    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl
+    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href
   });
   const { default: ModelAdd } = await import(modelUrl);
   const definition: WorkbenchWindowDefinition = {
@@ -638,7 +638,7 @@ test("新增模型按供应商展示原生用途，官方转写不展示聊天�
   const editorUrl = compileVueModule(`${ROOT}/webui/src/sections/config/ModelOperationEditor.vue`, { vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href });
   const modelUrl = compileVueModule(`${ROOT}/webui/src/sections/config/LlmModelAddWindow.vue`, {
     vue: vueStubUrl, '@workbench-kit/vue': widgetsUrl, '@/api/editor': apiUrl,
-    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl
+    'lucide-vue-next': iconsUrl, './ModelOperationEditor.vue': editorUrl, '../../../../src/config/llmProviderDefinitions.ts': new URL('../../../src/config/llmProviderDefinitions.ts', import.meta.url).href
   });
   const { default: ModelAdd } = await import(modelUrl);
   for (const type of ['openai', 'google']) {

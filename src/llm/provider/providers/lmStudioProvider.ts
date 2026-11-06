@@ -1,3 +1,4 @@
+import { requestOpenAiDecision } from "../openAiNativeDecision.ts";
 import { getGenerationSettings } from "../generationSettings.ts";
 import { buildTag } from "#utils/structuredEnvelope.ts";
 import { buildLmStudioNativeModelApiParameters } from "../modelApiParameters.ts";
@@ -62,6 +63,7 @@ type NativeLmStudioInput =
  * - 当无 tools 且本轮要求关闭思考时，自动切换到 /api/v1/chat（reasoning: off）
  */
 export class LmStudioProvider implements LlmProvider {
+  decide: NonNullable<LlmProvider["decide"]> = (context, params) => requestOpenAiDecision(context, params);
   readonly type = "lmstudio" as const;
   private readonly delegate = new OpenAiCompatibleProvider();
 

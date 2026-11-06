@@ -33,7 +33,7 @@ test("原生能力可用性按模型用途、供应商实现和全局开关过�
   config.llm.providers.official!.type = "openai_compatible";
   assert.equal(client.isCapabilityConfigured("transcription", "first"), true);
   assert.equal(client.isCapabilityConfigured("speech", "first"), false);
-  assert.equal(client.isCapabilityConfigured("decision", "first"), false);
+  assert.equal(client.isCapabilityConfigured("decision", "first"), true);
   config.llm.enabled = false;
   for (const operation of ["transcription", "speech", "decision"] as const) assert.equal(client.isCapabilityConfigured(operation, "first"), false);
 });

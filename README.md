@@ -335,3 +335,5 @@ Agent 可按需收藏、检索、维护和发送表情。`stickers.enabled` 默�
 在 `.config social` 阶段上传并明确指定角色设定图，模型可调用图片精读，保存原图关联与详细中文描述，再辅助填写外观。资料随草稿确认发布，后续可按需看图、发送或作为绘图参考；沉浸模式游玩期的发送与绘图仍需启用对应会话工具集。Data 可预览图片、编辑标签和描述或解除关联；来源图片和目标主体只读。
 
 上下文容量统一由实际候选模型限制与路由预设 `tokenLimits.contextTokens` 取较小值；预设限制包含输入、输出预留与安全余量。完整请求超限时先缩短旧工具回放，再总结历史，保留原始会话记录。[预算计算、压缩边界与旧配置迁移](docs/architecture/context-budget.md)。
+
+原生决策接入支持 OpenAI、OpenAI Compatible（Chat / Responses）、OpenRouter、百炼和 LM Studio。为实际支持决策的模型声明 `decision: {}`，再配置路由预设的 `decision` 列表；普通聊天模型不会因此自动获得决策能力。OpenAI 协议通过官方 SDK 请求 `/decisions`；OpenRouter 使用官方 SDK 的 `/api/alpha/decisions`；百炼使用 `/compatible-mode/v1/systemone`。百炼最多 16 个问题，需使用已开通决策模型且与区域匹配的 API Key / 网关地址。System One 当前接受文本和 JSON 证据、文本问题说明；不支持的多模态输入会在请求前拒绝。SDK 不自动重试，错误与取消交由统一模型调用层处理。

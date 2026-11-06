@@ -11,6 +11,7 @@ const body = js.replace(/import[\s\S]*?from\s+["'][^"']+["'];/g, "");
 const vueUrl = new URL("../../../webui/node_modules/vue/index.mjs", import.meta.url).href;
 const module = await import(`data:text/javascript,${encodeURIComponent(`
 import { computed, ref, watch } from ${JSON.stringify(vueUrl)};
+import { supportsNativeDecision } from ${JSON.stringify(new URL("../../../src/config/llmProviderDefinitions.ts", import.meta.url).href)};
 const onMounted = () => {};
 export function setup(input, fetcher) {
  const defineProps = () => input;
