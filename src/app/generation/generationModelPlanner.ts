@@ -56,6 +56,7 @@ export function recordGenerationPlannerDecision(deps: Pick<ModelPlannerDeps, "se
     replyDecision: planner.replyDecision,
     ...(planner.taskBasis ? { taskBasis: planner.taskBasis } : {}),
     ...(planner.modelTier ? { modelTier: planner.modelTier } : {}),
+    ...(planner.modelSelectionScores ? { modelSelectionScores: planner.modelSelectionScores } : {}),
     ...(planner.modelSelectionStatus ? { modelSelectionStatus: planner.modelSelectionStatus } : {}),
     ...(planner.undeterminedQuestions?.length ? { undeterminedQuestions: planner.undeterminedQuestions } : {}),
     ...(input.topicDecisionEvaluated ? { topicDecision: planner.topicDecision } : {}),

@@ -64,7 +64,7 @@ export class DeliveryCoordinator {
   private async sendTextImpl(address: DeliveryAddress, text: string): Promise<DeliveryReference | undefined> {
     const target = this.endpoint(address);
     if (target.source === "qq_official") {
-      const receipt = await this.official!.sendText(this.permit(address), text);
+      const receipt = await this.official!.sendText(this.permit(address), text, address.signal);
       return { platform: "qq_official", connectionId: receipt.connectionId, messageId: receipt.messageId };
     }
     const result = await this.oneBot.sendText({ text, ...(target.kind === "group" ? { groupId: target.groupId } : { userId: target.userId }) });
@@ -129,7 +129,7 @@ export class DeliveryCoordinator {
       const target = this.endpoint(address);
       if (target.kind !== "private") throw new Error("此会话不支持原生流式消息。");
       const permit = this.permit(address);
-      native = this.official!.openTextStream(permit);
+      native = this.official!.openTextStream(permit, { signal: address.signal });
     } catch (error) { this.reportFailure(address, error); throw error; }
     return {
       get receipt(): QqDeliveryReceipt | null { return native.receipt; },

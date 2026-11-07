@@ -74,6 +74,8 @@ export interface InvalidDirectCommand {
 export type ResolvedDirectCommand = ParsedDirectCommand | UnknownDirectCommand | InvalidDirectCommand;
 
 interface DirectCommandIncomingMessage {
+  actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
+  replyContext?: import("#services/messaging/incomingMessage.ts").MessageReplyContext;
   channelId?: string;
   chatType: "private" | "group";
   userId: string;
@@ -218,6 +220,8 @@ function triggerInlineDebugOnce(ctx: DirectCommandExecutionContext, inlineText: 
   }
   const now = Date.now();
   ctx.input.sessionManager.appendSyntheticPendingMessage(ctx.session.id, {
+    ...(ctx.incomingMessage.actorAuthorization ? { actorAuthorization: ctx.incomingMessage.actorAuthorization } : {}),
+    ...(ctx.incomingMessage.replyContext ? { replyContext: ctx.incomingMessage.replyContext } : {}),
     chatType: ctx.incomingMessage.chatType,
     userId: ctx.incomingMessage.userId,
     ...(ctx.incomingMessage.groupId ? { groupId: ctx.incomingMessage.groupId } : {}),
@@ -256,7 +260,9 @@ function triggerInlineDebugOnce(ctx: DirectCommandExecutionContext, inlineText: 
 
 function queueCharacterIntroduction(ctx: DirectCommandExecutionContext): void {
   if (!ctx.input.flushSession) return;
-  enqueueCharacterIntroduction({ dataDir: ctx.input.config.dataDir, sessionId: ctx.session.id, userId: ctx.incomingMessage.userId,
+  if (!ctx.incomingMessage.actorAuthorization) throw new Error("本次配置请求缺少可验证的身份凭据，请重新发送命令");
+  enqueueCharacterIntroduction({ actorAuthorization: ctx.incomingMessage.actorAuthorization,
+    ...(ctx.incomingMessage.replyContext ? { replyContext: ctx.incomingMessage.replyContext } : {}), dataDir: ctx.input.config.dataDir, sessionId: ctx.session.id, userId: ctx.incomingMessage.userId,
     sessionManager: ctx.input.sessionManager, flushSession: ctx.input.flushSession,
     persist: () => ctx.input.persistSession(ctx.session.id, "character_introduction_enqueued") });
 }
@@ -325,30 +331,29 @@ async function enterConfigurationMode(
   ctx: DirectCommandExecutionContext,
   mode: "setup" | "config",
   target: ConfigTarget
-): Promise<string> {
+): Promise<{ message: string; characterEntered?: true }> {
   if (ctx.input.sessionManager.getOperationMode(ctx.session.id).kind !== "normal"
     || characterRepository(ctx.input.config.dataDir).draft(ctx.session.id)) {
-    return "请先确认或取消当前配置草稿。";
+    return { message: "请先确认或取消当前配置草稿。" };
   }
   if (target !== "scenario") {
-    if (ctx.session.type !== "private") return "请在私聊中配置全局角色。";
+    if (ctx.session.type !== "private") return { message: "请在私聊中配置全局角色。" };
     try {
       const store = characterRepository(ctx.input.config.dataDir);
       const draft = store.begin(ctx.session.id, target, mode, ctx.session.modeId);
       ctx.input.sessionManager.interruptResponse(ctx.session.id);
       ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "character_config", stage: draft.stage });
       ctx.input.persistSession(ctx.session.id, "character_configuration_entered");
-      queueCharacterIntroduction(ctx);
-      return `已进入 ${target} 配置，.confirm 保存，.cancel 放弃；允许留空。`;
-    } catch (error) { return error instanceof Error ? error.message : String(error); }
+      return { message: `已进入 ${target} 配置，.confirm 保存，.cancel 放弃；允许留空。`, characterEntered: true };
+    } catch (error) { return { message: error instanceof Error ? error.message : String(error) }; }
   }
   if (target === "scenario" && ctx.session.type !== "private") {
-    return "Scenario 资料是当前私聊会话级配置，当前模式仅支持私聊。请在对应私聊会话中使用 `.setup scenario` 或 `.config scenario`。";
+    return { message: "Scenario 资料是当前私聊会话级配置，当前模式仅支持私聊。请在对应私聊会话中使用 `.setup scenario` 或 `.config scenario`。" };
   }
   const readiness = await readProfileReadiness(ctx, target);
   if (mode === "config") {
     if (target === "scenario" && !readiness.scenario) {
-      return "当前会话 Scenario 资料尚未初始化，请先使用 `.setup scenario`。";
+      return { message: "当前会话 Scenario 资料尚未初始化，请先使用 `.setup scenario`。" };
     }
   }
 
@@ -374,10 +379,10 @@ async function enterConfigurationMode(
     ctx.session.id,
     mode === "setup" ? `${target}_setup_mode_entered_by_command` : `${target}_config_mode_entered_by_command`
   );
-  return [
+  return { message: [
     `已进入 ${getTargetLabel(target)}${mode === "setup" ? " 初始化" : " 配置"}流程。`,
     "接下来修改的是临时草稿，使用 `.confirm` 保存，使用 `.cancel` 放弃。"
-  ].join("\n");
+  ].join("\n") };
 }
 
 async function persistCurrentDraft(ctx: DirectCommandExecutionContext): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -951,7 +956,9 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
     access: requireOwnerForConfiguration,
     async execute(ctx: DirectCommandExecutionContext, command: ParsedDirectCommand) {
       const setupCommand = command as Extract<ParsedDirectCommand, { name: "setup" }>;
-      await ctx.send(await enterConfigurationMode(ctx, "setup", setupCommand.target));
+      const entered = await enterConfigurationMode(ctx, "setup", setupCommand.target);
+      await ctx.send(entered.message);
+      if (entered.characterEntered) queueCharacterIntroduction(ctx);
     }
   },
   {
@@ -994,7 +1001,9 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         }
         return;
       }
-      await ctx.send(await enterConfigurationMode(ctx, "config", configCommand.target));
+      const entered = await enterConfigurationMode(ctx, "config", configCommand.target);
+      await ctx.send(entered.message);
+      if (entered.characterEntered) queueCharacterIntroduction(ctx);
     }
   },
   {
@@ -1023,10 +1032,10 @@ const directCommandDescriptors: DirectCommandDescriptor[] = [
         store.reset(ctx.session.id);
         const draft = store.ensureSetup(ctx.session.id, ctx.session.modeId);
         if (draft) ctx.input.sessionManager.setOperationMode(ctx.session.id, { kind: "character_config", stage: draft.stage });
-        queueCharacterIntroduction(ctx);
         ctx.input.persistSession(ctx.session.id, "stateful_rp_reset_by_command");
         ctx.input.logger.info({ sessionId: ctx.session.id }, "stateful_rp_reset_by_command");
         await ctx.send("当前角色与场景状态已重置，会话上下文已清空。");
+        queueCharacterIntroduction(ctx);
         return;
       }
       const defaults = getScenarioStateDefaults(ctx.session);

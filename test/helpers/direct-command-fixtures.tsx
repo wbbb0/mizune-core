@@ -126,6 +126,8 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
     ...(options.stickerService ? { stickerService: options.stickerService } : {}),
     config,
     sessionManager: {
+      getSession() { return session; },
+      hasActiveResponse() { return false; },
       ensureSession() {
         return session;
       },
@@ -312,6 +314,8 @@ export function createDirectCommandFixture(options: DirectCommandFixtureOptions 
   return {
     config,
     calls,
-    handler
+    handler: (params: Parameters<typeof handler>[0]) => handler({ ...params, incomingMessage: {
+      actorAuthorization: { kind: "web", internalUserId: params.incomingMessage.userId }, ...params.incomingMessage
+    } })
   };
 }

@@ -42,6 +42,8 @@ export interface MessageEventHandlerDeps {
     command: ResolvedDirectCommand;
     sessionId: string;
     incomingMessage: {
+      actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
+      replyContext?: import("#services/messaging/incomingMessage.ts").MessageReplyContext;
       channelId?: string;
       chatType: "private" | "group";
       userId: string;

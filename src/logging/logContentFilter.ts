@@ -1,3 +1,4 @@
+import { modelSelectionScoresSchema } from "../conversation/turnPlanner/modelSelectionScores.ts";
 import { projectRequestDiagnostic } from "../llm/provider/requestDiagnostics.ts";
 import { safeLogEvents } from "./safeLogEvents.ts";
 
@@ -46,7 +47,7 @@ const qqDeliveryCodes = new Set([
   "media_source_required", "invalid_media_url", "media_size_limit", "media_name_required",
   "invalid_image_format", "invalid_file_info", "invalid_upload_plan", "invalid_upload_part",
   "incomplete_upload_plan", "missing_message_id", "group_stream_unsupported",
-  "stream_closed", "stream_buffer_limit"
+  "stream_closed", "stream_buffer_limit", "proactive_rate_limited"
 ]);
 
 /** 接收 Pino 已序列化的整条记录，覆盖格式化消息、Error 和 child bindings。 */
@@ -70,6 +71,8 @@ export function filterLogContent(record: Record<string, unknown>): Record<string
     if (record[key] !== undefined) filtered[key] = filterError(record[key]);
   }
   if (typeof record.stage === "string" && ["prepare", "generate", "delivery"].includes(record.stage)) filtered.stage = record.stage;
+  const scores = modelSelectionScoresSchema.safeParse(record.modelSelectionScores);
+  if (scores.success) filtered.modelSelectionScores = scores.data;
   const diagnostic = projectRequestDiagnostic(record.requestDiagnostic);
   if (diagnostic) filtered.requestDiagnostic = diagnostic;
   return filtered;

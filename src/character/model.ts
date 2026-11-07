@@ -26,7 +26,7 @@ export interface CharacterDraft {
   profileRevision: string;
   value: JsonObject;
   touched: string[];
-  introduction: "pending" | "claimed";
+  introduction: "pending" | "delivered";
 }
 export function emptyCharacter(): CharacterProfile {
   return { revision: randomUUID(), confirmed: [], persona: emptyValue(personaJsonSchema), social: emptyValue(socialJsonSchema), embodiment: emptyValue(embodimentJsonSchema) };

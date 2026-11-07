@@ -1,3 +1,4 @@
+import { characterIntroductionDirective, isCurrentCharacterIntroduction } from "../../character/introduction.ts";
 import { isSkillRuntimeAllowedForSession, SKILL_TOOL_NAMES } from "../../skills/skillPolicy.ts";
 import { createGenerationFailureLifecycle } from "./generationFailureLifecycle.ts";
 import { createGenerationOutbound } from "./generationOutbound.ts";
@@ -608,12 +609,17 @@ export function createGenerationSessionOrchestrator(
     const resolvedDelivery = resolveSessionReplyDelivery(sessionId, options);
     const {
       session: generationSession,
-      messages,
+      messages: queuedMessages,
       pendingReplyGateWaitPasses,
       abortController,
       responseAbortController,
       responseEpoch
     } = sessionManager.beginGeneration(sessionId);
+    const queuedDraft = characterRepository(config.dataDir).draft(sessionId);
+    const hasReplyPermit = queuedMessages.some(message => message.replyContext);
+    const messages = queuedMessages.filter(message => isCurrentCharacterIntroduction(message, queuedDraft, generationSession)
+      && (!message.intent || resolvedDelivery !== "qq_official" || hasReplyPermit));
+    if (messages.length !== queuedMessages.length) persistSession(sessionId, "stale_configuration_inputs_removed");
     const streamResponse = generationSession.pacingPreferences.toolLoopOutput !== "final_only";
     const modelSelfUpgradeEnabled = generationSession.modelRoutingPreferences.selfUpgradeEnabled;
     const expectedEpoch = sessionManager.getMutationEpoch(sessionId);
@@ -636,6 +642,7 @@ export function createGenerationSessionOrchestrator(
         }
         return;
       }
+      const replyContext = [...messages].reverse().find(message => message.userId === last.userId && message.replyContext)?.replyContext;
       const interactionMode: PromptInteractionMode = sessionManager.consumeDebugMode(sessionId) ? "debug" : "normal";
       const user = await userStore.getByUserId(last.userId);
       const relationship: Relationship = user?.relationship ?? "known";
@@ -655,11 +662,16 @@ export function createGenerationSessionOrchestrator(
       const assistantMode = isAssistantMode(sessionModeId);
       const characterStore = characterRepository(config.dataDir);
       let characterDraft = characterStore.draft(sessionId);
+      let characterIntroductionDraftId: string | undefined;
       if (relationship === "owner" && last.chatType === "private" && ["normal", "character_config"].includes(refreshedSession.operationMode.kind)) {
         characterDraft = characterStore.ensureSetup(sessionId, sessionModeId);
         if (characterDraft) {
           sessionManager.setOperationMode(sessionId, { kind: "character_config", stage: characterDraft.stage });
-          if (characterStore.claimIntroduction(sessionId)) currentTurnDirectives.push("本轮刚进入角色配置阶段，请主动介绍本阶段需要配置的信息、第一组建议以及确认和跳过方式。");
+          const introduction = characterIntroductionDirective(characterDraft);
+          if (introduction) {
+            currentTurnDirectives.push(introduction);
+            characterIntroductionDraftId = characterDraft.id;
+          }
           persistSession(sessionId, "character_setup_entered");
           refreshedSession = sessionManager.getSession(sessionId);
         }
@@ -1061,7 +1073,7 @@ export function createGenerationSessionOrchestrator(
         batchMessages: promptSafety.runtimeBatchMessages,
         sendTarget: {
           delivery: resolvedDelivery,
-          ...(last.replyContext ? { replyContext: last.replyContext } : {}),
+          ...(replyContext ? { replyContext } : {}),
           ...(last.actorAuthorization ? { actorAuthorization: last.actorAuthorization } : {}),
           chatType: last.chatType,
           userId: last.userId,
@@ -1072,6 +1084,7 @@ export function createGenerationSessionOrchestrator(
         promptMessages: promptBuildResult.promptMessages,
         resolvedModelRef,
         skillPlannerDecision: plannerDecision,
+        ...(characterIntroductionDraftId ? { characterIntroductionDraftId } : {}),
         ...(modelSelfUpgradePlan ? { modelSelfUpgradePlan } : {}),
         debugSnapshot: promptBuildResult.debugSnapshot,
         ...(setupMode
@@ -1097,10 +1110,11 @@ export function createGenerationSessionOrchestrator(
       });
     })().catch(async (error: unknown) => {
       const last = messages[messages.length - 1]!;
+      const replyContext = [...messages].reverse().find(message => message.userId === last.userId && message.replyContext)?.replyContext;
       await handlePreparationFailure({ sessionId, expectedEpoch, responseEpoch, abortController, responseAbortController, error,
         target: { delivery: resolvedDelivery, chatType: last.chatType, userId: last.userId,
           senderName: last.senderName, ...(last.groupId ? { groupId: last.groupId } : {}),
-          ...(last.replyContext ? { replyContext: last.replyContext } : {}) },
+          ...(replyContext ? { replyContext } : {}) },
         committedTextSink: options?.committedTextSink, draftOverlaySink: options?.draftOverlaySink });
     });
   };

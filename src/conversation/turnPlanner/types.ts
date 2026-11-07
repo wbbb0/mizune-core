@@ -1,3 +1,4 @@
+import type { ModelSelectionScores } from "./modelSelectionScores.ts";
 import type { Relationship } from "#identity/relationship.ts";
 import type { SpecialRole } from "#identity/specialRole.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
@@ -62,6 +63,7 @@ export interface TurnPlannerResult {
   replyDecision: "reply" | "wait" | "no_reply";
   modelTier?: "small" | "large";
   modelSelectionStatus?: "decided" | "undetermined" | "not_requested";
+  modelSelectionScores?: ModelSelectionScores;
   taskBasis?: string;
   undeterminedQuestions?: string[];
   topicDecision: "continue_topic" | "new_topic";
