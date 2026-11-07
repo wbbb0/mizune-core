@@ -1426,6 +1426,14 @@ test("DataRegistryService exposes editable scheduled jobs collection and reloads
     assert.equal(created.row.id, "job-1");
     assert.equal(service.getSchedulerReloadCount(), 1);
 
+    const resource = await service.getResource("scheduled_jobs") as {
+      resource: { rowUiTree: { kind: string; children: Record<string, unknown> } };
+    };
+    assert.equal(resource.resource.rowUiTree.kind, "group");
+    assert.ok(resource.resource.rowUiTree.children.schedule);
+    assert.equal(resource.resource.rowUiTree.children.state, undefined);
+    assert.equal(resource.resource.rowUiTree.children.updatedAtMs, undefined);
+
     const patched = await service.patchRow("scheduled_jobs", "job-1", {
       patch: {
         name: "daily updated"

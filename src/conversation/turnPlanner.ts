@@ -126,7 +126,7 @@ export class TurnPlanner {
       }
       const result = { ...normalizeTurnPlan(plan, input, prepared!.batchAnalysis, this.config, this.logger), metrics: metrics() };
       this.logger.info({ sessionId: input.sessionId, callReasons: getTurnPlannerReasons(input.requirements), ...result.metrics,
-        replyDecision: result.replyDecision, modelTier: result.modelTier, modelSelectionStatus: result.modelSelectionStatus, modelSelectionScores: result.modelSelectionScores, undeterminedQuestions: result.undeterminedQuestions, topicDecision: result.topicDecision, toolsetIds: result.toolsetIds,
+        replyDecision: result.replyDecision, modelTier: result.modelTier, modelSelectionStatus: result.modelSelectionStatus, undeterminedQuestions: result.undeterminedQuestions, topicDecision: result.topicDecision, toolsetIds: result.toolsetIds,
         ...(result.taskIntent ? { taskIntent: result.taskIntent.kind, taskIntentConfidence: result.taskIntent.confidence } : {}), reason: result.reason
       }, "turn_planner_decided");
       if (result.metrics.durationMs >= 3000) {

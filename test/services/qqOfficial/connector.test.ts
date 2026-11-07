@@ -4,12 +4,11 @@ import pino from "pino";
 import { QqOfficialClient } from "../../../src/services/qqOfficial/client.ts";
 import { QqHttpClient, type QqFetch, type QqHttpResponse } from "../../../src/services/qqOfficial/httpClient.ts";
 import { QqReplyPermitRegistry } from "../../../src/services/qqOfficial/replyPermit.ts";
-import { QqDeliveryPolicy } from "../../../src/services/qqOfficial/deliveryPolicy.ts";
 import { QqTextStream } from "../../../src/services/qqOfficial/textStream.ts";
 import { QqDeliveryError } from "../../../src/services/qqOfficial/types.ts";
 
 function response(body: unknown, status = 200): QqHttpResponse { return { ok: status >= 200 && status < 300, status, async json() { return body; } }; }
-const config = { appId: "test-app", appSecret: "secret-do-not-log", proactiveFallback: false };
+const config = { appId: "test-app", appSecret: "secret-do-not-log" };
 const logger = pino({ level: "silent" });
 const event = (group = false) => ({
   id: "ROBOT.message", timestamp: new Date().toISOString(), content: "问题", author: { id: "opaque-user", ...(group ? { member_openid: "member" } : { user_openid: "user" }) },
@@ -46,7 +45,7 @@ test("reply permits reject clones, expire, and share one reply budget", () => {
   assert.throws(() => registry.allocate({ ...permit }), /invalid_reply_permit/);
   assert.deepEqual([1, 2, 3, 4].map(() => registry.allocate(permit)), [1, 2, 3, 4]);
   assert.throws(() => registry.allocate(permit), /reply_budget_exhausted/);
-  now += 3_600_000;
+  now += 300_000;
   assert.throws(() => registry.assert(permit), /reply_permit_expired/);
 });
 
@@ -93,7 +92,7 @@ test("interrupt waits for in-flight acceptance, discards later local text, and s
   });
   const registry = new QqReplyPermitRegistry("qq_official.test-app");
   const permit = registry.issue({ chatType: "private", targetId: "user", messageId: "trigger", timestampMs: Date.now() });
-  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), new QqDeliveryPolicy(new QqHttpClient(config, f.fetch), registry, { proactiveFallback: false }), permit, { flushIntervalMs: 1 });
+  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), registry, permit, { flushIntervalMs: 1 });
   stream.append("已提交");
   await start;
   stream.append("丢弃");
@@ -111,7 +110,7 @@ test("stream replaces one message with cumulative markdown and seals the complet
   const f = fixture();
   const registry = new QqReplyPermitRegistry("qq_official.test-app");
   const permit = registry.issue({ chatType: "private", targetId: "user", messageId: "trigger", timestampMs: Date.now() });
-  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), new QqDeliveryPolicy(new QqHttpClient(config, f.fetch), registry, { proactiveFallback: false }), permit, {
+  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), registry, permit, {
     onAccepted: () => firstAccepted(), flushIntervalMs: 1
   });
   stream.append("**第一段**\n");
@@ -145,7 +144,7 @@ test("an unknown continuation retains the accepted prefix and never sends a shor
   });
   const registry = new QqReplyPermitRegistry("qq_official.test-app");
   const permit = registry.issue({ chatType: "private", targetId: "user", messageId: "trigger", timestampMs: Date.now() });
-  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), new QqDeliveryPolicy(new QqHttpClient(config, f.fetch), registry, { proactiveFallback: false }), permit, {
+  const stream = new QqTextStream(new QqHttpClient(config, f.fetch), registry, permit, {
     onAccepted: () => firstAccepted(), flushIntervalMs: 1
   });
   stream.append("已确认");
@@ -350,7 +349,7 @@ test("local images over the small-upload threshold keep the fixed split-upload r
 test("reply authorization expiring during upload prevents final media submission", async () => {
   let now = Date.now();
   const f = fixture(path => {
-    if (path.endsWith("/files")) { now += 3_600_000; return response({ file_info: "uploaded" }); }
+    if (path.endsWith("/files")) { now += 300_000; return response({ file_info: "uploaded" }); }
     return response({ id: "unexpected" });
   });
   const client = new QqOfficialClient(config, logger, { fetch: f.fetch, now: () => now });

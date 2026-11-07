@@ -39,6 +39,12 @@ const patchable = computed(() =>
   && props.resource.rowOperations?.patch === true
   && !!props.resource.rowUiTree
 );
+const visibleDetailEntries = computed(() => {
+  if (!patchable.value) return detailEntries.value;
+  const tree = props.resource.rowUiTree;
+  if (tree?.kind !== "group") return [];
+  return detailEntries.value.filter((entry) => !tree.children[entry.column.key]);
+});
 const deletable = computed(() =>
   props.resource.shape === "collection"
   && props.resource.accessMode !== "readonly"
@@ -141,8 +147,9 @@ async function openChild(child: DataModelChild) {
         @update:model-value="updateRegistryExistingRowDraft(row, $event)"
       />
       <WorkbenchKeyValueDetails
-        v-else
-        :items="detailEntries"
+        v-if="visibleDetailEntries.length"
+        :class="patchable ? 'mt-3 border-t border-border-subtle pt-3' : ''"
+        :items="visibleDetailEntries"
         :compact="compactPane"
         :get-key="(entry) => entry.column.key"
         :get-label="(entry) => entry.column.title || entry.column.key"

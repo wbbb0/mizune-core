@@ -17,9 +17,9 @@ export async function requestGoogleEmbeddings(context: LlmProviderRequestContext
   }
   params.abortSignal?.throwIfAborted();
   const timeoutMs = params.timeoutMsOverride ?? context.config.context.embedding.timeoutMs;
-  const timeout = createProviderTimeoutController({ totalTimeoutMs: timeoutMs, firstTokenTimeoutMs: timeoutMs });
+  const timeout = createProviderTimeoutController({ totalTimeoutMs: timeoutMs, firstTokenTimeoutMs: timeoutMs, abortSignal: params.abortSignal });
   timeout.markFirstResponseReceived();
-  const signal = AbortSignal.any([timeout.controller.signal, ...(params.abortSignal ? [params.abortSignal] : [])]);
+  const signal = timeout.controller.signal;
   try {
     return await runAiStudioOperation({ ...context, signal, maxResponseBytes: 32 * 1024 * 1024 }, async (client, signal) => {
       const response = await client.models.embedContent({

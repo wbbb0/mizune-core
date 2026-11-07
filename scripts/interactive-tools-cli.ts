@@ -159,6 +159,7 @@ async function main(): Promise<void> {
   try {
     await prepareInteractiveRuntime(runtime.services, state);
     ensureActiveSession(runtime.services, state);
+    await scheduler.start({ loadExisting: false });
 
     if (args.tool) {
       const result = await callTool(runtime.services, scheduler, state, {

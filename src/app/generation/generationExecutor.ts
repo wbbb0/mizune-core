@@ -149,7 +149,6 @@ export interface RunGenerationInput {
   skillPlannerDecision?: TurnPlannerResult | undefined;
   availableToolsets?: ToolsetView[] | undefined;
   setupMode?: boolean | undefined;
-  characterIntroductionDraftId?: string | undefined;
   setupCompletionSignal?: SetupCompletionSignal | undefined;
   setupOnComplete?: "exit_profile_operation" | "none" | undefined;
   streamResponse?: boolean | undefined;
@@ -255,7 +254,6 @@ export function createGenerationExecutor(
       committedTextSink,
       draftOverlaySink
     } = input;
-    let characterIntroductionDraftId = input.characterIntroductionDraftId;
     let failureStage: "generate" | "delivery" = "generate";
     let notifyFailure: ((message: string) => Promise<void>) | undefined;
     const failure = createGenerationFailureLifecycle({
@@ -383,14 +381,6 @@ export function createGenerationExecutor(
             abortController,
             responseAbortController,
             sendTarget,
-            onTextDelivered: () => {
-              const session = sessionManager.getSession(sessionId);
-              if (!characterIntroductionDraftId || session.operationMode.kind !== "character_config") return;
-              const store = characterRepository(config.dataDir);
-              const draft = store.draft(sessionId);
-              if (draft?.id === characterIntroductionDraftId && session.operationMode.stage === draft.stage
-                && store.markIntroductionDelivered(sessionId, characterIntroductionDraftId)) persistSession(sessionId, "character_introduction_delivered");
-            },
             isCurrent: () => sessionManager.getSession(sessionId).mutationEpoch === expectedEpoch && sessionManager.isResponseOpen(sessionId, responseEpoch),
             ...(committedTextSink ? { committedTextSink } : {})
           }
@@ -733,13 +723,6 @@ export function createGenerationExecutor(
         : undefined;
 
       const builtinToolContext = buildBuiltinToolContext({
-        registerCharacterIntroduction: async draftId => {
-          // Finish text from before switch_session_mode before binding delivery to its new draft.
-          if (outbound.nativeStreaming) await outbound.finishStream();
-          abortController.signal.throwIfAborted();
-          responseAbortController.signal.throwIfAborted();
-          characterIntroductionDraftId = draftId;
-        },
         resolveActorAuthorization: async () => {
           const actor = sendTarget.actorAuthorization;
           if (activeInternalTrigger) return { relationship: toolRelationship ?? relationship, currentUser: await userStore.getByUserId(sendTarget.userId) };

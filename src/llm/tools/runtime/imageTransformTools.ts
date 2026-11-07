@@ -171,9 +171,9 @@ async function resolveImageSource(context: BuiltinToolContext, args: unknown): P
   }
 
   if (assetSelector) {
-    const file = await resolveChatFile(context, assetSelector);
+    const file = await context.chatFileStore.resolveSelector(assetSelector, { allowName: true });
     if (!file) {
-      throw new Error(await buildUnknownAssetError(context, assetSelector));
+      throw new Error(`unknown asset: ${assetSelector}`);
     }
     if (file.kind !== "image") {
       throw new Error("asset_image_transform only supports static image assets");
@@ -439,39 +439,4 @@ function assertAllowedOutputDimensions(dimensions: { width: number; height: numb
       + `max dimension is ${MAX_IMAGE_TRANSFORM_DIMENSION}, max pixels is ${MAX_IMAGE_TRANSFORM_PIXELS}`
     );
   }
-}
-
-async function resolveChatFile(context: BuiltinToolContext, fileSelector: string): Promise<ChatFileRecord | null> {
-  const normalized = String(fileSelector ?? "").trim();
-  if (!normalized) {
-    return null;
-  }
-  const direct = await context.chatFileStore.getFile(normalized);
-  if (direct) {
-    return direct;
-  }
-  const files = await context.chatFileStore.listFiles().catch(() => []);
-  return files.find((item) => (
-    item.fileRef === normalized
-    || item.sourceName === normalized
-    || item.chatFilePath.split("/").at(-1) === normalized
-  )) ?? null;
-}
-
-async function buildUnknownAssetError(context: BuiltinToolContext, requestedAssetRef: string): Promise<string> {
-  const normalized = String(requestedAssetRef ?? "").trim();
-  if (!normalized) {
-    return "unknown asset";
-  }
-  const files = await context.chatFileStore.listFiles().catch(() => []);
-  const matched = files.find((item) => (
-    item.fileRef === normalized
-    || item.fileId === normalized
-    || item.sourceName === normalized
-    || item.chatFilePath.split("/").at(-1) === normalized
-  ));
-  if (matched) {
-    return `unknown asset: ${normalized}; use asset_ref=${matched.fileRef} or asset_id=${matched.fileId}`;
-  }
-  return `unknown asset: ${normalized}`;
 }

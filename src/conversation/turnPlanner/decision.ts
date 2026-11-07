@@ -36,7 +36,7 @@ export async function evaluateWithDecision(config: AppConfig, client: LlmClient,
     else if (answer.type === "predicate" && definition.question.type === "predicate") answers.set(answer.name, { value: answer.probability >= definition.threshold!, probability: answer.probability });
     else if (answer.type === "choice" && definition.question.type === "choice" && typeof answer.choice === "string") {
       const probability = answer.probabilities.find(item => item.value === answer.choice)?.probability ?? 0;
-      answers.set(answer.name, { value: answer.choice, probability, confidence: answer.confidence, probabilities: answer.probabilities });
+      answers.set(answer.name, { value: answer.choice, probability, confidence: answer.confidence });
     } else throw new Error("规划决策答案类型不匹配");
   }
   return { plan: applyPlannerAnswers(input, definitions, answers), usage: result.usage };

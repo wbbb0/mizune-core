@@ -1,15 +1,20 @@
 import { createHash } from "node:crypto";
+import { LRUCache } from "lru-cache";
 import type { ContextStore } from "./contextStore.ts";
 import type { ContextSearchDocument } from "./contextTypes.ts";
 import { OramaContextIndex } from "./oramaContextIndex.ts";
 
-type SnapshotEntry = { signature: string; snapshot: Promise<OramaContextIndex> };
+type SnapshotEntry = { userId: string; profileId: string; signature: string; snapshot: Promise<OramaContextIndex> };
 
-/** SQLite owns validity. This cache only retains immutable, profile-specific search snapshots. */
+const DEFAULT_MAX_SNAPSHOTS = 64;
+
+/** SQLite owns validity. This cache retains only a bounded set of immutable search snapshots. */
 export class ContextIndexCache {
-  private readonly users = new Map<string, Map<string, SnapshotEntry>>();
+  private readonly snapshots: LRUCache<string, SnapshotEntry>;
 
-  constructor(private readonly store: ContextStore) {}
+  constructor(private readonly store: ContextStore, maxSnapshots = DEFAULT_MAX_SNAPSHOTS) {
+    this.snapshots = new LRUCache({ max: Math.max(1, Math.floor(maxSnapshots)) });
+  }
 
   get(userId: string, profileId: string): Promise<OramaContextIndex> {
     const documents = this.store.listUserSearchDocuments(userId);
@@ -21,28 +26,33 @@ export class ContextIndexCache {
     const signature = createHash("sha256").update(JSON.stringify(indexedDocuments.map(({ lastRetrievedAt: _usage, ...document }) => [
       document, metadata.get(document.itemId)
     ]))).digest("base64url");
-    let profiles = this.users.get(userId);
-    if (!profiles) {
-      profiles = new Map();
-      this.users.set(userId, profiles);
-    }
-    const existing = profiles.get(profileId);
+    const key = JSON.stringify([userId, profileId]);
+    const existing = this.snapshots.get(key);
     if (existing?.signature === signature) return existing.snapshot;
+
     const snapshot = this.build(profileId, indexedDocuments, hashes);
-    const entry = { signature, snapshot };
-    profiles.set(profileId, entry);
+    const entry: SnapshotEntry = { userId, profileId, signature, snapshot };
+    this.snapshots.set(key, entry);
     // A failed build must be retryable; an older build must not replace a newer entry.
     void snapshot.catch(() => {
-      if (profiles.get(profileId) === entry) profiles.delete(profileId);
+      if (this.snapshots.get(key) === entry) this.snapshots.delete(key);
     });
     return snapshot;
   }
 
   reset(userId?: string): number {
-    if (userId) return this.users.delete(userId) ? 1 : 0;
-    const count = this.users.size;
-    this.users.clear();
-    return count;
+    if (userId === undefined) {
+      const count = this.snapshots.size;
+      this.snapshots.clear();
+      return count;
+    }
+    let removed = 0;
+    for (const [key, entry] of this.snapshots) {
+      if (entry.userId !== userId) continue;
+      this.snapshots.delete(key);
+      removed += 1;
+    }
+    return removed;
   }
 
   private async build(profileId: string, documents: ContextSearchDocument[], hashes: Map<string, string>): Promise<OramaContextIndex> {

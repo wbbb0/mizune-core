@@ -150,9 +150,56 @@ export function restoreSessionState(item: PersistedSessionState): SessionState {
       enabled: item.debugControl?.enabled === true,
       oncePending: false
     },
-    pendingMessages: item.pendingMessages.map(message => ({
-      ...structuredClone(message), audioIds: [...(message.audioIds ?? [])]
-    })),
+    pendingMessages: item.pendingMessages.map((message) => (
+      message.groupId
+        ? {
+            userId: message.userId,
+            groupId: message.groupId,
+            senderName: message.senderName,
+            chatType: message.chatType,
+            text: message.text,
+            ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: [...message.contentParts] } : {}),
+            images: [...message.images],
+            audioSources: [...message.audioSources],
+            audioIds: [...(message.audioIds ?? [])],
+            emojiSources: [...message.emojiSources],
+            imageIds: [...message.imageIds],
+            emojiIds: [...message.emojiIds],
+            attachments: [...(message.attachments ?? [])],
+            ...(message.messageFiles && message.messageFiles.length > 0 ? { messageFiles: [...message.messageFiles] } : {}),
+            ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: [...message.specialSegments] } : {}),
+            forwardIds: [...message.forwardIds],
+            replyMessageId: message.replyMessageId,
+            mentionUserIds: [...message.mentionUserIds],
+            mentionedAll: message.mentionedAll,
+            isAtMentioned: message.isAtMentioned,
+            rawEvent: message.rawEvent,
+            receivedAt: message.receivedAt
+          }
+        : {
+            userId: message.userId,
+            senderName: message.senderName,
+            chatType: message.chatType,
+            text: message.text,
+            ...(message.contentParts && message.contentParts.length > 0 ? { contentParts: [...message.contentParts] } : {}),
+            images: [...message.images],
+            audioSources: [...message.audioSources],
+            audioIds: [...(message.audioIds ?? [])],
+            emojiSources: [...message.emojiSources],
+            imageIds: [...message.imageIds],
+            emojiIds: [...message.emojiIds],
+            attachments: [...(message.attachments ?? [])],
+            ...(message.messageFiles && message.messageFiles.length > 0 ? { messageFiles: [...message.messageFiles] } : {}),
+            ...(message.specialSegments && message.specialSegments.length > 0 ? { specialSegments: [...message.specialSegments] } : {}),
+            forwardIds: [...message.forwardIds],
+            replyMessageId: message.replyMessageId,
+            mentionUserIds: [...message.mentionUserIds],
+            mentionedAll: message.mentionedAll,
+            isAtMentioned: message.isAtMentioned,
+            rawEvent: message.rawEvent,
+            receivedAt: message.receivedAt
+          }
+    )),
     pendingSteerMessages: [],
     pendingReplyGateWaitPasses: 0,
     queuedGroupReplyTargets: (item.queuedGroupReplyTargets ?? []).map((target) => ({

@@ -97,6 +97,11 @@ function createChatFilesSchema(db: SqliteDatabase): void {
     );
   `);
   db.exec("CREATE INDEX IF NOT EXISTS idx_chat_files_created_at ON chat_files(created_at_ms DESC, file_id ASC);");
+  createChatFileReferenceIndex(db);
+}
+
+function createChatFileReferenceIndex(db: SqliteDatabase): void {
+  db.exec("CREATE INDEX IF NOT EXISTS idx_chat_files_ref ON chat_files(file_ref);");
 }
 
 function createComfyTasksSchema(db: SqliteDatabase): void {
@@ -210,6 +215,7 @@ function validateChatFilesSchema(db: SqliteDatabase): void {
     caption_model_ref: "TEXT",
     caption_error: "TEXT"
   });
+  assertIndexExists(db, "idx_chat_files_ref");
 }
 
 function validateComfyTasksSchema(db: SqliteDatabase): void {
@@ -305,11 +311,21 @@ const ASSETS_TABLE_GROUPS: SqliteTableGroupDefinition[] = [
   },
   {
     groupId: "assets.chat_files",
-    schemaVersion: 1,
+    schemaVersion: 2,
+    minReadableSchemaVersion: 1,
     resetPolicy: "block_reset",
     ownedTables: ["chat_files"],
-    ownedIndexes: ["idx_chat_files_created_at"],
+    ownedIndexes: ["idx_chat_files_created_at", "idx_chat_files_ref"],
     createSchema: createChatFilesSchema,
+    adoptExistingSchema(db) {
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_files'").get()) {
+        createChatFileReferenceIndex(db);
+      }
+    },
+    migrateSchema(db) {
+      createChatFileReferenceIndex(db);
+      return true;
+    },
     validateSchema: validateChatFilesSchema
   },
   {

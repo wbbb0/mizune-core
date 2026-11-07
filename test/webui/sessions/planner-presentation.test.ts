@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { describeModelRouteType, describePlannerModelSelection, describePlannerModelScores } from "../../../webui/src/components/sessions/plannerPresentation.ts";
+import { describeModelRouteType, describePlannerModelSelection } from "../../../webui/src/components/sessions/plannerPresentation.ts";
 import type { TranscriptItem } from "../../../webui/src/api/types.ts";
 
 type Gate = Extract<TranscriptItem, { kind: "gate_decision" }>;
@@ -33,10 +33,4 @@ test("session transcript renders task basis and actual policy call origin", asyn
   assert.match(source, /item\.sourceModelRef/);
   assert.match(source, /无可用候选/);
   assert.match(source, /尚未执行/);
-});
-
-test("原生选模数值直接展示真实概率与置信度，普通聊天规划不补造数值", () => {
-  assert.equal(describePlannerModelScores(gate), null);
-  assert.equal(describePlannerModelScores({ ...gate, modelSelectionScores: { small: 0.6, large: 0.4, confidence: 0.1 } }), "小档 0.6 · 大档 0.4 · 置信度 0.1");
-  assert.equal(describePlannerModelScores({ ...gate, modelSelectionScores: { small: 0, large: 1, confidence: 0 } }), "小档 0 · 大档 1 · 置信度 0");
 });

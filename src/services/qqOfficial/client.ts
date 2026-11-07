@@ -2,19 +2,17 @@ import { EventEmitter } from "node:events";
 import type { Logger } from "pino";
 import { QqHttpClient, type QqFetch } from "./httpClient.ts";
 import { QqGateway } from "./gateway.ts";
-import { QqReplyPermitRegistry } from "./replyPermit.ts";
+import { QqReplyPermitRegistry, qqTargetPath } from "./replyPermit.ts";
 import { decodeQqMessage, type QqOfficialIncoming, type QqInteractiveIncoming } from "./eventDecoder.ts";
 import { QqTextStream, qqReceipt } from "./textStream.ts";
 import { uploadQqMedia } from "./mediaUpload.ts";
 import { atQqDeliveryStage } from "./types.ts";
-import { QqDeliveryPolicy } from "./deliveryPolicy.ts";
-import type { QqDeliveryReceipt, QqMediaInput, QqOfficialConfig, QqReplyPermit } from "./types.ts";
+import type { QqDeliveryReceipt, QqMediaInput, QqMessageResponse, QqOfficialConfig, QqReplyPermit } from "./types.ts";
 
 export class QqOfficialClient extends EventEmitter {
   readonly connectionId: string;
   readonly permits: QqReplyPermitRegistry;
   readonly http: QqHttpClient;
-  private readonly delivery: QqDeliveryPolicy;
   private readonly gateway: QqGateway;
   private selfId: string | undefined;
   private readonly onIncomingEvent: ((type: string, data: unknown) => void) | undefined;
@@ -26,10 +24,6 @@ export class QqOfficialClient extends EventEmitter {
     this.connectionId = `qq_official.${config.appId}`;
     this.permits = new QqReplyPermitRegistry(this.connectionId, options.now);
     this.http = new QqHttpClient(config, options.fetch, options.now);
-    this.delivery = new QqDeliveryPolicy(this.http, this.permits, {
-      proactiveFallback: config.proactiveFallback ?? true, now: options.now,
-      onFallback: error => logger.info({ error }, "qq_official_delivery_fallback")
-    });
     this.gateway = new QqGateway(this.http, logger, (type, data) => this.acceptEvent(type, data));
   }
 
@@ -61,10 +55,11 @@ export class QqOfficialClient extends EventEmitter {
     return incoming;
   }
 
-  async sendText(permit: QqReplyPermit, text: string, signal?: AbortSignal): Promise<QqDeliveryReceipt> {
-    signal?.throwIfAborted();
-    const slot = this.delivery.reserve(permit);
-    const response = await this.delivery.submit(permit, slot, { msg_type: 0, content: text }, signal);
+  async sendText(permit: QqReplyPermit, text: string): Promise<QqDeliveryReceipt> {
+    const sequence = this.permits.allocate(permit);
+    const response = await this.http.request<QqMessageResponse>("POST", `${qqTargetPath(permit)}/messages`, {
+      msg_type: 0, content: text, msg_id: permit.messageId, msg_seq: sequence
+    });
     return qqReceipt(permit, response, text);
   }
 
@@ -72,28 +67,36 @@ export class QqOfficialClient extends EventEmitter {
     let reservation;
     try {
       signal?.throwIfAborted();
-      reservation = this.delivery.reserve(permit);
+      reservation = this.permits.reserve(permit);
     }
     catch (error) { throw atQqDeliveryStage(error, "upload"); }
     let fileInfo: string;
     try {
-      fileInfo = await uploadQqMedia(this.http, permit, input, signal);
+      fileInfo = await uploadQqMedia(this.http, this.permits, permit, input, signal);
       signal?.throwIfAborted();
     } catch (error) {
-      this.delivery.release(permit, reservation);
+      this.permits.release(permit, reservation);
+      throw atQqDeliveryStage(error, "upload");
+    }
+    let sequence: number;
+    try {
+      sequence = this.permits.commit(permit, reservation);
+    } catch (error) {
+      this.permits.release(permit, reservation);
       throw atQqDeliveryStage(error, "upload");
     }
     try {
-      const response = await this.delivery.submit(permit, reservation, { msg_type: 7, media: { file_info: fileInfo } }, signal, "upload");
+      const response = await this.http.request<QqMessageResponse>("POST", `${qqTargetPath(permit)}/messages`, {
+        msg_type: 7, media: { file_info: fileInfo }, msg_id: permit.messageId, msg_seq: sequence
+      }, signal);
       return qqReceipt(permit, response);
     } catch (error) {
-      this.delivery.release(permit, reservation);
-      throw error;
+      throw atQqDeliveryStage(error, "message");
     }
   }
 
-  openTextStream(permit: QqReplyPermit, options: { onAccepted?: (receipt: QqDeliveryReceipt) => void; signal?: AbortSignal | undefined } = {}): QqTextStream {
-    const stream = new QqTextStream(this.http, this.delivery, permit, options);
+  openTextStream(permit: QqReplyPermit, options: { onAccepted?: (receipt: QqDeliveryReceipt) => void } = {}): QqTextStream {
+    const stream = new QqTextStream(this.http, this.permits, permit, options);
     this.streams.add(stream);
     // Remove closed streams opportunistically without retaining callbacks or a polling timer.
     for (const existing of this.streams) if (existing.state !== "open" && existing.state !== "sealing") this.streams.delete(existing);

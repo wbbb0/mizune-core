@@ -4,7 +4,8 @@ import type { ComfyTaskRecord } from "#comfy/taskSchema.ts";
 import type { PersistedSessionState, SessionState } from "#conversation/session/sessionTypes.ts";
 import type { ChatFileRecord } from "#services/workspace/types.ts";
 import { AssetLifecycleStore, type AssetSessionRef } from "./assetLifecycleStore.ts";
-import { collectSessionAssetRefs } from "./sessionAssetReferences.ts";
+import { collectSessionAssetRefs, type AssetReference } from "./sessionAssetReferences.ts";
+import { AssetReferenceCoordinator } from "./assetReferenceCoordinator.ts";
 
 export interface AssetLifecycleConfig {
   enabled: boolean;
@@ -47,9 +48,11 @@ export class AssetLifecycleService {
         deleteById: (taskId: string) => Promise<boolean>;
       };
       getAdditionalReferencedChatFileIds?: () => Iterable<string> | Promise<Iterable<string>>;
+      getPersistedAssetReferences?: () => Promise<readonly AssetReference[]>;
     },
     private readonly logger: Logger,
-    private readonly config: AssetLifecycleConfig
+    private readonly config: AssetLifecycleConfig,
+    private readonly assetReferences = new AssetReferenceCoordinator()
   ) {}
 
   async init(): Promise<void> {
@@ -57,18 +60,24 @@ export class AssetLifecycleService {
   }
 
   async onSessionDeleted(input: { sessionId: string; activeSessions: SessionState[]; persistedSessions: PersistedSessionState[] }): Promise<AssetLifecycleSweepResult> {
-    await this.store.removeSessionRefs(input.sessionId);
-    return this.sweep({
-      activeSessions: input.activeSessions,
-      persistedSessions: input.persistedSessions
+    return this.assetReferences.run(async () => {
+      await this.store.removeSessionRefs(input.sessionId);
+      return this.sweepUnlocked(input);
     });
   }
 
   async sweep(input: AssetLifecycleSweepInput): Promise<AssetLifecycleSweepResult> {
+    // Keep owner lookup, candidate selection and every final deletion in one boundary.
+    return this.assetReferences.run(() => this.sweepUnlocked(input));
+  }
+
+  private async sweepUnlocked(input: AssetLifecycleSweepInput): Promise<AssetLifecycleSweepResult> {
     if (!this.config.enabled) {
       return emptySweepResult();
     }
     const now = input.now ?? Date.now();
+    // A failed durable reference read aborts cleanup rather than making all owners disappear.
+    const durableReferences = await this.deps.getPersistedAssetReferences?.() ?? [];
     const sessions = dedupeSessions([...input.persistedSessions, ...input.activeSessions]);
     const liveSessionIds = new Set(sessions.map((session) => session.id));
     await this.store.removeRefsForMissingSessions([...liveSessionIds]);
@@ -90,6 +99,13 @@ export class AssetLifecycleService {
       this.store.listReferencedAssetIds("audio"),
       this.store.listReferencedAssetIds("comfy_task")
     ]);
+    for (const references of [durableReferences, this.assetReferences.retainedReferences()]) {
+      for (const reference of references) {
+        if (reference.assetKind === "chat_file") referencedChatFiles.add(reference.assetId);
+        else if (reference.assetKind === "audio") referencedAudios.add(reference.assetId);
+        else if (reference.assetKind === "comfy_task") referencedComfyTasks.add(reference.assetId);
+      }
+    }
     let skipChatFileDeletion = false;
     try {
       for (const fileId of this.deps.chatFileStore.listRetainedFileIds()) {

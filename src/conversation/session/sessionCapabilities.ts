@@ -1,4 +1,3 @@
-import type { SyntheticPendingMessage } from "./sessionTypes.ts";
 import type {
   InlineSessionTriggerExecution,
   InternalSessionTriggerExecution,
@@ -333,7 +332,7 @@ export interface SessionInternalTriggerDispatchAccess {
   enqueueInlineTrigger(sessionId: string, trigger: InlineSessionTriggerExecution): number;
 }
 
-export interface SessionDirectCommandAccess extends Pick<SessionStreamAccess, "getSession" | "hasActiveResponse"> {
+export interface SessionDirectCommandAccess {
   ensureSession(target: {
     id: string;
     type: "private" | "group";
@@ -345,7 +344,28 @@ export interface SessionDirectCommandAccess extends Pick<SessionStreamAccess, "g
   appendDebugMarker(sessionId: string, marker: SessionDebugMarker): void;
   appendSyntheticPendingMessage(
     sessionId: string,
-    message: SyntheticPendingMessage
+    message: {
+      chatType: "private" | "group";
+      userId: string;
+      groupId?: string;
+      senderName: string;
+      text: string;
+      contentParts?: SessionMessage["contentParts"];
+      images: string[];
+      audioSources?: string[];
+      audioIds?: string[];
+      emojiSources?: string[];
+      imageIds?: string[];
+      emojiIds?: string[];
+      attachments?: SessionMessage["attachments"];
+      messageFiles?: SessionMessage["messageFiles"];
+      specialSegments?: SessionMessage["specialSegments"];
+      forwardIds?: string[];
+      replyMessageId?: string | null;
+      mentionUserIds?: string[];
+      mentionedAll?: boolean;
+      isAtMentioned?: boolean;
+    }
   ): SessionState;
   appendUserHistory(
     sessionId: string,

@@ -1,8 +1,7 @@
-import type { ChatFileRecord } from "#services/workspace/types.ts";
 import {
   describeOneBotSelfAccountCapabilityUnavailable
 } from "#services/onebot/selfAccountCapabilities.ts";
-import type { BuiltinToolContext, ToolDescriptor, ToolHandler } from "../core/shared.ts";
+import type { ToolDescriptor, ToolHandler } from "../core/shared.ts";
 import { requireOwner } from "../core/shared.ts";
 import { getStringArg } from "../core/toolArgHelpers.ts";
 
@@ -103,9 +102,9 @@ export const selfAccountToolHandlers: Record<string, ToolHandler> = {
       return JSON.stringify({ ok: false, error: "asset_ref or asset_id is required" });
     }
     try {
-      const file = await resolveChatFile(context, selector);
+      const file = await context.chatFileStore.resolveSelector(selector, { allowName: true });
       if (!file) {
-        return JSON.stringify({ ok: false, error: await buildUnknownAssetError(context, selector) });
+        return JSON.stringify({ ok: false, error: `unknown asset: ${selector}` });
       }
       if (file.kind !== "image" && file.kind !== "animated_image") {
         return JSON.stringify({ ok: false, error: "self_account_avatar_set requires an image asset" });
@@ -148,38 +147,3 @@ export const selfAccountToolHandlers: Record<string, ToolHandler> = {
     }
   }
 };
-
-async function resolveChatFile(context: BuiltinToolContext, fileSelector: string): Promise<ChatFileRecord | null> {
-  const normalized = String(fileSelector ?? "").trim();
-  if (!normalized) {
-    return null;
-  }
-  const direct = await context.chatFileStore.getFile(normalized);
-  if (direct) {
-    return direct;
-  }
-  const files = await context.chatFileStore.listFiles().catch(() => []);
-  return files.find((item) => (
-    item.fileRef === normalized
-    || item.sourceName === normalized
-    || item.chatFilePath.split("/").at(-1) === normalized
-  )) ?? null;
-}
-
-async function buildUnknownAssetError(context: BuiltinToolContext, requestedAssetRef: string): Promise<string> {
-  const normalized = String(requestedAssetRef ?? "").trim();
-  if (!normalized) {
-    return "unknown asset";
-  }
-  const files = await context.chatFileStore.listFiles().catch(() => []);
-  const matched = files.find((item) => (
-    item.fileRef === normalized
-    || item.fileId === normalized
-    || item.sourceName === normalized
-    || item.chatFilePath.split("/").at(-1) === normalized
-  ));
-  if (matched) {
-    return `unknown asset: ${normalized}; use asset_ref=${matched.fileRef} or asset_id=${matched.fileId}`;
-  }
-  return `unknown asset: ${normalized}`;
-}

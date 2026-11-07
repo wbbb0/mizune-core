@@ -466,7 +466,7 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = withFilesystemS
   async asset_list(_toolCall, args, context) {
     const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
     if (selector) {
-      const file = await resolveChatFile(context, selector);
+      const file = await context.chatFileStore.resolveSelector(selector, { allowName: true });
       const fileHandle = file ? buildChatFileHandleResultFromContext(file, context) : null;
       return projectWorkspaceToolResult("asset_list", {
         ok: Boolean(file),
@@ -507,9 +507,9 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = withFilesystemS
     if (!selector) {
       return projectWorkspaceToolResult("asset_send_to_chat", { error: "asset_ref or asset_id is required" });
     }
-    const file = await resolveChatFile(context, selector);
+    const file = await context.chatFileStore.resolveSelector(selector, { allowName: true });
     if (!file) {
-      return projectWorkspaceToolResult("asset_send_to_chat", { error: await buildUnknownAssetError(context, selector) });
+      return projectWorkspaceToolResult("asset_send_to_chat", { error: `unknown asset: ${selector}` });
     }
     return sendChatFileToChat(context, file, getStringArg(args, "text"));
   },
@@ -519,9 +519,9 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = withFilesystemS
     if (!selector) {
       return projectWorkspaceToolResult("asset_local_path", { error: "asset_ref or asset_id is required" });
     }
-    const file = await resolveChatFile(context, selector);
+    const file = await context.chatFileStore.resolveSelector(selector, { allowName: true });
     if (!file) {
-      return projectWorkspaceToolResult("asset_local_path", { error: await buildUnknownAssetError(context, selector) });
+      return projectWorkspaceToolResult("asset_local_path", { error: `unknown asset: ${selector}` });
     }
     const absolutePath = await context.chatFileStore.resolveAbsolutePath(file.fileId);
     const absolute = Boolean(typeof args === "object" && args && (args as Record<string, unknown>).absolute);
@@ -545,9 +545,9 @@ export const chatFileToolHandlers: Record<string, ToolHandler> = withFilesystemS
     if (!selector || !toPath) {
       return projectWorkspaceToolResult("asset_export_to_filesystem", { error: "asset_ref or asset_id and to_path are required" });
     }
-    const file = await resolveChatFile(context, selector);
+    const file = await context.chatFileStore.resolveSelector(selector, { allowName: true });
     if (!file) {
-      return projectWorkspaceToolResult("asset_export_to_filesystem", { error: await buildUnknownAssetError(context, selector) });
+      return projectWorkspaceToolResult("asset_export_to_filesystem", { error: `unknown asset: ${selector}` });
     }
     const sourceAbsolutePath = await context.chatFileStore.resolveAbsolutePath(file.fileId);
     const preliminaryDestination = context.localFileService.resolvePath(toPath);
@@ -867,45 +867,4 @@ async function sendGenericFileToChat(
   }
 ) {
   return sendFileBytesToChat(context, input);
-}
-
-async function buildUnknownAssetError(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
-  requestedAssetRef: string
-): Promise<string> {
-  const normalized = String(requestedAssetRef ?? "").trim();
-  if (!normalized) {
-    return "unknown asset";
-  }
-  const files = await context.chatFileStore.listFiles().catch(() => []);
-  const matched = files.find((item) => (
-    item.fileRef === normalized
-    || item.fileId === normalized
-    || item.sourceName === normalized
-    || item.chatFilePath.split("/").at(-1) === normalized
-  ));
-  if (matched) {
-    return `unknown asset: ${normalized}; use asset_ref=${matched.fileRef} or asset_id=${matched.fileId}`;
-  }
-  return `unknown asset: ${normalized}`;
-}
-
-async function resolveChatFile(
-  context: Parameters<NonNullable<typeof localFileToolHandlers.filesystem_send_to_chat>>[2],
-  fileSelector: string
-) {
-  const normalized = String(fileSelector ?? "").trim();
-  if (!normalized) {
-    return null;
-  }
-  const direct = await context.chatFileStore.getFile(normalized);
-  if (direct) {
-    return direct;
-  }
-  const files = await context.chatFileStore.listFiles().catch(() => []);
-  return files.find((item) => (
-    item.fileRef === normalized
-    || item.sourceName === normalized
-    || item.chatFilePath.split("/").at(-1) === normalized
-  )) ?? null;
 }

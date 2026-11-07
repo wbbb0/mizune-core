@@ -50,3 +50,10 @@ export const scheduledJobRecordSchema = s.object({
   .strict();
 
 export type ScheduledJobRecord = Infer<typeof scheduledJobRecordSchema>;
+
+const { state: _state, updatedAtMs: _updatedAtMs, ...definitionFields } = scheduledJobRecordSchema.getShape();
+
+export const scheduledJobDefinitionSchema = s.object(definitionFields)
+  .title("任务定义")
+  .describe("编辑计划、指令及目标；运行状态由调度器维护。")
+  .strict();

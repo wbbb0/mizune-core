@@ -36,8 +36,8 @@ export function createAppSetupSupport(deps: AppSetupSupportDeps) {
     userStore
   } = deps;
 
-  // Collapse synchronous mutations into one snapshot. Persistence still serializes
-  // writes per session; no timer delays or cross-session ordering are introduced.
+  // Collapse synchronous mutations into one snapshot. Persistence serializes commits
+  // with asset GC so session content and durable media ownership stay consistent.
   const pendingPersistence = new Map<string, string>();
   const persistSession = (sessionId: string, reason: string) => {
     const alreadyPending = pendingPersistence.has(sessionId);

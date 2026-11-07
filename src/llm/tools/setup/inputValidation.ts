@@ -1,7 +1,8 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
 import type { JsonObject } from "../../../character/schemaCatalog.ts";
-const ajv = new Ajv2020({ strict: false, allErrors: true });
-const cache = new WeakMap<object, ReturnType<typeof ajv.compile>>();
+import { JsonSchemaValidatorCache } from "../../../utils/jsonSchemaValidatorCache.ts";
+
+const validators = new JsonSchemaValidatorCache(() => new Ajv2020({ strict: false, allErrors: true }));
 
 /** 初始化输入禁止把 JSON 对象/数组包进任何字符串；只检测，不转换。 */
 export function jsonStringErrors(value: unknown, path = ""): Array<{ path: string; rule: string; message: string }> {
@@ -24,8 +25,7 @@ export function jsonStringErrors(value: unknown, path = ""): Array<{ path: strin
 export function setupInputErrors(schema: JsonObject, value: unknown) {
   const stringErrors = jsonStringErrors(value);
   if (stringErrors.length) return stringErrors;
-  let validate = cache.get(schema);
-  if (!validate) { validate = ajv.compile(schema); cache.set(schema, validate); }
+  const validate = validators.get(schema);
   if (validate(value)) return [];
   return (validate.errors ?? []).slice(0, 8).map(error => ({
     path: error.instancePath || "/", rule: error.keyword,

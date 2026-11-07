@@ -77,6 +77,9 @@ function fixture(stage = "social") {
     async listFiles() {
       return [...files.values()];
     },
+    async resolveSelector(selector: string) {
+      return files.get(selector) ?? [...files.values()].find(file => file.fileRef === selector) ?? null;
+    },
     async isFileAvailable(id: string) {
       return Boolean(files.get(id)?.available);
     },

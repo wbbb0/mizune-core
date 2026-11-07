@@ -1,5 +1,4 @@
 import { QqDeliveryError, type QqReplyPermit } from "./types.ts";
-import { QQ_REPLY_RULES } from "./replyRules.ts";
 
 export interface QqReplyReservation { readonly sequence: number; }
 interface ReservationState { permit: QqReplyPermit; state: "reserved" | "committed" | "released"; }
@@ -8,7 +7,6 @@ interface PermitState { permit: QqReplyPermit; nextSequence: number; used: numbe
 // A permit belongs to one verified event and is never refreshed from a session's latest message.
 export class QqReplyPermitRegistry {
   private readonly permits = new Map<string, PermitState>();
-  private readonly issued = new WeakMap<QqReplyPermit, PermitState>();
   private readonly reservations = new WeakMap<QqReplyReservation, ReservationState>();
   constructor(readonly connectionId: string, private readonly now: () => number = Date.now) {}
 
@@ -21,31 +19,25 @@ export class QqReplyPermitRegistry {
     const permit: QqReplyPermit = Object.freeze({
       platform: "qq_official", connectionId: this.connectionId, chatType: input.chatType,
       targetId: input.targetId, messageId: input.messageId, receivedAtMs,
-      expiresAtMs: receivedAtMs + QQ_REPLY_RULES[input.chatType].lifetimeMs,
-      maxMessages: QQ_REPLY_RULES[input.chatType].maxMessages
+      // C2C docs disagree (5 vs 60 minutes); use the shorter bound until verified.
+      expiresAtMs: receivedAtMs + 5 * 60_000, maxMessages: input.chatType === "group" ? 5 : 4
     });
-    const state = { permit, nextSequence: 1, used: 0 };
-    this.permits.set(key, state);
-    this.issued.set(permit, state);
+    this.permits.set(key, { permit, nextSequence: 1, used: 0 });
     return permit;
   }
 
-  /** Expiry removes passive reply authority, but never changes the authenticated destination. */
-  assertIdentity(permit: QqReplyPermit): void {
-    if (!this.issued.has(permit) || permit.connectionId !== this.connectionId) {
+  assert(permit: QqReplyPermit): void {
+    const state = this.permits.get(this.key(permit));
+    if (!state || state.permit !== permit || permit.connectionId !== this.connectionId) {
       throw new QqDeliveryError("rejected", "invalid_reply_permit");
     }
-  }
-
-  assert(permit: QqReplyPermit): void {
-    this.assertIdentity(permit);
     if (this.now() >= permit.expiresAtMs) throw new QqDeliveryError("rejected", "reply_permit_expired");
   }
 
   /** Reserve a logical slot before any expensive upload. Sequence numbers are never reused. */
   reserve(permit: QqReplyPermit): QqReplyReservation {
     this.assert(permit);
-    const state = this.issued.get(permit)!;
+    const state = this.permits.get(this.key(permit))!;
     if (state.used >= permit.maxMessages) throw new QqDeliveryError("rejected", "reply_budget_exhausted");
     const reservation = Object.freeze({ sequence: state.nextSequence++ });
     state.used += 1;
@@ -66,7 +58,7 @@ export class QqReplyPermitRegistry {
     const state = this.reservations.get(reservation);
     if (!state || state.permit !== permit || state.state !== "reserved") return;
     state.state = "released";
-    const current = this.issued.get(permit);
+    const current = this.permits.get(this.key(permit));
     if (current?.permit === permit) current.used -= 1;
   }
 
@@ -74,6 +66,7 @@ export class QqReplyPermitRegistry {
     return this.commit(permit, this.reserve(permit));
   }
 
+  private key(permit: QqReplyPermit): string { return `${permit.chatType}:${permit.targetId}:${permit.messageId}`; }
   private prune(): void {
     for (const [key, state] of this.permits) if (this.now() >= state.permit.expiresAtMs) this.permits.delete(key);
     if (this.permits.size >= 10_000) throw new QqDeliveryError("rejected", "reply_permit_capacity");

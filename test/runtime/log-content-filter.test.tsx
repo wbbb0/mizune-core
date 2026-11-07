@@ -192,14 +192,3 @@ test("QQ diagnostic filtering rejects arbitrary enum strings, URLs, oversized co
   } });
   assert.deepEqual(unrelated.error, { message: FILTERED_LOG_MESSAGE, name: "Error" });
 });
-
-test("选模数值在默认隐私日志中保留，未知字段和非法数值不放行", () => {
-  const { logger, records, lines } = setup();
-  logger.info({ modelSelectionScores: { small: 0, large: 1, confidence: 0.4, evidence: secret } }, "turn_planner_decided");
-  assert.deepEqual(records()[0].modelSelectionScores, { small: 0, large: 1, confidence: 0.4 });
-  for (const invalid of [{ small: secret, large: 0.4, confidence: 0.5 }, { small: -1, large: 2, confidence: 0.5 }, { small: 0.6, large: 0.4, confidence: Infinity }]) {
-    logger.info({ modelSelectionScores: invalid }, "turn_planner_decided");
-    assert.equal(records().at(-1).modelSelectionScores, undefined);
-  }
-  assert.ok(!lines.join("").includes(secret));
-});

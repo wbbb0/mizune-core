@@ -949,6 +949,7 @@ other:
       userId: "10001",
       senderName: "Alice",
       text: '看这个 image_id="file_image_1" audio_id="aud_fixture_1"',
+      contentParts: [{ kind: "audio", audioId: "aud_fixture_1" }],
       imageIds: ["file_image_1"],
       emojiIds: [],
       attachments: [],

@@ -7,9 +7,13 @@ import {
   assertTableColumns,
   SqliteService,
   type SqliteDatabase,
-  type SqliteDatabaseHandle,
   type SqliteTableGroupDefinition
 } from "#data/sqlite/sqliteService.ts";
+import { AssetReferenceCoordinator } from "#data/assets/assetReferenceCoordinator.ts";
+import { AssetsDatabase } from "#data/assets/assetsDatabase.ts";
+import { assertAssetReferencesExist } from "#data/assets/assetReferenceAvailability.ts";
+import { collectSessionAssetReferences } from "#data/assets/sessionAssetReferences.ts";
+import { listOwnedSessionAssetReferences, removeSessionAssetOwnership, replaceSessionAssetOwnership, SESSION_ASSET_OWNERSHIP_TABLE_GROUP } from "./sessionAssetOwnership.ts";
 import { getDefaultSessionModeId } from "#modes/registry.ts";
 import {
   scenarioHostSessionStateSchema,
@@ -94,18 +98,20 @@ export interface SessionSnapshotRecord {
 
 export class SessionSnapshotStore {
   private readonly dbPath: string;
-  private sqlite: SqliteDatabaseHandle | null = null;
+  private readyDb: Promise<SqliteDatabase> | null = null;
 
   constructor(
     dataDir: string,
     private readonly logger: Logger,
-    private readonly sqliteService = new SqliteService(logger)
+    private readonly sqliteService = new SqliteService(logger),
+    private readonly assetReferences = new AssetReferenceCoordinator(),
+    private readonly assetsDatabase = new AssetsDatabase(dataDir, logger)
   ) {
     this.dbPath = join(dataDir, "sessions", "sessions.sqlite");
   }
 
   async init(): Promise<void> {
-    await this.getReadyDb();
+    await this.assetReferences.run(async () => { await this.getReadyDb(); });
   }
 
   async list(sessionId: string): Promise<SessionSnapshotSummary[]> {
@@ -151,23 +157,31 @@ export class SessionSnapshotStore {
       created_at_ms: createdAtMs,
       payload_json: JSON.stringify(payload)
     };
-    const db = await this.getReadyDb();
-    db.prepare(`
-      INSERT INTO session_snapshots (
-        snapshot_id,
-        session_id,
-        label,
-        created_at_ms,
-        payload_json
-      ) VALUES (
-        @snapshot_id,
-        @session_id,
-        @label,
-        @created_at_ms,
-        @payload_json
-      )
-    `).run(row);
-    return rowToSnapshotRecord(row).summary;
+    const references = collectSessionAssetReferences(payload.session);
+    await this.assetReferences.run(async () => {
+      const db = await this.getReadyDb();
+      // If GC won the boundary first, reject a first reference to its deleted asset.
+      await assertAssetReferencesExist(this.assetsDatabase, references);
+      db.transaction(() => {
+        db.prepare(`
+          INSERT INTO session_snapshots (
+            snapshot_id,
+            session_id,
+            label,
+            created_at_ms,
+            payload_json
+          ) VALUES (
+            @snapshot_id,
+            @session_id,
+            @label,
+            @created_at_ms,
+            @payload_json
+          )
+        `).run(row);
+        replaceSessionAssetOwnership(db, { kind: "snapshot", id: row.snapshot_id, sessionId: row.session_id }, references);
+      })();
+    });
+    return toSnapshotSummary(row, payload);
   }
 
   async get(sessionId: string, snapshotId: string): Promise<SessionSnapshotRecord | null> {
@@ -181,44 +195,78 @@ export class SessionSnapshotStore {
     return row ? rowToSnapshotRecord(row) : null;
   }
 
+  /** Hold media across asynchronous restore work, including deletion of the source snapshot. */
+  async withSnapshot<T>(sessionId: string, snapshotId: string, use: (snapshot: SessionSnapshotRecord) => Promise<T>): Promise<T | null> {
+    const retained = await this.assetReferences.run(async () => {
+      const snapshot = await this.get(sessionId, snapshotId);
+      if (!snapshot) return null;
+      const references = listOwnedSessionAssetReferences(await this.getReadyDb(), { kind: "snapshot", id: snapshotId });
+      return { snapshot, release: this.assetReferences.retain(references) };
+    });
+    if (!retained) return null;
+    try {
+      // The callback may save a session through the same coordinator; never hold its queue here.
+      return await use(retained.snapshot);
+    } finally {
+      retained.release();
+    }
+  }
+
   async delete(sessionId: string, snapshotId: string): Promise<boolean> {
-    const db = await this.getReadyDb();
-    const result = db.prepare(`
-      DELETE FROM session_snapshots
-      WHERE session_id = ?
-        AND snapshot_id = ?
-    `).run(sessionId, snapshotId);
-    return result.changes > 0;
+    return this.assetReferences.run(async () => {
+      const db = await this.getReadyDb();
+      return db.transaction(() => {
+        const result = db.prepare(`DELETE FROM session_snapshots WHERE session_id = ? AND snapshot_id = ?`).run(sessionId, snapshotId);
+        if (result.changes > 0) removeSessionAssetOwnership(db, "snapshot", snapshotId);
+        return result.changes > 0;
+      })();
+    });
   }
 
   async deleteAllForSession(sessionId: string): Promise<number> {
-    const db = await this.getReadyDb();
-    const result = db.prepare(`
-      DELETE FROM session_snapshots
-      WHERE session_id = ?
-    `).run(sessionId);
-    return result.changes;
+    return this.assetReferences.run(async () => {
+      const db = await this.getReadyDb();
+      return db.transaction(() => {
+        const result = db.prepare("DELETE FROM session_snapshots WHERE session_id = ?").run(sessionId);
+        db.prepare("DELETE FROM session_asset_owners WHERE owner_kind = 'snapshot' AND session_id = ?").run(sessionId);
+        return result.changes;
+      })();
+    });
   }
 
-  private async getReadyDb(): Promise<SqliteDatabase> {
-    if (!this.sqlite) {
-      this.sqlite = await this.sqliteService.openDatabase({
-        databaseId: "sessions",
-        dbPath: this.dbPath,
-        tableGroups: SESSION_SNAPSHOT_TABLE_GROUPS,
-        pragmas: {
-          wal: true,
-          foreignKeys: true,
-          busyTimeoutMs: 5000
-        },
-        selfHealing: {
-          resetDatabaseOnOpenFailure: false,
-          resetDatabaseOnIntegrityFailure: false,
-          backupInvalidDatabase: false
-        }
+  private getReadyDb(): Promise<SqliteDatabase> {
+    if (!this.readyDb) {
+      this.readyDb = this.openDb().catch((error: unknown) => {
+        this.readyDb = null;
+        throw error;
       });
     }
-    return this.sqlite.db;
+    return this.readyDb;
+  }
+
+  private async openDb(): Promise<SqliteDatabase> {
+    const sqlite = await this.sqliteService.openDatabase({
+      databaseId: "sessions",
+      dbPath: this.dbPath,
+      tableGroups: [...SESSION_SNAPSHOT_TABLE_GROUPS, SESSION_ASSET_OWNERSHIP_TABLE_GROUP],
+      pragmas: {
+        wal: true,
+        foreignKeys: true,
+        busyTimeoutMs: 5000
+      },
+      selfHealing: {
+        resetDatabaseOnOpenFailure: false,
+        resetDatabaseOnIntegrityFailure: false,
+        backupInvalidDatabase: false
+      }
+    });
+    try {
+      backfillSnapshotAssetOwnership(sqlite.db);
+      return sqlite.db;
+    } catch (error) {
+      sqlite.close();
+      throw error;
+    }
   }
 }
 
@@ -237,19 +285,42 @@ function rowToSnapshotRecord(row: SessionSnapshotRow): SessionSnapshotRecord {
   }
   assertSnapshotPayloadConsistent(payload);
   return {
-    summary: {
-      id: row.snapshot_id,
-      sessionId: row.session_id,
-      label: row.label,
-      createdAtMs: row.created_at_ms,
-      modeId: payload.session.modeId ?? getDefaultSessionModeId(),
-      title: payload.session.title,
-      transcriptCount: payload.session.internalTranscript.length,
-      hasScenarioHostState: payload.modeState?.kind === "scenario_host",
-      hasStatefulRpState: payload.modeState?.kind === "stateful_rp"
-    },
+    summary: toSnapshotSummary(row, payload),
     payload
   };
+}
+
+function toSnapshotSummary(row: SessionSnapshotRow, payload: SessionSnapshotPayload): SessionSnapshotSummary {
+  return {
+    id: row.snapshot_id,
+    sessionId: row.session_id,
+    label: row.label,
+    createdAtMs: row.created_at_ms,
+    modeId: payload.session.modeId ?? getDefaultSessionModeId(),
+    title: payload.session.title,
+    transcriptCount: payload.session.internalTranscript.length,
+    hasScenarioHostState: payload.modeState?.kind === "scenario_host",
+    hasStatefulRpState: payload.modeState?.kind === "stateful_rp"
+  };
+}
+
+function backfillSnapshotAssetOwnership(db: SqliteDatabase): void {
+  db.prepare(`DELETE FROM session_asset_owners WHERE owner_kind = 'snapshot'
+    AND NOT EXISTS (SELECT 1 FROM session_snapshots WHERE snapshot_id = owner_id)`).run();
+  const nextSnapshot = db.prepare(`SELECT snapshot_id, session_id, label, created_at_ms, payload_json
+    FROM session_snapshots WHERE snapshot_id > ? AND NOT EXISTS (
+      SELECT 1 FROM session_asset_owners WHERE owner_kind = 'snapshot' AND owner_id = snapshot_id
+    ) ORDER BY snapshot_id LIMIT 1`);
+  let after = "";
+  while (true) {
+    const row = nextSnapshot.get(after) as SessionSnapshotRow | undefined;
+    if (!row) return;
+    // Fail startup on an unreadable owner; GC must not treat its assets as unreferenced.
+    const { payload } = rowToSnapshotRecord(row);
+    db.transaction(() => replaceSessionAssetOwnership(db,
+      { kind: "snapshot", id: row.snapshot_id, sessionId: row.session_id }, collectSessionAssetReferences(payload.session)))();
+    after = row.snapshot_id;
+  }
 }
 
 function assertSnapshotPayloadConsistent(payload: SessionSnapshotPayload): void {

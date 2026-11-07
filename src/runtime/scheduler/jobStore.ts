@@ -1,11 +1,26 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { Logger } from "pino";
 import type { ScheduledJob, ScheduledJobSchedule, ScheduledJobTarget } from "./types.ts";
 import type { SqliteDatabase } from "#data/sqlite/sqliteService.ts";
 import { StateDatabase } from "#data/state/stateDatabase.ts";
 import { scheduledJobRecordSchema } from "./jobSchema.ts";
 
+export type ScheduledJobRuntimeTransition =
+  | { type: "update"; state: ScheduledJob["state"]; enabled?: boolean }
+  | { type: "remove" }
+  | null;
+
+export type ScheduledJobVersion = {
+  readonly identity: symbol;
+  readonly definition: symbol;
+};
+
 export class ScheduledJobStore {
+  // Versions are process-local ownership tokens, not a second persistent model.
+  // Deleting a record also removes its token; reusing its id gets a new identity.
+  private readonly versions = new Map<string, ScheduledJobVersion>();
+
   constructor(
     dataDir: string,
     private readonly logger: Logger,
@@ -26,7 +41,10 @@ export class ScheduledJobStore {
       ORDER BY sort_order ASC, id ASC
     `).all() as ScheduledJobRow[];
       const targets = listTargetsForJobs(this.stateDatabase.getDb(), rows.map((row) => row.id));
-      return rows.map((row) => toScheduledJob(row, targets.get(row.id) ?? []));
+      return rows.map((row) => {
+        this.ensureVersion(row.id);
+        return toScheduledJob(row, targets.get(row.id) ?? []);
+      });
     } catch (error: unknown) {
       this.logger.warn({ error }, "scheduled_job_load_failed");
       return [];
@@ -53,24 +71,67 @@ export class ScheduledJobStore {
       schedule: input.schedule,
       instruction: input.instruction,
       targets: input.targets,
-      state: {
-        nextRunAtMs: null,
-        lastRunAtMs: null,
-        lastRunStatus: null,
-        lastDurationMs: null,
-        lastError: null,
-        consecutiveErrors: 0
-      }
+      state: initialJobState()
     };
     await this.insertJob(created);
     return created;
   }
 
-  async update(job: ScheduledJob): Promise<void> {
+  async transitionRuntime(
+    jobId: string,
+    transition: (current: ScheduledJob) => ScheduledJobRuntimeTransition
+  ): Promise<ScheduledJob | null> {
     await this.stateDatabase.init();
-    this.stateDatabase.getDb().transaction((next: ScheduledJob) => {
-      updateJobRow(this.stateDatabase.getDb(), next, false);
-    })(scheduledJobRecordSchema.parse(job));
+    return this.stateDatabase.getDb().transaction(() => {
+      const current = this.getRowSync(jobId);
+      if (!current) {
+        return null;
+      }
+      // Read, ownership check and write share a transaction. A running task must
+      // never restore an older definition after the data editor changes it.
+      const change = transition(current);
+      if (!change) {
+        return null;
+      }
+      if (change.type === "remove") {
+        this.stateDatabase.getDb().prepare("DELETE FROM scheduled_jobs WHERE id = ?").run(jobId);
+        this.versions.delete(jobId);
+        return null;
+      }
+      const next = scheduledJobRecordSchema.parse({
+        ...current,
+        enabled: change.enabled ?? current.enabled,
+        updatedAtMs: Date.now(),
+        state: change.state
+      });
+      this.stateDatabase.getDb().prepare(`
+        UPDATE scheduled_jobs
+        SET
+          enabled = @enabled,
+          updated_at_ms = @updatedAtMs,
+          next_run_at_ms = @nextRunAtMs,
+          last_run_at_ms = @lastRunAtMs,
+          last_run_status = @lastRunStatus,
+          last_duration_ms = @lastDurationMs,
+          last_error = @lastError,
+          consecutive_errors = @consecutiveErrors
+        WHERE id = @id
+      `).run({
+        id: next.id,
+        enabled: next.enabled ? 1 : 0,
+        updatedAtMs: next.updatedAtMs,
+        nextRunAtMs: next.state.nextRunAtMs,
+        lastRunAtMs: next.state.lastRunAtMs,
+        lastRunStatus: next.state.lastRunStatus,
+        lastDurationMs: next.state.lastDurationMs,
+        lastError: next.state.lastError,
+        consecutiveErrors: next.state.consecutiveErrors
+      });
+      if (next.enabled !== current.enabled) {
+        this.advanceDefinitionVersion(jobId);
+      }
+      return next;
+    })();
   }
 
   async remove(jobId: string): Promise<boolean> {
@@ -79,6 +140,7 @@ export class ScheduledJobStore {
       DELETE FROM scheduled_jobs
       WHERE id = ?
     `).run(jobId);
+    this.versions.delete(jobId);
     return result.changes > 0;
   }
 
@@ -144,12 +206,11 @@ export class ScheduledJobStore {
 
   async getRow(jobId: string): Promise<ScheduledJob | null> {
     await this.stateDatabase.init();
-    const row = this.stateDatabase.getDb().prepare(`
-      ${SCHEDULED_JOB_SELECT}
-      FROM scheduled_jobs
-      WHERE id = ?
-    `).get(jobId) as ScheduledJobRow | undefined;
-    return row ? toScheduledJob(row, listTargetsForJob(this.stateDatabase.getDb(), row.id)) : null;
+    return this.getRowSync(jobId);
+  }
+
+  getVersion(jobId: string): ScheduledJobVersion | null {
+    return this.versions.get(jobId) ?? null;
   }
 
   async createRow(value: unknown): Promise<ScheduledJob> {
@@ -157,7 +218,8 @@ export class ScheduledJobStore {
       ...(value && typeof value === "object" ? value : {}),
       id: (value as { id?: unknown } | null)?.id ?? randomUUID(),
       createdAtMs: (value as { createdAtMs?: unknown } | null)?.createdAtMs ?? Date.now(),
-      updatedAtMs: (value as { updatedAtMs?: unknown } | null)?.updatedAtMs ?? Date.now()
+      updatedAtMs: (value as { updatedAtMs?: unknown } | null)?.updatedAtMs ?? Date.now(),
+      state: (value as { state?: unknown } | null)?.state ?? initialJobState()
     });
     await this.insertJob(parsed);
     return parsed;
@@ -177,9 +239,22 @@ export class ScheduledJobStore {
       const parsed = scheduledJobRecordSchema.parse({
         ...current,
         ...patch,
-        id: jobId
+        id: jobId,
+        // Editors submit full drafts, which may predate the current invocation.
+        // Runtime-owned fields cannot be restored from such a draft.
+        state: current.state,
+        updatedAtMs: Date.now()
       });
-      updateJobRow(this.stateDatabase.getDb(), parsed, true);
+      const definitionChanged = !sameScheduledJobDefinition(current, parsed);
+      if (!sameScheduledJobExecution(current, parsed)) {
+        parsed.state = initialJobState();
+      } else if (!parsed.enabled) {
+        parsed.state.nextRunAtMs = null;
+      }
+      updateJobRow(this.stateDatabase.getDb(), parsed);
+      if (definitionChanged || current.enabled !== parsed.enabled) {
+        this.advanceDefinitionVersion(jobId);
+      }
       return parsed;
     })();
   }
@@ -195,6 +270,7 @@ export class ScheduledJobStore {
       this.stateDatabase.getDb().transaction((next: ScheduledJob) => {
         insertJobRow(this.stateDatabase.getDb(), next, nextJobSortOrder(this.stateDatabase.getDb()));
       })(parsed);
+      this.versions.set(parsed.id, { identity: Symbol(), definition: Symbol() });
     } catch (error: unknown) {
       if (isSqliteConstraintError(error)) {
         throw new Error(`Scheduled job ${parsed.id} already exists`);
@@ -209,8 +285,49 @@ export class ScheduledJobStore {
       FROM scheduled_jobs
       WHERE id = ?
     `).get(jobId) as ScheduledJobRow | undefined;
-    return row ? toScheduledJob(row, listTargetsForJob(this.stateDatabase.getDb(), row.id)) : null;
+    if (!row) {
+      return null;
+    }
+    this.ensureVersion(row.id);
+    return toScheduledJob(row, listTargetsForJob(this.stateDatabase.getDb(), row.id));
   }
+
+  private ensureVersion(jobId: string): ScheduledJobVersion {
+    let version = this.versions.get(jobId);
+    if (!version) {
+      version = { identity: Symbol(), definition: Symbol() };
+      this.versions.set(jobId, version);
+    }
+    return version;
+  }
+
+  private advanceDefinitionVersion(jobId: string): void {
+    const { identity } = this.ensureVersion(jobId);
+    this.versions.set(jobId, { identity, definition: Symbol() });
+  }
+}
+
+export function sameScheduledJobDefinition(left: ScheduledJob, right: ScheduledJob): boolean {
+  return left.name === right.name
+    && sameScheduledJobExecution(left, right);
+}
+
+function sameScheduledJobExecution(left: ScheduledJob, right: ScheduledJob): boolean {
+  return left.createdAtMs === right.createdAtMs
+    && left.instruction === right.instruction
+    && isDeepStrictEqual(left.schedule, right.schedule)
+    && isDeepStrictEqual(left.targets, right.targets);
+}
+
+function initialJobState(): ScheduledJob["state"] {
+  return {
+    nextRunAtMs: null,
+    lastRunAtMs: null,
+    lastRunStatus: null,
+    lastDurationMs: null,
+    lastError: null,
+    consecutiveErrors: 0
+  };
 }
 
 const SCHEDULED_JOB_SELECT = `
@@ -377,7 +494,7 @@ function insertJobRow(db: SqliteDatabase, job: ScheduledJob, sortOrder: number):
   replaceJobTargets(db, job);
 }
 
-function updateJobRow(db: SqliteDatabase, job: ScheduledJob, requireExisting: boolean): void {
+function updateJobRow(db: SqliteDatabase, job: ScheduledJob): void {
   const result = db.prepare(`
     UPDATE scheduled_jobs
     SET
@@ -399,12 +516,10 @@ function updateJobRow(db: SqliteDatabase, job: ScheduledJob, requireExisting: bo
       consecutive_errors = @consecutiveErrors
     WHERE id = @id
   `).run(toJobParams(job));
-  if (requireExisting && result.changes === 0) {
+  if (result.changes === 0) {
     throw new Error(`Scheduled job ${job.id} not found`);
   }
-  if (result.changes > 0) {
-    replaceJobTargets(db, job);
-  }
+  replaceJobTargets(db, job);
 }
 
 function replaceJobTargets(db: SqliteDatabase, job: ScheduledJob): void {

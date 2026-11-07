@@ -73,44 +73,49 @@ export class BrowserPageService {
     }
 
     const ownerSessionId = normalizeOptionalString(input.ownerSessionId);
-    const profile = await this.profileService.resolveProfileForOpen(ownerSessionId);
-    const openResult = await this.openWithBackend({
-      resolvedUrl: resolvedRequestedUrl,
-      requestedUrl: resolvedRequestedUrl,
-      profileId: profile.profileId,
-      storageState: profile.storageState,
-      sessionStorageByOrigin: profile.sessionStorageByOrigin,
-      persistState: profile.persistState
-    });
-    const expiresAt = this.janitor.computeNextExpiry();
-    const sessionRecord: BrowserSessionRecord = {
-      resourceId: "",
-      backend: openResult.backend,
-      state: openResult.state,
-      snapshot: openResult.snapshot,
-      expiresAt,
-      ownerSessionId,
-      profileId: openResult.snapshot.profileId
-    };
-    const resourceId = await this.deps.resourceSync.registerOpenedPage({
-      ownerSessionId,
-      description: normalizeOptionalString(input.description),
-      session: sessionRecord
-    });
-    const evicted = this.deps.sessions.set(resourceId, {
-      backend: openResult.backend,
-      state: openResult.state,
-      snapshot: openResult.snapshot,
-      expiresAt,
-      ownerSessionId,
-      profileId: openResult.snapshot.profileId
-    });
-    await Promise.all(evicted.map((session) => this.janitor.disposeEvictedSession(session)));
+    const releaseOpeningSlot = await this.janitor.reserveOpen();
+    try {
+      const profile = await this.profileService.resolveProfileForOpen(ownerSessionId);
+      const openResult = await this.openWithBackend({
+        resolvedUrl: resolvedRequestedUrl,
+        requestedUrl: resolvedRequestedUrl,
+        profileId: profile.profileId,
+        storageState: profile.storageState,
+        sessionStorageByOrigin: profile.sessionStorageByOrigin,
+        persistState: profile.persistState
+      });
+      let sessionRecord: BrowserSessionRecord = {
+        resourceId: "",
+        backend: openResult.backend,
+        state: openResult.state,
+        snapshot: openResult.snapshot,
+        expiresAt: this.janitor.computeNextExpiry(),
+        ownerSessionId,
+        profileId: openResult.snapshot.profileId
+      };
+      try {
+        sessionRecord.resourceId = await this.deps.resourceSync.registerOpenedPage({
+          ownerSessionId,
+          description: normalizeOptionalString(input.description),
+          session: sessionRecord
+        });
+        sessionRecord = this.deps.sessions.set(sessionRecord.resourceId, sessionRecord);
+      } catch (error) {
+        try {
+          await this.janitor.disposeSession(sessionRecord, sessionRecord.resourceId ? "expired" : null, false);
+        } catch (cleanupError) {
+          throw new AggregateError([error, cleanupError], "Browser page registration failed and cleanup is pending", { cause: error });
+        }
+        throw error;
+      }
 
-    return {
-      ok: true,
-      ...renderSnapshot(resourceId, openResult.backend.name, openResult.snapshot, line)
-    };
+      return {
+        ok: true,
+        ...renderSnapshot(sessionRecord.resourceId, openResult.backend.name, openResult.snapshot, line)
+      };
+    } finally {
+      releaseOpeningSlot();
+    }
   }
 
   async inspectPage(input: InspectPageInput): Promise<InspectPageResult> {
@@ -176,9 +181,11 @@ export class BrowserPageService {
       filePaths: input.filePaths,
       waitMs: normalizeWaitMs(input.waitMs)
     });
+    this.assertSessionOwned(session);
     session.state = next.state;
     session.snapshot = next.snapshot;
     await this.profileService.persistSessionProfile(session);
+    this.assertSessionOwned(session);
     await this.deps.resourceSync.touchPage(resourceId, session);
 
     return {
@@ -211,17 +218,12 @@ export class BrowserPageService {
   }
 
   async closePage(resourceId: string): Promise<ClosePageResult> {
-    await this.janitor.cleanupExpiredSessions();
     const normalizedResourceId = String(resourceId ?? "").trim();
     if (!normalizedResourceId) {
       throw new Error("resource_id is required");
     }
 
-    const session = await this.janitor.requireSession(normalizedResourceId, { touch: false });
-    this.deps.sessions.delete(normalizedResourceId);
-    await this.profileService.persistSessionProfile(session);
-    await session.backend.close(session.state);
-    await this.deps.resourceSync.markClosed(normalizedResourceId);
+    await this.janitor.closeSession(normalizedResourceId);
     return {
       ok: true,
       resource_id: normalizedResourceId,
@@ -334,7 +336,8 @@ export class BrowserPageService {
     sessionStorageByOrigin: Record<string, Record<string, string>>;
     persistState: boolean;
   }): Promise<OpenedBrowserSession> {
-    const result = await this.deps.playwrightBackend.open({
+    const backend = this.deps.playwrightBackend;
+    const result = await backend.open({
       url: input.resolvedUrl,
       requestedUrl: input.requestedUrl,
       profileId: input.profileId,
@@ -343,10 +346,16 @@ export class BrowserPageService {
       persistState: input.persistState
     });
     return {
-      backend: this.deps.playwrightBackend,
+      backend,
       state: result.state,
       snapshot: result.snapshot
     };
+  }
+
+  private assertSessionOwned(session: BrowserSessionRecord): void {
+    if (this.deps.sessions.get(session.resourceId) !== session) {
+      throw new Error(`Browser page was closed during interaction: ${session.resourceId}`);
+    }
   }
 }
 

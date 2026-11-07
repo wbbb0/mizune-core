@@ -1,51 +1,84 @@
 import { walkMessageContentParts } from "#messages/contentParts.ts";
+import { isImmutableTranscriptItem } from "#conversation/session/immutableTranscript.ts";
 import type {
   InternalTranscriptItem,
   InternalToolResultItem,
-  PersistedSessionMessage,
   PersistedSessionState,
-  SessionMessage,
   SessionState,
-  TranscriptMessageContentPart,
-  TranscriptUserMediaMessageItem,
-  TranscriptUserMessageItem
+  TranscriptMessageContentPart
 } from "#conversation/session/sessionTypes.ts";
 import { isPendingChatAttachmentId } from "#services/workspace/chatAttachments.ts";
 import type { AssetSessionRef } from "./assetLifecycleStore.ts";
+
+export type AssetReference = Pick<AssetSessionRef, "assetKind" | "assetId">;
+type CollectedAssetReference = AssetReference & { refKind: string };
+type AddReference = (assetKind: AssetReference["assetKind"], assetId: string, refKind: string) => void;
+interface SessionAssetMessage {
+  imageIds: readonly string[];
+  emojiIds: readonly string[];
+  audioIds?: readonly string[] | undefined;
+  attachments?: readonly { fileId: string }[] | undefined;
+  contentParts?: readonly TranscriptMessageContentPart[] | undefined;
+}
+
+interface SessionAssetSource {
+  pendingMessages: readonly SessionAssetMessage[];
+  pendingSteerMessages?: readonly SessionAssetMessage[] | undefined;
+  queuedGroupReplyTargets?: readonly { messages: readonly SessionAssetMessage[] }[] | undefined;
+  internalTranscript: readonly InternalTranscriptItem[];
+}
+
+const immutableTranscriptReferences = new WeakMap<InternalTranscriptItem, readonly CollectedAssetReference[]>();
+const chatFileReferenceFields = new Set(["fileId", "file_id", "fileRef", "file_ref", "assetId", "asset_id", "assetRef", "asset_ref"]);
+
+/** Typed asset fields are the single source for GC, durable ownership, and admin media projections. */
+export function collectSessionAssetReferences(session: SessionAssetSource): CollectedAssetReference[] {
+  return collectReferences((add) => {
+    for (const message of session.pendingMessages) collectFromMessage(add, message);
+    for (const message of session.pendingSteerMessages ?? []) collectFromMessage(add, message);
+    for (const target of session.queuedGroupReplyTargets ?? []) {
+      for (const message of target.messages) collectFromMessage(add, message);
+    }
+    for (const item of session.internalTranscript) addTranscriptReferences(add, item);
+  });
+}
+
+export function collectTranscriptAssetReferences(transcript: readonly InternalTranscriptItem[]): CollectedAssetReference[] {
+  return collectReferences((add) => {
+    for (const item of transcript) addTranscriptReferences(add, item);
+  });
+}
+
+export function collectTranscriptMediaIds(transcript: readonly InternalTranscriptItem[]): { chatFileIds: string[]; audioIds: string[] } {
+  const references = collectTranscriptAssetReferences(transcript);
+  return {
+    chatFileIds: [...new Set(references.filter(ref => ref.assetKind === "chat_file").map(ref => ref.assetId))],
+    audioIds: [...new Set(references.filter(ref => ref.assetKind === "audio").map(ref => ref.assetId))]
+  };
+}
+
+function collectReferences(visit: (add: AddReference) => void): CollectedAssetReference[] {
+  const references = new Map<string, CollectedAssetReference>();
+  visit((assetKind, rawAssetId, refKind) => {
+    const assetId = rawAssetId.trim();
+    if (!assetId || isPendingChatAttachmentId(assetId)) return;
+    references.set(JSON.stringify([assetKind, assetId, refKind]), { assetKind, assetId, refKind });
+  });
+  return [...references.values()];
+}
 
 export function collectSessionAssetRefs(
   sessions: Array<SessionState | PersistedSessionState>,
   now: number
 ): AssetSessionRef[] {
-  const refs = new Map<string, AssetSessionRef>();
-  for (const session of sessions) {
-    const sessionId = session.id;
-    const add = (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => {
-      if (!assetId || isPendingChatAttachmentId(assetId)) return;
-      const key = `${assetKind}:${assetId}:${sessionId}:${refKind}`;
-      refs.set(key, {
-        assetKind,
-        assetId,
-        sessionId,
-        refKind,
-        createdAtMs: now,
-        lastSeenAtMs: now,
-        expiresAtMs: null
-      });
-    };
-    for (const message of session.pendingMessages) {
-      collectFromMessage(add, message);
-    }
-    for (const item of session.internalTranscript) {
-      collectFromTranscriptItem(add, item);
-    }
-  }
-  return Array.from(refs.values());
+  return sessions.flatMap(session => collectSessionAssetReferences(session).map(reference => ({
+    ...reference, sessionId: session.id, createdAtMs: now, lastSeenAtMs: now, expiresAtMs: null
+  })));
 }
 
 function collectFromMessage(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
-  message: PersistedSessionMessage | SessionMessage
+  add: AddReference,
+  message: SessionAssetMessage
 ): void {
   for (const fileId of [...message.imageIds, ...message.emojiIds]) {
     add("chat_file", fileId, "message");
@@ -59,20 +92,29 @@ function collectFromMessage(
   collectFromContentParts(add, message.contentParts);
 }
 
+function addTranscriptReferences(add: AddReference, item: InternalTranscriptItem): void {
+  const immutable = isImmutableTranscriptItem(item);
+  let references = immutable ? immutableTranscriptReferences.get(item) : undefined;
+  if (!references) {
+    references = collectReferences((collect) => collectFromTranscriptItem(collect, item));
+    if (immutable) immutableTranscriptReferences.set(item, references);
+  }
+  for (const reference of references) add(reference.assetKind, reference.assetId, reference.refKind);
+}
+
 function collectFromTranscriptItem(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
+  add: AddReference,
   item: InternalTranscriptItem
 ): void {
-  if (item.kind === "user_message") {
-    collectFromTranscriptUserMessage(add, item);
+  if (item.kind === "user_message" || item.kind === "user_media_message") {
+    for (const fileId of [...item.imageIds, ...item.emojiIds]) add("chat_file", fileId, "transcript");
+    for (const attachment of item.attachments ?? []) add("chat_file", attachment.fileId, "transcript");
+    collectFromContentParts(add, item.contentParts);
     return;
   }
-  if (item.kind === "user_media_message") {
-    collectFromTranscriptUserMediaMessage(add, item);
-    return;
-  }
-  if (item.kind === "outbound_media_message" && item.fileId) {
-    add("chat_file", item.fileId, "transcript");
+  if (item.kind === "outbound_media_message") {
+    if (item.fileId) add("chat_file", item.fileId, "transcript");
+    if (item.fileRef) add("chat_file", item.fileRef, "transcript");
     return;
   }
   if (item.kind === "tool_result") {
@@ -80,34 +122,8 @@ function collectFromTranscriptItem(
   }
 }
 
-function collectFromTranscriptUserMessage(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
-  item: TranscriptUserMessageItem
-): void {
-  for (const fileId of [...item.imageIds, ...item.emojiIds]) {
-    add("chat_file", fileId, "transcript");
-  }
-  for (const attachment of item.attachments ?? []) {
-    add("chat_file", attachment.fileId, "transcript");
-  }
-  collectFromContentParts(add, item.contentParts);
-}
-
-function collectFromTranscriptUserMediaMessage(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
-  item: TranscriptUserMediaMessageItem
-): void {
-  for (const fileId of [...item.imageIds, ...item.emojiIds]) {
-    add("chat_file", fileId, "transcript");
-  }
-  for (const attachment of item.attachments ?? []) {
-    add("chat_file", attachment.fileId, "transcript");
-  }
-  collectFromContentParts(add, item.contentParts);
-}
-
 function collectFromContentParts(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
+  add: AddReference,
   contentParts: readonly TranscriptMessageContentPart[] | undefined
 ): void {
   for (const part of walkMessageContentParts(contentParts)) {
@@ -126,7 +142,7 @@ function collectFromContentParts(
 }
 
 function collectFromToolResult(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
+  add: AddReference,
   item: InternalToolResultItem
 ): void {
   if (item.observation?.resource?.kind === "asset") {
@@ -137,7 +153,7 @@ function collectFromToolResult(
 }
 
 function collectAssetIdsFromJsonText(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
+  add: AddReference,
   text: string | undefined
 ): void {
   if (!text) return;
@@ -147,27 +163,21 @@ function collectAssetIdsFromJsonText(
 }
 
 function collectAssetIdsFromValue(
-  add: (assetKind: AssetSessionRef["assetKind"], assetId: string, refKind: string) => void,
+  add: AddReference,
   value: unknown
 ): void {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectAssetIdsFromValue(add, item);
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || typeof current !== "object") continue;
+    for (const [field, child] of Object.entries(current)) {
+      if (typeof child === "string") {
+        if (chatFileReferenceFields.has(field)) add("chat_file", child, "tool_result");
+        else if (field === "audioId" || field === "audio_id") add("audio", child, "tool_result");
+      } else if (child && typeof child === "object") {
+        pending.push(child);
+      }
     }
-    return;
-  }
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  const record = value as Record<string, unknown>;
-  for (const key of ["fileId", "file_id", "fileRef", "file_ref", "assetId", "asset_id", "assetRef", "asset_ref"]) {
-    const id = typeof record[key] === "string" ? record[key] : null;
-    if (id) {
-      add("chat_file", id, "tool_result");
-    }
-  }
-  for (const item of Object.values(record)) {
-    collectAssetIdsFromValue(add, item);
   }
 }
 

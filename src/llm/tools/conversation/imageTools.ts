@@ -584,11 +584,8 @@ async function resolveAssetMediaIds(
   const mediaIds = selectors.assetIds.filter((item) => item.startsWith("file_"));
   const missing: string[] = [];
   missing.push(...selectors.assetIds.filter((item) => !item.startsWith("file_")));
-  const files = selectors.assetRefs.length > 0
-    ? await context.chatFileStore.listFiles()
-    : [];
   for (const selector of selectors.assetRefs) {
-    const file = files.find((item) => item.fileId === selector || item.fileRef === selector);
+    const file = await context.chatFileStore.resolveSelector(selector);
     if (!file) {
       missing.push(selector);
       continue;

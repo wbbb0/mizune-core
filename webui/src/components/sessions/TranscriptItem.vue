@@ -7,7 +7,7 @@ import { WorkbenchCard, WorkbenchDisclosure, useWorkbenchWindows } from "@workbe
 import { openImagePreviewWindow } from "@/components/common/imagePreviewWindow";
 import MediaDeliveryStatus from "./MediaDeliveryStatus.vue";
 import { describeMediaDelivery } from "./mediaDeliveryState";
-import { describeModelRouteType, describePlannerModelSelection, describePlannerModelScores } from "./plannerPresentation";
+import { describeModelRouteType, describePlannerModelSelection } from "./plannerPresentation";
 import NativeSearchResults from "./NativeSearchResults.vue";
 import TranscriptTextBlock from "./TranscriptTextBlock.vue";
 import MessageContentParts from "./MessageContentParts.vue";
@@ -531,7 +531,6 @@ const plannerOutputRows = computed(() => {
     { key: "规划媒体", value: props.item.plannerMetrics ? `描述 ${props.item.plannerMetrics.mediaCaptionCount} / 图片输入 ${props.item.plannerMetrics.imageInputCount ?? 0} / 表情输入 ${props.item.plannerMetrics.emojiInputCount}` : null },
     { key: "replyDecision", value: props.item.replyDecision ?? null },
     { key: "模型档位", value: describePlannerModelSelection(props.item) },
-    { key: "选模数值", value: describePlannerModelScores(props.item) },
     { key: "未判定项", value: props.item.undeterminedQuestions?.join("、") ?? null },
     { key: "topicDecision", value: props.item.topicDecision ?? null },
     { key: "waitPassCount", value: props.item.waitPassCount != null ? String(props.item.waitPassCount) : null },
@@ -903,9 +902,6 @@ function openActions(): void {
       </div>
 
       <div v-else-if="item.kind === 'gate_decision'" class="flex flex-col gap-2">
-        <p v-if="item.modelSelectionScores" class="m-0 text-small text-text-muted">
-          {{ describePlannerModelSelection(item) }} · {{ describePlannerModelScores(item) }}
-        </p>
         <WorkbenchCard v-if="item.taskBasis" title="任务依据" compact>
           <TranscriptTextBlock :text="item.taskBasis" tone="muted" />
         </WorkbenchCard>

@@ -156,6 +156,7 @@ function createBrowserService() {
           sessionStorageByOrigin: {}
         };
       },
+      async cleanupFailedOpens() {},
       async close(state: unknown) {
         closedStates.push(state);
       }

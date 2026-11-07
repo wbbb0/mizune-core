@@ -42,6 +42,8 @@ import { DownloadRuntime } from "#services/workspace/downloadRuntime.ts";
 import { characterReferencedFileIds } from "../../character/repository.ts";
 import { AssetLifecycleService } from "#data/assets/assetLifecycleService.ts";
 import { AssetLifecycleStore } from "#data/assets/assetLifecycleStore.ts";
+import { AssetReferenceCoordinator } from "#data/assets/assetReferenceCoordinator.ts";
+import { AssetsDatabase } from "#data/assets/assetsDatabase.ts";
 import { MediaCaptionService } from "#services/workspace/mediaCaptionService.ts";
 import { MediaInspectionService } from "#services/workspace/mediaInspectionService.ts";
 import { MediaVisionService } from "#services/workspace/mediaVisionService.ts";
@@ -101,12 +103,16 @@ export function createBootstrapServices(
   const sessionManager = new SessionManager(config);
   const debounceManager = new DebounceManager(logger, sessionManager, config);
   const llmClient = new LlmClient(config, logger);
-  const audioStore = new AudioStore(dataDir, logger);
+  const assetsDatabase = new AssetsDatabase(dataDir, logger);
+  const audioStore = new AudioStore(dataDir, logger, assetsDatabase);
   const audioTranscriber = new AudioTranscriber(config, llmClient, audioStore, oneBotClient, logger);
   const localFileService = new LocalFileService(config, dataDir);
   const temporaryWorkspaceService = new TemporaryWorkspaceService(config, dataDir, (error) => logger.warn({ error }, "temporary_workspace_cleanup_failed"));
   const getAdditionalReferencedFileIds = () => characterReferencedFileIds(dataDir);
-  const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir, undefined, getAdditionalReferencedFileIds);
+  const chatFileStore = new ChatFileStore(config, logger, localFileService, dataDir, assetsDatabase, getAdditionalReferencedFileIds);
+  const assetReferences = new AssetReferenceCoordinator((fileIds) => chatFileStore.retainFiles(fileIds));
+  const sessionPersistence = new SessionPersistence(dataDir, logger, undefined, assetReferences);
+  const sessionSnapshotStore = new SessionSnapshotStore(dataDir, logger, undefined, assetReferences, assetsDatabase);
   const downloadRuntime = new DownloadRuntime(config, logger, dataDir, chatFileStore);
   const contentSafetyStore = new ContentSafetyStore(dataDir, logger);
   const contentSafetyService = new ContentSafetyService(config, logger, contentSafetyStore, chatFileStore, audioStore);
@@ -118,24 +124,25 @@ export function createBootstrapServices(
   const documentSummaryService = new DocumentSummaryService(config, llmClient, logger);
   const sessionCaptioner = new SessionCaptioner(config, llmClient, logger, mediaCaptionService);
   const comfyClient = new ComfyClient(config, logger);
-  const comfyTaskStore = new ComfyTaskStore(dataDir, logger);
-  const assetLifecycleStore = new AssetLifecycleStore(dataDir, logger);
+  const comfyTaskStore = new ComfyTaskStore(dataDir, logger, assetsDatabase);
+  const assetLifecycleStore = new AssetLifecycleStore(dataDir, logger, assetsDatabase);
   const assetLifecycleService = new AssetLifecycleService(
     assetLifecycleStore,
     {
       chatFileStore,
       audioStore,
       comfyTaskStore,
-      getAdditionalReferencedChatFileIds: getAdditionalReferencedFileIds
+      getAdditionalReferencedChatFileIds: getAdditionalReferencedFileIds,
+      getPersistedAssetReferences: () => sessionPersistence.listAssetReferences()
     },
     logger,
-    config.assets.gc
+    config.assets.gc,
+    assetReferences
   );
   const comfyTemplateCatalog = new ComfyTemplateCatalogService(config, logger);
   const historyCompressor = new HistoryCompressor(config, llmClient, sessionManager, mediaCaptionService, logger, chatFileStore);
   const turnPlanner = new TurnPlanner(config, llmClient, chatFileStore, mediaVisionService, logger, mediaCaptionService);
   const messageQueue = new MessageQueue(logger, config);
-  const sessionPersistence = new SessionPersistence(dataDir, logger);
   const messaging = new DeliveryCoordinator(oneBotClient, qqOfficialClient, (address, status) => {
     sessionManager.appendInternalTranscript(address.sessionId, {
       kind: "status_message", llmVisible: false, role: "assistant", statusType: "system",
@@ -145,7 +152,6 @@ export function createBootstrapServices(
     void sessionPersistence.save(sessionManager.getPersistedSession(address.sessionId))
       .catch(() => logger.warn("delivery_status_persistence_failed"));
   });
-  const sessionSnapshotStore = new SessionSnapshotStore(dataDir, logger);
   const scheduledJobStore = new ScheduledJobStore(dataDir, logger, stateDatabase);
   const requestStore = new RequestStore(dataDir, logger, stateDatabase);
   const groupMembershipStore = new GroupMembershipStore(dataDir, logger, stateDatabase);

@@ -54,15 +54,10 @@ test("两个会话并发确认全局档案时拒绝覆盖，动态状态隔离",
   assert.throws(() => store.confirm("b", "assistant"), /其他会话/);
   assert.equal(store.state("a").social.currentMood, null);
 });
-test("引导投递按草稿 ID 确认，重新进入产生新引导", t => {
+test("引导只认领一次，重新进入产生新引导", t => {
   const store = fixture(t); store.ensureSetup("s", "assistant");
-  const draft = store.draft("s")!;
-  assert.equal(store.markIntroductionDelivered("s", "stale"), false);
-  assert.equal(store.markIntroductionDelivered("s", draft.id), true);
-  assert.equal(store.markIntroductionDelivered("s", draft.id), false);
-  store.cancel("s"); store.ensureSetup("s", "assistant");
-  assert.equal(store.markIntroductionDelivered("s", draft.id), false);
-  assert.equal(store.draft("s")!.introduction, "pending");
+  assert.equal(store.claimIntroduction("s"), true); assert.equal(store.claimIntroduction("s"), false);
+  store.cancel("s"); store.ensureSetup("s", "assistant"); assert.equal(store.claimIntroduction("s"), true);
 });
 test("代码周期按日历推进，读档不重新随机，跨周期不漏结算", () => {
   const profile = emptyCharacter(), state = emptyCharacterSession();

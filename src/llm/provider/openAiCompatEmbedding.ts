@@ -42,12 +42,11 @@ export async function requestOpenAiCompatibleEmbeddings(
   const endpoint = `${endpointBaseUrl.replace(/\/$/, "")}/embeddings`;
   const resolvedTimeoutMs = params.timeoutMsOverride ?? context.config.context.embedding.timeoutMs;
   const timeoutController = createProviderTimeoutController({
+    abortSignal: params.abortSignal,
     totalTimeoutMs: resolvedTimeoutMs,
     firstTokenTimeoutMs: resolvedTimeoutMs
   });
   timeoutController.markFirstResponseReceived();
-  const forwardAbort = () => timeoutController.controller.abort();
-  params.abortSignal?.addEventListener("abort", forwardAbort, { once: true });
 
   try {
     const response = await fetchWithProxy(context.config, "llm", endpoint, {
@@ -90,7 +89,6 @@ export async function requestOpenAiCompatibleEmbeddings(
     rethrowProviderAbortReason(timeoutController.controller.signal, error);
     throw error instanceof Error ? error : new Error(String(error));
   } finally {
-    params.abortSignal?.removeEventListener("abort", forwardAbort);
     timeoutController.cleanup();
   }
 }

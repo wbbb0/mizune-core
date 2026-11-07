@@ -1,4 +1,3 @@
-import { modelSelectionScoresSchema } from "../turnPlanner/modelSelectionScores.ts";
 import { mediaDeliveryStatusSchema, mediaDeliveryErrorSchema } from "./mediaDelivery.ts";
 import { z } from "zod";
 import type { PersistedMessageContentPart } from "#messages/contentParts.ts";
@@ -402,7 +401,6 @@ export const transcriptGateDecisionItemSchema = z.object({
   replyDecision: z.enum(["reply", "reply_small", "reply_large", "wait", "no_reply", "ignore"]).optional(),
   modelTier: z.enum(["small", "large"]).optional(),
   modelSelectionStatus: z.enum(["decided", "undetermined", "not_requested"]).optional(),
-  modelSelectionScores: modelSelectionScoresSchema.optional(),
   taskBasis: z.string().refine(value => [...value].length <= PLANNER_TASK_BASIS_MAX_LENGTH, "任务依据超过长度上限").optional(),
   undeterminedQuestions: z.array(z.string().min(1)).optional(),
   topicDecision: z.string().optional(),

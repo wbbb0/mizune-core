@@ -31,7 +31,7 @@ import { personaSchema } from "#persona/personaSchema.ts";
 import type { PersonaStore } from "#persona/personaStore.ts";
 import { pendingRequestSchema } from "#requests/requestSchema.ts";
 import type { RequestStore } from "#requests/requestStore.ts";
-import { scheduledJobRecordSchema } from "#runtime/scheduler/jobSchema.ts";
+import { scheduledJobDefinitionSchema, scheduledJobRecordSchema } from "#runtime/scheduler/jobSchema.ts";
 import type { ScheduledJobStore } from "#runtime/scheduler/jobStore.ts";
 import type { Scheduler } from "#runtime/scheduler/scheduler.ts";
 import type { RuntimeResourceStore } from "#runtime/resources/runtimeResourceStore.ts";
@@ -761,7 +761,7 @@ function createScheduledJobsResource(
     },
     model: scheduledJobsTableModel,
     rowSchemaMeta,
-    rowUiTree: buildUiTreeFromMeta(rowSchemaMeta),
+    rowUiTree: buildUiTreeFromMeta(exportSchemaMeta(scheduledJobDefinitionSchema)),
     export: { enabled: true, fileName: "scheduled_jobs.json", format: "json" },
     rowIdentity: {
       fields: ["id"],

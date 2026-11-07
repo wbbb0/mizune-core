@@ -707,7 +707,7 @@ async function resolveDocumentAsset(
 > {
   const selector = getStringArg(args, "asset_ref") || getStringArg(args, "asset_id");
   if (!selector) return { ok: false, error: "asset_ref or asset_id is required" };
-  const file = await resolveChatFile(context, selector);
+  const file = await context.chatFileStore.resolveSelector(selector, { allowName: true });
   if (!file) return { ok: false, error: `unknown asset: ${selector}` };
   if (file.kind !== "file") return { ok: false, error: `asset is not a document file: ${selector}` };
   return {
@@ -716,21 +716,6 @@ async function resolveDocumentAsset(
   };
 }
 
-async function resolveChatFile(
-  context: Parameters<ToolHandler>[2],
-  selector: string
-): Promise<ChatFileRecord | null> {
-  const direct = await context.chatFileStore.getFile(selector).catch(() => null);
-  if (direct) return direct;
-  const normalized = selector.trim().toLowerCase();
-  return (await context.chatFileStore.listFiles())
-    .find((item) => [
-      item.fileRef,
-      item.fileId,
-      item.sourceName,
-      item.chatFilePath
-    ].some((value) => value.toLowerCase() === normalized)) ?? null;
-}
 
 async function loadDocumentText(
   file: ChatFileRecord,
