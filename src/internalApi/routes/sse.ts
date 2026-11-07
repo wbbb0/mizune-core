@@ -1,5 +1,4 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { EventEmitter } from "node:events";
 
 type QueuedFrame = {
   frame: string;
@@ -60,12 +59,6 @@ export function replyWithSseStream<TEvent extends { type: string }>(
     if (!raw.destroyed && !raw.writableEnded) raw.end();
   };
 
-  const overflow = () => {
-    // A client that cannot keep up must reconnect from its cursor rather than
-    // allowing an unbounded per-connection event buffer.
-    end();
-  };
-
   const writeFrame = (queued: QueuedFrame): boolean => {
     const accepted = raw.write(queued.frame);
     if (queued.terminal) {
@@ -100,7 +93,8 @@ export function replyWithSseStream<TEvent extends { type: string }>(
     }
     const bytes = Buffer.byteLength(queued.frame);
     if (pending.length >= maxPendingEvents || pendingBytes + bytes > maxPendingBytes) {
-      overflow();
+      // Slow clients reconnect from their cursor instead of accumulating memory.
+      end();
       return;
     }
     pending.push(queued);
@@ -110,7 +104,7 @@ export function replyWithSseStream<TEvent extends { type: string }>(
   const writeEvent = (event: TEvent) => {
     if (closed) return;
     enqueueFrame({
-      frame: `event: ${event.type}\\ndata: ${JSON.stringify(event)}\\n\\n`,
+      frame: `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
       terminal: options?.isTerminalEvent?.(event) ?? false
     });
   };
@@ -127,7 +121,7 @@ export function replyWithSseStream<TEvent extends { type: string }>(
 
   const heartbeatTimer = setInterval(() => {
     if (closed || raw.destroyed || raw.writableEnded || blocked || pending.length > 0) return;
-    if (!raw.write(": ping\\n\\n")) blocked = true;
+    if (!raw.write(": ping\n\n")) blocked = true;
   }, options?.heartbeatMs ?? 15_000);
   heartbeatTimer.unref?.();
 
@@ -146,8 +140,12 @@ export function replyWithSseStream<TEvent extends { type: string }>(
     subscribing = false;
   }
 
-  for (const event of eventsDuringSubscribe) writeEvent(event);
+  // Initial snapshot precedes mutations observed during subscription setup.
   for (const event of stream.initialEvents) {
+    writeEvent(event);
+    if (closed) return;
+  }
+  for (const event of eventsDuringSubscribe) {
     writeEvent(event);
     if (closed) return;
   }
