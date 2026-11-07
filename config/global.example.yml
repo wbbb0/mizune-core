@@ -35,8 +35,6 @@ qqOfficial:
   # mentions_only 仅接收群 @；all_received 保存平台实时推送的群上下文，仍只有 @ 才回复。
   # all_received 还需在 QQ 客户端允许机器人接收群内所有消息；修改后重启实例。
   groupContext: mentions_only
-  # 明确过期或回复次数耗尽时向原会话尝试一次主动消息；平台权限和频控仍生效。
-  proactiveFallback: true
   requestTimeoutMs: 15000
 llm:
   enabled: false
@@ -92,7 +90,6 @@ llm:
     timeoutMs: 30000
     enableThinking: false
     maxConcurrency: 2
-  # 原生选模采用 small/large 最大概率，同概率取 large；日志与 WebUI 展示概率和 confidence。
   turnPlanner:
     enabled: true
     timeoutMs: 20000

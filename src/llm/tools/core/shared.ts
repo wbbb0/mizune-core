@@ -187,7 +187,6 @@ export interface BuiltinToolContext extends
   executionModelRef?: string | string[];
   executionSetupMode?: boolean | undefined;
   projectionToolNames?: readonly string[];
-  registerCharacterIntroduction?: (draftId: string) => Promise<void>;
   resolveActorAuthorization?: () => Promise<{ relationship: Relationship; currentUser: BuiltinToolContext["currentUser"] } | null>;
   skillAccess?: SkillAccess;
   toolsetAccess?: {

@@ -1,4 +1,3 @@
-import type { SessionInputIntent } from "./sessionInputIntent.ts";
 import type { MessageReplyContext } from "#services/messaging/incomingMessage.ts";
 import type { OneBotMessageEvent, OneBotMessageFileSummary, OneBotSpecialSegmentSummary } from "#services/onebot/types.ts";
 import type { ChatAttachment } from "#services/workspace/types.ts";
@@ -33,7 +32,6 @@ export interface SessionParticipantRef {
 export type SessionTitleSource = "default" | "auto" | "manual";
 
 export interface SessionMessage {
-  intent?: SessionInputIntent;
   actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
   replyContext?: MessageReplyContext;
   sourceRef?: TranscriptItemSourceRefContract;
@@ -61,11 +59,7 @@ export interface SessionMessage {
   receivedAt: number;
 }
 
-export type SyntheticPendingMessage = Pick<SessionMessage, "chatType" | "userId" | "senderName" | "text" | "images"> & Partial<Omit<SessionMessage, "chatType" | "userId" | "senderName" | "text" | "images" | "receivedAt" | "groupId">> & { groupId?: string };
-
 export interface PersistedSessionMessage {
-  intent?: SessionInputIntent;
-  actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
   userId: string;
   groupId?: string | undefined;
   senderName: string;

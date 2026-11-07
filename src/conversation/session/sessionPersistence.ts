@@ -1,5 +1,3 @@
-import { toolActorAuthorizationSchema } from "#services/messaging/toolActorAuthorization.ts";
-import { sessionInputIntentSchema } from "./sessionInputIntent.ts";
 import { publishedConversationSchema } from "../crossConversationContext.ts";
 import { freezeTranscriptItem, isImmutableTranscriptItem } from "./immutableTranscript.ts";
 import type { InternalTranscriptItem } from "./sessionTypes.ts";
@@ -85,8 +83,6 @@ const sessionOperationModeSchema = z.union([
 ]);
 
 const persistedSessionMessageSchema = z.object({
-  intent: sessionInputIntentSchema.optional(),
-  actorAuthorization: toolActorAuthorizationSchema.optional(),
   userId: z.string().min(1),
   groupId: z.string().min(1).optional(),
   senderName: z.string().min(1),

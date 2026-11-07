@@ -23,17 +23,14 @@ test("model and response actions use independent questions with described choice
   assert.equal(plan.modelTier, "large");
 });
 
-test("model tiers retain valid choices without applying action-confidence thresholds", () => {
+test("native confidence and selected-option probability are both required for a decided model tier", () => {
   const definitions = buildPlannerQuestions(input);
-  for (const answer of [{ value: "small", confidence: 0.95, probability: 0.6 }, { value: "large", confidence: 0.6, probability: 0.95 }]) {
+  for (const answer of [{ value: "small", confidence: 0.95, probability: 0.6 }, { value: "large", confidence: 0.6, probability: 0.95 }, { value: null }]) {
     const plan = applyPlannerAnswers(input, definitions, new Map([["model", answer]]));
-    assert.equal(plan.modelTier, answer.value);
-    assert.equal(plan.modelSelectionStatus, "decided");
+    assert.equal(plan.modelTier, undefined);
+    assert.equal(plan.modelSelectionStatus, "undetermined");
+    assert.deepEqual(plan.undeterminedQuestions, ["model"]);
   }
-  const plan = applyPlannerAnswers(input, definitions, new Map([["model", { value: null }]]));
-  assert.equal(plan.modelTier, undefined);
-  assert.equal(plan.modelSelectionStatus, "undetermined");
-  assert.deepEqual(plan.undeterminedQuestions, ["model"]);
 });
 
 test("existing RP selection override remains in the shared model question", () => {

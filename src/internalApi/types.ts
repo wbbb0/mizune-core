@@ -228,7 +228,7 @@ export interface InternalApiDeps {
   config: AppConfig;
   logger: Logger;
   oneBotClient: OneBotClient;
-  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess & Pick<import("#conversation/session/sessionCapabilities.ts").SessionDirectCommandAccess, "setOperationMode" | "appendSyntheticPendingMessage" | "interruptResponse">;
+  sessionManager: SessionAdminReadAccess & SessionAdminMutationAccess & SessionStreamAccess & Pick<import("#conversation/session/sessionCapabilities.ts").SessionDirectCommandAccess, "setOperationMode" | "appendSyntheticPendingMessage">;
   sessionCaptioner: SessionCaptioner;
   personaStore: PersonaStore;
   rpProfileStore: RpProfileStore;
@@ -314,11 +314,9 @@ export function createInternalApiServices(deps: InternalApiDeps): InternalApiSer
           assertSkillDraftFinished(deps.config, sessionId, session.operationMode);
           const draft = characterRepository(deps.config.dataDir).ensureSetup(sessionId, session.modeId);
           if (!draft) return;
-          deps.sessionManager.interruptResponse(sessionId);
           deps.sessionManager.setOperationMode(sessionId, { kind: "character_config", stage: draft.stage });
           await deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId));
-          enqueueCharacterIntroduction({ dataDir: deps.config.dataDir, sessionId, userId: session.participantRef.id, actorAuthorization: { kind: "web", internalUserId: session.participantRef.id },
-            sessionManager: deps.sessionManager, flushSession: (id, options) => deps.flushSession(id, { ...options, delivery: "web" }),
+          enqueueCharacterIntroduction({ dataDir: deps.config.dataDir, sessionId, userId: session.participantRef.id, sessionManager: deps.sessionManager, flushSession: deps.flushSession,
             persist: () => { void deps.sessionPersistence.save(deps.sessionManager.getPersistedSession(sessionId)); } });
         },
         whitelistStore: deps.whitelistStore,

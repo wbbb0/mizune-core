@@ -18,8 +18,3 @@ export function describeModelRouteType(type: ModelRouteEvent["routeType"]): stri
     case "policy_unavailable": return "无法升级";
   }
 }
-
-export function describePlannerModelScores(item: PlannerDecision): string | null {
-  const scores = item.modelSelectionScores;
-  return scores ? `小档 ${scores.small} · 大档 ${scores.large} · 置信度 ${scores.confidence}` : null;
-}

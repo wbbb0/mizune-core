@@ -3,7 +3,6 @@ export interface QqOfficialConfig {
   appId: string;
   appSecret: string;
   requestTimeoutMs?: number;
-  proactiveFallback?: boolean;
   groupContext?: "mentions_only" | "all_received";
 }
 

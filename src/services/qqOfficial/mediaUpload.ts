@@ -1,14 +1,16 @@
 import { validateQqMedia, QQ_SMALL_IMAGE_UPLOAD_BYTES } from "./mediaValidation.ts";
 import { createHash } from "node:crypto";
 import type { QqHttpClient } from "./httpClient.ts";
-import { qqTargetPath } from "./replyPermit.ts";
+import { qqTargetPath, type QqReplyPermitRegistry } from "./replyPermit.ts";
 import { QqDeliveryError, type QqMediaInput, type QqReplyPermit } from "./types.ts";
 
 function hash(algorithm: "md5" | "sha1", bytes: Buffer): string { return createHash(algorithm).update(bytes).digest("hex"); }
 
 /** Upload never sends a message. The caller must submit its file_info through the reply budget. */
-export async function uploadQqMedia(http: QqHttpClient, permit: QqReplyPermit, input: QqMediaInput, signal?: AbortSignal): Promise<string> {
+export async function uploadQqMedia(http: QqHttpClient, registry: QqReplyPermitRegistry,
+  permit: QqReplyPermit, input: QqMediaInput, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
+  registry.assert(permit);
   validateQqMedia(input);
   const path = qqTargetPath(permit);
   let payload: Record<string, unknown>;
@@ -40,6 +42,7 @@ export async function uploadQqMedia(http: QqHttpClient, permit: QqReplyPermit, i
     let offset = 0;
     for (let index = 0; index < prepared.parts.length; index += 1) {
       signal?.throwIfAborted();
+      registry.assert(permit);
       const part = prepared.parts[index]!;
       const size = Number(part.block_size || prepared.block_size);
       if (part.index !== index || !Number.isSafeInteger(size) || size <= 0 || offset >= bytes.length) {
@@ -56,6 +59,7 @@ export async function uploadQqMedia(http: QqHttpClient, permit: QqReplyPermit, i
     payload = { file_type: input.fileType, file_name: input.name, upload_id: prepared.upload_id, srv_send_msg: false };
   }
   signal?.throwIfAborted();
+  registry.assert(permit);
   const response = await http.request<{ file_info: string }>("POST", `${path}/files`, payload, signal);
   if (typeof response.file_info !== "string" || !response.file_info) throw new QqDeliveryError("unknown", "invalid_file_info");
   return response.file_info;

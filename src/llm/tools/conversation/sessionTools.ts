@@ -1,4 +1,3 @@
-import { characterIntroductionDirective } from "../../../character/introduction.ts";
 import { characterRepository } from "../../../character/repository.ts";
 import { assertSkillDraftFinished } from "../../../skills/skillDrafts.ts";
 import { canReferenceConversation, readConversationContext } from "#conversation/crossConversationContext.ts";
@@ -150,14 +149,12 @@ export const sessionToolHandlers: Record<string, ToolHandler> = {
     const draft = context.relationship === "owner" && session.type === "private" ? characters.ensureSetup(session.id, modeId) : null;
     if (draft) context.sessionManager.setOperationMode(session.id, { kind: "character_config", stage: draft.stage });
     context.persistSession?.(context.lastMessage.sessionId, "session_mode_switched_by_tool");
-    const introduction = characterIntroductionDirective(draft);
-    if (introduction && draft) await context.registerCharacterIntroduction?.(draft.id);
     return JSON.stringify({
       ok: true,
       changed: true,
       fromModeId: currentModeId,
       toModeId: modeId,
-      ...(introduction ? { setupStage: draft!.stage, instruction: introduction } : {}),
+      ...(draft && characters.claimIntroduction(session.id) ? { setupStage: draft.stage, instruction: "已进入角色配置，请在下一次回复主动说明当前阶段、推荐填写内容和 .confirm / .cancel；不要开始游玩。" } : {}),
       title: targetMode.title
     });
   },

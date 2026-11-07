@@ -107,9 +107,8 @@ const qqOfficialConfigSchema = s.object({
   enabled: s.boolean().title("启用").default(false),
   appId: s.string().trim().title("应用 ID").default(""),
   appSecret: s.string().title("应用密钥").default(""),
-  proactiveFallback: s.boolean().title("回复受限时尝试主动发送").describe("被动回复明确过期或次数耗尽时，向原会话尝试一次主动消息。仍受平台权限、用户开关与频控限制；超时或结果未知不重发。").default(true),
   requestTimeoutMs: s.number().int().positive().title("请求超时毫秒").default(15000)
-}).title("腾讯官方 Bot").describe("接收私聊与群 @ 消息；优先被动回复，可在回复受限时尝试主动发送。私聊默认使用原生流式输出。").default(emptyObject);
+}).title("腾讯官方 Bot").describe("接收私聊与群 @ 消息；群聊仅在有效回复授权内发送，私聊使用原生流式输出。").default(emptyObject);
 
 function createProxyDetailSchema() {
   return s.object({

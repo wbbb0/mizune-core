@@ -103,11 +103,9 @@ function createExecutorHarness(options?: {
   prepareSession?: (manager: SessionManager, sessionId: string) => void;
   skillPlannerDecision?: import("../../src/conversation/turnPlanner/types.ts").TurnPlannerResult;
   failAfterReasoning?: boolean;
-  sendTextError?: Error;
   waitForAbortGraceWindow?: (signal: AbortSignal) => Promise<void>;
   configOverrides?: Parameters<typeof createTestAppConfig>[0];
   sessionSource?: "onebot" | "qq_official" | "web";
-  messaging?: Parameters<typeof createGenerationExecutor>[0]["toolRuntime"]["messaging"];
   sessionId?: string;
   titleSource?: "default" | "auto" | "manual" | null;
   modeId?: string;
@@ -130,7 +128,6 @@ function createExecutorHarness(options?: {
     messages?: Array<{ role: string; content: unknown }>;
     consumeSteerMessages?: () => Promise<LlmMessage[]>;
     onReasoningDelta?: (delta: string) => void;
-    onIrreversibleTextDelta?: (delta: string) => void;
     onTextDelta?: (delta: string) => Promise<void>;
     onProviderResponseComplete?: (event: {
       phase: "tool_call" | "final_response";
@@ -195,7 +192,7 @@ function createExecutorHarness(options?: {
   const logger = pino({ level: "silent" });
   const sessionManager = new SessionManager(config);
   const sessionId = options?.sessionId ?? "qqbot:p:owner";
-  const delivery = options?.sessionSource ?? "onebot";
+  const delivery = options?.sessionSource === "web" ? "web" : "onebot";
   sessionManager.ensureSession({
     id: sessionId,
     type: "private",
@@ -248,7 +245,6 @@ function createExecutorHarness(options?: {
       async generate(input: {
         abortSignal?: AbortSignal;
         onReasoningDelta?: (delta: string) => void;
-    onIrreversibleTextDelta?: (delta: string) => void;
         onTextDelta?: (delta: string) => Promise<void>;
         onProviderCallUsage?: (event: ProviderCallUsageEvent) => Promise<void> | void;
         tools?: Array<{ function: { name: string } }> | (() => Array<{ function: { name: string } }>);
@@ -333,7 +329,6 @@ function createExecutorHarness(options?: {
       sessionManager
     },
     toolRuntime: withMediaServices({
-      ...(options?.messaging ? { messaging: options.messaging } : {}),
       oneBotClient: {
         async setTyping(params: { enabled: boolean; userId: string; groupId?: string }) {
           typingCalls.push(params);
@@ -341,7 +336,6 @@ function createExecutorHarness(options?: {
           return true;
         },
         async sendText(params: { text: string; userId?: string; groupId?: string }) {
-          if (options?.sendTextError) throw options.sendTextError;
           sendTextCalls.push(params);
           events.push(`send:${params.text}`);
           return {
@@ -430,8 +424,6 @@ function createExecutorHarness(options?: {
     relationship: options?.relationship ?? "owner",
     interactionMode: "normal",
     setupMode: options?.setupMode,
-    ...(options?.setupMode && sessionManager.getOperationMode(sessionId).kind === "character_config"
-      ? { characterIntroductionDraftId: characterRepository(config.dataDir).draft(sessionId)?.id } : {}),
     internalTranscript: [],
     debugMarkers: [],
     currentUser: (options?.currentUser ?? null) as never,
@@ -2379,85 +2371,4 @@ test("真实executor：配置等价但别名不同的单档路由不会被误判
   await harness.runPromise;
   assert.equal(writes, 1);
   assert.equal(harness.sessionManager.getSession(harness.sessionId).internalTranscript.filter(item => item.kind === "model_route_event").length, 0);
-});
-
-for (const failure of ["none", "generation", "delivery"] as const) test(`角色引导仅在实际文本投递后完成：${failure}`, async () => {
-  let store: ReturnType<typeof characterRepository>;
-  const harness = createExecutorHarness({
-    modeId: "stateful_rp", setupMode: true, operationMode: { kind: "character_config", stage: "social" },
-    failAfterReasoning: failure === "generation", ...(failure === "delivery" ? { sendTextError: new Error("投递被明确拒绝") } : {}),
-    prepareConfig(config) { store = characterRepository(config.dataDir); store.begin("qqbot:p:owner", "social", "config", "stateful_rp"); }
-  });
-  harness.resolveDrain();
-  if (failure === "delivery") await assert.rejects(harness.runPromise, /投递被明确拒绝/);
-  else await harness.runPromise;
-  assert.equal(store!.draft(harness.sessionId)!.introduction, failure === "none" ? "delivered" : "pending");
-});
-
-test("旧回复取消后不能完成重建草稿的引导", async () => {
-  let manager: SessionManager;
-  let store: ReturnType<typeof characterRepository>;
-  let newDraftId: string;
-  const harness = createExecutorHarness({
-    modeId: "stateful_rp", setupMode: true, operationMode: { kind: "character_config", stage: "social" },
-    prepareConfig(config) { store = characterRepository(config.dataDir); store.begin("qqbot:p:owner", "social", "config", "stateful_rp"); },
-    prepareSession(value) { manager = value; },
-    customGenerate: async input => {
-      manager.interruptResponse("qqbot:p:owner");
-      store.cancel("qqbot:p:owner");
-      newDraftId = store.begin("qqbot:p:owner", "social", "config", "stateful_rp").id;
-      await input.onTextDelta?.("旧引导");
-      return { text: "旧引导", usage: createUsage() };
-    }
-  });
-  harness.resolveDrain();
-  await harness.runPromise;
-  assert.equal(store!.draft(harness.sessionId)!.id, newDraftId!);
-  assert.equal(store!.draft(harness.sessionId)!.introduction, "pending");
-  assert.equal(harness.sendTextCalls.length, 0);
-});
-
-test("配置期间无关后台文本投递不能认领当前草稿引导", async () => {
-  let store: ReturnType<typeof characterRepository>;
-  const harness = createExecutorHarness({
-    modeId: "stateful_rp", operationMode: { kind: "character_config", stage: "social" },
-    prepareConfig(config) { store = characterRepository(config.dataDir); store.begin("qqbot:p:owner", "social", "config", "stateful_rp"); }
-  });
-  harness.resolveDrain();
-  await harness.runPromise;
-  assert.equal(harness.sendTextCalls.length, 1);
-  assert.equal(store!.draft(harness.sessionId)!.introduction, "pending");
-});
-
-for (const guide of [false, true]) test(`模式切换前的原生流回执不认领切换后的引导：新引导=${guide}`, async () => {
-  const bodies: string[] = [];
-  let store: ReturnType<typeof characterRepository>;
-  const harness = createExecutorHarness({
-    sessionSource: "qq_official", sessionId: "qq_official.test:p:external-owner", modeId: "assistant",
-    availableToolNames: ["switch_session_mode"],
-    prepareConfig(config) { store = characterRepository(config.dataDir); },
-    messaging: { openTextStream() {
-      let body = "";
-      return { append(delta: string) { body += delta; }, async finish() {
-        bodies.push(body);
-        return { acceptedText: body, messageId: `stream-${bodies.length}`, connectionId: "qq_official.test" };
-      }, async interrupt() { return null; } };
-    } } as never,
-    customGenerate: async input => {
-      input.onIrreversibleTextDelta!("切换前的说明");
-      const result = toolPayload(await input.toolExecutor!({ id: "switch", type: "function", function: {
-        name: "switch_session_mode", arguments: JSON.stringify({ modeId: "rp_assistant" })
-      } }));
-      assert.equal(result.ok, true);
-      assert.match(String(result.instruction), /配置 persona 阶段/);
-      assert.deepEqual(bodies, ["切换前的说明"]);
-      assert.equal(store.draft(harness.sessionId)!.introduction, "pending");
-      if (!guide) throw new Error("切换后模型失败，未输出新引导");
-      input.onIrreversibleTextDelta!("现在开始配置基础人格，请告诉我角色的名字。");
-      return { text: "现在开始配置基础人格，请告诉我角色的名字。", usage: createUsage() };
-    }
-  });
-  harness.resolveDrain();
-  await harness.runPromise;
-  assert.equal(store!.draft(harness.sessionId)!.introduction, guide ? "delivered" : "pending");
 });
