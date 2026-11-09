@@ -85,12 +85,14 @@ function createSessionMessage(
     isAtMentioned: boolean;
     rawEvent?: OneBotMessageEvent | undefined;
     replyContext?: SessionMessage["replyContext"];
+    intent?: SessionMessage["intent"];
     actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
     sourceRef?: SessionMessage["sourceRef"];
   },
   receivedAt: number
 ): SessionMessage {
   const pendingMessage: SessionMessage = {
+    ...(message.intent ? { intent: message.intent } : {}),
     ...(message.actorAuthorization ? { actorAuthorization: message.actorAuthorization } : {}),
     userId: message.userId,
     ...(message.groupId ? { groupId: message.groupId } : {}),
@@ -156,6 +158,7 @@ export function appendSessionMessage(
     isAtMentioned: boolean;
     rawEvent?: OneBotMessageEvent | undefined;
     replyContext?: SessionMessage["replyContext"];
+    intent?: SessionMessage["intent"];
     actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
     sourceRef?: SessionMessage["sourceRef"];
   }
@@ -192,6 +195,7 @@ export function appendSteerMessageState(
     isAtMentioned: boolean;
     rawEvent?: OneBotMessageEvent | undefined;
     replyContext?: SessionMessage["replyContext"];
+    intent?: SessionMessage["intent"];
     actorAuthorization?: import("#services/messaging/toolActorAuthorization.ts").ToolActorAuthorization;
     sourceRef?: SessionMessage["sourceRef"];
   }

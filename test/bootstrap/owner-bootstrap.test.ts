@@ -51,7 +51,7 @@ test("群聊、其他官方账号、其他连接和伪造授权均不可认领",
   assert.match(await f.service.assignOwner({ ...f.request, channelId: "qq_official.other" }, f.transport), /当前官方机器人/);
   const forged = officialOwnerBootstrapTransport({ client: f.official, replyContext: { ...f.permit }, messaging: f.messaging, sessionId: "qq_official.app:p:opaque_user" });
   await assert.rejects(f.service.assignOwner(f.request, forged), /invalid_reply_permit/);
-  const expired = f.official.permits.issue({ chatType: "private", targetId: "opaque_user", messageId: "expired", timestampMs: Date.now() - 300001 });
+  const expired = f.official.permits.issue({ chatType: "private", targetId: "opaque_user", messageId: "expired", timestampMs: Date.now() - 3_600_001 });
   const expiredTransport = officialOwnerBootstrapTransport({ client: f.official, replyContext: expired, messaging: f.messaging, sessionId: "qq_official.app:p:opaque_user" });
   await assert.rejects(f.service.assignOwner(f.request, expiredTransport), /reply_permit_expired/);
   assert.equal(await f.identities.hasOwnerIdentity(), false);

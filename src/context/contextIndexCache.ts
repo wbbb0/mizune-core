@@ -41,18 +41,14 @@ export class ContextIndexCache {
   }
 
   reset(userId?: string): number {
-    if (userId === undefined) {
-      const count = this.snapshots.size;
-      this.snapshots.clear();
-      return count;
-    }
-    let removed = 0;
+    // 返回被重置的用户数；同一用户的多个 profile 共享一次重置计数。
+    const removedUsers = new Set<string>();
     for (const [key, entry] of this.snapshots) {
-      if (entry.userId !== userId) continue;
+      if (userId !== undefined && entry.userId !== userId) continue;
       this.snapshots.delete(key);
-      removed += 1;
+      removedUsers.add(entry.userId);
     }
-    return removed;
+    return removedUsers.size;
   }
 
   private async build(profileId: string, documents: ContextSearchDocument[], hashes: Map<string, string>): Promise<OramaContextIndex> {

@@ -732,6 +732,7 @@ export function createInternalApiDeps(): InternalApiDeps & { __state: InternalAp
         notifySessionChanged(sessionId);
         return structuredClone(settings);
       },
+      interruptResponse() { return { cancelledGeneration: false, cancelledOutbound: false, finalizedAssistant: false, finalizedDraftAssistant: false }; },
       appendSyntheticPendingMessage() {},
       setOperationMode(sessionId: string, mode: any) { const session = state.sessions.find(item => item.id === sessionId)!; session.operationMode = mode; return mode; },
       appendHistory() {},
