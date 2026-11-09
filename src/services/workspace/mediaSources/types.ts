@@ -24,8 +24,8 @@ export interface MediaSourceRecord extends MediaScope {
   version: number;
 }
 export interface MediaSourceRepository {
-  register(scope: MediaScope, input: MediaSourceInput): Promise<MediaSourceRecord>;
+  register(scope: MediaScope, input: MediaSourceInput, signal?: AbortSignal): Promise<MediaSourceRecord>;
   get(scope: MediaScope, id: string): Promise<MediaSourceRecord | null>;
-  save(record: MediaSourceRecord): Promise<void>;
+  save(record: MediaSourceRecord, signal?: AbortSignal): Promise<boolean>;
 }
 export type MediaResolution = { ref: string; kind: MediaKind; file: ChatFileRecord };

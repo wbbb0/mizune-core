@@ -108,6 +108,9 @@ export function subscribeRuntimeReload(input: {
 
 export async function shutdownRuntime(input: {
   configManager: ConfigManager;
+  mediaCaptionService: Pick<import("#services/workspace/mediaCaptionService.ts").MediaCaptionService, "stop">;
+  audioTranscriber: Pick<import("#audio/audioTranscriber.ts").AudioTranscriber, "stop">;
+  mediaImportService: Pick<import("#services/workspace/mediaSources/service.ts").MediaImportService, "stop">;
   oneBotClient: OneBotClient;
   onMessage: (event: OneBotMessageEvent) => void;
   onRequest: (event: OneBotRequestEvent) => void;
@@ -134,6 +137,7 @@ export async function shutdownRuntime(input: {
     if (input.schedulerStarted) {
       await input.scheduler.stop();
     }
+    await Promise.all([input.mediaCaptionService.stop(), input.audioTranscriber.stop(), input.mediaImportService.stop()]);
     await input.browserService.shutdown();
     await input.downloadRuntime.close();
     await input.temporaryWorkspaceService.shutdown();

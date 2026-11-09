@@ -10,8 +10,9 @@ const MAX_SOURCES = 50_000;
 export class SqliteMediaSourceRepository implements MediaSourceRepository {
   constructor(private readonly database: AssetsDatabase, private readonly now = Date.now) {}
 
-  async register(scope: MediaScope, input: MediaSourceInput): Promise<MediaSourceRecord> {
+  async register(scope: MediaScope, input: MediaSourceInput, signal?: AbortSignal): Promise<MediaSourceRecord> {
     await this.database.init();
+    signal?.throwIfAborted();
     const db = this.database.getDb();
     const key = createHash("sha256").update(JSON.stringify([scope, input.kind, input.locator ?? input.source])).digest("hex");
     return db.transaction(() => {
@@ -43,14 +44,16 @@ export class SqliteMediaSourceRepository implements MediaSourceRepository {
     return row ? JSON.parse(row.record_json) as MediaSourceRecord : null;
   }
 
-  async save(record: MediaSourceRecord): Promise<void> {
+  async save(record: MediaSourceRecord, signal?: AbortSignal): Promise<boolean> {
     await this.database.init();
-    this.database.getDb().transaction(() => {
+    return this.database.getDb().transaction(() => {
+      signal?.throwIfAborted();
       const row = this.database.getDb().prepare("SELECT record_json FROM media_sources WHERE id = ? AND connection_id = ? AND session_id = ?")
         .get(record.id, record.connectionId, record.sessionId) as { record_json: string } | undefined;
-      if (!row || (JSON.parse(row.record_json) as MediaSourceRecord).version !== record.version) return;
+      if (!row || (JSON.parse(row.record_json) as MediaSourceRecord).version !== record.version) return false;
       record.version += 1;
       this.write(record);
+      return true;
     }).immediate();
   }
 

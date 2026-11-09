@@ -534,11 +534,11 @@ export class OneBotClient extends EventEmitter {
     };
   }
 
-  async getRecord(file: string, outFormat = "mp3"): Promise<{ file: string | null; url: string | null }> {
+  async getRecord(file: string, outFormat = "mp3", abortSignal?: AbortSignal): Promise<{ file: string | null; url: string | null }> {
     const payload = await this.postApi<OneBotApiResponse>("get_record", {
       file,
       out_format: outFormat
-    });
+    }, abortSignal);
     const data = payload.data && typeof payload.data === "object"
       ? payload.data as Record<string, unknown>
       : {};

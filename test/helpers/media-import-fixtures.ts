@@ -13,10 +13,13 @@ import { parseChatSessionIdentity } from "../../src/conversation/session/session
 export function createMemoryMediaSources(): MediaSourceRepository {
   const records = new Map<string, MediaSourceRecord>();
   return {
-    async register(scope, input) {
+    async register(scope, input, signal) {
+      signal?.throwIfAborted();
       const key = createHash("sha256").update(JSON.stringify([scope, input.kind, input.locator ?? input.source])).digest("hex");
       const id = `media_${key.slice(0, 32)}`;
       const record = records.get(id) ?? { ...scope, id, key, input, assetId: null, failures: 0, nextRetryAt: 0, expiresAt: Number.MAX_SAFE_INTEGER, version: 1 };
+      if (record.input.source !== input.source) { record.failures = 0; record.nextRetryAt = 0; record.version++; }
+      record.input = input;
       records.set(id, record);
       return structuredClone(record);
     },
@@ -24,13 +27,13 @@ export function createMemoryMediaSources(): MediaSourceRepository {
       const row = records.get(id);
       return row && row.sessionId === scope.sessionId && row.connectionId === scope.connectionId ? structuredClone(row) : null;
     },
-    async save(record) { records.set(record.id, structuredClone(record)); }
+    async save(record, signal) { signal?.throwIfAborted(); const previous = records.get(record.id); if (!previous || previous.version !== record.version) return false; record.version++; records.set(record.id, structuredClone(record)); return true; }
   };
 }
 
-export function createTestMediaImportService(files: Partial<Pick<ChatFileStore, "importRemoteSource" | "getFile" | "isFileAvailable">> = {}) {
+export function createTestMediaImportService(files: Partial<Pick<ChatFileStore, "importRemoteSource" | "getFile" | "isFileAvailable" | "deleteFile">> = {}) {
   return new MediaImportService({ sources: createMemoryMediaSources(), refresh: async () => null,
-    files: { importRemoteSource: async input => {
+    files: { deleteFile: files.deleteFile?.bind(files) ?? (async () => true), importRemoteSource: async input => {
         const file = await files.importRemoteSource?.call(files, input);
         if (!file) throw new Error("media unavailable in fixture");
         return file;

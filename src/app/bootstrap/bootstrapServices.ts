@@ -197,9 +197,10 @@ export function createBootstrapServices(
   const mediaImportService = new MediaImportService({
     sources: createMediaSourceRepository(dataDir, logger), files: chatFileStore,
     refresh: (scope, locator, signal) => oneBotReferenceResolver.refresh(scope, locator, signal),
-    onResolved: async (scope, resolution) => {
+    onResolved: async (scope, resolution, signal) => {
+      signal.throwIfAborted();
       if (sessionManager.applyResolvedMedia(scope.sessionId, resolution)) {
-        await sessionPersistence.save(sessionManager.getPersistedSession(scope.sessionId));
+        await sessionPersistence.save(sessionManager.getPersistedSession(scope.sessionId), signal);
       }
     }
   });

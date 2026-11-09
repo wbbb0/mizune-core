@@ -119,7 +119,7 @@ export class AudioStore {
     );
   }
 
-  async markTranscriptionsQueued(audioIds: string[]): Promise<void> {
+  async markTranscriptionsQueued(audioIds: string[], abortSignal?: AbortSignal): Promise<void> {
     const ids = uniqueAudioIds(audioIds);
     if (ids.length === 0) {
       return;
@@ -127,6 +127,7 @@ export class AudioStore {
 
     await this.withStoreLock(async () => {
       const db = await this.getReadyDb();
+      abortSignal?.throwIfAborted();
       const update = db.prepare(`
         UPDATE audio_files
         SET transcription_status = 'queued',
@@ -145,10 +146,12 @@ export class AudioStore {
     payload: {
       transcription: string;
       modelRef: string;
-    }
+    },
+    abortSignal?: AbortSignal
   ): Promise<void> {
     await this.withStoreLock(async () => {
       const db = await this.getReadyDb();
+      abortSignal?.throwIfAborted();
       db.prepare(`
         UPDATE audio_files
         SET transcription = ?,
@@ -166,10 +169,12 @@ export class AudioStore {
     payload: {
       message: string;
       modelRef: string;
-    }
+    },
+    abortSignal?: AbortSignal
   ): Promise<void> {
     await this.withStoreLock(async () => {
       const db = await this.getReadyDb();
+      abortSignal?.throwIfAborted();
       db.prepare(`
         UPDATE audio_files
         SET transcription_status = 'failed',
@@ -178,6 +183,14 @@ export class AudioStore {
             transcription_error = ?
         WHERE id = ?
       `).run(Date.now(), payload.modelRef, payload.message.slice(0, 240), audioId);
+    });
+  }
+
+  async clearTranscriptionQueued(audioId: string, isUnowned: () => boolean): Promise<void> {
+    await this.withStoreLock(async () => {
+      const db = await this.getReadyDb();
+      if (!isUnowned()) return;
+      db.prepare("UPDATE audio_files SET transcription_status = 'missing' WHERE id = ? AND transcription_status = 'queued'").run(audioId);
     });
   }
 

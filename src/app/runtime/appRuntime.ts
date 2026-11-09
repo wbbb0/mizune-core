@@ -410,6 +410,9 @@ export async function createAppRuntime(options: AppRuntimeOptions = {}): Promise
         await qqOfficialClient?.stop();
         await shutdownRuntime({
           configManager,
+          mediaCaptionService,
+          audioTranscriber,
+          mediaImportService,
           oneBotClient,
           onMessage,
           onRequest,

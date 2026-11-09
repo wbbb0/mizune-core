@@ -334,6 +334,8 @@ function deriveWebSessionPhase(snapshot: WebSessionStreamSnapshot): WebSessionPh
       return { ...phase, label: "空闲" };
     case "debouncing":
       return { ...phase, label: "等待接收消息" };
+    case "preparing_context":
+      return { ...phase, label: "正在准备上下文与媒体" };
     case "turn_planner_evaluating":
       return { ...phase, label: "正在分析上下文" };
     case "turn_planner_waiting":

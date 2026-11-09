@@ -112,6 +112,7 @@ export function getSessionViewSnapshot(session: SessionState): {
 export function isSessionGenerating(session: SessionState): boolean {
   return [
     "turn_planner_evaluating",
+    "preparing_context",
     "compressing_history",
     "requesting_llm",
     "reasoning",
@@ -123,6 +124,7 @@ export function isSessionGenerating(session: SessionState): boolean {
 export function isSessionResponding(session: SessionState): boolean {
   return [
     "turn_planner_evaluating",
+    "preparing_context",
     "compressing_history",
     "requesting_llm",
     "reasoning",

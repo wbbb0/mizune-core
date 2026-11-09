@@ -1,7 +1,5 @@
 import type { AppConfig } from "#config/config.ts";
-import { getRoutingPresetHistoryWindow } from "#llm/shared/modelRouting.ts";
-import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
-import { formatStructuredMediaReference, projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
+import { projectTranscriptMessageItemToHistoryMessage } from "./historyContext.ts";
 import type { ToolObservationSummary } from "./toolObservation.ts";
 import { getCachedOrEstimatedInputTokens } from "./transcriptTokenStats.ts";
 export { estimateTokens } from "./tokenEstimator.ts";
@@ -17,42 +15,19 @@ import type {
   SessionState
 } from "./sessionTypes.ts";
 
-export function isTranscriptRuntimeIncluded(item: InternalTranscriptItem): boolean {
-  return item.runtimeExcluded !== true;
-}
-
-export function isTranscriptLlmVisible(item: InternalTranscriptItem): boolean {
-  return item.llmVisible === true && isTranscriptRuntimeIncluded(item);
-}
+import { selectRequestContext } from "./requestContextSelection.ts";
+import { isTranscriptHistoryMessage, isTranscriptLlmVisible, isTranscriptRuntimeIncluded } from "./transcriptVisibility.ts";
+export { isTranscriptLlmVisible, isTranscriptRuntimeIncluded } from "./transcriptVisibility.ts";
 
 export function isTranscriptVisibleChatMessage(item: InternalTranscriptItem): boolean {
   return isTranscriptRuntimeIncluded(item) && (item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message");
-}
-
-function isTranscriptHistoryMessage(
-  item: InternalTranscriptItem
-): item is
-  | TranscriptUserMessageItem
-  | TranscriptUserMediaMessageItem
-  | TranscriptAssistantMessageItem
-  | TranscriptSessionModeSwitchItem
-  | TranscriptProfilePhaseTransitionItem {
-  return item.kind === "user_message"
-    || item.kind === "user_media_message"
-    || item.kind === "assistant_message"
-    || item.kind === "session_mode_switch"
-    || item.kind === "profile_phase_transition";
 }
 
 export function projectLlmVisibleHistoryFromTranscript(
   transcript: InternalTranscriptItem[],
   config: AppConfig
 ): SessionHistoryMessage[] {
-  const projected = transcript
-    .filter(isTranscriptLlmVisible)
-    .filter(isTranscriptHistoryMessage)
-    .map((item) => projectTranscriptMessageItemToHistoryMessage(item));
-  return normalizeProjectedHistoryMessages(projected, config);
+  return selectRequestContext(transcript, config).history;
 }
 
 export function projectVisibleMessagesFromTranscript(transcript: InternalTranscriptItem[]): Array<{
@@ -331,72 +306,4 @@ function findTranscriptStartIndexForLlmVisibleOffset(
   }
 
   return transcript.length;
-}
-
-function normalizeProjectedHistoryMessages(
-  recentMessages: SessionHistoryMessage[],
-  config: AppConfig
-): SessionHistoryMessage[] {
-  let normalized = recentMessages;
-  const historyWindow = getRoutingPresetHistoryWindow(config);
-  const maxRecentMessages = historyWindow.maxRecentMessages;
-  if (normalized.length > maxRecentMessages) {
-    normalized = normalized.slice(-maxRecentMessages);
-  }
-
-  const maxImageReferences = historyWindow.maxImageReferences;
-  if (maxImageReferences <= 0) {
-    return normalized.map((message) => ({
-      ...message,
-      content: replaceExcessImages(message.content, true)
-    }));
-  }
-
-  let remainingImageBudget = maxImageReferences;
-  const next = [...normalized];
-  for (let index = next.length - 1; index >= 0; index -= 1) {
-    const message = next[index];
-    if (!message) {
-      continue;
-    }
-    const { content, consumed } = replaceImagesKeepingLatest(message.content, remainingImageBudget);
-    remainingImageBudget = Math.max(0, remainingImageBudget - consumed);
-    next[index] = {
-      ...message,
-      content
-    };
-  }
-  return next;
-}
-
-function replaceImagesKeepingLatest(content: string, keepCount: number): { content: string; consumed: number } {
-  let seen = 0;
-  const next = content.replace(/\r\n/g, "\n").split("\n").map((line) => {
-    const parsed = parseProtocolLine(line);
-    if (!parsed || (parsed.tag !== "ref" && parsed.tag !== "pending_media") || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
-      return line;
-    }
-    if (seen < keepCount) {
-      seen += 1;
-      return line;
-    }
-    return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", "omitted");
-  }).join("\n");
-  return {
-    content: next,
-    consumed: seen
-  };
-}
-
-function replaceExcessImages(content: string, replaceAll: boolean): string {
-  if (!replaceAll) {
-    return content;
-  }
-  return content.replace(/\r\n/g, "\n").split("\n").map((line) => {
-    const parsed = parseProtocolLine(line);
-    if (!parsed || (parsed.tag !== "ref" && parsed.tag !== "pending_media") || (parsed.attrs.kind !== "image" && parsed.attrs.kind !== "emoji")) {
-      return line;
-    }
-    return formatStructuredMediaReference(parsed.attrs.kind === "emoji" ? "emoji" : "image", "omitted");
-  }).join("\n");
 }

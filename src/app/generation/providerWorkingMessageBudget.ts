@@ -4,7 +4,7 @@ import type { AppConfig } from "#config/config.ts";
 import type { InternalToolResultItem, InternalTranscriptItem } from "#conversation/session/sessionTypes.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
 import type { LlmToolDefinition } from "#llm/provider/providerTypes.ts";
-import { shouldUseToolResultReplayContent } from "./toolResultReplayPolicy.ts";
+import { shouldUseToolResultReplayContent } from "#conversation/session/toolResultReplay.ts";
 
 const DEFAULT_RECENT_RAW_TOOL_RESULT_COUNT = 5;
 

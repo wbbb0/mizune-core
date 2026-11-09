@@ -1,5 +1,7 @@
 import { resolveConnectorCapabilities, type ConnectorCapability } from "#services/messaging/connectorCapabilities.ts";
 import { recoverPromptMedia } from "./promptMediaRecovery.ts";
+import { PromptMediaPreparation, withPromptMediaPreparation } from "./promptMediaPreparation.ts";
+import { hasNativeReplayPayload, projectReplayMessageContent } from "#llm/shared/nativeReplayMetadata.ts";
 import { characterRepository } from "../../character/repository.ts";
 import { characterPrompt } from "../../character/prompt.ts";
 import {
@@ -265,39 +267,53 @@ async function preparePromptMediaContext(
   deps: GenerationPromptBuilderDeps,
   input: {
     historyForPrompt: GenerationPromptHistoryMessage[];
-    batchMessages?: Array<{
-      attachments?: ChatAttachment[];
-    }>;
+    batchMessages?: GenerationPromptBatchMessage[];
+    mediaPreparation: PromptMediaPreparation;
+    shouldTranscribeCurrentAudio?: boolean;
     replayMessages?: LlmMessage[];
     reason: string;
     abortSignal?: AbortSignal;
   }
 ) {
-  const batchImageIds = Array.from(new Set((input.batchMessages ?? []).flatMap((message) => (
-    [
-      ...collectVisualAttachmentFileIds(message.attachments, "image"),
-      ...collectVisualAttachmentFileIds(message.attachments, "emoji")
-    ]
-  ))));
+  const scope = input.mediaPreparation;
+  const admission = scope.currentMedia(input.batchMessages ?? []);
+  const historyAdmission = scope.historyMedia(input.historyForPrompt, input.replayMessages ?? []);
+  const batchImageIds = [...admission.fileIds];
   const historyImageIds = collectReferencedImageIds(input.historyForPrompt);
   const replayStringMessages = collectReplayStringMessages(input.replayMessages);
   const replayImageIds = collectReferencedImageIds(replayStringMessages);
-  const imageIds = Array.from(new Set([...historyImageIds, ...replayImageIds, ...batchImageIds]));
-  const fallbackCaptionMap = await deps.mediaCaptionService.ensureReady(
-    imageIds,
-    {
-      reason: input.reason,
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-    }
-  );
-  const captionMap = await readImageCaptionMapFromDerivedObservations(deps, imageIds, fallbackCaptionMap);
-  const audioTranscriptionMap = await preparePromptAudioTranscriptionMap(deps, [
-    ...collectReferencedAudioIds(input.historyForPrompt),
-    ...collectReferencedAudioIds(replayStringMessages)
-  ], {
-    reason: input.reason,
-    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-  });
+  const imageIds = Array.from(new Set([
+    ...[...historyImageIds, ...replayImageIds].filter(id => historyAdmission.fileIds.has(id)), ...batchImageIds
+  ]));
+  const captionMap = new Map<string, string>();
+  const audioTranscriptionMap = new Map<string, PromptAudioTranscription>();
+  const audioIds = Array.from(new Set([
+    ...[...collectReferencedAudioIds(input.historyForPrompt), ...collectReferencedAudioIds(replayStringMessages)]
+      .filter(id => historyAdmission.audioIds.has(id)),
+    ...(input.shouldTranscribeCurrentAudio ? admission.audioIds : [])
+  ]));
+  await Promise.all([
+    scope.run(async signal => {
+      if (!imageIds.length) return;
+      const fallbackCaptionMap = await deps.mediaCaptionService.ensureReady(imageIds, {
+        reason: input.reason, abortSignal: signal,
+        onProgress: results => { if (!signal.aborted) for (const [id, value] of results) captionMap.set(id, value); }
+      });
+      signal.throwIfAborted();
+      for (const [id, value] of fallbackCaptionMap) captionMap.set(id, value);
+      const derived = await readImageCaptionMapFromDerivedObservations(deps, imageIds, captionMap);
+      signal.throwIfAborted();
+      for (const [id, value] of derived) captionMap.set(id, value);
+    }, undefined, "图片描述"),
+    scope.run(async signal => {
+      const results = await preparePromptAudioTranscriptions(deps, audioIds, {
+        abortSignal: signal,
+        onProgress: values => { if (!signal.aborted) for (const [id, value] of values) audioTranscriptionMap.set(id, value); }
+      });
+      signal.throwIfAborted();
+      for (const result of results) audioTranscriptionMap.set(result.audioId, result);
+    }, undefined, "音频听写")
+  ]);
 
   return {
     historyForPrompt: annotateHistoryMessagesWithAudioTranscriptions(
@@ -332,22 +348,6 @@ function collectReferencedAudioIds(messages: Array<{ content: string }>): string
   return Array.from(ids);
 }
 
-async function preparePromptAudioTranscriptionMap(
-  deps: GenerationPromptBuilderDeps,
-  audioIds: string[],
-  options: {
-    reason: string;
-    abortSignal?: AbortSignal | undefined;
-  }
-): Promise<Map<string, PromptAudioTranscription>> {
-  const uniqueAudioIds = Array.from(new Set(audioIds.map((item) => String(item ?? "").trim()).filter(Boolean)));
-  if (uniqueAudioIds.length === 0) {
-    return new Map();
-  }
-  const transcriptions = await preparePromptAudioTranscriptions(deps, uniqueAudioIds, options);
-  return new Map(transcriptions.map((item) => [item.audioId, item]));
-}
-
 function annotateHistoryMessagesWithAudioTranscriptions<T extends { content: string }>(
   messages: T[],
   transcriptions: ReadonlyMap<string, PromptAudioTranscription>
@@ -370,15 +370,12 @@ function annotateReplayMessagesWithDerivedContext(
     return replayMessages;
   }
   return replayMessages.map((message) => {
-    if (typeof message.content !== "string") {
+    if (typeof message.content !== "string" || (message.role === "assistant" && hasNativeReplayPayload(message.providerMetadata))) {
       return message;
     }
     const withCaptions = annotateStructuredMediaReferences(message.content, captions, { includeIds: true });
     const withAudio = annotateAudioReferences(withCaptions, transcriptions);
-    return {
-      ...message,
-      content: withAudio
-    };
+    return projectReplayMessageContent(message, withAudio);
   });
 }
 
@@ -415,6 +412,7 @@ async function projectPromptContentSafety<
     batchMessages: B[];
     abortSignal?: AbortSignal | undefined;
     contentSafetyAlreadyProjected?: boolean | undefined;
+    mediaPreparation: PromptMediaPreparation;
   }
 ): Promise<{ historyForPrompt: H[]; batchMessages: B[] }> {
   if (input.contentSafetyAlreadyProjected === true) {
@@ -423,13 +421,23 @@ async function projectPromptContentSafety<
       batchMessages: input.batchMessages
     };
   }
-  const projected = await deps.contentSafetyService?.projectPromptMessages({
-    sessionId: input.sessionId,
-    source: input.source,
-    recentMessages: input.historyForPrompt,
-    batchMessages: input.batchMessages,
-    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-  });
+  const projected = await input.mediaPreparation.run(signal => deps.contentSafetyService
+    ? deps.contentSafetyService.projectPromptMessages({
+      sessionId: input.sessionId, source: input.source, recentMessages: input.historyForPrompt,
+      batchMessages: input.batchMessages, abortSignal: signal
+    })
+    : Promise.resolve({ recentMessages: input.historyForPrompt, batchMessages: input.batchMessages, events: [] }),
+    {
+      recentMessages: [] as H[],
+      batchMessages: input.batchMessages.map(message => ({ ...message,
+        text: "[本轮内容安全检查未完成，原输入暂不可读]", contentParts: [],
+        images: [], imageIds: [], emojiSources: [], emojiIds: [], audioSources: [], audioIds: [], attachments: [],
+        messageFiles: [], specialSegments: [], forwardIds: []
+      })),
+      events: []
+    },
+    "输入内容安全检查"
+  );
   if (!projected) {
     return {
       historyForPrompt: input.historyForPrompt,
@@ -448,19 +456,25 @@ async function projectReplayMessages(
     sessionId: string;
     source: string;
     replayMessages?: LlmMessage[] | undefined;
+    mediaPreparation?: PromptMediaPreparation;
+    safeFallbackMessages?: LlmMessage[] | undefined;
     abortSignal?: AbortSignal | undefined;
   }
 ): Promise<LlmMessage[] | undefined> {
   if (!input.replayMessages || input.replayMessages.length === 0) {
     return input.replayMessages;
   }
-  const projected = await deps.contentSafetyService?.projectLlmMessages({
-    sessionId: input.sessionId,
-    source: input.source,
-    messages: input.replayMessages,
-    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+  if (input.safeFallbackMessages && JSON.stringify(input.replayMessages) === JSON.stringify(input.safeFallbackMessages)) return input.safeFallbackMessages;
+  const service = deps.contentSafetyService;
+  if (!service) return input.replayMessages;
+  const project = (abortSignal?: AbortSignal) => service.projectLlmMessages({
+    sessionId: input.sessionId, source: input.source, messages: input.replayMessages!,
+    ...(abortSignal ? { abortSignal } : {})
   });
-  return projected?.messages ?? input.replayMessages;
+  const projected = input.mediaPreparation
+    ? await input.mediaPreparation.run(signal => project(signal), { messages: input.safeFallbackMessages ?? [], events: [] }, "回放内容安全检查")
+    : await project(input.abortSignal);
+  return projected.messages;
 }
 
 async function projectPromptMessageAtIndex(
@@ -510,6 +524,8 @@ async function preparePromptBatchMessages(
   captionMap: Awaited<ReturnType<typeof preparePromptMediaContext>>["captionMap"],
   options: {
     connectorCapabilities?: ReadonlySet<ConnectorCapability>;
+    mediaPreparation: PromptMediaPreparation;
+    audioTranscriptionMap: ReadonlyMap<string, PromptAudioTranscription>;
     supportsAudioInput?: boolean | undefined;
     supportsVision?: boolean | undefined;
     shouldTranscribeAudio?: boolean | undefined;
@@ -517,6 +533,8 @@ async function preparePromptBatchMessages(
     abortSignal?: AbortSignal | undefined;
   }
 ) {
+  const scope = options.mediaPreparation;
+  const admission = scope.currentMedia(messages);
   return Promise.all(messages.map(async (message) => {
     const audioIds = message.audioIds ?? [];
     const attachments = dedupeResolvedChatAttachments(message.attachments ?? []);
@@ -524,7 +542,7 @@ async function preparePromptBatchMessages(
     const emojiFileIds = collectVisualAttachmentFileIds(attachments, "emoji");
     const assetFileIds = collectPromptAssetAttachmentFileIds(attachments);
     const assetFiles = assetFileIds.length > 0
-      ? new Map((await deps.chatFileStore.getMany(assetFileIds)).map((file) => [file.fileId, file]))
+      ? new Map((await scope.run(() => deps.chatFileStore.getMany(assetFileIds), [], "文件句柄")).map((file) => [file.fileId, file]))
       : new Map();
     const assetHandles = assetFileIds
       .map((fileId) => assetFiles.get(fileId))
@@ -536,10 +554,10 @@ async function preparePromptBatchMessages(
             nextActionMode: "default"
           }).asset_handle);
     const imageVisuals = options.supportsVision
-      ? await deps.mediaVisionService.prepareFilesForModel(imageFileIds)
+      ? await scope.run(signal => deps.mediaVisionService.prepareFilesForModel(imageFileIds.filter(id => admission.fileIds.has(id)), signal), [], "原生图片输入")
       : [];
     const emojiVisuals = options.supportsVision
-      ? await deps.mediaVisionService.prepareFilesForModel(emojiFileIds)
+      ? await scope.run(signal => deps.mediaVisionService.prepareFilesForModel(emojiFileIds.filter(id => admission.fileIds.has(id)), signal), [], "原生表情输入")
       : [];
 
     return {
@@ -552,14 +570,17 @@ async function preparePromptBatchMessages(
       audioIds,
       ...(options.supportsAudioInput
         ? {
-            audioInputs: await prepareAudioInputsForModel(message.audioSources, {
+            audioInputs: await scope.run(signal => prepareAudioInputsForModel(message.audioSources.filter(source => admission.audioSources.has(source)), {
               oneBotClient: deps.oneBotClient
-            })
+            }, { maxInputs: Math.max(1, admission.audioSources.size), abortSignal: signal }), [], "原生音频输入")
           }
         : {}),
       ...((options.shouldTranscribeAudio && audioIds.length > 0)
         ? {
-            audioTranscriptions: await preparePromptAudioTranscriptions(deps, audioIds, options)
+            audioTranscriptions: audioIds.flatMap(id => {
+              const result = options.audioTranscriptionMap.get(id);
+              return result ? [result] : [];
+            })
           }
         : {}),
       emojiSources: message.emojiSources,
@@ -598,16 +619,21 @@ async function preparePromptAudioTranscriptions(
   audioIds: string[],
   options: {
     abortSignal?: AbortSignal | undefined;
+    onProgress?: (results: ReadonlyMap<string, PromptAudioTranscription>) => void;
   }
 ): Promise<PromptAudioTranscription[]> {
+  if (audioIds.length === 0) return [];
+  options.abortSignal?.throwIfAborted();
   const fallbackResults = Array.from((await deps.audioTranscriber.ensureReady(
     audioIds,
     {
       reason: "chat_prompt_audio_transcription",
-      ...(options.abortSignal ? { abortSignal: options.abortSignal } : {})
+      ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
+      ...(options.onProgress ? { onProgress: options.onProgress } : {})
     }
   )).values()) as PromptAudioTranscription[];
 
+  options.abortSignal?.throwIfAborted();
   if (typeof deps.audioStore.getMany !== "function") {
     return fallbackResults;
   }
@@ -625,6 +651,7 @@ async function projectPreparedBatchDerivedText(
     sessionId: string;
     source: string;
     batchMessages: PreparedPromptBatchMessage[];
+    mediaPreparation: PromptMediaPreparation;
     abortSignal?: AbortSignal | undefined;
   }
 ): Promise<PreparedPromptBatchMessage[]> {
@@ -671,12 +698,10 @@ async function projectPreparedBatchDerivedText(
     return messages;
   }
 
-  const projected = await deps.contentSafetyService.projectLlmMessages({
-    sessionId: input.sessionId,
-    source: input.source,
-    messages: llmMessages,
-    ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-  });
+  const service = deps.contentSafetyService;
+  const projected = await input.mediaPreparation.run(signal => service.projectLlmMessages({
+    sessionId: input.sessionId, source: input.source, messages: llmMessages, abortSignal: signal
+  }), { messages: llmMessages.map(message => ({ ...message, content: "[派生媒体内容安全检查未完成，暂不可读]" })), events: [] }, "媒体派生内容安全检查");
 
   for (const [index, ref] of refs.entries()) {
     const content = projected.messages[index]?.content;
@@ -1077,6 +1102,7 @@ function logPromptMemorySuppressions(
 // Builds chat, setup, and scheduled prompts from shared context helpers.
 export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps): GenerationPromptBuilder {
   const buildChatPromptMessages = async (input: {
+    mediaPreparation: PromptMediaPreparation;
     sessionId: string;
     replyDelivery?: SessionDelivery;
     modeId?: string;
@@ -1106,7 +1132,40 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     draftMode?: PromptInput["draftMode"];
     isInSetup?: boolean;
   }) => {
-    input = await recoverPromptMedia(deps.mediaImportService, input);
+    if (input.replayMessages?.length) {
+      const replayMessages = await input.mediaPreparation.run(
+        signal => projectReplayMessages(deps, {
+          sessionId: input.sessionId, source: "prompt_replay_before_media", replayMessages: input.replayMessages, abortSignal: signal
+        }),
+        [],
+        "回放内容安全检查"
+      );
+      input = { ...input, replayMessages: replayMessages ?? [] };
+    }
+    const currentMedia = input.mediaPreparation.currentMedia(input.batchMessages ?? []);
+    const safeReplayBeforeRecovery = input.replayMessages;
+    const historyMedia = input.mediaPreparation.historyMedia(input.historyForPrompt, input.replayMessages ?? []);
+    const callerSignal = input.abortSignal;
+    const recovered = await input.mediaPreparation.run(
+      signal => recoverPromptMedia(deps.mediaImportService, { ...input, abortSignal: signal }, {
+        currentMediaRefs: currentMedia.mediaRefs, historyMediaRefs: historyMedia.mediaRefs,
+        onResolved: (ref, fileId) => input.mediaPreparation.recordResolution(ref, fileId)
+      }),
+      input,
+      "媒体恢复"
+    );
+    input = { ...recovered, ...(callerSignal ? { abortSignal: callerSignal } : {}) };
+    if (!callerSignal) delete input.abortSignal;
+    if (JSON.stringify(input.replayMessages) !== JSON.stringify(safeReplayBeforeRecovery)) {
+      const replayMessages = await input.mediaPreparation.run(
+        signal => projectReplayMessages(deps, {
+          sessionId: input.sessionId, source: "prompt_replay_after_recovery", replayMessages: input.replayMessages, abortSignal: signal
+        }),
+        safeReplayBeforeRecovery ?? [],
+        "恢复媒体内容安全检查"
+      );
+      input = { ...input, replayMessages: replayMessages ?? [] };
+    }
     const scenarioHostMode = isScenarioHostMode(input.modeId);
     const statefulRpMode = input.modeId === "stateful_rp";
     const assistantMode = isAssistantMode(input.modeId);
@@ -1126,6 +1185,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const safetyProjected = await projectPromptContentSafety(deps, {
       sessionId: input.sessionId,
       source: "chat_prompt",
+      mediaPreparation: input.mediaPreparation,
       historyForPrompt: input.historyForPrompt,
       batchMessages: input.batchMessages,
       contentSafetyAlreadyProjected: input.contentSafetyAlreadyProjected,
@@ -1136,8 +1196,46 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       batchMessages: safetyProjected.batchMessages,
       ...(input.replayMessages ? { replayMessages: input.replayMessages } : {}),
       reason: "chat_prompt",
+      mediaPreparation: input.mediaPreparation,
+      shouldTranscribeCurrentAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
+
+    const rawPreparedBatchMessages = await preparePromptBatchMessages(
+      deps,
+      safetyProjected.batchMessages,
+      mediaContext.captionMap,
+      {
+        connectorCapabilities: resolveConnectorCapabilities(deps.config, { sessionId: input.sessionId, replyDelivery: input.replyDelivery }),
+        mediaPreparation: input.mediaPreparation,
+        audioTranscriptionMap: mediaContext.audioTranscriptionMap,
+        supportsAudioInput: mainProfile?.chat?.capabilities.supportsAudioInput,
+        supportsVision: mainProfile?.chat?.capabilities.supportsVision,
+        shouldTranscribeAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
+        visibleToolNames: input.visibleToolNames,
+        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+      }
+    );
+    const preparedBatchMessages = await projectPreparedBatchDerivedText(deps, {
+      sessionId: input.sessionId,
+      source: "chat_prompt_derived_text",
+      mediaPreparation: input.mediaPreparation,
+      batchMessages: rawPreparedBatchMessages,
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
+    const replayMessages = await projectReplayMessages(deps, {
+      sessionId: input.sessionId,
+      source: "chat_prompt_replay",
+      mediaPreparation: input.mediaPreparation,
+      safeFallbackMessages: input.replayMessages,
+      replayMessages: annotateReplayMessagesWithDerivedContext(
+        input.replayMessages,
+        mediaContext.captionMap,
+        mediaContext.audioTranscriptionMap
+      ),
+      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+    });
+    input.mediaPreparation.finishMediaPreparation();
 
     const relevantUserIds = new Set<string>([
       ...(input.currentUser?.userId ? [input.currentUser.userId] : []),
@@ -1179,35 +1277,6 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const liveResources = shouldIncludeLiveResources(input.visibleToolNames)
       ? await collectPromptLiveResources(deps, { sessionId: input.sessionId, userId: input.currentUser?.userId ?? "" })
       : [];
-    const rawPreparedBatchMessages = await preparePromptBatchMessages(
-      deps,
-      safetyProjected.batchMessages,
-      mediaContext.captionMap,
-      {
-        connectorCapabilities: resolveConnectorCapabilities(deps.config, { sessionId: input.sessionId, replyDelivery: input.replyDelivery }),
-        supportsAudioInput: mainProfile?.chat?.capabilities.supportsAudioInput,
-        supportsVision: mainProfile?.chat?.capabilities.supportsVision,
-        shouldTranscribeAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
-        visibleToolNames: input.visibleToolNames,
-        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-      }
-    );
-    const preparedBatchMessages = await projectPreparedBatchDerivedText(deps, {
-      sessionId: input.sessionId,
-      source: "chat_prompt_derived_text",
-      batchMessages: rawPreparedBatchMessages,
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-    });
-    const replayMessages = await projectReplayMessages(deps, {
-      sessionId: input.sessionId,
-      source: "chat_prompt_replay",
-      replayMessages: annotateReplayMessagesWithDerivedContext(
-        input.replayMessages,
-        mediaContext.captionMap,
-        mediaContext.audioTranscriptionMap
-      ),
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-    });
     const userProfilePromptState = assistantMode
       ? buildAssistantUserProfilePromptState(
           input.currentUser,
@@ -1284,7 +1353,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
-      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
+      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...input.mediaPreparation.notes(), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
       persona: input.persona,
@@ -1342,6 +1411,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
   };
 
   const buildScheduledPromptMessages = async (input: {
+    mediaPreparation: PromptMediaPreparation;
     sessionId: string;
     replyDelivery?: SessionDelivery;
     modeId?: string;
@@ -1369,24 +1439,74 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     abortSignal?: AbortSignal;
     modeProfile?: PromptInput["modeProfile"];
   }) => {
-    input = await recoverPromptMedia(deps.mediaImportService, input);
+    if (input.replayMessages?.length) {
+      const replayMessages = await input.mediaPreparation.run(
+        signal => projectReplayMessages(deps, {
+          sessionId: input.sessionId, source: "prompt_replay_before_media", replayMessages: input.replayMessages, abortSignal: signal
+        }),
+        [],
+        "回放内容安全检查"
+      );
+      input = { ...input, replayMessages: replayMessages ?? [] };
+    }
+    const safeReplayBeforeRecovery = input.replayMessages;
+    const historyMedia = input.mediaPreparation.historyMedia(input.historyForPrompt, input.replayMessages ?? []);
+    const callerSignal = input.abortSignal;
+    const recovered = await input.mediaPreparation.run(
+      signal => recoverPromptMedia(deps.mediaImportService, { ...input, abortSignal: signal }, {
+        historyMediaRefs: historyMedia.mediaRefs,
+        onResolved: (ref, fileId) => input.mediaPreparation.recordResolution(ref, fileId)
+      }),
+      input,
+      "媒体恢复"
+    );
+    input = { ...recovered, ...(callerSignal ? { abortSignal: callerSignal } : {}) };
+    if (!callerSignal) delete input.abortSignal;
+    if (JSON.stringify(input.replayMessages) !== JSON.stringify(safeReplayBeforeRecovery)) {
+      const replayMessages = await input.mediaPreparation.run(
+        signal => projectReplayMessages(deps, {
+          sessionId: input.sessionId, source: "prompt_replay_after_recovery", replayMessages: input.replayMessages, abortSignal: signal
+        }),
+        safeReplayBeforeRecovery ?? [],
+        "恢复媒体内容安全检查"
+      );
+      input = { ...input, replayMessages: replayMessages ?? [] };
+    }
     const scenarioHostMode = isScenarioHostMode(input.modeId);
     const statefulRpMode = input.modeId === "stateful_rp";
     const assistantMode = isAssistantMode(input.modeId);
     const safetyProjected = await projectPromptContentSafety(deps, {
       sessionId: input.sessionId,
       source: "scheduled_prompt",
+      mediaPreparation: input.mediaPreparation,
       historyForPrompt: input.historyForPrompt,
       batchMessages: [],
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
-    const [mediaContext, liveResources, globalRules, toolsetRuleEntries, scheduledTrigger] = await Promise.all([
-      preparePromptMediaContext(deps, {
-        historyForPrompt: safetyProjected.historyForPrompt,
-        ...(input.replayMessages ? { replayMessages: input.replayMessages } : {}),
-        reason: "scheduled_prompt",
-        ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-      }),
+    const [preparedMedia, liveResources, globalRules, toolsetRuleEntries, scheduledTrigger] = await Promise.all([
+      (async () => {
+        const mediaContext = await preparePromptMediaContext(deps, {
+          historyForPrompt: safetyProjected.historyForPrompt,
+          ...(input.replayMessages ? { replayMessages: input.replayMessages } : {}),
+          reason: "scheduled_prompt",
+          mediaPreparation: input.mediaPreparation,
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+        });
+        const replayMessages = await projectReplayMessages(deps, {
+          sessionId: input.sessionId,
+          source: "scheduled_prompt_replay",
+          mediaPreparation: input.mediaPreparation,
+          safeFallbackMessages: input.replayMessages,
+          replayMessages: annotateReplayMessagesWithDerivedContext(
+            input.replayMessages,
+            mediaContext.captionMap,
+            mediaContext.audioTranscriptionMap
+          ),
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
+        });
+        input.mediaPreparation.finishMediaPreparation();
+        return { mediaContext, replayMessages };
+      })(),
       shouldIncludeLiveResources(input.visibleToolNames)
         ? collectPromptLiveResources(deps, { sessionId: input.sessionId, userId: input.currentUser?.userId ?? "" })
         : Promise.resolve([]),
@@ -1394,6 +1514,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       (scenarioHostMode || assistantMode) ? Promise.resolve([]) : deps.toolsetRuleStore.getAll(),
       enrichScheduledPromptTrigger(deps, input.trigger, input.visibleToolNames, input.sessionId, input.replyDelivery)
     ]);
+    const { mediaContext, replayMessages } = preparedMedia;
     const toolsetRules = resolveToolsetRules(toolsetRuleEntries, {
       activeToolsets: input.activeToolsets
     });
@@ -1481,23 +1602,13 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       currentUserMemories
     });
 
-    const replayMessages = await projectReplayMessages(deps, {
-      sessionId: input.sessionId,
-      source: "scheduled_prompt_replay",
-      replayMessages: annotateReplayMessagesWithDerivedContext(
-        input.replayMessages,
-        mediaContext.captionMap,
-        mediaContext.audioTranscriptionMap
-      ),
-      ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
-    });
     const rawPromptMessages = buildScheduledTaskPrompt({
       sessionId: input.sessionId,
       ...(input.modeId ? { modeId: input.modeId } : {}),
       interactionMode: input.interactionMode,
       visibleToolNames: input.visibleToolNames,
       activeToolsets: input.activeToolsets,
-      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
+      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...input.mediaPreparation.notes(), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
       trigger: scheduledTrigger,
@@ -1562,6 +1673,7 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
   };
 
   const buildSetupPromptMessages = async (input: {
+    mediaPreparation: PromptMediaPreparation;
     sessionId: string;
     replyDelivery?: SessionDelivery;
     interactionMode: PromptInteractionMode;
@@ -1582,11 +1694,45 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     abortSignal?: AbortSignal;
     contentSafetyAlreadyProjected?: boolean;
   }) => {
-    input = await recoverPromptMedia(deps.mediaImportService, input);
+    if (input.replayMessages?.length) {
+      const replayMessages = await input.mediaPreparation.run(
+        signal => projectReplayMessages(deps, {
+          sessionId: input.sessionId, source: "prompt_replay_before_media", replayMessages: input.replayMessages, abortSignal: signal
+        }),
+        [],
+        "回放内容安全检查"
+      );
+      input = { ...input, replayMessages: replayMessages ?? [] };
+    }
+    const currentMedia = input.mediaPreparation.currentMedia(input.batchMessages);
+    const safeReplayBeforeRecovery = input.replayMessages;
+    const historyMedia = input.mediaPreparation.historyMedia(input.historyForPrompt, input.replayMessages ?? []);
+    const callerSignal = input.abortSignal;
+    const recovered = await input.mediaPreparation.run(
+      signal => recoverPromptMedia(deps.mediaImportService, { ...input, abortSignal: signal }, {
+        currentMediaRefs: currentMedia.mediaRefs, historyMediaRefs: historyMedia.mediaRefs,
+        onResolved: (ref, fileId) => input.mediaPreparation.recordResolution(ref, fileId)
+      }),
+      input,
+      "媒体恢复"
+    );
+    input = { ...recovered, ...(callerSignal ? { abortSignal: callerSignal } : {}) };
+    if (!callerSignal) delete input.abortSignal;
+    if (JSON.stringify(input.replayMessages) !== JSON.stringify(safeReplayBeforeRecovery)) {
+      const replayMessages = await input.mediaPreparation.run(
+        signal => projectReplayMessages(deps, {
+          sessionId: input.sessionId, source: "prompt_replay_after_recovery", replayMessages: input.replayMessages, abortSignal: signal
+        }),
+        safeReplayBeforeRecovery ?? [],
+        "恢复媒体内容安全检查"
+      );
+      input = { ...input, replayMessages: replayMessages ?? [] };
+    }
     const mainProfile = getPrimaryModelProfile(deps.config, getModelRefsForRole(deps.config, "main_small"));
     const safetyProjected = await projectPromptContentSafety(deps, {
       sessionId: input.sessionId,
       source: "setup_prompt",
+      mediaPreparation: input.mediaPreparation,
       historyForPrompt: input.historyForPrompt,
       batchMessages: input.batchMessages,
       contentSafetyAlreadyProjected: input.contentSafetyAlreadyProjected,
@@ -1597,6 +1743,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       batchMessages: safetyProjected.batchMessages,
       ...(input.replayMessages ? { replayMessages: input.replayMessages } : {}),
       reason: "setup_prompt",
+      mediaPreparation: input.mediaPreparation,
+      shouldTranscribeCurrentAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
 
@@ -1606,6 +1754,8 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       mediaContext.captionMap,
       {
         connectorCapabilities: resolveConnectorCapabilities(deps.config, { sessionId: input.sessionId, replyDelivery: input.replyDelivery }),
+        mediaPreparation: input.mediaPreparation,
+        audioTranscriptionMap: mediaContext.audioTranscriptionMap,
         supportsAudioInput: mainProfile?.chat?.capabilities.supportsAudioInput,
         supportsVision: mainProfile?.chat?.capabilities.supportsVision,
         shouldTranscribeAudio: !mainProfile?.chat?.capabilities.supportsAudioInput,
@@ -1616,12 +1766,15 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
     const preparedBatchMessages = await projectPreparedBatchDerivedText(deps, {
       sessionId: input.sessionId,
       source: "setup_prompt_derived_text",
+      mediaPreparation: input.mediaPreparation,
       batchMessages: rawPreparedBatchMessages,
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
     const replayMessages = await projectReplayMessages(deps, {
       sessionId: input.sessionId,
       source: "setup_prompt_replay",
+      mediaPreparation: input.mediaPreparation,
+      safeFallbackMessages: input.replayMessages,
       replayMessages: annotateReplayMessagesWithDerivedContext(
         input.replayMessages,
         mediaContext.captionMap,
@@ -1630,11 +1783,13 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {})
     });
 
+    input.mediaPreparation.finishMediaPreparation();
+
     const promptMessages = buildSetupPrompt({
       historySummary: input.historySummary,
       sessionId: input.sessionId,
       interactionMode: input.interactionMode,
-      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
+      lateSystemMessages: [...(input.lateSystemMessages ?? []), ...input.mediaPreparation.notes(), ...[input.crossConversationContext?.()].filter((item): item is string => Boolean(item))],
       currentTurnDirectives: input.currentTurnDirectives,
       replayMessages,
       includeBatchMediaCaptions: !mainProfile?.chat?.capabilities.supportsVision,
@@ -1671,8 +1826,11 @@ export function createGenerationPromptBuilder(deps: GenerationPromptBuilderDeps)
   };
 
   return {
-    buildChatPromptMessages,
-    buildScheduledPromptMessages,
-    buildSetupPromptMessages
+    buildChatPromptMessages: input => withPromptMediaPreparation(deps.config.llm.mediaPreparation, input.abortSignal,
+      scope => buildChatPromptMessages({ ...input, mediaPreparation: scope })),
+    buildScheduledPromptMessages: input => withPromptMediaPreparation(deps.config.llm.mediaPreparation, input.abortSignal,
+      scope => buildScheduledPromptMessages({ ...input, mediaPreparation: scope })),
+    buildSetupPromptMessages: input => withPromptMediaPreparation(deps.config.llm.mediaPreparation, input.abortSignal,
+      scope => buildSetupPromptMessages({ ...input, mediaPreparation: scope }))
   };
 }

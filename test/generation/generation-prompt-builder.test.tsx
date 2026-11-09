@@ -129,7 +129,7 @@ test("recovered assets are projected through content safety again even after ear
     ] }) }], batchMessages: []
   });
   assert.equal(projected, 1);
-  assert.deepEqual(captions, [[]]);
+  assert.deepEqual(captions, [], "blocked media must not start a caption batch");
   assert.match(JSON.stringify(result.promptMessages), /该图片已屏蔽/);
   assert.doesNotMatch(JSON.stringify(result.promptMessages), /file_blocked/);
 });
@@ -2763,3 +2763,223 @@ test("reply preparation analyzes visible cached media while forward records rema
     assert.match(system, /current_session_context/);
     assert.match(system, /会话用途：此会话专门用于记忆系统测试/);
   });
+
+type MediaBudgetChatInput = Parameters<ReturnType<typeof createGenerationPromptBuilder>["buildChatPromptMessages"]>[0];
+
+function createMediaBudgetChatInput(imageIds: string[] = []): MediaBudgetChatInput {
+  return {
+    sessionId: "qqbot:p:synthetic", interactionMode: "normal", mainModelRef: ["main"], visibleToolNames: [], activeToolsets: [],
+    persona: { name: "Bot", temperament: "冷静", voiceStyle: "简洁" } as any,
+    relationship: "known", participantProfiles: [], currentUser: { userId: "synthetic", relationship: "known" } as any,
+    historySummary: null, historyForPrompt: [], internalTranscript: [], lastLlmUsage: null,
+    batchMessages: [{
+      userId: "synthetic", senderName: "合成用户", text: "请查看这些媒体", images: [], audioSources: [], audioIds: [], emojiSources: [],
+      imageIds, emojiIds: [], attachments: imageIds.map(fileId => ({ fileId, kind: "image", source: "chat_message", sourceName: null, mimeType: "image/png" })),
+      forwardIds: [], replyMessageId: null, mentionUserIds: [], mentionedAll: false, isAtMentioned: false, receivedAt: 1
+    }]
+  };
+}
+
+test("prompt current-media admission is independent from history and preserves excess handles", async () => {
+  const captionRequests: string[][] = [];
+  const visualRequests: string[][] = [];
+  const config = createTestAppConfig({ llm: {
+    mediaPreparation: { timeoutMs: 1000, maxCurrentMedia: 2 },
+    models: { main: { chat: { capabilities: { supportsVision: true } } } }
+  } });
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    config,
+    mediaCaptionService: { async ensureReady(ids: string[]) { captionRequests.push(ids); return new Map(); } },
+    mediaVisionService: { async prepareFilesForModel(ids: string[]) { visualRequests.push(ids); return []; } }
+  }));
+  const input = createMediaBudgetChatInput(["image-1", "image-2", "image-3"]);
+  input.historyForPrompt = [{ role: "user", content: buildTag("ref", { kind: "image", image_id: "history-image" }) }];
+  const result = await builder.buildChatPromptMessages(input);
+  assert.deepEqual(captionRequests, [["history-image", "image-1", "image-2"]]);
+  assert.deepEqual(visualRequests.filter(ids => ids.length), [["image-1", "image-2"]]);
+  const rendered = JSON.stringify(result.promptMessages);
+  assert.match(rendered, /image-3/);
+  assert.match(rendered, /1 项媒体超过自动准备额度/);
+  assert.deepEqual(input.batchMessages[0]?.imageIds, ["image-1", "image-2", "image-3"]);
+});
+
+test("prompt deadline retains completed captions and skips subsequent native work", async () => {
+  let aborted = false;
+  let nativeWorkStarted = false;
+  const config = createTestAppConfig({ llm: {
+    mediaPreparation: { timeoutMs: 25, maxCurrentMedia: 16 },
+    models: { main: { chat: { capabilities: { supportsVision: true } } } }
+  } });
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    config,
+    mediaCaptionService: {
+      ensureReady(ids: string[], options: { abortSignal: AbortSignal; onProgress?: (results: ReadonlyMap<string, string>) => void }) {
+        options.onProgress?.(new Map([["image-1", "已经完成的合成描述"]]));
+        return new Promise<Map<string, string>>((resolve, reject) => {
+          options.abortSignal.addEventListener("abort", () => { aborted = true; reject(options.abortSignal.reason); }, { once: true });
+        });
+      }
+    },
+    mediaVisionService: { async prepareFilesForModel() { nativeWorkStarted = true; return []; } }
+  }));
+  const result = await builder.buildChatPromptMessages(createMediaBudgetChatInput(["image-1", "image-2"]));
+  assert.equal(aborted, true);
+  assert.equal(nativeWorkStarted, false);
+  assert.equal(result.debugSnapshot.imageCaptions?.find(item => item.imageId === "image-1")?.caption, "已经完成的合成描述");
+  assert.match(JSON.stringify(result.promptMessages), /总等待期限/);
+  assert.match(JSON.stringify(result.promptMessages), /image-2/);
+});
+
+test("native replay is checked before media discovery and blocked references cannot start captions", async () => {
+  let captionTasks = 0;
+  const input = createMediaBudgetChatInput();
+  input.replayMessages = [{ role: "user", content: buildTag("ref", { kind: "image", image_id: "blocked-image" }) }];
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    contentSafetyService: {
+      async projectLlmMessages(input: { messages: any[] }) { return { messages: input.messages.map(message => ({ ...message, content: "[已屏蔽]" })), events: [] }; },
+      async projectPromptMessages(input: { recentMessages: any[]; batchMessages: any[] }) { return { ...input, events: [] }; }
+    },
+    mediaCaptionService: { async ensureReady(ids: string[]) { captionTasks += ids.length; return new Map(); } }
+  }));
+  const result = await builder.buildChatPromptMessages(input);
+  assert.equal(captionTasks, 0);
+  assert.doesNotMatch(JSON.stringify(result.promptMessages), /blocked-image/);
+  assert.match(String(input.replayMessages[0]?.content), /blocked-image/, "stored replay input must not be edited");
+});
+
+test("caption annotation preserves an unchanged signed native assistant payload", async () => {
+  const input = createMediaBudgetChatInput();
+  const googleParts = [{ thought: true, text: "思考", thoughtSignature: "synthetic-signature" }, { text: "签名原文" }];
+  input.replayMessages = [{ role: "assistant", content: buildTag("ref", { kind: "image", image_id: "signed-image" }), providerMetadata: { googleParts } }];
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    mediaCaptionService: { async ensureReady() { return new Map([["signed-image", "附加描述"]]); } }
+  }));
+  const result = await builder.buildChatPromptMessages(input);
+  const replayed = result.promptMessages.find(message => Array.isArray(message.providerMetadata?.googleParts));
+  assert.deepEqual(replayed?.providerMetadata?.googleParts, googleParts);
+  assert.equal(replayed?.content, input.replayMessages[0]?.content);
+});
+
+for (const entry of ["chat", "setup", "scheduled"] as const) {
+  test(`${entry} prompt shares bounded media preparation and preserves a history reference on timeout`, async () => {
+    let stopped = false;
+    const config = createTestAppConfig({ llm: { mediaPreparation: { timeoutMs: 15, maxCurrentMedia: 16 } } });
+    const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+      config,
+      mediaCaptionService: {
+        ensureReady(ids: string[], options: { abortSignal: AbortSignal }) {
+          return new Promise<Map<string, string>>((resolve, reject) => {
+            options.abortSignal.addEventListener("abort", () => { stopped = true; reject(options.abortSignal.reason); }, { once: true });
+          });
+        }
+      }
+    }));
+    const common = createMediaBudgetChatInput();
+    common.historyForPrompt = [{ role: "user", content: buildTag("ref", { kind: "image", image_id: "history-timeout" }) }];
+    const result = entry === "chat"
+      ? await builder.buildChatPromptMessages(common)
+      : entry === "setup"
+        ? await builder.buildSetupPromptMessages({ ...common, phase: "setup" })
+        : await builder.buildScheduledPromptMessages({ ...common,
+          trigger: { kind: "scheduled_instruction", jobName: "合成任务", taskInstruction: "继续处理" },
+          targetContext: { chatType: "private", userId: "synthetic", senderName: "合成用户" }
+        });
+    assert.equal(stopped, true);
+    assert.match(JSON.stringify(result.promptMessages), /history-timeout/);
+    assert.match(JSON.stringify(result.promptMessages), /总等待期限/);
+  });
+}
+
+for (const entry of ["chat", "scheduled"] as const) {
+  for (const slowLookup of ["rules", "memory"] as const) {
+    test(`${entry} media timer finishes before a slow ${slowLookup} lookup`, async t => {
+      const config = createTestAppConfig({ llm: { mediaPreparation: { timeoutMs: 10 } } });
+      let enterLookup!: () => void;
+      let releaseLookup!: (value: never[]) => void;
+      const entered = new Promise<void>(resolve => { enterLookup = resolve; });
+      const delayed = () => new Promise<never[]>(resolve => { releaseLookup = resolve; enterLookup(); });
+      const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+        config,
+        ...(slowLookup === "rules" ? { globalRuleStore: { getAll: delayed } } : {
+          contextRetrievalService: { retrieveUserContext: delayed }
+        }),
+        mediaCaptionService: { async ensureReady(ids: string[]) { return new Map(ids.map(id => [id, "已就绪描述"])); } }
+      }));
+      t.mock.timers.enable({ apis: ["setTimeout"] });
+      const input = createMediaBudgetChatInput();
+      input.historyForPrompt = [{ role: "user", content: buildTag("ref", { kind: "image", image_id: "ready-image" }) }];
+      const pending = entry === "chat" ? builder.buildChatPromptMessages(input) : builder.buildScheduledPromptMessages({ ...input,
+        trigger: { kind: "scheduled_instruction", jobName: "合成任务", taskInstruction: "继续处理" },
+        targetContext: { chatType: "private", userId: "synthetic", senderName: "合成用户" }
+      });
+      await entered;
+      await new Promise<void>(resolve => setImmediate(resolve));
+      t.mock.timers.tick(1000);
+      releaseLookup([]);
+      const result = await pending;
+      assert.doesNotMatch(JSON.stringify(result.promptMessages), /总等待期限/);
+      assert.equal(result.debugSnapshot.imageCaptions?.find(item => item.imageId === "ready-image")?.caption, "已就绪描述");
+    });
+  }
+}
+
+test("caption timeout retains all already-safe native history instead of dropping its replay", async () => {
+  const config = createTestAppConfig({ llm: { mediaPreparation: { timeoutMs: 15 } } });
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    config,
+    contentSafetyService: {
+      async projectLlmMessages(input: { messages: any[] }) { return { messages: input.messages, events: [] }; },
+      async projectPromptMessages(input: { recentMessages: any[]; batchMessages: any[] }) { return { ...input, events: [] }; }
+    },
+    mediaCaptionService: {
+      ensureReady(ids: string[], options: { abortSignal: AbortSignal; onProgress?: (results: ReadonlyMap<string, string>) => void }) {
+        options.onProgress?.(new Map([["history-image-79", "尚未再次安全审查的派生描述"]]));
+        return new Promise<Map<string, string>>((resolve, reject) => {
+          options.abortSignal.addEventListener("abort", () => reject(options.abortSignal.reason), { once: true });
+        });
+      }
+    }
+  }));
+  const input = createMediaBudgetChatInput();
+  input.replayMessages = Array.from({ length: 80 }, (_, index) => ({
+    role: "user" as const, contextHistoryTimestampMs: index + 1,
+    content: `safe-history-text-${index}${index >= 75 ? `\n${buildTag("ref", { kind: "image", image_id: `history-image-${index}` })}` : ""}`
+  }));
+  const result = await builder.buildChatPromptMessages(input);
+  const replayed = result.promptMessages.filter(message => message.contextHistoryTimestampMs != null);
+  assert.equal(replayed.length, 80);
+  assert.match(JSON.stringify(replayed), /safe-history-text-0/);
+  assert.match(JSON.stringify(replayed), /history-image-79/);
+  assert.doesNotMatch(JSON.stringify(replayed), /尚未再次安全审查的派生描述/);
+  assert.match(JSON.stringify(result.promptMessages), /总等待期限/);
+});
+
+test("historical file recovery obeys shared admission and bounded concurrency", async () => {
+  const config = createTestAppConfig({ llm: { mediaPreparation: { timeoutMs: 1000, maxHistoryMedia: 8 } } });
+  const refs = Array.from({ length: 40 }, (_, index) => `media_${index.toString(16).padStart(32, "0")}`);
+  const requested: string[] = [];
+  let active = 0;
+  let peak = 0;
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    config,
+    mediaImportService: {
+      async resolve(scope: unknown, ref: string, signal: AbortSignal) {
+        requested.push(ref);
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise(resolve => setTimeout(resolve, 2));
+        signal.throwIfAborted();
+        active -= 1;
+        return null;
+      }
+    }
+  }));
+  const input = createMediaBudgetChatInput();
+  input.historyForPrompt = refs.map((ref, index) => ({ role: "user", content: buildTag("asset_file", { file_id: `old-${index}`, media_ref: ref }) }));
+  const result = await builder.buildChatPromptMessages(input);
+  assert.equal(requested.length, 8);
+  assert.equal(peak, 4);
+  assert.deepEqual([...requested].sort(), refs.slice(-8).sort());
+  assert.match(JSON.stringify(result.promptMessages), /32 项媒体超过自动准备额度/);
+  assert.match(JSON.stringify(result.promptMessages), /old-0/);
+});

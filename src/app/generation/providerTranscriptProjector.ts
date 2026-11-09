@@ -1,3 +1,4 @@
+import { invalidateNativeReplayMetadata } from "#llm/shared/nativeReplayMetadata.ts";
 import { projectGoogleReplayMetadata } from "#conversation/session/googleReplayBinding.ts";
 import { canReplayGoogleParts } from "#llm/shared/googleReplay.ts";
 import type { LlmMessage } from "#llm/llmClient.ts";
@@ -8,9 +9,8 @@ import { projectTranscriptMessageItemToHistoryMessage } from "#conversation/sess
 import { isTranscriptLlmVisible, isTranscriptRuntimeIncluded } from "#conversation/session/sessionTranscript.ts";
 import { getPrimaryModelProfile } from "#llm/shared/modelProfiles.ts";
 import type { TokenEstimationWeights } from "#conversation/session/tokenEstimator.ts";
-import { shouldUseToolResultReplayContent } from "./toolResultReplayPolicy.ts";
+import { buildToolResultReplayContentMap, rawToolResultContent } from "#conversation/session/toolResultReplay.ts";
 
-const RECENT_RAW_TOOL_RESULT_COUNT = 5;
 
 export interface ProviderTranscriptProjection {
   replayMessages: LlmMessage[];
@@ -22,10 +22,56 @@ export interface ProviderTranscriptProjector {
   providerName: string;
   project(input: {
     transcript: InternalTranscriptItem[];
+    projectedContent?: ReadonlyMap<InternalTranscriptItem, string>;
+    invalidatedNativeItems?: ReadonlySet<InternalTranscriptItem>;
     preserveThinking?: boolean;
     requireThoughtSignatures?: boolean;
     tokenEstimationWeights?: TokenEstimationWeights;
   }): ProviderTranscriptProjection;
+}
+
+type ProjectionInput = Parameters<ProviderTranscriptProjector["project"]>[0];
+
+function projectRequestHistory(item: Parameters<typeof projectTranscriptMessageItemToHistoryMessage>[0], input: ProjectionInput) {
+  const history = projectTranscriptMessageItemToHistoryMessage(item);
+  return { ...history, content: input.projectedContent?.get(item) ?? history.content };
+}
+
+function projectRequestMetadata(item: InternalTranscriptItem & { providerMetadata?: Record<string, unknown> | undefined }, input: ProjectionInput) {
+  const original = item.kind === "assistant_message" ? projectTranscriptMessageItemToHistoryMessage(item).content
+    : item.kind === "assistant_tool_call" ? item.content : undefined;
+  const projected = input.projectedContent?.get(item);
+  const boundSources = Array.isArray(item.providerMetadata?.googleReplayTranscript)
+    ? new Set(item.providerMetadata.googleReplayTranscript.flatMap(source => typeof source?.id === "string" ? [source.id] : [])) : null;
+  const changedSource = input.projectedContent && input.transcript.some(source => {
+    if (source.kind !== "assistant_message") return false;
+    const isSource = (source.id != null && boundSources?.has(source.id))
+      || (item.kind === "assistant_message" && item.groupId != null && source.groupId === item.groupId);
+    return isSource && input.projectedContent?.get(source) != null
+      && input.projectedContent.get(source) !== projectTranscriptMessageItemToHistoryMessage(source).content;
+  });
+  return input.invalidatedNativeItems?.has(item) || changedSource || (projected != null && projected !== original)
+    ? invalidateNativeReplayMetadata(item.providerMetadata) : item.providerMetadata;
+}
+
+function projectRequestItem<T extends InternalTranscriptItem>(item: T, input: ProjectionInput): T {
+  const content = input.projectedContent?.get(item);
+  return { ...item, ...(content != null ? { content, ...(item.kind === "tool_result" ? { canonicalContent: content } : {}) } : {}),
+    ...("providerMetadata" in item ? { providerMetadata: projectRequestMetadata(item, input)! } : {}) };
+}
+
+function hasCompleteToolExchange(transcript: InternalTranscriptItem[], index: number, item: InternalAssistantToolCallItem): boolean {
+  const expected = new Set(item.toolCalls.map(call => call.id));
+  const seen = new Set<string>();
+  if (!expected.size || expected.size !== item.toolCalls.length) return false;
+  for (const following of transcript.slice(index + 1)) {
+    if (!isTranscriptRuntimeIncluded(following)) continue;
+    if (isOpenAiStyleToolReplayBoundary(following)) break;
+    if (following.kind !== "tool_result") continue;
+    if (!expected.has(following.toolCallId) || seen.has(following.toolCallId)) return false;
+    seen.add(following.toolCallId);
+  }
+  return expected.size === seen.size;
 }
 
 function summarizeTranscriptItem(item: InternalTranscriptItem): string | null {
@@ -63,7 +109,7 @@ function createSummaryOnlyProjector(providerName: string): ProviderTranscriptPro
       const lines = input.transcript
         .filter(isTranscriptRuntimeIncluded)
         .slice(-12)
-        .map(summarizeTranscriptItem)
+        .map(item => summarizeTranscriptItem(projectRequestItem(item, input)))
         .filter((line): line is string => Boolean(line));
       return {
         replayMessages: [],
@@ -89,7 +135,8 @@ function createOpenAiStyleProjector(
       const runtimeTranscript = input.transcript.filter(isTranscriptRuntimeIncluded);
       const toolResultReplayContent = buildToolResultReplayContentMap(
         input.transcript,
-        input.tokenEstimationWeights
+        input.tokenEstimationWeights,
+        input.projectedContent
       );
       let replayCoversVisibleHistory = false;
 
@@ -109,7 +156,7 @@ function createOpenAiStyleProjector(
           )
           && isTranscriptLlmVisible(item)
         ) {
-          const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
+          const historyMessage = projectRequestHistory(item, input);
           replayMessages.push({
             role: historyMessage.role,
             contextHistoryTimestampMs: item.timestampMs,
@@ -118,7 +165,7 @@ function createOpenAiStyleProjector(
               ? { reasoning_content: item.reasoningContent }
               : {}),
             ...(item.kind === "assistant_message" && item.providerMetadata
-              ? { providerMetadata: item.providerMetadata }
+              ? { providerMetadata: projectRequestMetadata(item, input)! }
               : {})
           });
           replayCoversVisibleHistory = true;
@@ -144,6 +191,7 @@ function createOpenAiStyleProjector(
           const missingToolCallIds = [...expectedToolCallIds].filter((toolCallId) => !resultToolCallIds.has(toolCallId));
           if (
             expectedToolCallIds.size === 0
+            || expectedToolCallIds.size !== item.toolCalls.length
             || missingToolCallIds.length > 0
             || unknownToolCallIds.length > 0
             || duplicateToolCallIds.length > 0
@@ -156,7 +204,8 @@ function createOpenAiStyleProjector(
 
           replayMessages.push({
             role: "assistant",
-            contextHistoryTimestampMs: item.timestampMs,            content: item.content,
+            contextHistoryTimestampMs: item.timestampMs,
+            content: input.projectedContent?.get(item) ?? item.content,
             tool_calls: item.toolCalls.map((toolCall) => ({
               id: toolCall.id,
               type: "function",
@@ -167,7 +216,7 @@ function createOpenAiStyleProjector(
               ...(toolCall.providerMetadata ? { providerMetadata: toolCall.providerMetadata as any } : {})
             })),
             ...(item.reasoningContent ? { reasoning_content: item.reasoningContent } : {}),
-            ...(item.providerMetadata ? { providerMetadata: item.providerMetadata } : {})
+            ...(item.providerMetadata ? { providerMetadata: projectRequestMetadata(item, input)! } : {})
           });
           for (const toolResult of followingToolResults) {
             if (!expectedToolCallIds.has(toolResult.toolCallId)) {
@@ -178,7 +227,7 @@ function createOpenAiStyleProjector(
               role: "tool",
               contextHistoryTimestampMs: item.timestampMs,
               tool_call_id: toolResult.toolCallId,
-              content: toolResultReplayContent.get(toolResult.toolCallId) ?? rawToolResultContent(toolResult)
+              content: toolResultReplayContent.get(toolResult) ?? rawToolResultContent(toolResult)
             });
           }
           index = nextIndex - 1;
@@ -225,75 +274,6 @@ function findDuplicateToolResultIds(items: InternalToolResultItem[]): string[] {
   return [...duplicates];
 }
 
-function buildToolResultReplayContentMap(
-  transcript: InternalTranscriptItem[],
-  tokenEstimationWeights?: TokenEstimationWeights
-): Map<string, string> {
-  const includedToolResults = transcript
-    .filter(isTranscriptRuntimeIncluded)
-    .filter((item): item is InternalToolResultItem => item.kind === "tool_result");
-  const replayContent = new Map<string, string>();
-
-  includedToolResults.forEach((item, index) => {
-    if (shouldReplayRawToolResult(item, index, includedToolResults.length)) {
-      replayContent.set(item.toolCallId, rawToolResultContent(item));
-      return;
-    }
-    replayContent.set(item.toolCallId, compactToolResultForReplay(item, tokenEstimationWeights));
-  });
-
-  return replayContent;
-}
-
-function shouldReplayRawToolResult(item: InternalToolResultItem, index: number, totalCount: number): boolean {
-  if (item.observation?.replaySafe === false) {
-    return false;
-  }
-  const preserveCount = item.observation?.preserveRecentRawCount ?? RECENT_RAW_TOOL_RESULT_COUNT;
-  return index >= Math.max(0, totalCount - preserveCount) || item.observation?.pinned === true;
-}
-
-function compactToolResultForReplay(
-  item: InternalToolResultItem,
-  tokenEstimationWeights?: TokenEstimationWeights
-): string {
-  if (item.observation?.replaySafe === false) {
-    if (typeof item.observation.replayContent === "string" && item.observation.replayContent.length > 0) {
-      return item.observation.replayContent;
-    }
-    return JSON.stringify({
-      ok: true,
-      compacted: true,
-      tool: item.toolName,
-      summary: item.observation.summary || "该工具结果已标记为不可安全 replay，历史上下文仅保留摘要占位。"
-    });
-  }
-  if (item.observation?.retention === "full") {
-    return rawToolResultContent(item);
-  }
-  if (typeof item.observation?.replayContent === "string" && item.observation.replayContent.length > 0) {
-    const rawContent = rawToolResultContent(item);
-    return shouldUseToolResultReplayContent({
-      rawContent,
-      replayContent: item.observation.replayContent,
-      replaySafe: item.observation.replaySafe,
-      ...(tokenEstimationWeights ? { tokenEstimationWeights } : {})
-    })
-      ? item.observation.replayContent
-      : rawContent;
-  }
-  const normalized = item.content.replace(/\s+/g, " ").trim();
-  return JSON.stringify({
-    ok: true,
-    compacted: true,
-    tool: item.toolName,
-    summary: normalized.length <= 300 ? normalized : `${normalized.slice(0, 300)}...`
-  });
-}
-
-function rawToolResultContent(item: InternalToolResultItem): string {
-  return item.canonicalContent ?? item.content;
-}
 
 function canReplayGoogleToolCallItem(item: InternalAssistantToolCallItem, requireThoughtSignatures: boolean): boolean {
   if (!requireThoughtSignatures) {
@@ -323,7 +303,8 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
       const skippedLines: string[] = [];
       const toolResultReplayContent = buildToolResultReplayContentMap(
         input.transcript,
-        input.tokenEstimationWeights
+        input.tokenEstimationWeights,
+        input.projectedContent
       );
       let replayCoversVisibleHistory = false;
       let lastReplayRole: LlmMessage["role"] | null = null;
@@ -338,28 +319,29 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
       const coveredDisplayContent = new Map<string, string>();
       for (const item of input.transcript) {
         if (item.kind !== "assistant_message" || !item.id || !isTranscriptRuntimeIncluded(item) || !isTranscriptLlmVisible(item)) continue;
-        const metadata = projectGoogleReplayMetadata(item.providerMetadata, input.transcript);
+        const metadata = projectGoogleReplayMetadata(projectRequestMetadata(item, input), input.transcript);
         if (!Array.isArray(metadata?.googleParts) || !Array.isArray(metadata.googleReplayTranscript)) continue;
         replayCarrierIds.add(item.id);
         const sourceIds = new Set<string>();
         for (const source of metadata.googleReplayTranscript) if (typeof source?.id === "string") { coveredSourceIds.add(source.id); sourceIds.add(source.id); }
         coveredDisplayContent.set(item.id, input.transcript.filter(source => source.id && sourceIds.has(source.id) && source.kind === "assistant_message")
-          .map(source => projectTranscriptMessageItemToHistoryMessage(source as Extract<InternalTranscriptItem, { kind: "assistant_message" }>).content).join("\n\n"));
+          .map(source => projectRequestHistory(source as Extract<InternalTranscriptItem, { kind: "assistant_message" }>, input).content).join("\n\n"));
       }
 
-      for (const item of input.transcript) {
+      for (const [itemIndex, item] of input.transcript.entries()) {
         if (!isTranscriptRuntimeIncluded(item)) {
           continue;
         }
         if (item.id && coveredSourceIds.has(item.id) && !replayCarrierIds.has(item.id)) continue;
-        if ((item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message") && isTranscriptLlmVisible(item)) {
+        if ((item.kind === "user_message" || item.kind === "user_media_message" || item.kind === "assistant_message"
+          || item.kind === "session_mode_switch" || item.kind === "profile_phase_transition") && isTranscriptLlmVisible(item)) {
           clearActiveReplayableToolCalls();
-          const historyMessage = projectTranscriptMessageItemToHistoryMessage(item);
+          const historyMessage = projectRequestHistory(item, input);
           replayMessages.push({
             role: historyMessage.role,
             contextHistoryTimestampMs: item.timestampMs,
             content: (item.id ? coveredDisplayContent.get(item.id) : undefined) ?? historyMessage.content,
-            ...(item.kind === "assistant_message" && item.providerMetadata ? { providerMetadata: projectGoogleReplayMetadata(item.providerMetadata, input.transcript)! } : {})
+            ...(item.kind === "assistant_message" && item.providerMetadata ? { providerMetadata: projectGoogleReplayMetadata(projectRequestMetadata(item, input), input.transcript)! } : {})
           });
           replayCoversVisibleHistory = true;
           lastReplayRole = historyMessage.role;
@@ -369,7 +351,8 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
         if (item.kind === "assistant_tool_call") {
           clearActiveReplayableToolCalls();
           if (
-            canReplayGoogleToolCallItem(item, requireThoughtSignatures)
+            canReplayGoogleToolCallItem(projectRequestItem(item, input), requireThoughtSignatures)
+            && hasCompleteToolExchange(input.transcript, itemIndex, item)
             && (lastReplayRole === "user" || lastReplayRole === "tool")
           ) {
             for (const toolCall of item.toolCalls) {
@@ -378,7 +361,8 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
             }
             replayMessages.push({
               role: "assistant",
-            contextHistoryTimestampMs: item.timestampMs,              content: item.content,
+            contextHistoryTimestampMs: item.timestampMs,
+              content: input.projectedContent?.get(item) ?? item.content,
               tool_calls: item.toolCalls.map((toolCall) => ({
                 id: toolCall.id,
                 type: "function",
@@ -389,11 +373,11 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
                 ...(toolCall.providerMetadata ? { providerMetadata: toolCall.providerMetadata as any } : {})
               })),
               ...(item.reasoningContent ? { reasoning_content: item.reasoningContent } : {}),
-              ...(item.providerMetadata ? { providerMetadata: item.providerMetadata } : {})
+              ...(item.providerMetadata ? { providerMetadata: projectRequestMetadata(item, input)! } : {})
             });
             lastReplayRole = "assistant";
           } else {
-            skippedLines.push(summarizeTranscriptItem(item)!);
+            skippedLines.push(summarizeTranscriptItem(projectRequestItem(item, input))!);
             for (const toolCall of item.toolCalls) {
               skippedToolCallIds.add(toolCall.id);
             }
@@ -411,11 +395,11 @@ function createGoogleProjector(providerName: string): ProviderTranscriptProjecto
               role: "tool",
               contextHistoryTimestampMs: item.timestampMs,
               tool_call_id: item.toolCallId,
-              content: toolResultReplayContent.get(item.toolCallId) ?? rawToolResultContent(item)
+              content: toolResultReplayContent.get(item) ?? rawToolResultContent(item)
             });
             lastReplayRole = "tool";
           } else if (skippedToolCallIds.has(item.toolCallId)) {
-            skippedLines.push(summarizeToolResultItem(item));
+            skippedLines.push(summarizeToolResultItem(projectRequestItem(item, input)));
           }
           continue;
         }

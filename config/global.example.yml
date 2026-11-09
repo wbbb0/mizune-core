@@ -77,6 +77,11 @@ llm:
   imageGeneration:
     enabled: false
     timeoutMs: 300000
+  # 恢复、描述、转写和原生媒体输入共用一次准备期限，超时保留已就绪结果与资源引用。
+  mediaPreparation:
+    timeoutMs: 30000
+    maxCurrentMedia: 16 # 当前输入的自动准备额度；历史独立使用 routing preset 的 historyWindow。
+    maxHistoryMedia: 16 # 选中历史中图片/音频/文件恢复共用的准备额度；不扩展 historyWindow。
   imageCaptioner:
     enabled: true
     timeoutMs: 30000

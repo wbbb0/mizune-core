@@ -157,12 +157,15 @@ export class ChatFileStore {
     kind: ChatFileKind;
     origin: ChatFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
+    signal?: AbortSignal;
   }): Promise<ChatFileRecord> {
+    input.signal?.throwIfAborted();
     if (input.buffer.byteLength > this.config.chatFiles.maxUploadBytes) {
       throw new Error("chat file import exceeds maxUploadBytes");
     }
     const kind = await normalizeStoredFileKind(input.kind, input.buffer, input.sourceName, input.mimeType);
     await validateStoredFileBuffer(kind, input.buffer);
+    input.signal?.throwIfAborted();
     const sourceName = normalizeSourceName(input.sourceName, kind);
     const mimeType = normalizeMimeType(input.mimeType, kind);
     const ext = extname(sourceName) || extensionFromMimeType(mimeType) || defaultExtension(kind);
@@ -170,26 +173,33 @@ export class ChatFileStore {
     const fileRef = buildStoredFileRef(fileId, input.origin, kind, ext);
     const relativePath = join(this.storeRootPath, "media", fileRef);
     const absolutePath = this.localFileService.resolvePath(relativePath).absolutePath;
-    await mkdir(dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, input.buffer);
-    const record: ChatFileRecord = {
-      fileId,
-      fileRef,
-      kind,
-      origin: input.origin,
-      chatFilePath: relativePath.replaceAll("\\", "/"),
-      sourceName,
-      mimeType,
-      sizeBytes: input.buffer.byteLength,
-      createdAtMs: Date.now(),
-      sourceContext: input.sourceContext ?? {},
-      caption: null,
-      captionStatus: "missing",
-      captionModelRef: null,
-      captionError: null
-    };
-    await this.upsertFile(record);
-    return record;
+    try {
+      await mkdir(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, input.buffer, input.signal ? { signal: input.signal } : undefined);
+      const record: ChatFileRecord = {
+        fileId,
+        fileRef,
+        kind,
+        origin: input.origin,
+        chatFilePath: relativePath.replaceAll("\\", "/"),
+        sourceName,
+        mimeType,
+        sizeBytes: input.buffer.byteLength,
+        createdAtMs: Date.now(),
+        sourceContext: input.sourceContext ?? {},
+        caption: null,
+        captionStatus: "missing",
+        captionModelRef: null,
+        captionError: null
+      };
+      input.signal?.throwIfAborted();
+      await this.upsertFile(record, input.signal);
+      input.signal?.throwIfAborted();
+      return record;
+    } catch (error) {
+      await this.discardUnpublishedFile(fileId, absolutePath);
+      throw error;
+    }
   }
 
   async importFileFromPath(input: {
@@ -199,7 +209,9 @@ export class ChatFileStore {
     kind?: ChatFileKind;
     origin: ChatFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
+    signal?: AbortSignal;
   }): Promise<ChatFileRecord> {
+    input.signal?.throwIfAborted();
     const fileStat = await stat(input.sourcePath);
     if (fileStat.size > this.config.chatFiles.maxUploadBytes) {
       throw new Error("asset import exceeds maxUploadBytes");
@@ -210,6 +222,7 @@ export class ChatFileStore {
     if (kind !== "image" && kind !== "animated_image") {
       return this.importFileByCopy({
         sourcePath: input.sourcePath,
+        ...(input.signal ? { signal: input.signal } : {}),
         sourceName,
         mimeType,
         kind,
@@ -217,9 +230,10 @@ export class ChatFileStore {
         ...(input.sourceContext ? { sourceContext: input.sourceContext } : {})
       });
     }
-    const buffer = await readFile(input.sourcePath);
+    const buffer = await readFile(input.sourcePath, input.signal ? { signal: input.signal } : undefined);
     return this.importBuffer({
       buffer,
+      ...(input.signal ? { signal: input.signal } : {}),
       sourceName,
       mimeType,
       kind,
@@ -235,33 +249,44 @@ export class ChatFileStore {
     kind: ChatFileKind;
     origin: ChatFileOrigin;
     sourceContext?: Record<string, string | number | boolean | null>;
+    signal?: AbortSignal;
   }): Promise<ChatFileRecord> {
+    input.signal?.throwIfAborted();
     const ext = extname(input.sourceName) || extensionFromMimeType(input.mimeType) || defaultExtension(input.kind);
     const fileId = buildStoredFileId();
     const fileRef = buildStoredFileRef(fileId, input.origin, input.kind, ext);
     const relativePath = join(this.storeRootPath, "media", fileRef);
     const absolutePath = this.localFileService.resolvePath(relativePath).absolutePath;
     const fileStat = await stat(input.sourcePath);
-    await mkdir(dirname(absolutePath), { recursive: true });
-    await copyFile(input.sourcePath, absolutePath);
-    const record: ChatFileRecord = {
-      fileId,
-      fileRef,
-      kind: input.kind,
-      origin: input.origin,
-      chatFilePath: relativePath.replaceAll("\\", "/"),
-      sourceName: input.sourceName,
-      mimeType: input.mimeType,
-      sizeBytes: fileStat.size,
-      createdAtMs: Date.now(),
-      sourceContext: input.sourceContext ?? {},
-      caption: null,
-      captionStatus: "missing",
-      captionModelRef: null,
-      captionError: null
-    };
-    await this.upsertFile(record);
-    return record;
+    try {
+      await mkdir(dirname(absolutePath), { recursive: true });
+      input.signal?.throwIfAborted();
+      await copyFile(input.sourcePath, absolutePath);
+      input.signal?.throwIfAborted();
+      const record: ChatFileRecord = {
+        fileId,
+        fileRef,
+        kind: input.kind,
+        origin: input.origin,
+        chatFilePath: relativePath.replaceAll("\\", "/"),
+        sourceName: input.sourceName,
+        mimeType: input.mimeType,
+        sizeBytes: fileStat.size,
+        createdAtMs: Date.now(),
+        sourceContext: input.sourceContext ?? {},
+        caption: null,
+        captionStatus: "missing",
+        captionModelRef: null,
+        captionError: null
+      };
+      input.signal?.throwIfAborted();
+      await this.upsertFile(record, input.signal);
+      input.signal?.throwIfAborted();
+      return record;
+    } catch (error) {
+      await this.discardUnpublishedFile(fileId, absolutePath);
+      throw error;
+    }
   }
 
   async importRemoteSource(input: {
@@ -278,32 +303,40 @@ export class ChatFileStore {
     if (!source) {
       throw new Error("source is required");
     }
+    input.signal?.throwIfAborted();
     if (/^https?:\/\//i.test(source)) {
-      const timeout = AbortSignal.timeout(this.config.chatFiles.downloadTimeoutMs);
-      const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
-      const response = input.proxyConsumer
-        ? await fetchWithProxy(this.config, input.proxyConsumer, source, { signal })
-        : await undiciFetch(source, { signal });
-      if (!response.ok) {
-        throw new Error(`failed to download asset: ${response.status} ${response.statusText}`);
-      }
-      const buffer = await readResponseBufferWithLimit(response, this.config.chatFiles.maxUploadBytes);
-      const mimeType = input.mimeType ?? response.headers.get("content-type") ?? undefined;
-      const sourceName = input.sourceName ?? inferFilenameFromUrl(source, mimeType, input.kind);
-      return this.importBuffer({
-        buffer,
-        sourceName,
-        kind: input.kind ?? inferStoredFileKind(sourceName, mimeType),
-        origin: input.origin,
-        ...(mimeType ? { mimeType } : {}),
-        sourceContext: {
-          source,
-          ...(input.sourceContext ?? {})
+      const controller = new AbortController();
+      const onAbort = () => controller.abort(input.signal?.reason);
+      input.signal?.addEventListener("abort", onAbort, { once: true });
+      const timer = setTimeout(() => controller.abort(new DOMException("媒体下载超时", "TimeoutError")), this.config.chatFiles.downloadTimeoutMs);
+      try {
+        const signal = controller.signal;
+        const response = input.proxyConsumer
+          ? await fetchWithProxy(this.config, input.proxyConsumer, source, { signal })
+          : await undiciFetch(source, { signal });
+        if (!response.ok) {
+          await response.body?.cancel();
+          throw new Error(`failed to download asset: ${response.status} ${response.statusText}`);
         }
-      });
+        const buffer = await readResponseBufferWithLimit(response, this.config.chatFiles.maxUploadBytes);
+        signal.throwIfAborted();
+        const mimeType = input.mimeType ?? response.headers.get("content-type") ?? undefined;
+        const sourceName = input.sourceName ?? inferFilenameFromUrl(source, mimeType, input.kind);
+        return await this.importBuffer({
+          buffer, sourceName, signal,
+          kind: input.kind ?? inferStoredFileKind(sourceName, mimeType),
+          origin: input.origin,
+          ...(mimeType ? { mimeType } : {}),
+          sourceContext: { source, ...(input.sourceContext ?? {}) }
+        });
+      } finally {
+        clearTimeout(timer);
+        input.signal?.removeEventListener("abort", onAbort);
+      }
     }
     return this.importFileFromPath({
       sourcePath: source,
+      ...(input.signal ? { signal: input.signal } : {}),
       origin: input.origin,
       ...(input.sourceName ? { sourceName: input.sourceName } : {}),
       ...(input.mimeType ? { mimeType: input.mimeType } : {}),
@@ -315,13 +348,14 @@ export class ChatFileStore {
     });
   }
 
-  async markCaptionsQueued(fileIds: string[]): Promise<void> {
+  async markCaptionsQueued(fileIds: string[], abortSignal?: AbortSignal): Promise<void> {
     const wanted = new Set(fileIds.map((item) => String(item ?? "").trim()).filter(Boolean));
     if (wanted.size === 0) {
       return;
     }
     await this.withWriteLock(async () => {
       const db = await this.getReadyDb();
+      abortSignal?.throwIfAborted();
       const update = db.prepare(`
         UPDATE chat_files
         SET caption_status = 'queued',
@@ -343,7 +377,8 @@ export class ChatFileStore {
       modelRef?: string | null | undefined;
       error?: string | null | undefined;
       updatedAtMs?: number | undefined;
-    }
+    },
+    abortSignal?: AbortSignal
   ): Promise<void> {
     const normalizedCaption = caption ? String(caption) : null;
     const status = metadata?.status ?? (normalizedCaption ? "ready" : "missing");
@@ -353,6 +388,7 @@ export class ChatFileStore {
         throw new Error(`unknown asset: ${fileId}`);
       }
       const db = await this.getReadyDb();
+      abortSignal?.throwIfAborted();
       db.prepare(`
         UPDATE chat_files
         SET caption = ?,
@@ -369,6 +405,14 @@ export class ChatFileStore {
         metadata?.error === undefined ? null : metadata.error,
         fileId
       );
+    });
+  }
+
+  async clearCaptionQueued(fileId: string, isUnowned: () => boolean): Promise<void> {
+    await this.withWriteLock(async () => {
+      const db = await this.getReadyDb();
+      if (!isUnowned()) return;
+      db.prepare("UPDATE chat_files SET caption_status = 'missing' WHERE file_id = ? AND caption IS NULL AND caption_status = 'queued'").run(fileId);
     });
   }
 
@@ -513,9 +557,22 @@ export class ChatFileStore {
     return file;
   }
 
-  private async upsertFile(record: ChatFileRecord): Promise<void> {
+  /** 本次导入尚未返回任何公开句柄，可回收其唯一目的文件及登记。 */
+  private async discardUnpublishedFile(fileId: string, absolutePath: string): Promise<void> {
+    try {
+      await this.withWriteLock(async () => {
+        const db = await this.getReadyDb();
+        db.prepare("DELETE FROM chat_files WHERE file_id = ?").run(fileId);
+      });
+    } finally {
+      await rm(absolutePath, { force: true });
+    }
+  }
+
+  private async upsertFile(record: ChatFileRecord, signal?: AbortSignal): Promise<void> {
     await this.withWriteLock(async () => {
       const db = await this.getReadyDb();
+      signal?.throwIfAborted();
       db.prepare(`
         INSERT INTO chat_files (
           file_id,

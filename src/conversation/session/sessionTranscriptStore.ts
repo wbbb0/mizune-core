@@ -1,4 +1,5 @@
 import { freezeTranscriptItem } from "./immutableTranscript.ts";
+import { selectRequestContext, type RequestContextSelection } from "./requestContextSelection.ts";
 import type { AppConfig } from "#config/config.ts";
 import {
   projectCompressionHistorySnapshot,
@@ -17,6 +18,7 @@ import type {
 export interface SessionTranscriptStore {
   rawItems(): InternalTranscriptItem[];
   runtimeItems(): InternalTranscriptItem[];
+  selectRequestContext(options?: { excludeGroupId?: string | null }): RequestContextSelection;
   projectRuntimeHistory(): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   projectRuntimeHistoryExcludingGroup(groupId: string | null): Array<{ role: "user" | "assistant"; content: string; timestampMs: number }>;
   projectRuntimeHistoryForPrompt(options: {
@@ -58,6 +60,10 @@ export function createSessionTranscriptStore(session: SessionState, config: AppC
     },
     runtimeItems() {
       return promptItems().filter(isTranscriptRuntimeIncluded);
+    },
+    selectRequestContext(options) {
+      const groupId = options?.excludeGroupId;
+      return selectRequestContext(groupId ? promptItems().filter(item => item.groupId !== groupId) : promptItems(), config);
     },
     projectRuntimeHistory() {
       return projectLlmVisibleHistoryFromTranscript(promptItems(), config);

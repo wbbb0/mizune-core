@@ -56,6 +56,7 @@ export type SessionPhase =
   | { kind: "idle"; label: string }
   | { kind: "debouncing"; label: string }
   | { kind: "turn_planner_evaluating"; label: string }
+  | { kind: "preparing_context"; label: string }
   | { kind: "turn_planner_waiting"; label: string }
   | { kind: "compressing_history"; label: string }
   | { kind: "requesting_llm"; label: string }

@@ -26,21 +26,25 @@ export class MediaVisionService {
     private readonly contentSafetyService?: Pick<ContentSafetyService, "guardChatFileForLlm">
   ) {}
 
-  async prepareFilesForModel(fileIds: string[]): Promise<PreparedWorkspaceVisual[]> {
+  async prepareFilesForModel(fileIds: string[], abortSignal?: AbortSignal): Promise<PreparedWorkspaceVisual[]> {
     const uniqueIds = Array.from(new Set(fileIds.map((item) => String(item ?? "").trim()).filter(Boolean)));
     const prepared: PreparedWorkspaceVisual[] = [];
     for (const fileId of uniqueIds) {
-      prepared.push(await this.prepareFileForModel(fileId));
+      abortSignal?.throwIfAborted();
+      prepared.push(await this.prepareFileForModel(fileId, abortSignal));
     }
     return prepared;
   }
 
-  async prepareFileForModel(fileId: string): Promise<PreparedWorkspaceVisual> {
-    const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId);
+  async prepareFileForModel(fileId: string, abortSignal?: AbortSignal): Promise<PreparedWorkspaceVisual> {
+    abortSignal?.throwIfAborted();
+    const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId, abortSignal);
+    abortSignal?.throwIfAborted();
     if (guard && guard !== "allow") {
       throw new Error(`媒体已被内容安全屏蔽：${guard.reason}`);
     }
     const file = await this.chatFileStore.getFile(fileId);
+    abortSignal?.throwIfAborted();
     if (!file) {
       throw new Error(`Workspace file not found: ${fileId}`);
     }
@@ -48,14 +52,19 @@ export class MediaVisionService {
       throw new Error(`Workspace file is not viewable: ${fileId}`);
     }
 
-    const buffer = await readFile(await this.chatFileStore.resolveAbsolutePath(fileId));
+    const buffer = await readFile(await this.chatFileStore.resolveAbsolutePath(fileId), abortSignal ? { signal: abortSignal } : undefined);
+    abortSignal?.throwIfAborted();
     if (file.kind === "animated_image") {
-      return this.prepareAnimatedFile(file, buffer);
+      const prepared = await this.prepareAnimatedFile(file, buffer);
+      abortSignal?.throwIfAborted();
+      return prepared;
     }
 
+    const inputUrl = await serializeImage(buffer, this.config.conversation.images.maxSerializedPixels);
+    abortSignal?.throwIfAborted();
     return {
       fileId: file.fileId,
-      inputUrl: await serializeImage(buffer, this.config.conversation.images.maxSerializedPixels),
+      inputUrl,
       kind: file.kind,
       transport: "data_url",
       animated: false,

@@ -4,6 +4,20 @@ import { SessionManager } from "../../src/conversation/session/sessionManager.ts
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
 import { createEmptyPersona } from "../../src/persona/personaSchema.ts";
 
+test("prompt preparation remains cancellable and ignores stale epoch updates", () => {
+  const manager = new SessionManager(createTestAppConfig());
+  const id = "web:media-preparation";
+  manager.ensureSession({ id, type: "private" });
+  const run = manager.beginSyntheticGeneration(id);
+  const epoch = manager.getMutationEpoch(id);
+  assert.equal(manager.setSessionPhaseIfEpochMatches(id, epoch, { kind: "preparing_context" }), true);
+  assert.equal(manager.isGenerating(id), true);
+  assert.equal(manager.interruptResponse(id).cancelledGeneration, true);
+  assert.equal(run.abortController.signal.aborted, true);
+  assert.equal(manager.setSessionPhaseIfEpochMatches(id, epoch, { kind: "preparing_context" }), false);
+  assert.equal(manager.getSession(id).phase.kind, "idle");
+});
+
   test("completeResponse only applies to the current response epoch", async () => {
     const sessionManager = new SessionManager(createTestAppConfig());
     const sessionId = "qqbot:p:test";

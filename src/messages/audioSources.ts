@@ -47,8 +47,10 @@ export async function prepareAudioInputsForModel(
   },
   options?: {
     maxInputs?: number;
+    abortSignal?: AbortSignal;
   }
 ): Promise<PreparedAudioInput[]> {
+  options?.abortSignal?.throwIfAborted();
   const maxInputs = Math.max(1, options?.maxInputs ?? 3);
   const prepared: PreparedAudioInput[] = [];
   const seen = new Set<string>();
@@ -59,7 +61,9 @@ export async function prepareAudioInputsForModel(
       continue;
     }
     seen.add(source);
-    const resolved = await prepareAudioInput(source, deps, new Set<string>());
+    options?.abortSignal?.throwIfAborted();
+    const resolved = await prepareAudioInput(source, deps, new Set<string>(), options?.abortSignal);
+    options?.abortSignal?.throwIfAborted();
     if (resolved) {
       prepared.push(resolved);
     }
@@ -76,8 +80,10 @@ async function prepareAudioInput(
   deps: {
     oneBotClient: Pick<OneBotClient, "getRecord">;
   },
-  visited: Set<string>
+  visited: Set<string>,
+  abortSignal?: AbortSignal
 ): Promise<PreparedAudioInput | null> {
+  abortSignal?.throwIfAborted();
   if (visited.has(source)) {
     return null;
   }
@@ -96,11 +102,13 @@ async function prepareAudioInput(
   }
 
   if (/^https?:\/\//i.test(source)) {
-    const response = await fetch(source);
+    const response = await fetch(source, abortSignal ? { signal: abortSignal } : undefined);
     if (!response.ok) {
+      await response.body?.cancel();
       throw new Error(`audio fetch failed: ${response.status} ${response.statusText}`.trim());
     }
     const bytes = Buffer.from(await response.arrayBuffer());
+    abortSignal?.throwIfAborted();
     const contentType = normalizeMimeType(response.headers.get("content-type"));
     const normalized = resolveAudioFormat(contentType, source);
     return {
@@ -112,25 +120,27 @@ async function prepareAudioInput(
   }
 
   if (source.startsWith("file://")) {
-    return readAudioFile(fileURLToPath(source), source);
+    return readAudioFile(fileURLToPath(source), source, abortSignal);
   }
 
   if (looksLikePath(source)) {
     const absolutePath = isAbsolute(source) ? source : resolve(process.cwd(), source);
-    return readAudioFile(absolutePath, source);
+    return readAudioFile(absolutePath, source, abortSignal);
   }
 
-  const resolvedRecord = await deps.oneBotClient.getRecord(source, "mp3");
+  const resolvedRecord = await deps.oneBotClient.getRecord(source, "mp3", abortSignal);
   const recordSource = resolvedRecord.file ?? resolvedRecord.url;
   if (!recordSource) {
     return null;
   }
 
-  return prepareAudioInput(recordSource, deps, visited);
+  abortSignal?.throwIfAborted();
+  return prepareAudioInput(recordSource, deps, visited, abortSignal);
 }
 
-async function readAudioFile(filePath: string, source: string): Promise<PreparedAudioInput> {
-  const bytes = await readFile(filePath);
+async function readAudioFile(filePath: string, source: string, abortSignal?: AbortSignal): Promise<PreparedAudioInput> {
+  const bytes = await readFile(filePath, abortSignal ? { signal: abortSignal } : undefined);
+  abortSignal?.throwIfAborted();
   const normalized = resolveAudioFormat(null, filePath);
   return {
     source,

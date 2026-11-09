@@ -540,6 +540,11 @@ const llmRuntimeConfigSchema = s.object({
     enabled: s.boolean().title("启用").default(false),
     timeoutMs: s.number().int().positive().title("超时毫秒").default(300000)
   }).title("图像生成").describe("通过 OpenAI 标准 Images API 文生图，使用 imageGenerator 路由。").default(emptyObject),
+  mediaPreparation: s.object({
+    timeoutMs: s.number().int().positive().title("准备总等待毫秒").describe("单次回复媒体恢复、描述、转写及原生输入准备共用的总期限；超时保留已就绪结果与资源引用。").default(30000),
+    maxCurrentMedia: s.number().int().min(0).title("当前输入自动准备媒体数").describe("当前消息独立的自动准备额度；历史使用路由预设窗口。超额媒体保留句柄并明确标注本轮未读取。").default(16),
+    maxHistoryMedia: s.number().int().min(0).title("历史自动准备媒体数").describe("选中历史的图片、表情、音频和文件恢复共用的准备额度；普通历史与原生回放共用同一集合，超额保留句柄。").default(16)
+  }).title("请求媒体准备").default(emptyObject),
   imageCaptioner: llmImageCaptionerConfigSchema,
   imageInspector: llmImageInspectorConfigSchema,
   audioTranscription: llmAudioTranscriptionConfigSchema,

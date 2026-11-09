@@ -578,6 +578,7 @@ export interface SessionGenerationOrchestratorAccess extends SessionSetupAccess,
   completeResponse(sessionId: string, expectedResponseEpoch: number): boolean;
   consumeDebugMode(sessionId: string): boolean;
   getDebugControlState(sessionId: string): SessionDebugControlState;
+  setSessionPhaseIfEpochMatches(sessionId: string, expectedEpoch: number, phase: SessionPhase): boolean;
   getDebugMarkers(sessionId: string): SessionDebugMarker[];
   isGenerating(sessionId: string): boolean;
   appendInternalTranscript(sessionId: string, item: InternalTranscriptItem): void;

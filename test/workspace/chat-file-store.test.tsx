@@ -574,3 +574,56 @@ test("asset retention waits for an in-flight deletion check and prevents deletio
     await rm(rootDir, { recursive: true, force: true });
   }
 });
+
+test("caption writes check cancellation after the store lock and cancellation cleanup respects a new owner", async t => {
+  const rootDir = await mkdtemp(join(tmpdir(), "caption-write-cancel-"));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const store = new ChatFileStore(createTestAppConfig(), createSilentLogger(), {
+    rootDir, resolvePath(path: string) { return { sourcePath: path, absolutePath: join(rootDir, path) }; }
+  } as any);
+  await store.init();
+  const file = await store.importBuffer({ buffer: Buffer.from("synthetic"), sourceName: "synthetic.txt", kind: "file", origin: "user_upload" });
+  await store.markCaptionsQueued([file.fileId]);
+  let unlock!: () => void;
+  const barrier = new Promise<void>(resolve => { unlock = resolve; });
+  const blocker = (store as any).withWriteLock(() => barrier) as Promise<void>;
+  const controller = new AbortController();
+  const staleWrite = store.updateCaption(file.fileId, "stale", { status: "ready" }, controller.signal);
+  controller.abort(new Error("cancelled behind lock"));
+  unlock();
+  await blocker;
+  await assert.rejects(staleWrite, /cancelled behind lock/);
+  assert.equal((await store.getFile(file.fileId))?.caption, null);
+  await store.clearCaptionQueued(file.fileId, () => false);
+  assert.equal((await store.getFile(file.fileId))?.captionStatus, "queued");
+  await store.clearCaptionQueued(file.fileId, () => true);
+  assert.equal((await store.getFile(file.fileId))?.captionStatus, "missing");
+  await store.updateCaption(file.fileId, "new result", { status: "ready" });
+  await store.clearCaptionQueued(file.fileId, () => true);
+  assert.equal((await store.getFile(file.fileId))?.caption, "new result");
+});
+
+test("cancelled unpublished imports remove both the destination file and its queued database write", async t => {
+  const rootDir = await mkdtemp(join(tmpdir(), "asset-import-cancel-"));
+  t.after(() => rm(rootDir, { recursive: true, force: true }));
+  const store = new ChatFileStore(createTestAppConfig(), createSilentLogger(), {
+    rootDir, resolvePath(path: string) { return { sourcePath: path, absolutePath: join(rootDir, path) }; }
+  } as any);
+  await store.init();
+  let release!: () => void;
+  const barrier = new Promise<void>(resolve => { release = resolve; });
+  const blocker = (store as any).withWriteLock(() => barrier) as Promise<void>;
+  const controller = new AbortController();
+  const importing = store.importBuffer({ buffer: Buffer.from("synthetic input"), kind: "file", origin: "chat_message", signal: controller.signal });
+  const mediaDir = join(rootDir, "chat-files", "media");
+  for (let tries = 0; !(await readdir(mediaDir)).length; tries++) {
+    if (tries > 1000) throw new Error("import did not reach file write");
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+  controller.abort(new Error("cancel import behind registry lock"));
+  release();
+  await blocker;
+  await assert.rejects(importing, /cancel import behind registry lock/);
+  assert.deepEqual(await store.listFiles(), []);
+  assert.deepEqual(await readdir(mediaDir), []);
+});

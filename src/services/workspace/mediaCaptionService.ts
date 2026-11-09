@@ -45,7 +45,7 @@ export class MediaCaptionService {
   constructor(
     private readonly config: AppConfig,
     private readonly llmClient: LlmClient,
-    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "getMany" | "markCaptionsQueued" | "updateCaption">,
+    private readonly chatFileStore: Pick<ChatFileStore, "getFile" | "getMany" | "markCaptionsQueued" | "clearCaptionQueued" | "updateCaption">,
     private readonly mediaVisionService: Pick<MediaVisionService, "prepareFileForModel">,
     private readonly logger: Logger,
     private readonly contentSafetyService?: Pick<ContentSafetyService, "guardChatFileForLlm">
@@ -53,7 +53,7 @@ export class MediaCaptionService {
     this.runner = new KeyedDerivationRunner({
       name: "media_caption",
       maxConcurrency: () => this.config.llm.imageCaptioner.maxConcurrency,
-      run: (fileId) => this.runCaption(fileId),
+      run: (fileId, signal) => this.runCaption(fileId, signal),
       logger: this.logger
     });
   }
@@ -76,60 +76,78 @@ export class MediaCaptionService {
   }
 
   schedule(fileIds: string[], reason: string): void {
-    if (!this.isEnabled()) {
-      return;
-    }
-    void this.enqueue(uniqueIds(fileIds), reason);
+    if (!this.isEnabled()) return;
+    // 入站预热拥有独立的有限期限，不能永久持有共享任务。
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error("图片后台准备超时")), this.config.llm.imageCaptioner.timeoutMs);
+    timer.unref?.();
+    void this.ensureReady(fileIds, { reason, abortSignal: controller.signal })
+      .catch(error => {
+        if (!controller.signal.aborted) this.logger.warn({ error }, "media_caption_background_failed");
+      }).finally(() => clearTimeout(timer));
   }
 
-  async ensureReady(fileIds: string[], options?: { reason?: string; abortSignal?: AbortSignal }): Promise<Map<string, string>> {
+  async ensureReady(fileIds: string[], options?: {
+    reason?: string;
+    abortSignal?: AbortSignal;
+    onProgress?: (results: ReadonlyMap<string, string>) => void;
+  }): Promise<Map<string, string>> {
+    const signal = options?.abortSignal;
+    signal?.throwIfAborted();
     const ids = uniqueIds(fileIds);
-    if (ids.length === 0) {
-      return new Map();
+    const ready = await this.getCaptionMap(ids);
+    signal?.throwIfAborted();
+    options?.onProgress?.(ready);
+    if (ids.length === 0 || !this.isEnabled()) return ready;
+    const existing = await this.chatFileStore.getMany(ids);
+    signal?.throwIfAborted();
+    const pending = existing.filter(isCaptionableFile).filter(file => !file.caption).map(file => file.fileId);
+    const lease = this.runner.acquire(pending, {
+      ...(signal ? { abortSignal: signal } : {}), context: { reason: options?.reason ?? "ensure_ready" }
+    });
+    try {
+      await Promise.all([...lease.completed].map(async ([fileId, done]) => {
+        await done;
+        signal?.throwIfAborted();
+        const completed = await this.getCaptionMap([fileId]);
+        signal?.throwIfAborted();
+        for (const [id, caption] of completed) ready.set(id, caption);
+        options?.onProgress?.(new Map(ready));
+      }).concat([lease.completion]));
+      return ready;
+    } finally {
+      lease.release();
     }
-    if (!this.isEnabled()) {
-      return this.getCaptionMap(ids);
-    }
-    await this.enqueue(ids, options?.reason ?? "ensure_ready");
-    await Promise.all(ids.map((fileId) => this.waitForCompletion(fileId, options?.abortSignal)));
-    return this.getCaptionMap(ids);
   }
 
-  private async enqueue(fileIds: string[], reason: string): Promise<void> {
-    const existing = await this.chatFileStore.getMany(fileIds);
-    const blocked = await this.resolveBlockedFileIds(existing.map((item) => item.fileId));
-    const pendingIds = existing
-      .filter(isCaptionableFile)
-      .filter((item) => !blocked.has(item.fileId))
-      .filter((item) => !item.caption)
-      .map((item) => item.fileId);
-    if (pendingIds.length === 0) {
-      return;
-    }
-    await this.chatFileStore.markCaptionsQueued(pendingIds);
-    this.logger.debug({ fileCount: pendingIds.length, reason }, "media_caption_enqueued");
-    this.runner.enqueue(pendingIds, { reason });
-  }
+  async stop(): Promise<void> { await this.runner.close(); }
 
-  private async runCaption(fileId: string): Promise<void> {
+  private async runCaption(fileId: string, signal: AbortSignal): Promise<void> {
     const modelRef = this.resolveModelRefs();
     try {
-      const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId);
+      signal.throwIfAborted();
+      const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId, signal);
+      signal.throwIfAborted();
       if (guard && guard !== "allow") {
         this.logger.info({ fileId, reason: guard.reason }, "media_caption_skipped_content_safety");
         return;
       }
       const file = await this.chatFileStore.getFile(fileId);
+      signal.throwIfAborted();
       if (!file || !isCaptionableFile(file) || file.caption) {
         return;
       }
-      const prepared = await this.mediaVisionService.prepareFileForModel(fileId);
+      await this.chatFileStore.markCaptionsQueued([fileId], signal);
+      signal.throwIfAborted();
+      const prepared = await this.mediaVisionService.prepareFileForModel(fileId, signal);
+      signal.throwIfAborted();
       const result = await this.llmClient.generate({
         modelRefOverride: modelRef,
         timeoutMsOverride: this.config.llm.imageCaptioner.timeoutMs,
         enableThinkingOverride: this.config.llm.imageCaptioner.enableThinking,
         preferNativeNoThinkingChatEndpoint: true,
         skipDebugDump: true,
+        abortSignal: signal,
         messages: [
           ...buildCaptionPrompt(),
           {
@@ -151,6 +169,7 @@ export class MediaCaptionService {
           }
         ]
       });
+      signal.throwIfAborted();
       const fallbackLabel = file.sourceContext.mediaKind === "emoji" ? "一个聊天表情" : "一张聊天图片";
       const caption = normalizeCaption(result.text, fallbackLabel);
       const resolvedModelRef = result.usage.modelRef ?? normalizeModelRefs(modelRef)[0] ?? "unknown";
@@ -158,33 +177,28 @@ export class MediaCaptionService {
         status: "ready",
         modelRef: resolvedModelRef,
         error: null
-      });
+      }, signal);
       this.logger.debug({
         fileId,
         modelRef: resolvedModelRef,
         caption
       }, "media_caption_succeeded");
     } catch (error: unknown) {
+      if (signal.aborted) return;
       const resolvedModelRef = normalizeModelRefs(modelRef)[0] ?? "unknown";
       await this.chatFileStore.updateCaption(fileId, null, {
         status: "failed",
         modelRef: resolvedModelRef,
         error: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240)
-      }).catch(() => undefined);
+      }, signal).catch(() => undefined);
       this.logger.warn({
         fileId,
         modelRef: resolvedModelRef,
         error: error instanceof Error ? error.message : String(error)
       }, "media_caption_failed");
+    } finally {
+      if (signal.aborted) await this.chatFileStore.clearCaptionQueued(fileId, () => !this.runner.hasTask(fileId));
     }
-  }
-
-  private async waitForCompletion(fileId: string, abortSignal?: AbortSignal): Promise<void> {
-    const existing = await this.chatFileStore.getFile(fileId);
-    if (!existing || existing.caption || existing.captionStatus === "failed" || !isCaptionableFile(existing)) {
-      return;
-    }
-    await this.runner.waitForCompletion(fileId, abortSignal);
   }
 
   private resolveModelRefs(): string[] {
@@ -196,19 +210,7 @@ export class MediaCaptionService {
     });
   }
 
-  private async resolveBlockedFileIds(fileIds: string[]): Promise<Set<string>> {
-    if (!this.contentSafetyService) {
-      return new Set();
-    }
-    const blocked = new Set<string>();
-    await Promise.all(fileIds.map(async (fileId) => {
-      const guard = await this.contentSafetyService?.guardChatFileForLlm(fileId);
-      if (guard && guard !== "allow") {
-        blocked.add(fileId);
-      }
-    }));
-    return blocked;
-  }
+
 }
 
 function isCaptionableFile(file: ChatFileRecord): boolean {

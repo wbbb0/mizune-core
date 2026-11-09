@@ -843,11 +843,13 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
               }
             }
           }]
-        }
+        },
+        { kind: "tool_result", llmVisible: true, timestampMs: 3,
+          toolCallId: "call_google_1", toolName: "open_page", content: "完成" }
       ]
     });
 
-    assert.equal(projection.replayMessages.length, 2);
+    assert.equal(projection.replayMessages.length, 3);
     assert.equal(projection.replayMessages[1]?.role, "assistant");
     assert.equal(projection.replayCoversVisibleHistory, true);
     assert.deepEqual(projection.lateSystemMessages, []);
@@ -899,11 +901,13 @@ import type { InternalTranscriptItem } from "../../src/conversation/session/sess
               }
             }]
           }
-        }
+        },
+        { kind: "tool_result", llmVisible: true, timestampMs: 3,
+          toolCallId: "call_google_2", toolName: "get_persona", content: "完成" }
       ]
     });
 
-    assert.equal(projection.replayMessages.length, 2);
+    assert.equal(projection.replayMessages.length, 3);
     assert.equal(projection.replayMessages[1]?.role, "assistant");
     assert.equal(projection.replayCoversVisibleHistory, true);
     assert.deepEqual(projection.lateSystemMessages, []);

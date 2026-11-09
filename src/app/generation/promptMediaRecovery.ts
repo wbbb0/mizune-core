@@ -8,33 +8,53 @@ import { dedupeResolvedChatAttachments } from "#services/workspace/chatAttachmen
 import { parseProtocolLine } from "#utils/structuredEnvelope.ts";
 import { walkMessageContentParts, collectContentPartAttachments, collectContentPartMediaIds } from "#messages/contentParts.ts";
 import type { GenerationPromptBatchMessage, GenerationPromptHistoryMessage } from "./generationPromptBuilder.ts";
+import { projectReplayMessageContent } from "#llm/shared/nativeReplayMetadata.ts";
+import { mapWithConcurrency } from "#utils/async.ts";
 
 /** Only the actual prompt window and current batch can trigger recovery, never the entire stored transcript. */
 export async function recoverPromptMedia<T extends {
   sessionId: string; historyForPrompt: GenerationPromptHistoryMessage[]; batchMessages?: GenerationPromptBatchMessage[];
   replayMessages?: LlmMessage[]; abortSignal?: AbortSignal;
   contentSafetyAlreadyProjected?: boolean | undefined;
-}>(service: MediaImportService, input: T): Promise<T> {
+}>(service: MediaImportService, input: T, options?: {
+  currentMediaRefs?: ReadonlySet<string>;
+  historyMediaRefs?: ReadonlySet<string>;
+  onResolved?: (mediaRef: string, fileId: string) => void;
+}): Promise<T> {
+  input.abortSignal?.throwIfAborted();
   if (input.batchMessages) input = { ...input, batchMessages: input.batchMessages.map(foldMessageForModel) };
   const refs = new Set<string>();
   const collect = (content: string) => {
     for (const line of content.split("\n")) {
       const tag = parseProtocolLine(line);
-      if (tag && ["pending_media", "ref", "asset_file"].includes(tag.tag) && /^media_[a-f0-9]{32}$/.test(tag.attrs.media_ref ?? "")) refs.add(tag.attrs.media_ref!);
+      if (tag && ["pending_media", "ref", "asset_file"].includes(tag.tag) && /^media_[a-f0-9]{32}$/.test(tag.attrs.media_ref ?? "")
+        && (!options?.historyMediaRefs || options.historyMediaRefs.has(tag.attrs.media_ref!))) refs.add(tag.attrs.media_ref!);
     }
   };
   input.historyForPrompt.forEach(message => collect(message.content));
   input.replayMessages?.forEach(message => { if (typeof message.content === "string") collect(message.content); });
   for (const message of input.batchMessages ?? []) {
-    for (const part of walkMessageContentParts(message.contentParts)) if ((part.kind === "pending_media" || part.kind === "image" || part.kind === "emoji" || part.kind === "asset_file") && part.mediaRef) refs.add(part.mediaRef);
+    for (const part of walkMessageContentParts(message.contentParts)) if ((part.kind === "pending_media" || part.kind === "image" || part.kind === "emoji" || part.kind === "asset_file") && part.mediaRef && (!options?.currentMediaRefs || options.currentMediaRefs.has(part.mediaRef))) refs.add(part.mediaRef);
   }
   if (!refs.size) return input;
   const resolutions = new Map<string, MediaResolution>();
   const scope = mediaScopeForSession(input.sessionId);
-  await Promise.all([...refs].slice(0, 16).map(async ref => {
-    const result = await service.resolve(scope, ref, input.abortSignal);
-    if (result) resolutions.set(ref, result);
-  }));
+  const failures: unknown[] = [];
+  await mapWithConcurrency([...refs], 4, async ref => {
+    try {
+      input.abortSignal?.throwIfAborted();
+      const result = await service.resolve(scope, ref, input.abortSignal);
+      input.abortSignal?.throwIfAborted();
+      if (result) {
+        resolutions.set(ref, result);
+        options?.onResolved?.(ref, result.file.fileId);
+      }
+    } catch (error) {
+      // 收拢已启动 worker；取消后的剩余项只检查 signal，不会再调用服务。
+      failures.push(error);
+    }
+  });
+  if (failures.length) throw failures[0];
   let mediaChanged = false;
   const replace = (content: string) => content.split("\n").map(line => {
     const tag = parseProtocolLine(line);
@@ -43,7 +63,7 @@ export async function recoverPromptMedia<T extends {
     return resolution ? formatHistoryContent({ text: "", contentParts: [mediaResolutionPart(resolution)] }) : line;
   }).join("\n");
   const historyForPrompt = input.historyForPrompt.map(message => ({ ...message, content: replace(message.content) }));
-  const replayMessages = input.replayMessages?.map(message => typeof message.content === "string" ? { ...message, content: replace(message.content) } : message);
+  const replayMessages = input.replayMessages?.map(message => typeof message.content === "string" ? projectReplayMessageContent(message, replace(message.content)) : message);
   for (const message of input.batchMessages ?? []) for (const part of walkMessageContentParts(message.contentParts)) {
     if ((part.kind === "pending_media" || part.kind === "image" || part.kind === "emoji" || part.kind === "asset_file") && part.mediaRef) {
       const resolved = resolutions.get(part.mediaRef);

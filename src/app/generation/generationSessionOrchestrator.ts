@@ -1,3 +1,4 @@
+import { withProjectedRequestHistory } from "#conversation/session/requestContextSelection.ts";
 import { characterIntroductionDirective, isCurrentCharacterIntroduction } from "../../character/introduction.ts";
 import { isSkillRuntimeAllowedForSession, SKILL_TOOL_NAMES } from "../../skills/skillPolicy.ts";
 import { createGenerationFailureLifecycle } from "./generationFailureLifecycle.ts";
@@ -704,9 +705,8 @@ export function createGenerationSessionOrchestrator(
         ? { setupPhase: { setupToolsetOverrides: activeDraftOperation.setupToolsetOverrides } }
         : {};
       let transcriptStore = createSessionTranscriptStore(refreshedSession, config);
-      let historyForPrompt = transcriptStore.projectRuntimeHistoryForPrompt({
-        excludeGroupId: refreshedSession.activeTranscriptGroupId
-      });
+      let requestContext = transcriptStore.selectRequestContext({ excludeGroupId: refreshedSession.activeTranscriptGroupId });
+      let historyForPrompt = requestContext.history;
       let promptSafety = await projectGenerationPromptSafety({
         contentSafetyService: promptBuilder.contentSafetyService,
         sessionId,
@@ -812,6 +812,7 @@ export function createGenerationSessionOrchestrator(
           }
           return;
         }
+        sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "preparing_context" });
         if (gateResult.topicSwitchCompression) {
           let compressed = false;
           try {
@@ -853,9 +854,8 @@ export function createGenerationSessionOrchestrator(
         plannerDecision = gateResult.action === "continue" ? gateResult.plannerDecision : undefined;
         refreshedSession = sessionManager.getSession(sessionId);
         transcriptStore = createSessionTranscriptStore(refreshedSession, config);
-        historyForPrompt = transcriptStore.projectRuntimeHistoryForPrompt({
-          excludeGroupId: refreshedSession.activeTranscriptGroupId
-        });
+        requestContext = transcriptStore.selectRequestContext({ excludeGroupId: refreshedSession.activeTranscriptGroupId });
+        historyForPrompt = requestContext.history;
         promptSafety = await projectGenerationPromptSafety({
           contentSafetyService: promptBuilder.contentSafetyService,
           sessionId,
@@ -882,6 +882,8 @@ export function createGenerationSessionOrchestrator(
           taskSummary: refreshedSession.historySummary, abortSignal: abortController.signal
         });
         resolvedModelRef = modelPlan.resolvedModelRef;
+        sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "preparing_context" });
+
         plannerDecision = modelPlan.plannerDecision;
         plannerToolsets = listTurnToolsets({ config, relationship, currentUser: user, modelRef: resolvedModelRef,
           includeDebugTools: interactionMode === "debug", visibilityContext: toolVisibilityContext, modeId: sessionModeId,
@@ -931,7 +933,7 @@ export function createGenerationSessionOrchestrator(
       }
       const participantProfiles = assistantMode
         ? []
-        : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), messages.map((message) => ({
+        : await extractWindowUsers(userStore, requestContext.transcript, messages.map((message) => ({
             userId: message.userId,
             senderName: message.senderName
           })));
@@ -963,9 +965,6 @@ export function createGenerationSessionOrchestrator(
         ]
       });
       const debugMarkers = refreshedSession.debugMarkers;
-      const replayTranscriptItems = refreshedSession.activeTranscriptGroupId == null
-        ? transcriptStore.runtimeItems()
-        : transcriptStore.runtimeItems().filter((item) => item.groupId !== refreshedSession.activeTranscriptGroupId);
       const projectedTranscript = getProviderTranscriptProjectorForRequest(providerName, {
         summaryOnly: shouldUseSummaryOnlyTranscriptProjector({
           providerName,
@@ -973,7 +972,9 @@ export function createGenerationSessionOrchestrator(
           visibleToolNames: chatVisibleToolNames
         })
       }).project({
-        transcript: replayTranscriptItems,
+        transcript: requestContext.transcript,
+        projectedContent: withProjectedRequestHistory(requestContext, promptSafety.historyForPrompt).contentByItem,
+        invalidatedNativeItems: requestContext.invalidatedNativeItems,
         preserveThinking: getPrimaryModelProfile(config, resolvedModelRef)?.chat?.preserveThinking === true,
         requireThoughtSignatures: config.llm.mainRouting.enableThinking,
         tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
@@ -1215,6 +1216,7 @@ export function createGenerationSessionOrchestrator(
         taskSummary: session.historySummary, abortSignal: abortController.signal
       });
       scheduledModelRef = modelPlan.resolvedModelRef;
+      sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "preparing_context" });
       scheduledAvailableToolsets = listScheduledToolsets();
       const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
         config,
@@ -1244,10 +1246,15 @@ export function createGenerationSessionOrchestrator(
       });
       const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
       const transcriptStore = createSessionTranscriptStore(session, config);
-      const projectedHistory = transcriptStore.projectRuntimeHistory();
+      const requestContext = transcriptStore.selectRequestContext({ excludeGroupId: session.activeTranscriptGroupId });
+      const safeHistory = await projectGenerationPromptSafety({
+        contentSafetyService: promptBuilder.contentSafetyService, sessionId, source: "scheduled_prompt",
+        historyForPrompt: requestContext.history, batchMessages: [], abortSignal: abortController.signal
+      });
+      const projectedHistory = safeHistory.historyForPrompt;
       const participantProfiles = assistantMode
         ? []
-        : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), []);
+        : await extractWindowUsers(userStore, requestContext.transcript, []);
       const projectedTranscript = getProviderTranscriptProjectorForRequest(providerName, {
         summaryOnly: shouldUseSummaryOnlyTranscriptProjector({
           providerName,
@@ -1255,7 +1262,9 @@ export function createGenerationSessionOrchestrator(
           visibleToolNames: scheduledVisibleToolNames
         })
       }).project({
-        transcript: transcriptStore.runtimeItems(),
+        transcript: requestContext.transcript,
+        projectedContent: withProjectedRequestHistory(requestContext, projectedHistory).contentByItem,
+        invalidatedNativeItems: requestContext.invalidatedNativeItems,
         preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.chat?.preserveThinking === true,
         requireThoughtSignatures: config.llm.mainRouting.enableThinking,
         tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation
@@ -1444,6 +1453,7 @@ export function createGenerationSessionOrchestrator(
         taskSummary: session.historySummary, abortSignal: abortController.signal
       });
       scheduledModelRef = modelPlan.resolvedModelRef;
+      sessionManager.setSessionPhaseIfEpochMatches(sessionId, expectedEpoch, { kind: "preparing_context" });
       scheduledAvailableToolsets = listScheduledToolsets();
       const modelSelfUpgradePlan = resolveModelSelfUpgradePlan({
         config,
@@ -1473,10 +1483,15 @@ export function createGenerationSessionOrchestrator(
       });
       const providerName = resolveProviderTranscriptProjectorName(config, scheduledModelRef);
       const transcriptStore = createSessionTranscriptStore(session, config);
-      const projectedHistory = transcriptStore.projectRuntimeHistory();
+      const requestContext = transcriptStore.selectRequestContext({ excludeGroupId: session.activeTranscriptGroupId });
+      const safeHistory = await projectGenerationPromptSafety({
+        contentSafetyService: promptBuilder.contentSafetyService, sessionId, source: "scheduled_prompt",
+        historyForPrompt: requestContext.history, batchMessages: [], abortSignal: abortController.signal
+      });
+      const projectedHistory = safeHistory.historyForPrompt;
       const participantProfiles = assistantMode
         ? []
-        : await extractWindowUsers(userStore, transcriptStore.runtimeItems(), []);
+        : await extractWindowUsers(userStore, requestContext.transcript, []);
       const projectedTranscript = getProviderTranscriptProjectorForRequest(providerName, {
         summaryOnly: shouldUseSummaryOnlyTranscriptProjector({
           providerName,
@@ -1484,7 +1499,9 @@ export function createGenerationSessionOrchestrator(
           visibleToolNames: scheduledVisibleToolNames
         })
       }).project({
-        transcript: transcriptStore.runtimeItems(),
+        transcript: requestContext.transcript,
+        projectedContent: withProjectedRequestHistory(requestContext, projectedHistory).contentByItem,
+        invalidatedNativeItems: requestContext.invalidatedNativeItems,
         preserveThinking: getPrimaryModelProfile(config, scheduledModelRef)?.chat?.preserveThinking === true,
         requireThoughtSignatures: config.llm.mainRouting.enableThinking,
         tokenEstimationWeights: config.conversation.historyCompression.tokenEstimation

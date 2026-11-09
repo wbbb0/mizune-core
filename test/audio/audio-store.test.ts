@@ -51,3 +51,29 @@ test("audio store keeps transcription state transitions in sqlite", async () => 
     assert.equal(saved?.transcriptionModelRef, "main");
   });
 });
+test("audio writes check cancellation after waiting for the store lock and clear only unowned queued work", async () => {
+  await withDataDir("audio-write-cancel", async dataDir => {
+    const store = new AudioStore(dataDir, pino({ level: "silent" }));
+    await store.init();
+    const [created] = await store.registerSources(["data:audio/mpeg;base64,SUQz"]);
+    assert.ok(created);
+    await store.markTranscriptionsQueued([created.id]);
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const blocker = (store as any).withStoreLock(() => blocked) as Promise<void>;
+    const controller = new AbortController();
+    const stale = store.saveTranscriptionSuccess(created.id, { transcription: "stale", modelRef: "test" }, controller.signal);
+    controller.abort(new Error("cancelled queued write"));
+    release();
+    await blocker;
+    await assert.rejects(stale, /cancelled queued write/);
+    assert.equal((await store.get(created.id))?.transcription, null);
+    await store.clearTranscriptionQueued(created.id, () => false);
+    assert.equal((await store.get(created.id))?.transcriptionStatus, "queued");
+    await store.clearTranscriptionQueued(created.id, () => true);
+    assert.equal((await store.get(created.id))?.transcriptionStatus, "missing");
+    await store.saveTranscriptionSuccess(created.id, { transcription: "fresh", modelRef: "test" });
+    await store.clearTranscriptionQueued(created.id, () => true);
+    assert.equal((await store.get(created.id))?.transcription, "fresh");
+  });
+});

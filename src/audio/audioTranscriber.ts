@@ -36,7 +36,7 @@ export class AudioTranscriber {
     this.runner = new KeyedDerivationRunner({
       name: "audio_transcription",
       maxConcurrency: () => this.config.llm.audioTranscription.maxConcurrency,
-      run: (audioId) => this.runTranscription(audioId),
+      run: (audioId, signal) => this.runTranscription(audioId, signal),
       logger: this.logger
     });
   }
@@ -54,60 +54,68 @@ export class AudioTranscriber {
   }
 
   schedule(audioIds: string[], reason: string): void {
+    if (!this.isEnabled()) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error("音频后台准备超时")), this.config.llm.audioTranscription.timeoutMs);
+    timer.unref?.();
+    void this.ensureReady(audioIds, { reason, abortSignal: controller.signal })
+      .catch(error => {
+        if (!controller.signal.aborted) this.logger.warn({ error }, "audio_transcription_background_failed");
+      }).finally(() => clearTimeout(timer));
+  }
+
+  async ensureReady(audioIds: string[], options?: {
+    reason?: string;
+    abortSignal?: AbortSignal;
+    onProgress?: (results: ReadonlyMap<string, AudioTranscriptionResult>) => void;
+  }): Promise<Map<string, AudioTranscriptionResult>> {
+    const signal = options?.abortSignal;
+    signal?.throwIfAborted();
     const ids = uniqueAudioIds(audioIds);
-    if (!this.isEnabled() || ids.length === 0) {
-      return;
+    const results = await this.getResultMap(ids);
+    signal?.throwIfAborted();
+    options?.onProgress?.(results);
+    if (!ids.length || !this.isEnabled()) return results;
+    const existing = await this.audioStore.getMany(ids);
+    signal?.throwIfAborted();
+    const pending = existing.filter(file => file.transcriptionStatus !== "ready").map(file => file.id);
+    const lease = this.runner.acquire(pending, {
+      ...(signal ? { abortSignal: signal } : {}), context: { reason: options?.reason ?? "ensure_ready" }
+    });
+    try {
+      await Promise.all([...lease.completed].map(async ([audioId, done]) => {
+        await done;
+        signal?.throwIfAborted();
+        const completed = await this.getResultMap([audioId]);
+        signal?.throwIfAborted();
+        for (const [id, result] of completed) results.set(id, result);
+        options?.onProgress?.(new Map(results));
+      }).concat([lease.completion]));
+      return results;
+    } finally {
+      lease.release();
     }
-    void this.enqueue(ids, reason);
   }
 
-  async ensureReady(
-    audioIds: string[],
-    options?: {
-      reason?: string;
-      abortSignal?: AbortSignal;
-    }
-  ): Promise<Map<string, AudioTranscriptionResult>> {
-    const ids = uniqueAudioIds(audioIds);
-    if (ids.length === 0) {
-      return new Map();
-    }
+  async stop(): Promise<void> { await this.runner.close(); }
 
-    if (!this.isEnabled()) {
-      return this.buildResultMap(ids);
-    }
-
-    await this.enqueue(ids, options?.reason ?? "ensure_ready");
-    await Promise.all(ids.map((audioId) => this.waitForCompletion(audioId, options?.abortSignal)));
-    return this.buildResultMap(ids);
-  }
-
-  private async enqueue(audioIds: string[], reason: string): Promise<void> {
-    const existing = await this.audioStore.getMany(audioIds);
-    const pendingIds = existing
-      .filter((item) => item.transcriptionStatus !== "ready")
-      .map((item) => item.id);
-    if (pendingIds.length === 0) {
-      return;
-    }
-
-    await this.audioStore.markTranscriptionsQueued(pendingIds);
-    this.logger.debug({ audioCount: pendingIds.length, reason }, "audio_transcriber_enqueued");
-    this.runner.enqueue(pendingIds, { reason });
-  }
-
-  private async runTranscription(audioId: string): Promise<void> {
+  private async runTranscription(audioId: string, signal: AbortSignal): Promise<void> {
     const modelRefs = this.getResolvedModelRefs();
     try {
+      signal.throwIfAborted();
       const audioFile = await this.audioStore.get(audioId);
+      signal.throwIfAborted();
       if (!audioFile || audioFile.transcriptionStatus === "ready") {
         return;
       }
+      await this.audioStore.markTranscriptionsQueued([audioId], signal);
+      signal.throwIfAborted();
       const prepared = await prepareAudioInputsForModel([audioFile.source], {
         oneBotClient: this.oneBotClient
       }, {
-        maxInputs: 1
+        maxInputs: 1, abortSignal: signal
       });
+      signal.throwIfAborted();
       const audio = prepared[0];
       if (!audio) {
         throw new Error(`Audio not found for transcription: ${audioId}`);
@@ -117,27 +125,32 @@ export class AudioTranscriber {
         modelRefOverride: modelRefs,
         timeoutMsOverride: this.config.llm.audioTranscription.timeoutMs,
         skipDebugDump: true,
+        abortSignal: signal,
         audio: { data: audio.data, format: audio.format, mimeType: audio.mimeType }
       });
+      signal.throwIfAborted();
       const transcription = normalizeTranscription(result.text);
       const resolvedModelRef = result.usage.modelRef ?? normalizeModelRefs(modelRefs)[0] ?? "unknown";
       await this.audioStore.saveTranscriptionSuccess(audioId, {
         transcription,
         modelRef: resolvedModelRef
-      });
+      }, signal);
       this.logger.debug({ audioId, modelRef: resolvedModelRef }, "audio_transcriber_succeeded");
     } catch (error: unknown) {
+      if (signal.aborted) return;
       const message = error instanceof Error ? error.message : String(error);
       const resolvedModelRef = normalizeModelRefs(modelRefs)[0] ?? "unknown";
       await this.audioStore.saveTranscriptionFailure(audioId, {
         message,
         modelRef: resolvedModelRef
-      });
+      }, signal);
       this.logger.warn({ audioId, modelRef: resolvedModelRef, error: message }, "audio_transcriber_failed");
+    } finally {
+      if (signal.aborted) await this.audioStore.clearTranscriptionQueued(audioId, () => !this.runner.hasTask(audioId));
     }
   }
 
-  private async buildResultMap(audioIds: string[]): Promise<Map<string, AudioTranscriptionResult>> {
+  async getResultMap(audioIds: string[]): Promise<Map<string, AudioTranscriptionResult>> {
     const audioFiles = await this.audioStore.getMany(audioIds);
     return new Map(audioFiles.map((audioFile) => [
       audioFile.id,
@@ -155,13 +168,7 @@ export class AudioTranscriber {
     ]));
   }
 
-  private async waitForCompletion(audioId: string, abortSignal?: AbortSignal): Promise<void> {
-    const existing = await this.audioStore.get(audioId);
-    if (!existing || existing.transcriptionStatus === "ready" || existing.transcriptionStatus === "failed") {
-      return;
-    }
-    await this.runner.waitForCompletion(audioId, abortSignal);
-  }
+
 }
 
 function uniqueAudioIds(audioIds: string[]): string[] {

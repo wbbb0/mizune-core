@@ -388,6 +388,7 @@ export type SessionPhase =
   | { kind: "idle" }
   | { kind: "debouncing" }
   | { kind: "turn_planner_evaluating" }
+  | { kind: "preparing_context" }
   | { kind: "turn_planner_waiting" }
   | { kind: "compressing_history" }
   | { kind: "requesting_llm" }

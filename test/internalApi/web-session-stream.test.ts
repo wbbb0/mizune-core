@@ -127,3 +127,12 @@ test("session stream emits status patches with only changed fields", () => {
     lastActiveAt: 2000
   });
 });
+
+test("session stream distinguishes prompt media preparation from planner evaluation", () => {
+  const events = diffSessionStreamEvents(createSnapshot([], { phase: { kind: "turn_planner_evaluating" } }),
+    createSnapshot([], { phase: { kind: "preparing_context" } }));
+  const event = events.find(event => event.type === "status_patch");
+  assert.equal(event?.type, "status_patch");
+  if (event?.type !== "status_patch") return;
+  assert.deepEqual(event.patch.phase, { kind: "preparing_context", label: "正在准备上下文与媒体" });
+});

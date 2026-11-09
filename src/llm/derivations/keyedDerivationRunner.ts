@@ -3,128 +3,157 @@ import type { Logger } from "pino";
 export interface KeyedDerivationRunnerOptions {
   name: string;
   maxConcurrency: () => number;
-  run: (key: string) => Promise<void>;
+  maxTasks?: number;
+  run: (key: string, abortSignal: AbortSignal) => Promise<void>;
   logger?: Pick<Logger, "debug" | "warn">;
 }
 
+export interface DerivationLease {
+  completion: Promise<void>;
+  completed: ReadonlyMap<string, Promise<void>>;
+  release(reason?: unknown): void;
+}
+
+export class DerivationQueueFullError extends Error {
+  readonly code = "DERIVATION_QUEUE_FULL";
+  constructor(readonly maxTasks: number) {
+    super(`派生任务容量已满（最多 ${maxTasks} 项）`);
+    this.name = "DerivationQueueFullError";
+  }
+}
+
+type Entry = {
+  key: string;
+  controller: AbortController;
+  owners: Map<symbol, () => void>;
+  done: Promise<void>;
+  finish: () => void;
+};
+
+/** 每个等待者拥有可注销通知的独立租约；实际执行槽直到底层任务退出才释放。 */
 export class KeyedDerivationRunner {
-  private readonly queued = new Set<string>();
-  private readonly running = new Set<string>();
-  private readonly waiters = new Map<string, Set<() => void>>();
-  private readonly pending: string[] = [];
+  private readonly entries = new Map<string, Entry>();
+  private readonly pending: Entry[] = [];
+  private readonly running = new Set<Entry>();
+  private readonly leases = new Set<DerivationLease>();
+  private closePromise: Promise<void> | undefined;
 
   constructor(private readonly options: KeyedDerivationRunnerOptions) {}
 
-  enqueue(keys: string[], context?: Record<string, unknown>): void {
-    const pendingKeys = uniqueKeys(keys);
-    let enqueued = 0;
-    for (const key of pendingKeys) {
-      if (this.queued.has(key) || this.running.has(key)) {
-        continue;
+  hasTask(key: string): boolean { return this.entries.has(key); }
+
+  acquire(keys: string[], options?: { abortSignal?: AbortSignal; context?: Record<string, unknown> }): DerivationLease {
+    options?.abortSignal?.throwIfAborted();
+    if (this.closePromise) throw new Error("派生任务执行器已关闭");
+    const wanted = Array.from(new Set(keys.map(key => String(key ?? "").trim()).filter(Boolean)));
+    const newKeys = wanted.filter(key => !this.entries.has(key));
+    const configured = this.options.maxTasks ?? 256;
+    const maxTasks = Number.isFinite(configured) ? Math.max(1, Math.floor(configured)) : 256;
+    if (this.entries.size + newKeys.length > maxTasks || this.leases.size >= 1024) throw new DerivationQueueFullError(maxTasks);
+    const acquired = wanted.map(key => {
+      let entry = this.entries.get(key);
+      if (!entry) {
+        let finish!: () => void;
+        const done = new Promise<void>(resolve => { finish = resolve; });
+        entry = { key, controller: new AbortController(), owners: new Map(), done, finish };
+        this.entries.set(key, entry);
+        this.pending.push(entry);
       }
-      this.queued.add(key);
-      this.pending.push(key);
-      enqueued += 1;
-    }
-    if (enqueued > 0) {
-      this.options.logger?.debug({
-        runner: this.options.name,
-        keyCount: enqueued,
-        ...(context ? { context } : {})
-      }, "keyed_derivation_enqueued");
-    }
-    this.pump();
-  }
-
-  hasPendingOrRunning(key: string): boolean {
-    const normalized = normalizeKey(key);
-    return Boolean(normalized) && (this.queued.has(normalized) || this.running.has(normalized));
-  }
-
-  async waitForCompletion(key: string, abortSignal?: AbortSignal): Promise<void> {
-    const normalized = normalizeKey(key);
-    if (abortSignal?.aborted) {
-      throw abortSignal.reason instanceof Error ? abortSignal.reason : new Error("Derivation wait aborted");
-    }
-    if (!normalized || !this.hasPendingOrRunning(normalized)) {
-      return;
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      const onAbort = () => {
-        this.removeWaiter(normalized, waiter);
-        reject(abortSignal?.reason instanceof Error ? abortSignal.reason : new Error("Derivation wait aborted"));
-      };
-      const waiter = () => {
-        abortSignal?.removeEventListener("abort", onAbort);
-        resolve();
-      };
-      const listeners = this.waiters.get(normalized) ?? new Set<() => void>();
-      listeners.add(waiter);
-      this.waiters.set(normalized, listeners);
-      abortSignal?.addEventListener("abort", onAbort, { once: true });
+      return entry;
     });
+    const owner = Symbol("derivation-owner");
+    const completed = new Map<string, Promise<void>>();
+    const rejectItems: Array<(reason: unknown) => void> = [];
+    let settled = false;
+    let remaining = acquired.length;
+    let resolve!: () => void;
+    let reject!: (reason: unknown) => void;
+    const completion = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    const detach = () => {
+      options?.abortSignal?.removeEventListener("abort", onAbort);
+      this.leases.delete(lease);
+      for (const entry of acquired) {
+        entry.owners.delete(owner);
+        if (entry.owners.size > 0 || this.entries.get(entry.key) !== entry) continue;
+        this.entries.delete(entry.key);
+        entry.controller.abort(new Error("派生任务已没有所有者"));
+        const index = this.pending.indexOf(entry);
+        if (index >= 0) {
+          this.pending.splice(index, 1);
+          entry.finish();
+        }
+      }
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      detach();
+      resolve();
+    };
+    const lease: DerivationLease = {
+      completion, completed,
+      release: (reason = new Error("派生任务租约已释放")) => {
+        if (settled) return;
+        settled = true;
+        detach();
+        for (const rejectItem of rejectItems) rejectItem(reason);
+        reject(reason);
+      }
+    };
+    const onAbort = () => lease.release(options?.abortSignal?.reason);
+    for (const entry of acquired) {
+      let resolveItem!: () => void;
+      const item = new Promise<void>((yes, no) => { resolveItem = yes; rejectItems.push(no); });
+      void item.catch(() => undefined);
+      completed.set(entry.key, item);
+      // 通知可从 entry 中真正删除；不把 caller 的闭包挂到共享 done Promise。
+      entry.owners.set(owner, () => { resolveItem(); remaining--; if (remaining === 0) finish(); });
+    }
+    this.leases.add(lease);
+    options?.abortSignal?.addEventListener("abort", onAbort, { once: true });
+    void completion.catch(() => undefined);
+    if (options?.abortSignal?.aborted) onAbort();
+    else if (remaining === 0) finish();
+    if (newKeys.length > 0) this.options.logger?.debug({ runner: this.options.name, keyCount: newKeys.length, ...options?.context }, "keyed_derivation_enqueued");
+    this.pump();
+    return lease;
+  }
+
+  close(): Promise<void> {
+    if (!this.closePromise) {
+      // 先赋值关闭状态，防止取消回调重入时重新准入。
+      let resolve!: () => void;
+      this.closePromise = new Promise<void>(yes => { resolve = yes; });
+      for (const lease of [...this.leases]) lease.release(new Error("派生任务执行器已关闭"));
+      void Promise.all([...this.running].map(entry => entry.done)).then(() => resolve());
+    }
+    return this.closePromise;
   }
 
   private pump(): void {
-    const rawMaxConcurrency = Number(this.options.maxConcurrency());
-    const maxConcurrency = Number.isFinite(rawMaxConcurrency)
-      ? Math.max(1, Math.floor(rawMaxConcurrency))
-      : 1;
-    while (this.running.size < maxConcurrency) {
-      const nextKey = this.pending.shift();
-      if (!nextKey) {
-        return;
-      }
-      this.queued.delete(nextKey);
-      this.running.add(nextKey);
-      void this.runOne(nextKey);
+    const requested = Number(this.options.maxConcurrency());
+    const maxConcurrency = Number.isFinite(requested) ? Math.max(1, Math.floor(requested)) : 1;
+    while (this.running.size < maxConcurrency && this.pending.length > 0) {
+      const entry = this.pending.shift()!;
+      if (entry.controller.signal.aborted || this.entries.get(entry.key) !== entry) continue;
+      this.running.add(entry);
+      void this.runOne(entry);
     }
   }
 
-  private async runOne(key: string): Promise<void> {
+  private async runOne(entry: Entry): Promise<void> {
     try {
-      await this.options.run(key);
+      await this.options.run(entry.key, entry.controller.signal);
     } catch (error: unknown) {
-      this.options.logger?.warn({
-        runner: this.options.name,
-        key,
-        error: error instanceof Error ? error.message : String(error)
-      }, "keyed_derivation_failed");
+      if (!entry.controller.signal.aborted) this.options.logger?.warn({ runner: this.options.name, key: entry.key, error: error instanceof Error ? error.message : String(error) }, "keyed_derivation_failed");
     } finally {
-      this.running.delete(key);
-      this.notifyWaiters(key);
+      this.running.delete(entry);
+      if (this.entries.get(entry.key) === entry) this.entries.delete(entry.key);
+      entry.finish();
+      const notify = [...entry.owners.values()];
+      entry.owners.clear();
+      for (const listener of notify) listener();
       this.pump();
     }
   }
-
-  private notifyWaiters(key: string): void {
-    const listeners = this.waiters.get(key);
-    if (!listeners) {
-      return;
-    }
-    this.waiters.delete(key);
-    for (const listener of listeners) {
-      listener();
-    }
-  }
-
-  private removeWaiter(key: string, waiter: () => void): void {
-    const listeners = this.waiters.get(key);
-    if (!listeners) {
-      return;
-    }
-    listeners.delete(waiter);
-    if (listeners.size === 0) {
-      this.waiters.delete(key);
-    }
-  }
-}
-
-function uniqueKeys(keys: string[]): string[] {
-  return Array.from(new Set(keys.map(normalizeKey).filter(Boolean)));
-}
-
-function normalizeKey(key: string): string {
-  return String(key ?? "").trim();
 }

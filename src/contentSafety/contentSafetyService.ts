@@ -1,4 +1,4 @@
-import { invalidateGoogleReplay } from "#llm/shared/googleReplay.ts";
+import { invalidateNativeReplayMetadata } from "#llm/shared/nativeReplayMetadata.ts";
 import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -372,7 +372,7 @@ export class ContentSafetyService {
 
     for (const [index, message] of messages.entries()) {
       if (JSON.stringify(message.content) !== JSON.stringify(input.messages[index]?.content)) {
-        const metadata = invalidateGoogleReplay(message.providerMetadata);
+        const metadata = invalidateNativeReplayMetadata(message.providerMetadata);
         if (metadata) message.providerMetadata = metadata;
       }
     }
@@ -382,7 +382,8 @@ export class ContentSafetyService {
     };
   }
 
-  async guardChatFileForLlm(fileId: string): Promise<"allow" | { blocked: true; marker: string; reason: string }> {
+  async guardChatFileForLlm(fileId: string, abortSignal?: AbortSignal): Promise<"allow" | { blocked: true; marker: string; reason: string }> {
+    abortSignal?.throwIfAborted();
     if (!this.config.contentSafety.enabled) {
       return "allow";
     }
@@ -399,7 +400,8 @@ export class ContentSafetyService {
       source: "tool_media",
       subjectKind,
       fileId,
-      rule: subjectKind === "emoji" ? profile.emoji : profile.image
+      rule: subjectKind === "emoji" ? profile.emoji : profile.image,
+      ...(abortSignal ? { abortSignal } : {})
     });
     return event?.marker ? { blocked: true, marker: event.marker, reason: event.reason } : "allow";
   }

@@ -290,11 +290,12 @@ export class SessionPersistence {
     return sessions;
   }
 
-  async save(session: PersistedSessionState): Promise<void> {
+  async save(session: PersistedSessionState, abortSignal?: AbortSignal): Promise<void> {
     const validated = persistedSessionStateSchema.parse({ ...session, internalTranscript: [] }) as PersistedSessionState;
     validated.internalTranscript = session.internalTranscript.map(validateTranscriptItem);
     await this.assetReferences.run(async () => {
       const db = await this.getReadyDb();
+      abortSignal?.throwIfAborted();
       const write = db.transaction(() => {
         db.prepare(`
           INSERT INTO sessions (

@@ -79,6 +79,7 @@ test("forward tools import nested images as real assets accepted by asset_media_
   } } as unknown as OneBotClient, "bot");
   const files = new Map<string, ChatFileRecord>();
   const store = {
+    deleteFile: async (id: string) => files.delete(id),
     getFile: async (id: string) => files.get(id) ?? null,
     getMany: async (ids: string[]) => ids.map(id => files.get(id)!).filter(Boolean),
     listFiles: async () => [...files.values()], isFileAvailable: async (id: string) => files.has(id),
