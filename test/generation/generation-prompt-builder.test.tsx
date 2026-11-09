@@ -2983,3 +2983,42 @@ test("historical file recovery obeys shared admission and bounded concurrency", 
   assert.match(JSON.stringify(result.promptMessages), /32 项媒体超过自动准备额度/);
   assert.match(JSON.stringify(result.promptMessages), /old-0/);
 });
+
+test("scheduled parallel lookup failure aborts active media and removes caller abort listener", async () => {
+  const controller = new AbortController();
+  const { getEventListeners } = await import("node:events");
+  const originalFailure = new Error("synthetic non-media lookup failure");
+  let started!: () => void;
+  const captionStarted = new Promise<void>(resolve => { started = resolve; });
+  let mediaStopped = false;
+  let mediaSignal: AbortSignal | undefined;
+  const config = createTestAppConfig({ llm: { mediaPreparation: { timeoutMs: 1000 } } });
+  const builder = createGenerationPromptBuilder(createMinimalPromptBuilderDeps({
+    config,
+    mediaCaptionService: {
+      ensureReady(ids: string[], options: { abortSignal: AbortSignal }) {
+        mediaSignal = options.abortSignal;
+        started();
+        return new Promise<Map<string, string>>((resolve, reject) => {
+          options.abortSignal.addEventListener("abort", () => {
+            mediaStopped = true;
+            reject(options.abortSignal.reason);
+          }, { once: true });
+        });
+      }
+    },
+    globalRuleStore: { async getAll() { await captionStarted; throw originalFailure; } }
+  }));
+  const common = createMediaBudgetChatInput();
+  common.abortSignal = controller.signal;
+  common.historyForPrompt = [{ role: "user", content: buildTag("ref", { kind: "image", image_id: "in-flight-image" }) }];
+  const pending = builder.buildScheduledPromptMessages({ ...common,
+    trigger: { kind: "scheduled_instruction", jobName: "合成任务", taskInstruction: "继续处理" },
+    targetContext: { chatType: "private", userId: "synthetic", senderName: "合成用户" }
+  });
+  await assert.rejects(pending, error => error === originalFailure);
+  assert.equal(mediaSignal?.aborted, true);
+  assert.equal(mediaStopped, true);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  assert.equal(controller.signal.aborted, false, "scope disposal must not abort the caller");
+});

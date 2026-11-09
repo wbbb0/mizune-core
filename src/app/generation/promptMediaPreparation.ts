@@ -95,6 +95,7 @@ export class PromptMediaPreparation {
   private currentAdmission: CurrentMediaAdmission | undefined;
   private historyAdmission: CurrentMediaAdmission | undefined;
   private readonly resolvedFiles = new Map<string, string>();
+  private readonly pendingRuns = new Set<Promise<unknown>>();
 
   constructor(readonly config: { timeoutMs: number; maxCurrentMedia: number; maxHistoryMedia: number }, private readonly callerSignal?: AbortSignal) {
     this.signal = this.controller.signal;
@@ -131,7 +132,15 @@ export class PromptMediaPreparation {
   }
 
   /** 实际工作必须同时收到 signal。不可取消的本地只读操作迟到后仅丢弃结果，不得调度后续工作。 */
-  async run<T>(work: (signal: AbortSignal) => Promise<T>, fallback: T, label: string): Promise<T> {
+  run<T>(work: (signal: AbortSignal) => Promise<T>, fallback: T, label: string): Promise<T> {
+    const result = this.execute(work, fallback, label);
+    this.pendingRuns.add(result);
+    const release = () => { this.pendingRuns.delete(result); };
+    void result.then(release, release);
+    return result;
+  }
+
+  private async execute<T>(work: (signal: AbortSignal) => Promise<T>, fallback: T, label: string): Promise<T> {
     this.callerSignal?.throwIfAborted();
     if (this.signal.aborted) return fallback;
     try {
@@ -161,9 +170,11 @@ export class PromptMediaPreparation {
     ];
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.finishMediaPreparation();
+    if (!this.signal.aborted) this.controller.abort(new Error("本轮媒体准备作用域已结束"));
     this.callerSignal?.removeEventListener("abort", this.forwardAbort);
+    await Promise.allSettled([...this.pendingRuns]);
   }
 }
 
@@ -174,5 +185,5 @@ export async function withPromptMediaPreparation<T>(
 ): Promise<T> {
   const scope = new PromptMediaPreparation(config, callerSignal);
   try { return await work(scope); }
-  finally { scope.dispose(); }
+  finally { await scope.dispose(); }
 }

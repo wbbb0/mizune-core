@@ -29,7 +29,7 @@ interface SessionAssetSource {
 }
 
 const immutableTranscriptReferences = new WeakMap<InternalTranscriptItem, readonly CollectedAssetReference[]>();
-const chatFileReferenceFields = new Set(["fileId", "file_id", "fileRef", "file_ref", "assetId", "asset_id", "assetRef", "asset_ref"]);
+const localAssetReferenceFields = new Set(["assetId", "asset_id", "assetRef", "asset_ref"]);
 
 /** Typed asset fields are the single source for GC, durable ownership, and admin media projections. */
 export function collectSessionAssetReferences(session: SessionAssetSource): CollectedAssetReference[] {
@@ -131,10 +131,6 @@ function collectFromContentParts(
       add("chat_file", part.fileId, "content_part");
       continue;
     }
-    if (part.kind === "file" && part.file.fileId) {
-      add("chat_file", part.file.fileId, "content_part");
-      continue;
-    }
     if (part.kind === "audio" && part.audioId) {
       add("audio", part.audioId, "content_part");
     }
@@ -145,10 +141,10 @@ function collectFromToolResult(
   add: AddReference,
   item: InternalToolResultItem
 ): void {
-  if (item.observation?.resource?.kind === "asset") {
-    add("chat_file", item.observation.resource.id, "tool_result");
-  }
+  // observation.resource 是重取/操作目标，也可能只是失败请求中的用户 selector。
+  // 持久化所有权只取实际返回的本地资产声明，不能把它当成存在性证明。
   collectAssetIdsFromJsonText(add, item.content);
+  collectAssetIdsFromJsonText(add, item.canonicalContent);
   collectAssetIdsFromJsonText(add, item.observation?.replayContent);
 }
 
@@ -170,10 +166,16 @@ function collectAssetIdsFromValue(
   while (pending.length > 0) {
     const current = pending.pop();
     if (!current || typeof current !== "object") continue;
+    const record = current as Record<string, unknown>;
+    if ((record.kind === "image" || record.kind === "emoji" || record.kind === "asset_file") && typeof record.fileId === "string") {
+      add("chat_file", record.fileId, "tool_result");
+    } else if (record.kind === "audio" && typeof record.audioId === "string") {
+      add("audio", record.audioId, "tool_result");
+    }
+    if (record.source === "asset" && typeof record.id === "string") add("chat_file", record.id, "tool_result");
     for (const [field, child] of Object.entries(current)) {
       if (typeof child === "string") {
-        if (chatFileReferenceFields.has(field)) add("chat_file", child, "tool_result");
-        else if (field === "audioId" || field === "audio_id") add("audio", child, "tool_result");
+        if (localAssetReferenceFields.has(field)) add("chat_file", child, "tool_result");
       } else if (child && typeof child === "object") {
         pending.push(child);
       }

@@ -20,6 +20,8 @@ import { collectTranscriptMediaIds } from "../../src/data/assets/sessionAssetRef
 import { ChatFileStore } from "../../src/services/workspace/chatFileStore.ts";
 import { LocalFileService } from "../../src/services/workspace/localFileService.ts";
 import { createTestAppConfig } from "../helpers/config-fixtures.tsx";
+import { buildToolObservation } from "../../src/conversation/session/toolObservation.ts";
+import { assetLocalPathPolicy } from "../../src/llm/tools/core/resultObservationPresets.ts";
 
 const logger = pino({ level: "silent" });
 
@@ -262,7 +264,7 @@ test("snapshot validation resolves fileRef aliases after a nondestructive asset 
       const snapshots = new SessionSnapshotStore(dataDir, logger, undefined, coordinator);
       session.internalTranscript = [{
         kind: "tool_result", llmVisible: true, timestampMs: 1, toolCallId: "call-alias", toolName: "browser",
-        content: JSON.stringify({ asset_ref: file.fileRef, audio_id: audio.id })
+        content: JSON.stringify({ asset_ref: file.fileRef, contentParts: [{ kind: "audio", audioId: audio.id }] })
       }];
       await snapshots.create({ sessionId: session.id, session: toPersistedSessionState(session), modeState: null });
       assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_chat_files_ref'").get());
@@ -344,9 +346,63 @@ test("admin media projection uses the same typed nested fields as durable owners
 test("deep tool JSON does not overflow reference extraction and mutable entries are not cached", () => {
   const item: InternalToolResultItem = {
     kind: "tool_result", llmVisible: true, timestampMs: 1, toolCallId: "call-1", toolName: "browser",
-    content: '{"nested":'.repeat(12_000) + '{"fileId":"deep_file","audio_id":"deep_audio"}' + '}'.repeat(12_000)
+    content: '{"nested":'.repeat(12_000) + '{"asset_id":"deep_file","parts":[{"kind":"audio","audioId":"deep_audio"}]}' + '}'.repeat(12_000)
   };
   assert.deepEqual(collectTranscriptMediaIds([item]), { chatFileIds: ["deep_file"], audioIds: ["deep_audio"] });
-  item.content = '{"file_id":"replacement_file"}';
+  item.content = '{"asset_id":"replacement_file"}';
   assert.deepEqual(collectTranscriptMediaIds([item]), { chatFileIds: ["replacement_file"], audioIds: [] });
+});
+
+test("external platform files and failed resource selectors do not block a snapshot", async () => {
+  await withFixture(async fixture => {
+    const external = createUserTranscriptMessageItem({ chatType: "private", userId: "owner", senderName: "Owner",
+      timestampMs: 2, text: "外部文件尚未下载", contentParts: [{ kind: "embedded_message", relation: "reply", parts: [{
+        kind: "file", file: { fileId: "onebot-external-id", name: "remote.txt", busid: "102", sizeBytes: 12,
+          mimeType: "text/plain", downloadTool: "download_message_file" }
+      }] }] });
+    fixture.session.internalTranscript.push(external, { kind: "tool_result", llmVisible: true, timestampMs: 3,
+      toolCallId: "download-failed", toolName: "download_message_file",
+      content: JSON.stringify({ error: "message file download failed", file_id: "onebot-external-id", busid: "102" }) });
+    const content = JSON.stringify({ error: "unknown asset: missing.png" });
+    const observation = buildToolObservation({ toolName: "asset_local_path", toolCallId: "missing-selector", content,
+      args: { asset_ref: "missing.png" }, policy: assetLocalPathPolicy() });
+    fixture.session.internalTranscript.push({ kind: "tool_result", llmVisible: true, timestampMs: 4,
+      toolCallId: "missing-selector", toolName: "asset_local_path", content, observation });
+    assert.equal(observation.resource?.id, "missing.png", "a refetch target is not a local ownership declaration");
+    await archiveAndClear(fixture);
+    await fixture.sweep();
+    await assertMediaPresent(fixture);
+  });
+});
+
+test("explicit tool assets in canonical results and typed audio parts remain durable", async () => {
+  await withFixture(async fixture => {
+    const { session, file, audio } = fixture;
+    session.internalTranscript = [{ kind: "tool_result", llmVisible: true, timestampMs: 1,
+      toolCallId: "local-assets", toolName: "view_forward_record", content: "结果已压缩",
+      canonicalContent: JSON.stringify({ assets: [{ asset_id: file.fileId, asset_ref: file.fileRef }],
+        contentParts: [{ kind: "audio", audioId: audio.id }] }) }];
+    await archiveAndClear(fixture);
+    await fixture.sweep();
+    await assertMediaPresent(fixture);
+  });
+});
+
+test("missing explicitly declared local tool assets still reject snapshots", async () => {
+  await withFixture(async fixture => {
+    fixture.session.internalTranscript = [{ kind: "tool_result", llmVisible: true, timestampMs: 1,
+      toolCallId: "missing-local", toolName: "asset_tool", content: JSON.stringify({ asset_id: "missing-local" }) }];
+    await assert.rejects(fixture.snapshots.create({ sessionId: fixture.session.id,
+      session: toPersistedSessionState(fixture.session), modeState: null }), /引用的资产不存在.*missing-local/);
+  });
+});
+
+test("generic external identifiers are not promoted to local ownership", () => {
+  const item: InternalToolResultItem = { kind: "tool_result", llmVisible: true, timestampMs: 1,
+    toolCallId: "generic-fields", toolName: "external_api", content: JSON.stringify({
+      fileId: "external", file_id: "external", fileRef: "external", file_ref: "external", audio_id: "external", audioId: "external"
+    }) };
+  assert.deepEqual(collectTranscriptMediaIds([item]), { chatFileIds: [], audioIds: [] });
+  item.content = JSON.stringify({ nested: { source: "asset", id: "local-handle" } });
+  assert.deepEqual(collectTranscriptMediaIds([item]), { chatFileIds: ["local-handle"], audioIds: [] });
 });

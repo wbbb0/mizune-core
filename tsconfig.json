@@ -10,6 +10,7 @@
     "strict": true,
     "paths": {
       "vue": ["./webui/node_modules/vue/dist/vue.d.ts"],
+      "pinia": ["./webui/node_modules/pinia/dist/pinia.d.ts"],
       "lucide-vue-next": ["./webui/node_modules/lucide-vue-next/dist/lucide-vue-next.d.ts"],
       "@workbench-kit/vue": ["./vendor/workbench-kit/packages/vue/src/index.ts"],
       "@workbench-kit/vue/runtime": ["./vendor/workbench-kit/packages/vue/src/runtime.ts"],

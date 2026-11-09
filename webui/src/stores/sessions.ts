@@ -1,4 +1,4 @@
-import type { SessionSkillsView } from "../../../src/types/skills";
+import type { SessionSkillsView } from "../../../src/types/skills.ts";
 import { defineStore } from "pinia";
 import { ref, type Ref } from "vue";
 import type {
@@ -11,16 +11,16 @@ import type {
   TranscriptItemPatch,
   SessionStreamEvent,
   TurnStreamEvent
-} from "@/api/types";
-import { sessionsApi } from "@/api/sessions";
+} from "../api/types.js";
+import { sessionsApi } from "../api/sessions.js";
 import {
   normalizeSessionListItem,
   sortSessionListItems,
   syncSessionDisplayFields,
   type NormalizedSessionListItem
-} from "./sessionDisplay";
+} from "./sessionDisplay.js";
 
-const SESSION_DEBUG_ENABLED = import.meta.env.DEV;
+const SESSION_DEBUG_ENABLED = import.meta.env?.DEV ?? false;
 const COMPOSER_DRAFTS_STORAGE_KEY = "llm-onebot:composer-drafts:v1";
 
 function debugSession(event: string, detail?: Record<string, unknown>): void {
@@ -121,6 +121,18 @@ export const useSessionsStore = defineStore("sessions", () => {
   let _listReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let _reconnectDelay = 1000;
   let _listReconnectDelay = 1000;
+  let _transcriptGeneration = 0;
+  let _transcriptRequest: AbortController | null = null;
+  let _paginationRequest: AbortController | null = null;
+
+  function _cancelTranscriptRequests(): void {
+    _transcriptGeneration += 1;
+    _transcriptRequest?.abort();
+    _paginationRequest?.abort();
+    _transcriptRequest = null;
+    _paginationRequest = null;
+    if (active.value) active.value.transcriptLoadingMore = false;
+  }
 
   async function refresh(): Promise<void> {
     const [sessionRes, modeRes] = await Promise.all([
@@ -186,10 +198,11 @@ export const useSessionsStore = defineStore("sessions", () => {
     if (!entry) {
       return false;
     }
-    entry.item = {
-      ...entry.item,
-      ...patch
-    };
+    const next = { ...entry.item };
+    for (const [key, value] of Object.entries(patch)) {
+      if (value !== undefined) Object.assign(next, { [key]: value });
+    }
+    entry.item = next;
     return true;
   }
 
@@ -268,7 +281,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     }
 
     const es = sessionsApi.openStream(sessionId, {
-      mutationEpoch: epoch,
+      ...(epoch !== undefined ? { mutationEpoch: epoch } : {}),
       transcriptCount: requestedTranscriptCount
     });
     _es = es;
@@ -302,6 +315,9 @@ export const useSessionsStore = defineStore("sessions", () => {
       if (active.value?.id === sessionId) {
         patchActiveSession({ streamStatus: "connecting" });
       }
+      // 关闭浏览器自身的自动重连；新连接必须先取得权威快照。
+      _closeStream();
+      _cancelTranscriptRequests();
       _scheduleReconnect(sessionId);
     };
   }
@@ -350,22 +366,37 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   /** REST 拉末尾 25 条后开 SSE（REST 失败时降级为 SSE from 0） */
   async function _initTranscriptAndStream(sessionId: string, epoch?: number): Promise<void> {
+    _closeStream();
+    _cancelTranscriptRequests();
+    const generation = _transcriptGeneration;
+    const controller = new AbortController();
+    _transcriptRequest = controller;
+    const isCurrent = () => !controller.signal.aborted && generation === _transcriptGeneration
+      && selectedId.value === sessionId && active.value?.id === sessionId;
     try {
-      const snap = await sessionsApi.fetchTranscript(sessionId, { limit: 25 });
+      const snap = await sessionsApi.fetchTranscript(sessionId, { limit: 25 }, controller.signal);
       const cur = active.value;
-      if (!cur || cur.id !== sessionId) return; // 会话已切换，丢弃
+      if (!cur || !isCurrent()) return;
       Object.assign(cur, {
         transcript: snap.items.map((item) => toTranscriptEntry(item)),
         transcriptCount: snap.totalCount,
         transcriptHasMore: snap.hasMore,
         transcriptLoadingMore: false
       });
-      _openStream(sessionId, epoch, snap.totalCount);
+      // 重放一个已加载窗口，覆盖 REST 返回到 SSE 建立之间发生的原位 patch。
+      _openStream(sessionId, epoch, snap.items[0]?.index ?? snap.totalCount);
     } catch {
       const cur = active.value;
-      if (cur?.id === sessionId) {
+      if (cur && isCurrent()) {
+        // 旧展示缓存不能充当接收游标；快照失败时明确从空视图重新同步。
+        Object.assign(cur, {
+          transcript: [], transcriptCount: 0, transcriptHasMore: false, transcriptLoadingMore: false
+        });
+        clearDraftOverlay(cur);
         _openStream(sessionId, epoch, 0);
       }
+    } finally {
+      if (_transcriptRequest === controller) _transcriptRequest = null;
     }
   }
 
@@ -376,6 +407,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     if (event.type === "session_error") {
       debugSession("handle_event:session_error", { activeSessionId: cur.id, message: event.message });
       _closeStream();
+      _cancelTranscriptRequests();
       cur.streamStatus = "error";
       return;
     }
@@ -387,7 +419,6 @@ export const useSessionsStore = defineStore("sessions", () => {
         streamStatus: "connected",
         modeId: event.modeId,
         mutationEpoch: event.mutationEpoch,
-        transcriptCount: event.transcriptCount,
         lastActiveAt: event.lastActiveAt,
         phase: event.phase,
         skills: event.skills ?? null
@@ -424,18 +455,22 @@ export const useSessionsStore = defineStore("sessions", () => {
     }
 
     if (event.type === "transcript_item_added") {
-      const already = cur.transcript.some((entry) => entry.id === event.item.id);
-      if (already) {
+      if (event.index > cur.transcriptCount) {
+        void _initTranscriptAndStream(cur.id, cur.mutationEpoch);
         return;
       }
-      cur.transcript.push({
+      const entry = {
         id: event.item.id,
         eventId: event.item.id,
         index: event.index,
         item: event.item
-      });
+      };
+      const existingIndex = cur.transcript.findIndex(item => item.id === event.item.id);
+      if (existingIndex === -1) cur.transcript.push(entry);
+      else cur.transcript[existingIndex] = entry;
       const isAssistantMessage = event.item.kind === "assistant_message";
-      cur.transcriptCount = event.totalCount;
+      // ready/totalCount 是服务端总量；只有收到的连续项才推进当前进度。
+      cur.transcriptCount = Math.max(cur.transcriptCount, event.index + 1);
       if (isAssistantMessage) {
         cur.draftAssistantText = null;
       }
@@ -454,8 +489,8 @@ export const useSessionsStore = defineStore("sessions", () => {
       _reconnectTimer = null;
       if (selectedId.value === sessionId) {
         const cur = active.value;
-        // 断线重连：SSE 从当前已知 transcriptCount 起，无需重拉 REST
-        _openStream(sessionId, cur?.mutationEpoch, cur?.transcriptCount);
+        // 同数量的旧项也可能已被 patch；任何断线都以 REST 快照重新同步。
+        void _initTranscriptAndStream(sessionId, cur?.mutationEpoch);
         _reconnectDelay = Math.min(_reconnectDelay * 2, 15_000);
       }
     }, _reconnectDelay);
@@ -513,6 +548,7 @@ export const useSessionsStore = defineStore("sessions", () => {
     selectedId.value = null;
     active.value = null;
     _closeStream();
+    _cancelTranscriptRequests();
   }
 
   async function sendMessage(opts: {
@@ -530,10 +566,10 @@ export const useSessionsStore = defineStore("sessions", () => {
     cur.composerUserId = opts.userId;
     const { turnId } = await sessionsApi.sendTurn(sessionId, {
       userId: opts.userId,
-      senderName: opts.senderName,
       text: opts.text,
-      imageIds: opts.imageIds,
-      attachmentIds: opts.attachmentIds
+      ...(opts.senderName !== undefined ? { senderName: opts.senderName } : {}),
+      ...(opts.imageIds !== undefined ? { imageIds: opts.imageIds } : {}),
+      ...(opts.attachmentIds !== undefined ? { attachmentIds: opts.attachmentIds } : {})
     });
     _subscribeTurnStream(sessionId, turnId);
   }
@@ -685,9 +721,14 @@ export const useSessionsStore = defineStore("sessions", () => {
 
   async function loadMoreTranscript(): Promise<void> {
     const cur = active.value;
-    if (!cur || !cur.transcriptHasMore || cur.transcriptLoadingMore) return;
+    if (!cur || !cur.transcriptHasMore || cur.transcriptLoadingMore || _transcriptRequest || cur.streamStatus !== "connected") return;
 
     const sessionId = cur.id;
+    const generation = _transcriptGeneration;
+    const controller = new AbortController();
+    _paginationRequest = controller;
+    const isCurrent = () => !controller.signal.aborted && generation === _transcriptGeneration
+      && active.value?.id === sessionId && _paginationRequest === controller;
     const oldestIndex = cur.transcript[0]?.index ?? cur.transcriptCount;
 
     cur.transcriptLoadingMore = true;
@@ -696,9 +737,9 @@ export const useSessionsStore = defineStore("sessions", () => {
       const snap = await sessionsApi.fetchTranscript(sessionId, {
         beforeIndex: oldestIndex,
         limit: 25
-      });
+      }, controller.signal);
       const current = active.value;
-      if (!current || current.id !== sessionId) return;
+      if (!current || !isCurrent()) return;
       Object.assign(current, {
         transcript: dedupeTranscriptEntries([
           ...snap.items.map((item) => toTranscriptEntry(item)),
@@ -709,9 +750,11 @@ export const useSessionsStore = defineStore("sessions", () => {
       });
     } catch {
       const current = active.value;
-      if (current?.id === sessionId) {
+      if (current && isCurrent()) {
         current.transcriptLoadingMore = false;
       }
+    } finally {
+      if (_paginationRequest === controller) _paginationRequest = null;
     }
   }
 

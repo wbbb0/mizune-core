@@ -342,4 +342,6 @@ Agent 可按需收藏、检索、维护和发送表情。`stickers.enabled` 默�
 
 普通历史和原生回放共用路由预设的历史窗口，媒体准备只处理本轮准入的引用。`llm.mediaPreparation.timeoutMs` 默认 30000 毫秒，媒体恢复、排队描述、转写及原生视觉/音频输入共用这一次总等待期限；到期后保留已就绪结果、已通过安全检查的历史和资源句柄，明确标注尚未读取的部分并继续回复。`llm.mediaPreparation.maxCurrentMedia` 默认 16，独立限制当前输入自动准备的媒体数；`maxHistoryMedia` 默认 16，限制选中历史中图片、音频与文件恢复共用的准备资源数，两种历史表示去重后共用同一集合。超额媒体仍保留文本和引用；历史图片引用数量另外受 `historyWindow.maxImageReferences` 控制。恢复最多并行处理 4 个资源。媒体准备结束后停止总期限计时，规则或记忆查询耗时不会被误报为媒体超时。
 
+Sessions 的 SSE 断开后会重取末尾历史快照，并重叠回放当前窗口以刷新原位修改；快照失败时清空失效展示缓存并从头同步，不把服务端总量当成已接收进度。详见 [Sessions 历史快照与 SSE 重同步](docs/architecture/session-stream.md)。
+
 原生决策接入支持 OpenAI、OpenAI Compatible（Chat / Responses）、OpenRouter、百炼和 LM Studio。为实际支持决策的模型声明 `decision: {}`，再配置路由预设的 `decision` 列表；普通聊天模型不会因此自动获得决策能力。OpenAI 协议通过官方 SDK 请求 `/decisions`；OpenRouter 使用官方 SDK 的 `/api/alpha/decisions`；百炼使用 `/compatible-mode/v1/systemone`。百炼最多 16 个问题，需使用已开通决策模型且与区域匹配的 API Key / 网关地址。System One 当前接受文本和 JSON 证据、文本问题说明；不支持的多模态输入会在请求前拒绝。SDK 不自动重试，错误与取消交由统一模型调用层处理。
